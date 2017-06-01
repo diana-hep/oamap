@@ -80,3 +80,38 @@ def selecttype(min, max, whole, real, nullable):
         return n(f64) if nullable else f64
     else:
         return n(c128) if nullable else c128
+
+def identifytype(primitive):
+    if isinstance(primitive, Primitive):
+        if primitive.dtype == i8.dtype:
+            return nullable(i8) if primitive.nullable else i8
+        elif primitive.dtype == i16.dtype:
+            return nullable(i16) if primitive.nullable else i16
+        elif primitive.dtype == i32.dtype:
+            return nullable(i32) if primitive.nullable else i32
+        elif primitive.dtype == i64.dtype:
+            return nullable(i64) if primitive.nullable else i64
+        elif primitive.dtype == u8.dtype:
+            return nullable(u8) if primitive.nullable else u8
+        elif primitive.dtype == u16.dtype:
+            return nullable(u16) if primitive.nullable else u16
+        elif primitive.dtype == u32.dtype:
+            return nullable(u32) if primitive.nullable else u32
+        elif primitive.dtype == u64.dtype:
+            return nullable(u64) if primitive.nullable else u64
+        elif primitive.dtype == f32.dtype:
+            return nullable(f32) if primitive.nullable else f32
+        elif primitive.dtype == f64.dtype:
+            return nullable(f64) if primitive.nullable else f64
+        elif primitive.dtype == f128.dtype:
+            return nullable(f128) if primitive.nullable else f128
+        elif primitive.dtype == c64.dtype:
+            return nullable(c64) if primitive.nullable else c64
+        elif primitive.dtype == c128.dtype:
+            return nullable(c128) if primitive.nullable else c128
+        elif primitive.dtype == c256.dtype:
+            return nullable(c256) if primitive.nullable else c256
+        else:
+            return primitive
+    else:
+        return primitive
