@@ -1,4 +1,4 @@
-from typesystem.common import *
+from typesystem.defs import *
 
 class Primitive(Type):
     def __init__(self, dtype, tag=None, repr=None):

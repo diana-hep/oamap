@@ -1,4 +1,4 @@
-from typesystem.common import *
+from typesystem.defs import *
 from typesystem.lr import *
 
 try:
