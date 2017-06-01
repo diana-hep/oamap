@@ -147,5 +147,3 @@ class ArrayGroup(object):
 
     def cursor(self, dataname, sizename):
         return Cursor(self.byname(dataname), self.byname(sizename))
-
-del struct

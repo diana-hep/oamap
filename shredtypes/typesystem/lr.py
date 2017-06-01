@@ -1,9 +1,9 @@
 from shredtypes.typesystem.defs import *
 
 class Primitive(Type):
-    def __init__(self, dtype, tag=None, repr=None):
+    def __init__(self, dtype, nullable=False, tag=None, repr=None):
         self._dtype = dtype
-        super(Primitive, self).__init__(tag, repr)
+        super(Primitive, self).__init__(nullable, tag, repr)
 
     @property
     def dtype(self):
@@ -87,9 +87,9 @@ class Primitive(Type):
             return False
 
 class List(Type):
-    def __init__(self, items, tag=None, repr=None):
+    def __init__(self, items, nullable=False, tag=None, repr=None):
         self._items = items
-        super(List, self).__init__(tag, repr)
+        super(List, self).__init__(nullable, tag, repr)
 
     @property
     def items(self):
@@ -131,9 +131,9 @@ class List(Type):
                 return False
             
 class Record(Type):
-    def __init__(self, fields, tag=None, repr=None):
+    def __init__(self, fields, nullable=False, tag=None, repr=None):
         self._fields = fields
-        super(Record, self).__init__(tag, repr)
+        super(Record, self).__init__(nullable, tag, repr)
 
     @property
     def fields(self):
