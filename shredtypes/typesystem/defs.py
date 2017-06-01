@@ -3,9 +3,9 @@ class Type(object):
         self._tag = tag
         self._repr = repr
         if tag is None:
-            self._tags = {}
+            self._tagstolinks = {}
         else:
-            self._tags = {tag: self}
+            self._tagstolinks = {tag: self}
 
     @property
     def tag(self):
@@ -18,6 +18,13 @@ class Type(object):
     @property
     def params(self):
         return ()
+
+    @property
+    def children(self):
+        return ()
+
+    def resolve(self, tagstolinks):
+        pass
 
     def __repr__(self):
         if self._repr is not None:
@@ -43,3 +50,28 @@ class Type(object):
 
     def __hash__(self):
         return hash((self.__class__, self.params))
+
+def resolve(*types):
+    tagstolinks = {}
+
+    def collect(tpe):
+        for n, t in tpe._tagstolinks.items():
+            if n in tagstolinks and t != tagsotlinks[n]:
+                raise TypeError("redefined tag {0}:\n\n{1}".format(n, compare(t, tagstolinks[n], header=("original", "redefinition"))))
+            tagstolinks.update(tpe._tagstolinks)
+
+        for t in tpe.children:
+            if isinstance(t, Type):
+                collect(t)
+
+    for tpe in types:
+        if isinstance(tpe, Type):
+            collect(tpe)
+
+    for tpe in types:
+        tpe.resolve(tagstolinks)
+
+    if len(types) == 1:
+        return types[0]
+    else:
+        return types

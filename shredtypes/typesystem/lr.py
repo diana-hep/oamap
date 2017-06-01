@@ -1,4 +1,4 @@
-from typesystem.defs import *
+from shredtypes.typesystem.defs import *
 
 class Primitive(Type):
     def __init__(self, dtype, tag=None, repr=None):
@@ -14,6 +14,8 @@ class Primitive(Type):
         return (self._dtype,)
 
     def _repr_memo(self, memo):
+        if self._repr is not None:
+            return self._repr
         out = self._update_memo(memo)
         if out is not None:
             return repr(out)
@@ -97,12 +99,24 @@ class List(Type):
     def params(self):
         return (self._items,)
 
+    @property
+    def children(self):
+        return (self._items,)
+
+    def resolve(self, tagstolinks):
+        if self._items in tagstolinks:
+            self._items = tagstolinks[self._items]
+
     def _repr_memo(self, memo):
+        if self._repr is not None:
+            return self._repr
         out = self._update_memo(memo)
         if out is not None:
             return repr(out)
         elif self._tag is not None:
-            return "List({0}, tag={1})".format(repr(self._items), repr(self._tag))
+            return "List({0}, tag={1})".format(self._items._repr_memo(memo), repr(self._tag))
+        elif isinstance(self._items, Type):
+            return "List({0})".format(self._items._repr_memo(memo))
         else:
             return "List({0})".format(repr(self._items))
 
@@ -133,14 +147,32 @@ class Record(Type):
     def params(self):
         return tuple(self.sortedfields)
 
+    @property
+    def children(self):
+        return tuple(v for n, v in self.sortedfields)
+
+    def resolve(self, tagstolinks):
+        for fn, ft in self._fields.items():
+            if fn in tagstolinks:
+                self._fields[fn] = tagstolinks[fn]
+
     def _repr_memo(self, memo):
+        if self._repr is not None:
+            return self._repr
         out = self._update_memo(memo)
         if out is not None:
             return repr(out)
-        elif self._tag is not None:
-            return "Record({{{0}}}, tag={1})".format(", ".join(repr(fn) + ": " + repr(ft) for fn, ft in self.sortedfields), repr(self._tag))
-        elif self._tag is not None:
-            return "Record({{{0}}})".format(", ".join(repr(fn) + ": " + repr(ft) for fn, ft in self.sortedfields))
+        else:
+            nested = []
+            for fn, ft in self.sortedfields:
+                if isinstance(ft, Type):
+                    nested.append(repr(fn) + ": " + ft._repr_memo(memo))
+                else:
+                    nested.append(repr(fn) + ": " + repr(ft))
+            if self._tag is not None:
+                return "Record({{{0}}}, tag={1})".format(", ".join(nested), repr(self._tag))
+            else:
+                return "Record({{{0}}})".format(", ".join(nested))
 
     def __contains__(self, other):
         if other.__class__ == Record:

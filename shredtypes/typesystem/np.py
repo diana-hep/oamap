@@ -1,5 +1,5 @@
-from typesystem.defs import *
-from typesystem.lr import *
+from shredtypes.typesystem.defs import *
+from shredtypes.typesystem.lr import *
 
 try:
     import numpy
