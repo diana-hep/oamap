@@ -14,6 +14,14 @@ class Array(object):
         return self._length
 
 class ArrayInMemory(Array):
+    def __init__(self, array, dtype, length):
+        self._array = array
+        super(ArrayInMemory, self).__init__(dtype, length)
+
+    @property
+    def array(self):
+        return self._array
+
     class Iterator(object):
         def __init__(self, array, length):
             self._array = array
@@ -29,14 +37,6 @@ class ArrayInMemory(Array):
                 raise StopIteration
 
         next = __next__
-
-    def __init__(self, array, dtype, length):
-        self._array = array
-        super(ArrayInMemory, self).__init__(dtype, length)
-
-    @property
-    def array(self):
-        return self._array
 
     def __iter__(self):
         return self.Iterator(self._array, self._length)
