@@ -7,7 +7,7 @@ from shredtypes.flat.np import *
 sizetype = uint64
 
 def columns(tpe, name):
-    def recurse(tpe, name, sizename):
+    def recurse(tpe, name, sizename, memo):
         if tpe.nullable:
             name = name + "#"
 
@@ -32,7 +32,7 @@ def columns(tpe, name):
         else:
             assert False, "unrecognized type: {0}".format(tpe)
 
-    return recurse(tpe, name, None)
+    return recurse(tpe, name, None, set())
 
 def extracttype(dtypes, name):
     # TODO: when we have custom types, handle the "$typename" in name

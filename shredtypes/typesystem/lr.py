@@ -164,8 +164,8 @@ class Record(Type):
 
     def resolve(self, tagstolinks):
         for fn, ft in self._fields.items():
-            if fn in tagstolinks:
-                self._fields[fn] = tagstolinks[fn]
+            if ft in tagstolinks:
+                self._fields[fn] = tagstolinks[ft]
 
     def _repr_memo(self, memo):
         if self._repr is not None:

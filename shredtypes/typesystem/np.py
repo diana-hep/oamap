@@ -46,7 +46,6 @@ complex128nan = numpy.complex128(numpy.float64("nan") + numpy.float64("nan")*1j)
 complex256nan = numpy.complex256(numpy.float128("nan") + numpy.float128("nan")*1j)
 
 # nice feature: reinterpret_cast<int NaN> == float NaN (independent of endianness)
-
 assert int32nan == numpy.asscalar(numpy.cast["int32"](numpy.float32("nan")))
 assert int64nan == numpy.asscalar(numpy.cast["int64"](numpy.float64("nan")))
 
@@ -82,7 +81,7 @@ def selecttype(min, max, whole, real, nullable):
         return n(complex128) if nullable else complex128
 
 def identifytype(primitive):
-    if isinstance(primitive, Primitive):
+    if isinstance(primitive, Primitive) and primitive.tag is None:
         if primitive.dtype == int8.dtype:
             return nullable(int8) if primitive.nullable else int8
         elif primitive.dtype == int16.dtype:

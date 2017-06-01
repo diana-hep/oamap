@@ -70,7 +70,7 @@ def resolve(*types):
         for n, t in tpe._tagstolinks.items():
             if n in tagstolinks and t != tagsotlinks[n]:
                 raise TypeError("redefined tag {0}: {1} vs {2}".format(n, t, tagstolinks[n]))
-            tagstolinks.update(tpe._tagstolinks)
+        tagstolinks.update(tpe._tagstolinks)
 
         for t in tpe.children:
             if isinstance(t, Type):
