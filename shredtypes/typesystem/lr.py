@@ -19,10 +19,15 @@ class Primitive(Type):
         out = self._update_memo(memo)
         if out is not None:
             return repr(out)
-        elif self._tag is not None:
-            return "Primitive({0}, tag={1})".format(repr(self._dtype), repr(self._tag))
         else:
-            return "Primitive({0})".format(repr(self._dtype))
+            params = repr(self._dtype)
+            if self.tag is not None:
+                params += ", tag={0}".format(repr(self.tag))
+            out = "Primitive({0})".format(params)
+            if self.nullable:
+                return "nullable({0})".format(out)
+            else:
+                return out
 
     def __contains__(self, other):
         if other.__class__ == Primitive:
@@ -113,12 +118,18 @@ class List(Type):
         out = self._update_memo(memo)
         if out is not None:
             return repr(out)
-        elif self._tag is not None:
-            return "List({0}, tag={1})".format(self._items._repr_memo(memo), repr(self._tag))
-        elif isinstance(self._items, Type):
-            return "List({0})".format(self._items._repr_memo(memo))
         else:
-            return "List({0})".format(repr(self._items))
+            if isinstance(self._items, Type):
+                params = self._items._repr_memo(memo)
+            else:
+                params = repr(self._items)
+            if self.tag is not None:
+                params += ", tag={0}".format(repr(self.tag))
+            out = "List({0})".format(params)
+            if self.nullable:
+                return "nullable({0})".format(out)
+            else:
+                return out
 
     def __contains__(self, other):
         if other.__class__ == List:
@@ -169,10 +180,14 @@ class Record(Type):
                     nested.append(repr(fn) + ": " + ft._repr_memo(memo))
                 else:
                     nested.append(repr(fn) + ": " + repr(ft))
-            if self._tag is not None:
-                return "Record({{{0}}}, tag={1})".format(", ".join(nested), repr(self._tag))
+            params = "{" + ", ".join(nested) + "}"
+            if self.tag is not None:
+                params += ", tag={0}".format(repr(self.tag))
+            out = "Record({0})".format(params)
+            if self.nullable:
+                return "nullable({0})".format(out)
             else:
-                return "Record({{{0}}})".format(", ".join(nested))
+                return out
 
     def __contains__(self, other):
         if other.__class__ == Record:

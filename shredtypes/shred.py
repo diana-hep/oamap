@@ -4,6 +4,8 @@ from shredtypes.typesystem.np import *
 from shredtypes.typesystem.lr import *
 from shredtypes.flat.np import *
 
+sizetype = uint64
+
 def columns(tpe, name):
     def recurse(tpe, name, sizename):
         if tpe.nullable:
@@ -15,7 +17,7 @@ def columns(tpe, name):
             if sizename is None:
                 return {name: tpe.dtype}
             else:
-                return {name: tpe.dtype, sizename + "@size": u64}
+                return {name: tpe.dtype, sizename + "@size": sizetype}
 
         elif isinstance(tpe, List):
             name = name + "[]"
@@ -43,15 +45,9 @@ def extracttype(dtypes, name):
 
     elif any(not n.endswith("@size") and (n.startswith(name + "[]") or n.startswith(name + "#[]")) for n in dtypes):
         trimmed = dict((name + n[len(name) + 3:], v) for n, v in dtypes.items() if n.startswith(name + "#[]") and n != name + "#[]@size")
-
-        print("trimmed1 ", trimmed)
-
         if len(trimmed) == 0:
             nullable = False
             trimmed = dict((name + n[len(name) + 2:], v) for n, v in dtypes.items() if n.startswith(name + "[]") and n != name + "[]@size")
-
-            print("trimmed2 ", trimmed)
-
         else:
             nullable = True
         return List(extracttype(trimmed, name), nullable=nullable)    
@@ -69,4 +65,4 @@ def extracttype(dtypes, name):
             if not n.endswith("@size"):
                 fn = re.match(r"([^-@[$#]*)", n).group(1)
                 fields[fn] = extracttype(trimmed, fn)
-        return Record(fields)
+        return Record(fields, nullable=nullable)

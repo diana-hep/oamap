@@ -4,51 +4,51 @@ from shredtypes.typesystem.lr import *
 import numpy
 
 # signed integers
-i8   = Primitive(numpy.dtype("int8"),       repr="i8")
-i16  = Primitive(numpy.dtype("int16"),      repr="i16")
-i32  = Primitive(numpy.dtype("int32"),      repr="i32")
-i64  = Primitive(numpy.dtype("int64"),      repr="i64")
+int8 = Primitive(numpy.dtype("int8"), repr="int8")
+int16 = Primitive(numpy.dtype("int16"), repr="int16")
+int32 = Primitive(numpy.dtype("int32"), repr="int32")
+int64 = Primitive(numpy.dtype("int64"), repr="int64")
 
 # unsigned integers
-u8   = Primitive(numpy.dtype("uint8"),      repr="u8")
-u16  = Primitive(numpy.dtype("uint16"),     repr="u16")
-u32  = Primitive(numpy.dtype("uint32"),     repr="u32")
-u64  = Primitive(numpy.dtype("uint64"),     repr="u64")
+uint8 = Primitive(numpy.dtype("uint8"), repr="uint8")
+uint16 = Primitive(numpy.dtype("uint16"), repr="uint16")
+uint32 = Primitive(numpy.dtype("uint32"), repr="uint32")
+uint64 = Primitive(numpy.dtype("uint64"), repr="uint64")
 
 # floating point numbers
-f32  = Primitive(numpy.dtype("float32"),    repr="f32")
-f64  = Primitive(numpy.dtype("float64"),    repr="f64")
-f128 = Primitive(numpy.dtype("float128"),   repr="f128")
+float32 = Primitive(numpy.dtype("float32"), repr="float32")
+float64 = Primitive(numpy.dtype("float64"), repr="float64")
+float128 = Primitive(numpy.dtype("float128"), repr="float128")
 
 # complex numbers (real float followed by imaginary float)
-c64  = Primitive(numpy.dtype("complex64"),  repr="c64")
-c128 = Primitive(numpy.dtype("complex128"), repr="c128")
-c256 = Primitive(numpy.dtype("complex256"), repr="c256")
+complex64 = Primitive(numpy.dtype("complex64"), repr="complex64")
+complex128 = Primitive(numpy.dtype("complex128"), repr="complex128")
+complex256 = Primitive(numpy.dtype("complex256"), repr="complex256")
 
 # give up the lowest value of the signed range; get a symmetric range
-i8nan   = numpy.iinfo(numpy.int8).min
-i16nan  = numpy.iinfo(numpy.int16).min
-i32nan  = numpy.iinfo(numpy.int32).min
-i64nan  = numpy.iinfo(numpy.int64).min
+int8nan = numpy.iinfo(numpy.int8).min
+int16nan = numpy.iinfo(numpy.int16).min
+int32nan = numpy.iinfo(numpy.int32).min
+int64nan = numpy.iinfo(numpy.int64).min
 
 # give up the highest value of the unsigned range; values are close to overflowing anyway
-u8nan   = numpy.iinfo(numpy.uint8).max
-u16nan  = numpy.iinfo(numpy.uint16).max
-u32nan  = numpy.iinfo(numpy.uint32).max
-u64nan  = numpy.iinfo(numpy.uint64).max
+uint8nan = numpy.iinfo(numpy.uint8).max
+uint16nan = numpy.iinfo(numpy.uint16).max
+uint32nan = numpy.iinfo(numpy.uint32).max
+uint64nan = numpy.iinfo(numpy.uint64).max
 
 # IEEE defines a float NaN for us
-f32nan  = numpy.float32("nan")
-f64nan  = numpy.float64("nan")
-f128nan = numpy.float128("nan")
-c64nan  = numpy.complex64(numpy.float32("nan") + numpy.float32("nan")*1j)
-c128nan = numpy.complex128(numpy.float64("nan") + numpy.float64("nan")*1j)
-c256nan = numpy.complex256(numpy.float128("nan") + numpy.float128("nan")*1j)
+float32nan = numpy.float32("nan")
+float64nan = numpy.float64("nan")
+float128nan = numpy.float128("nan")
+complex64nan = numpy.complex64(numpy.float32("nan") + numpy.float32("nan")*1j)
+complex128nan = numpy.complex128(numpy.float64("nan") + numpy.float64("nan")*1j)
+complex256nan = numpy.complex256(numpy.float128("nan") + numpy.float128("nan")*1j)
 
 # nice feature: reinterpret_cast<int NaN> == float NaN (independent of endianness)
 
-assert i32nan == numpy.asscalar(numpy.cast["int32"](numpy.float32("nan")))
-assert i64nan == numpy.asscalar(numpy.cast["int64"](numpy.float64("nan")))
+assert int32nan == numpy.asscalar(numpy.cast["int32"](numpy.float32("nan")))
+assert int64nan == numpy.asscalar(numpy.cast["int64"](numpy.float64("nan")))
 
 def selecttype(min, max, whole, real, nullable):
     from shredtypes.typesystem.defs import nullable as n
@@ -56,61 +56,61 @@ def selecttype(min, max, whole, real, nullable):
         shift = 1 if nullable else 0
         if min >= 0:
             if max <= numpy.iinfo(numpy.uint8).max - shift:
-                return n(u8) if nullable else u8
+                return n(uint8) if nullable else uint8
             elif max <= numpy.iinfo(numpy.uint16).max - shift:
-                return n(u16) if nullable else u16
+                return n(uint16) if nullable else uint16
             elif max <= numpy.iinfo(numpy.uint32).max - shift:
-                return n(u32) if nullable else u32
+                return n(uint32) if nullable else uint32
             elif max <= numpy.iinfo(numpy.uint64).max - shift:
-                return n(u64) if nullable else u64
+                return n(uint64) if nullable else uint64
             else:
-                return n(f64) if nullable else f64
+                return n(float64) if nullable else float64
         else:
             if numpy.iinfo(numpy.int8).min + shift <= min and max <= numpy.iinfo(numpy.int8).max:
-                return n(i8) if nullable else i8
+                return n(int8) if nullable else int8
             elif numpy.iinfo(numpy.int16).min + shift <= min and max <= numpy.iinfo(numpy.int16).max:
-                return n(i16) if nullable else i16
+                return n(int16) if nullable else int16
             elif numpy.iinfo(numpy.int32).min + shift <= min and max <= numpy.iinfo(numpy.int32).max:
-                return n(i32) if nullable else i32
+                return n(int32) if nullable else int32
             elif numpy.iinfo(numpy.int64).min + shift <= min and max <= numpy.iinfo(numpy.int64).max:
-                return n(i64) if nullable else i64
+                return n(int64) if nullable else int64
             else:
-                return n(f64) if nullable else f64
+                return n(float64) if nullable else float64
     elif real:
-        return n(f64) if nullable else f64
+        return n(float64) if nullable else float64
     else:
-        return n(c128) if nullable else c128
+        return n(complex128) if nullable else complex128
 
 def identifytype(primitive):
     if isinstance(primitive, Primitive):
-        if primitive.dtype == i8.dtype:
-            return nullable(i8) if primitive.nullable else i8
-        elif primitive.dtype == i16.dtype:
-            return nullable(i16) if primitive.nullable else i16
-        elif primitive.dtype == i32.dtype:
-            return nullable(i32) if primitive.nullable else i32
-        elif primitive.dtype == i64.dtype:
-            return nullable(i64) if primitive.nullable else i64
-        elif primitive.dtype == u8.dtype:
-            return nullable(u8) if primitive.nullable else u8
-        elif primitive.dtype == u16.dtype:
-            return nullable(u16) if primitive.nullable else u16
-        elif primitive.dtype == u32.dtype:
-            return nullable(u32) if primitive.nullable else u32
-        elif primitive.dtype == u64.dtype:
-            return nullable(u64) if primitive.nullable else u64
-        elif primitive.dtype == f32.dtype:
-            return nullable(f32) if primitive.nullable else f32
-        elif primitive.dtype == f64.dtype:
-            return nullable(f64) if primitive.nullable else f64
-        elif primitive.dtype == f128.dtype:
-            return nullable(f128) if primitive.nullable else f128
-        elif primitive.dtype == c64.dtype:
-            return nullable(c64) if primitive.nullable else c64
-        elif primitive.dtype == c128.dtype:
-            return nullable(c128) if primitive.nullable else c128
-        elif primitive.dtype == c256.dtype:
-            return nullable(c256) if primitive.nullable else c256
+        if primitive.dtype == int8.dtype:
+            return nullable(int8) if primitive.nullable else int8
+        elif primitive.dtype == int16.dtype:
+            return nullable(int16) if primitive.nullable else int16
+        elif primitive.dtype == int32.dtype:
+            return nullable(int32) if primitive.nullable else int32
+        elif primitive.dtype == int64.dtype:
+            return nullable(int64) if primitive.nullable else int64
+        elif primitive.dtype == uint8.dtype:
+            return nullable(uint8) if primitive.nullable else uint8
+        elif primitive.dtype == uint16.dtype:
+            return nullable(uint16) if primitive.nullable else uint16
+        elif primitive.dtype == uint32.dtype:
+            return nullable(uint32) if primitive.nullable else uint32
+        elif primitive.dtype == uint64.dtype:
+            return nullable(uint64) if primitive.nullable else uint64
+        elif primitive.dtype == float32.dtype:
+            return nullable(float32) if primitive.nullable else float32
+        elif primitive.dtype == float64.dtype:
+            return nullable(float64) if primitive.nullable else float64
+        elif primitive.dtype == float128.dtype:
+            return nullable(float128) if primitive.nullable else float128
+        elif primitive.dtype == complex64.dtype:
+            return nullable(complex64) if primitive.nullable else complex64
+        elif primitive.dtype == complex128.dtype:
+            return nullable(complex128) if primitive.nullable else complex128
+        elif primitive.dtype == complex256.dtype:
+            return nullable(complex256) if primitive.nullable else complex256
         else:
             return primitive
     else:
