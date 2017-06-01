@@ -16,14 +16,14 @@ class Array(object):
 class ArrayInMemory(Array):
     class Iterator(object):
         def __init__(self, array, length):
-            self.array = array
-            self.length = length
-            self.index = 0
+            self._array = array
+            self._length = length
+            self._index = 0
 
         def __next__(self):
-            if self.index < self.length:
-                out = self.array[self.index]
-                self.index += 1
+            if self._index < self._length:
+                out = self._array[self._index]
+                self._index += 1
                 return out
             else:
                 raise StopIteration
@@ -44,16 +44,16 @@ class ArrayInMemory(Array):
 class ArrayStream(Array):
     class Iterator(object):
         def __init__(self, stream, itemsize, length, cast):
-            self.stream = stream
-            self.itemsize = itemsize
-            self.length = length
-            self.cast = cast
-            self.index = 0
+            self._stream = stream
+            self._itemsize = itemsize
+            self._length = length
+            self._cast = cast
+            self._index = 0
 
         def __next__(self):
-            if self.index < self.length:
-                self.index += 1
-                return self.cast(self.stream.read(self.itemsize))
+            if self._index < self._length:
+                self._index += 1
+                return self._cast(self._stream._read(self._itemsize))
             else:
                 raise StopIteration
 
@@ -118,3 +118,34 @@ class ArrayStream(Array):
 
         return self.Iterator(self._stream, self._dtype.itemsize, self._length, cast)
 
+class Cursor(object):
+    def __init__(self, data, size):
+        self.data = data
+        self.size = size
+        self.dataindex = 0
+        self.sizeindex = 0
+
+class ArrayGroup(object):
+    def __init__(self, **arrays):
+        self._namespace = arrays.copy()
+        self._names = sorted(self._namespace)
+        self._values = [self._namespace[x] for x in self._names]
+
+    @property
+    def num(self):
+        return len(self._names)
+
+    @property
+    def names(self):
+        return self._names
+
+    def byname(self, name):
+        return self._namespace[name]
+
+    def byindex(self, index):
+        return self._values[self._order[index]]
+
+    def cursor(self, dataname, sizename):
+        return Cursor(self.byname(dataname), self.byname(sizename))
+
+del struct

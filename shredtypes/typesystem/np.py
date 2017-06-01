@@ -6,6 +6,7 @@ try:
 except ImportError:
     pass
 else:
+
     i8 = Primitive(numpy.dtype("int8"), repr="i8")
     i16 = Primitive(numpy.dtype("int16"), repr="i16")
     i32 = Primitive(numpy.dtype("int32"), repr="i32")
