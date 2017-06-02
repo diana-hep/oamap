@@ -81,7 +81,7 @@ def selecttype(min, max, whole, real, nullable):
         return n(complex128) if nullable else complex128
 
 def identifytype(primitive):
-    if isinstance(primitive, Primitive) and primitive.tag is None:
+    if isinstance(primitive, Primitive) and primitive.label is None and primitive.runtime is None:
         if primitive.dtype == int8.dtype:
             return nullable(int8) if primitive.nullable else int8
         elif primitive.dtype == int16.dtype:

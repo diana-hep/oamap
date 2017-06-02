@@ -1,22 +1,45 @@
 import copy
+import re
 
 class Type(object):
-    def __init__(self, nullable=False, tag=None, repr=None):
+    identifier = re.compile("^[a-zA-Z_][0-9a-zA-Z_]*$")
+    runtimes = {}
+
+    @staticmethod
+    def register(runtime, cls):
+        if runtime in Type.runtimes and Type.runtimes[runtime] != cls:
+            raise RuntimeError("multiple types attempting to register runtime name {0}".format(runtime))
+        Type.runtimes[runtime] = cls
+
+    def __init__(self, nullable=False, label=None, runtime=None, repr=None):
         self._nullable = nullable
-        self._tag = tag
+        self._label = label
+        self._runtime = runtime
         self._repr = repr
-        if tag is None:
-            self._tagstolinks = {}
+
+        if label is None:
+            self._labelstolinks = {}
+        elif re.match(self.identifier, label) is not None:
+            self._labelstolinks = {label: self}
         else:
-            self._tagstolinks = {tag: self}
+            raise ValueError("labels must match [a-zA-Z_][0-9a-zA-Z_]*: {0}".format(label))
+
+        if runtime is not None:
+            if runtime not in self.runtimes:
+                raise RuntimeError("no type has registered runtime name {0}".format(runtime))
+            self.__class__ = self.runtimes[runtime]
 
     @property
     def nullable(self):
         return self._nullable
 
     @property
-    def tag(self):
-        return self._tag
+    def label(self):
+        return self._label
+
+    @property
+    def runtime(self):
+        return self._runtime
 
     @property
     def generic(self):
@@ -30,7 +53,7 @@ class Type(object):
     def children(self):
         return ()
 
-    def resolve(self, tagstolinks):
+    def resolve(self, labelstolinks):
         pass
 
     def __repr__(self):
@@ -42,11 +65,11 @@ class Type(object):
         raise NotImplementedError
 
     def _update_memo(self, memo):
-        if self._tag is not None:
-            if self._tag in memo:
-                return self._tag
+        if self._label is not None:
+            if self._label in memo:
+                return self._label
             else:
-                memo.add(self._tag)
+                memo.add(self._label)
                 return None
         else:
             return None
@@ -64,13 +87,13 @@ class Type(object):
         return False
 
 def resolve(*types):
-    tagstolinks = {}
+    labelstolinks = {}
 
     def collect(tpe):
-        for n, t in tpe._tagstolinks.items():
-            if n in tagstolinks and t != tagsotlinks[n]:
-                raise TypeError("redefined tag {0}: {1} vs {2}".format(n, t, tagstolinks[n]))
-        tagstolinks.update(tpe._tagstolinks)
+        for n, t in tpe._labelstolinks.items():
+            if n in labelstolinks and t != labelsotlinks[n]:
+                raise TypeError("redefined label {0}: {1} vs {2}".format(n, t, labelstolinks[n]))
+        labelstolinks.update(tpe._labelstolinks)
 
         for t in tpe.children:
             if isinstance(t, Type):
@@ -81,7 +104,7 @@ def resolve(*types):
             collect(tpe)
 
     for tpe in types:
-        tpe.resolve(tagstolinks)
+        tpe.resolve(labelstolinks)
 
     if len(types) == 1:
         return types[0]

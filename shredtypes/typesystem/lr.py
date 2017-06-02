@@ -1,9 +1,11 @@
+import re
+
 from shredtypes.typesystem.defs import *
 
 class Primitive(Type):
-    def __init__(self, dtype, nullable=False, tag=None, repr=None):
+    def __init__(self, dtype, nullable=False, label=None, runtime=None, repr=None):
         self._dtype = dtype
-        super(Primitive, self).__init__(nullable, tag, repr)
+        super(Primitive, self).__init__(nullable, label, runtime, repr)
 
     @property
     def dtype(self):
@@ -21,8 +23,8 @@ class Primitive(Type):
             return repr(out)
         else:
             params = repr(self._dtype)
-            if self.tag is not None:
-                params += ", tag={0}".format(repr(self.tag))
+            if self.label is not None:
+                params += ", label={0}".format(repr(self.label))
             out = "Primitive({0})".format(params)
             if self.nullable:
                 return "nullable({0})".format(out)
@@ -92,9 +94,9 @@ class Primitive(Type):
             return False
 
 class List(Type):
-    def __init__(self, items, nullable=False, tag=None, repr=None):
+    def __init__(self, items, nullable=False, label=None, runtime=None, repr=None):
         self._items = items
-        super(List, self).__init__(nullable, tag, repr)
+        super(List, self).__init__(nullable, label, runtime, repr)
 
     @property
     def items(self):
@@ -108,9 +110,9 @@ class List(Type):
     def children(self):
         return (self._items,)
 
-    def resolve(self, tagstolinks):
-        if self._items in tagstolinks:
-            self._items = tagstolinks[self._items]
+    def resolve(self, labelstolinks):
+        if self._items in labelstolinks:
+            self._items = labelstolinks[self._items]
 
     def _repr_memo(self, memo):
         if self._repr is not None:
@@ -123,8 +125,8 @@ class List(Type):
                 params = self._items._repr_memo(memo)
             else:
                 params = repr(self._items)
-            if self.tag is not None:
-                params += ", tag={0}".format(repr(self.tag))
+            if self.label is not None:
+                params += ", label={0}".format(repr(self.label))
             out = "List({0})".format(params)
             if self.nullable:
                 return "nullable({0})".format(out)
@@ -142,9 +144,12 @@ class List(Type):
                 return False
             
 class Record(Type):
-    def __init__(self, fields, nullable=False, tag=None, repr=None):
+    def __init__(self, fields, nullable=False, label=None, runtime=None, repr=None):
+        for field in fields:
+            if re.match(self.identifier, field) is None:
+                raise ValueError("field names must match [a-zA-Z_][0-9a-zA-Z_]*: {0}".format(field))
         self._fields = fields
-        super(Record, self).__init__(nullable, tag, repr)
+        super(Record, self).__init__(nullable, label, runtime, repr)
 
     @property
     def fields(self):
@@ -162,10 +167,10 @@ class Record(Type):
     def children(self):
         return tuple(v for n, v in self.sortedfields)
 
-    def resolve(self, tagstolinks):
+    def resolve(self, labelstolinks):
         for fn, ft in self._fields.items():
-            if ft in tagstolinks:
-                self._fields[fn] = tagstolinks[ft]
+            if ft in labelstolinks:
+                self._fields[fn] = labelstolinks[ft]
 
     def _repr_memo(self, memo):
         if self._repr is not None:
@@ -181,8 +186,8 @@ class Record(Type):
                 else:
                     nested.append(repr(fn) + ": " + repr(ft))
             params = "{" + ", ".join(nested) + "}"
-            if self.tag is not None:
-                params += ", tag={0}".format(repr(self.tag))
+            if self.label is not None:
+                params += ", label={0}".format(repr(self.label))
             out = "Record({0})".format(params)
             if self.nullable:
                 return "nullable({0})".format(out)
