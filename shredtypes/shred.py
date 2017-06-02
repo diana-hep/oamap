@@ -1,5 +1,3 @@
-import re
-
 from shredtypes.typesystem.np import *
 from shredtypes.typesystem.lr import *
 from shredtypes.flat.np import *
@@ -19,26 +17,32 @@ def columns(tpe, name):
         return name
 
     def recurse(tpe, name, sizename, memo):
+        # if tpe.label is not None and tpe.label in memo:
+        #     return memo[tpe.label]
+
         if isinstance(tpe, Primitive):
             if sizename is None:
-                return {str(modifiers(tpe, name)): tpe.dtype}
+                out = {str(modifiers(tpe, name)): tpe.dtype}
             else:
-                return {str(modifiers(tpe, name)): tpe.dtype, str(sizename.size()): sizetype}
+                out = {str(modifiers(tpe, name)): tpe.dtype, str(sizename.size()): sizetype}
 
         elif isinstance(tpe, List):
             name = modifiers(tpe, name).list()
-            return recurse(tpe.items, name, name, memo)
+            out = recurse(tpe.items, name, name, memo)
 
         elif isinstance(tpe, Record):
             out = {}
             for fn, ft in tpe.fields.items():
                 out.update(recurse(ft, modifiers(tpe, name).field(fn), sizename, memo))
-            return out
 
         else:
             assert False, "unrecognized type: {0}".format(tpe)
 
-    return recurse(tpe, Name(name), None, set())
+        # if tpe.label is not None:
+        #     memo[tpe.label] = out
+        return out
+
+    return recurse(tpe, Name(name), None, {})
 
 def extracttype(dtypes, name):
     def modifiers(name):

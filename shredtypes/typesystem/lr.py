@@ -113,6 +113,10 @@ class List(Type):
     def resolve(self, labelstolinks):
         if self._items in labelstolinks:
             self._items = labelstolinks[self._items]
+        elif isinstance(self._items, Type):
+            self._items.resolve(labelstolinks)
+        else:
+            raise TypeError("cannot find label {0} in the set of types being resolved together".format(self._items))
 
     def _repr_memo(self, memo):
         if self._repr is not None:
@@ -171,6 +175,10 @@ class Record(Type):
         for fn, ft in self._fields.items():
             if ft in labelstolinks:
                 self._fields[fn] = labelstolinks[ft]
+            elif isinstance(ft, Type):
+                ft.resolve(labelstolinks)
+            else:
+                raise TypeError("cannot find label {0} in the set of types being resolved together".format(self._items))
 
     def _repr_memo(self, memo):
         if self._repr is not None:
