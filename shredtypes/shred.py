@@ -119,37 +119,3 @@ def extracttype(dtypes, name):
         return tpe
 
     return check(recurse(parsed))
-
-
-
-
-
-    # if name in dtypes:
-    #     return identifytype(Primitive(dtypes[name]))
-
-    # elif name + "#" in dtypes:
-    #     return identifytype(Primitive(dtypes[name + "#"], nullable=True))
-
-    # elif any(not n.endswith("@size") and (n.startswith(name + "[]") or n.startswith(name + "#[]")) for n in dtypes):
-    #     trimmed = dict((name + n[len(name) + 3:], v) for n, v in dtypes.items() if n.startswith(name + "#[]") and n != name + "#[]@size")
-    #     if len(trimmed) == 0:
-    #         nullable = False
-    #         trimmed = dict((name + n[len(name) + 2:], v) for n, v in dtypes.items() if n.startswith(name + "[]") and n != name + "[]@size")
-    #     else:
-    #         nullable = True
-    #     return List(extracttype(trimmed, name), nullable=nullable)    
-
-    # else:
-    #     trimmed = dict((n[len(name) + 2:], v) for n, v in dtypes.items() if n.startswith(name + "#-"))
-    #     if len(trimmed) == 0:
-    #         nullable = False
-    #         trimmed = dict((n[len(name) + 1:], v) for n, v in dtypes.items() if n.startswith(name + "-"))
-    #     else:
-    #         nullable = True
-
-    #     fields = {}
-    #     for n in trimmed:
-    #         if not n.endswith("@size"):
-    #             fn = re.match(r"([^-@[$#]*)", n).group(1)
-    #             fields[fn] = extracttype(trimmed, fn)
-    #     return Record(fields, nullable=nullable)
