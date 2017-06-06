@@ -16,6 +16,7 @@ class Type(object):
         self._label = label
         self._runtime = runtime
         self._repr = repr
+        self._arrayname = None
 
         if label is None:
             self._labelstolinks = {}
@@ -40,6 +41,10 @@ class Type(object):
     @property
     def runtime(self):
         return self._runtime
+
+    @property
+    def arrayname(self):
+        return self._arrayname
 
     @property
     def generic(self):

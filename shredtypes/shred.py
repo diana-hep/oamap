@@ -8,7 +8,7 @@ from shredtypes.flat.names import *
 sizetype = numpy.dtype(numpy.uint64)
 tagtype = numpy.dtype(numpy.uint8)
 
-def columns(tpe, name):
+def declare(tpe, name):
     def modifiers(tpe, name):
         if tpe.nullable:
             name = name.nullable()
@@ -18,7 +18,7 @@ def columns(tpe, name):
             name = name.runtime(tpe.runtime)
         return name
 
-    def deepest(name, dtype, out, memo):
+    def assign(name, dtype, out, memo):
         oldname = None
         for n in out:
             if n.eqbylabel(name):
@@ -27,33 +27,74 @@ def columns(tpe, name):
                 break
         if oldname is None:
             out[name] = dtype
+            return name
         elif oldname.depth > name.depth:
             assert out[oldname] == dtype
+            return oldname
         else:
             del out[oldname]
             out[name] = dtype
+            return name
 
-    def recurse(tpe, name, sizename, out, memo):
+    def recurse(tpe, tpename, sizes, sizename, out, memo):
         if isinstance(tpe, Primitive):
-            deepest(modifiers(tpe, name), tpe.dtype, out, memo)
+            tpe._arrayname = assign(modifiers(tpe, tpename), tpe.dtype, out, memo)
+
             if sizename is not None:
-                deepest(sizename.size(), sizetype, out, memo)
+                n = assign(sizename.size(), sizetype, out, memo)
+                for s in sizes:
+                    s._arrayname = n
 
         elif isinstance(tpe, List):
             if tpe.items.label not in memo:
-                name = modifiers(tpe, name).list(tpe.items.label)
-                recurse(tpe.items, name, name, out, memo)
+                name = modifiers(tpe, tpename).list(tpe.items.label)
+                recurse(tpe.items, name, sizes + (tpe,), name, out, memo)
 
         elif isinstance(tpe, Record):
             for fn, ft in tpe.fields.items():
-                recurse(ft, modifiers(tpe, name).field(fn), sizename, out, memo)
+                recurse(ft, modifiers(tpe, tpename).field(fn), sizes, sizename, out, memo)
 
         else:
             assert False, "unrecognized type: {0}".format(tpe)
 
-    out = {}
-    recurse(tpe, Name(name), None, out, set())
-    return dict((str(n), t) for n, t in out.items())
+    dtypes = {}
+    recurse(tpe, Name(name), (), None, dtypes, set())
+
+    # def deepest(name, names):
+    #     out = name
+    #     for n in names:
+    #         if n.eqbylabel(name) and n.depth > name.depth:
+    #             out = n
+    #     return out
+
+    # def update(tpe, dtypes, memo):
+    #     if tpe._arrayname is not None:
+    #         tpe._arrayname = deepest(tpe._arrayname, dtypes)
+
+    #     if isinstance(tpe, List):
+    #         memo.add(id(tpe))
+    #         if id(tpe.items) not in memo:
+    #             update(tpe.items, dtypes, memo)
+
+    #     elif isinstance(tpe, Record):
+    #         memo.add(id(tpe))
+    #         for ft in tpe.fields.values():
+    #             if id(ft) not in memo:
+    #                 update(ft, dtypes, memo)
+
+    # update(tpe, dtypes, set())
+
+    def stringnames(tpe, memo):
+        if tpe._arrayname is not None:
+            tpe._arrayname = str(tpe._arrayname)
+        memo.add(id(tpe))
+        for t in tpe.children:
+            if id(t) not in memo:
+                stringnames(t, memo)
+
+    stringnames(tpe, set())
+
+    return dict((str(n), t) for n, t in dtypes.items())
 
 def extracttype(dtypes, name):
     def modifiers(name):
@@ -136,7 +177,7 @@ def extracttype(dtypes, name):
             parsed[p] = d
 
     def check(tpe):
-        assert dtypes == columns(tpe, name)
+        assert dtypes == declare(tpe, name)
         return tpe
 
     return check(recurse(parsed, {}))

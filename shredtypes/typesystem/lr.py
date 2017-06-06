@@ -104,7 +104,10 @@ class List(Type):
 
     @property
     def params(self):
-        return (self._items,)
+        if isinstance(self._items, Type) and self._items.label is not None:
+            return (self._items.label,)
+        else:
+            return (self._items,)
 
     @property
     def children(self):
@@ -165,7 +168,7 @@ class Record(Type):
 
     @property
     def params(self):
-        return tuple(self.sortedfields)
+        return tuple((fn, ft.label if isinstance(ft, Type) and ft.label is not None else ft) for fn, ft in self.sortedfields)
 
     @property
     def children(self):
