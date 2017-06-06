@@ -17,32 +17,31 @@ def columns(tpe, name):
         return name
 
     def recurse(tpe, name, sizename, memo):
-        # if tpe.label is not None and tpe.label in memo:
-        #     return memo[tpe.label]
-
         if isinstance(tpe, Primitive):
             if sizename is None:
-                out = {str(modifiers(tpe, name)): tpe.dtype}
+                return {str(modifiers(tpe, name)): tpe.dtype}
             else:
-                out = {str(modifiers(tpe, name)): tpe.dtype, str(sizename.size()): sizetype}
+                return {str(modifiers(tpe, name)): tpe.dtype, str(sizename.size()): sizetype}
 
         elif isinstance(tpe, List):
-            name = modifiers(tpe, name).list()
-            out = recurse(tpe.items, name, name, memo)
+            if tpe.items.label is not None and tpe.items.label in memo:
+                return {}
+            else:
+                if tpe.items.label is not None:
+                    memo.add(tpe.items.label)
+                name = modifiers(tpe, name).list(tpe.items.label)
+                return recurse(tpe.items, name, name, memo)
 
         elif isinstance(tpe, Record):
             out = {}
             for fn, ft in tpe.fields.items():
                 out.update(recurse(ft, modifiers(tpe, name).field(fn), sizename, memo))
+            return out
 
         else:
             assert False, "unrecognized type: {0}".format(tpe)
 
-        # if tpe.label is not None:
-        #     memo[tpe.label] = out
-        return out
-
-    return recurse(tpe, Name(name), None, {})
+    return recurse(tpe, Name(name), None, set())
 
 def extracttype(dtypes, name):
     def modifiers(name):
@@ -86,7 +85,7 @@ def extracttype(dtypes, name):
             else: check["isrecord"] = isrecord
 
             if islist:
-                n = n.pulllist()
+                l, n = n.pulllist()
                 trimmed[n] = d
 
             elif isrecord:

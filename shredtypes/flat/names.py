@@ -2,6 +2,7 @@ import re
 
 class Name(object):
     identifier = re.compile("^[a-zA-Z_][0-9a-zA-Z_]*")
+    identifierBracket = re.compile("^([a-zA-Z_][0-9a-zA-Z_]*)?]")
 
     @staticmethod
     def parse(prefix, string):
@@ -32,9 +33,13 @@ class Name(object):
                 string = string[m.end(0) + 1 : ]
                 path.append(Name.RUNTIME(runtime))
 
-            elif string[0:2] == "[]":
-                string = string[2:]
-                path.append(Name.LIST())
+            elif string[0] == "[":
+                m = re.match(Name.identifierBracket, string[1:])
+                if m is None:
+                    raise ValueError("\"[\" in string \"{0}\" not followed by an optional identifier ([a-zA-Z_][0-9a-zA-Z_]*) and closing bracket \"]\"".format(string))
+                label = m.group(1)
+                string = string[m.end(0) + 1 : ]
+                path.append(Name.LIST(label))
 
             elif string[0] == "#":
                 string = string[1:]
@@ -71,7 +76,7 @@ class Name(object):
         return self._path
 
     def __repr__(self):
-        return "Name({0}, {1})".format(self._prefix, self._path)
+        return "Name({0}, {1})".format(repr(self._prefix), repr(self._path))
 
     def __str__(self):
         return self._prefix + "".join(map(str, self._path))
@@ -106,7 +111,7 @@ class Name(object):
         def __init__(self, label):
             self.label = label
         def __repr__(self):
-            return "LABEL({0})".format(self.label)
+            return "LABEL({0})".format(repr(self.label))
         def __str__(self):
             return "%" + self.label
         def __eq__(self, other):
@@ -128,7 +133,7 @@ class Name(object):
         def __init__(self, runtime):
             self.runtime = runtime
         def __repr__(self):
-            return "RUNTIME({0})".format(self.runtime)
+            return "RUNTIME({0})".format(repr(self.runtime))
         def __str__(self):
             return "$" + self.runtime
         def __eq__(self, other):
@@ -147,24 +152,29 @@ class Name(object):
         return self._path[0].runtime, Name(self._prefix, *self._path[1:])
 
     class LIST(object):
+        def __init__(self, label):
+            self.label = label
         def __repr__(self):
-            return "LIST()"
+            return "LIST({0})".format("" if self.label is None else repr(self.label))
         def __str__(self):
-            return "[]"
+            if self.label is None:
+                return "[]"
+            else:
+                return "[" + self.label + "]"
         def __eq__(self, other):
-            return other.__class__ == Name.LIST
+            return other.__class__ == Name.LIST and self.label == other.label
         def __hash__(self):
-            return hash((self.__class__,))
+            return hash((self.__class__, self.label))
 
-    def list(self):
-        return Name(self._prefix, *(self._path + (self.LIST(),)))
+    def list(self, label=None):
+        return Name(self._prefix, *(self._path + (self.LIST(label),)))
 
     @property
     def islist(self):
         return len(self._path) > 0 and isinstance(self._path[0], Name.LIST)
 
     def pulllist(self):
-        return Name(self._prefix, *self._path[1:])
+        return self._path[0].label, Name(self._prefix, *self._path[1:])
 
     class UNION(object):
         def __repr__(self):
@@ -190,7 +200,7 @@ class Name(object):
         def __init__(self, field):
             self.field = field
         def __repr__(self):
-            return "FIELD({0})".format(self.field)
+            return "FIELD({0})".format(repr(self.field))
         def __str__(self):
             return "-" + self.field
         def __eq__(self, other):
