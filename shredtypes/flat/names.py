@@ -120,7 +120,7 @@ class Name(object):
             return hash((self.__class__, self.label))
 
     def label(self, label):
-        return Name(self._prefix, *(self._path + (self.LABEL(label),)))
+        return Name(self._prefix, *(self._path + (Name.LABEL(label),)))
 
     @property
     def islabel(self):
@@ -142,7 +142,7 @@ class Name(object):
             return hash((self.__class__, self.runtime))
 
     def runtime(self, runtime):
-        return Name(self._prefix, *(self._path + (self.RUNTIME(runtime),)))
+        return Name(self._prefix, *(self._path + (Name.RUNTIME(runtime),)))
 
     @property
     def isruntime(self):
@@ -167,7 +167,7 @@ class Name(object):
             return hash((self.__class__, self.label))
 
     def list(self, label=None):
-        return Name(self._prefix, *(self._path + (self.LIST(label),)))
+        return Name(self._prefix, *(self._path + (Name.LIST(label),)))
 
     @property
     def islist(self):
@@ -187,7 +187,7 @@ class Name(object):
             return hash((self.__class__,))
 
     def union(self):
-        return Name(self._prefix, *(self._path + (self.UNION(),)))
+        return Name(self._prefix, *(self._path + (Name.UNION(),)))
 
     @property
     def isunion(self):
@@ -209,7 +209,7 @@ class Name(object):
             return hash((self.__class__, self.field))
 
     def field(self, field):
-        return Name(self._prefix, *(self._path + (self.FIELD(field),)))
+        return Name(self._prefix, *(self._path + (Name.FIELD(field),)))
 
     @property
     def isfield(self):
@@ -229,7 +229,7 @@ class Name(object):
             return hash((self.__class__,))
 
     def size(self):
-        return Name(self._prefix, *(self._path + (self.SIZE(),)))
+        return Name(self._prefix, *(self._path + (Name.SIZE(),)))
 
     @property
     def issize(self):
@@ -246,8 +246,42 @@ class Name(object):
             return hash((self.__class__,))
 
     def tag(self):
-        return Name(self._prefix, *(self._path + (self.TAG(),)))
+        return Name(self._prefix, *(self._path + (Name.TAG(),)))
 
     @property
     def istag(self):
         return len(self._path) > 0 and isinstance(self._path[-1], Name.TAG)
+
+    @property
+    def depth(self):
+        return sum(1 if isinstance(x, (Name.LIST, Name.UNION, Name.FIELD)) else 0 for x in self._path)
+
+    @property
+    def lastlabel(self):
+        selflabel = len(self._path)
+        while selflabel >= 0:
+            selflabel -= 1
+            if isinstance(self._path[selflabel], Name.LABEL):
+                return self._path[selflabel].label
+        return None
+        
+    def eqbylabel(self, other):
+        selflabel = len(self._path)
+        while selflabel >= 0:
+            selflabel -= 1
+            if isinstance(self._path[selflabel], Name.LABEL) or (
+               isinstance(self._path[selflabel], Name.LIST) and self._path[selflabel].label is not None):
+                break
+        if selflabel == -1:
+            return False
+
+        otherlabel = len(other._path)
+        while otherlabel >= 0:
+            otherlabel -= 1
+            if isinstance(other._path[otherlabel], Name.LABEL) or (
+               isinstance(other._path[otherlabel], Name.LIST) and other._path[otherlabel].label is not None):
+                break
+        if otherlabel == -1:
+            return False
+
+        return self._path[selflabel:] == other._path[otherlabel:]
