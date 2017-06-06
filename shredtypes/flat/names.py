@@ -256,32 +256,37 @@ class Name(object):
     def depth(self):
         return sum(1 if isinstance(x, (Name.LIST, Name.UNION, Name.FIELD)) else 0 for x in self._path)
 
+    def lastindex(self, predicate):
+        index = len(self._path)
+        while index >= 0:
+            index -= 1
+            if predicate(self._path[index]):
+                return index
+        return None
+
     @property
     def lastlabel(self):
-        selflabel = len(self._path)
-        while selflabel >= 0:
-            selflabel -= 1
-            if isinstance(self._path[selflabel], Name.LABEL):
-                return self._path[selflabel].label
-        return None
+        index = self.lastindex(lambda x: isinstance(x, Name.LABEL))
+        if index is None:
+            return None
+        else:
+            return self._path[index].label
         
     def eqbylabel(self, other):
-        selflabel = len(self._path)
-        while selflabel >= 0:
-            selflabel -= 1
-            if isinstance(self._path[selflabel], Name.LABEL) or (
-               isinstance(self._path[selflabel], Name.LIST) and self._path[selflabel].label is not None):
-                break
-        if selflabel == -1:
+        selfindex = self.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
+        if selfindex is None:
             return False
 
-        otherlabel = len(other._path)
-        while otherlabel >= 0:
-            otherlabel -= 1
-            if isinstance(other._path[otherlabel], Name.LABEL) or (
-               isinstance(other._path[otherlabel], Name.LIST) and other._path[otherlabel].label is not None):
-                break
-        if otherlabel == -1:
+        otherindex = other.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
+        if otherindex is None:
             return False
 
-        return self._path[selflabel:] == other._path[otherlabel:]
+        return self._path[selfindex:] == other._path[otherindex:]
+
+    def startswith(self, start):
+        if self._prefix != start._prefix:
+            return False
+        for i, x in enumerate(start):
+            if i >= len(self._path) or self._path[i] != x:
+                return False
+        return True

@@ -25,29 +25,31 @@ complex64 = Primitive(numpy.dtype("complex64"), repr="complex64")
 complex128 = Primitive(numpy.dtype("complex128"), repr="complex128")
 complex256 = Primitive(numpy.dtype("complex256"), repr="complex256")
 
+null = {}
+
 # give up the lowest value of the signed range; get a symmetric range
-int8nan = numpy.iinfo(numpy.int8).min
-int16nan = numpy.iinfo(numpy.int16).min
-int32nan = numpy.iinfo(numpy.int32).min
-int64nan = numpy.iinfo(numpy.int64).min
+null[int8] = numpy.iinfo(numpy.int8).min
+null[int16] = numpy.iinfo(numpy.int16).min
+null[int32] = numpy.iinfo(numpy.int32).min
+null[int64] = numpy.iinfo(numpy.int64).min
 
 # give up the highest value of the unsigned range; values are close to overflowing anyway
-uint8nan = numpy.iinfo(numpy.uint8).max
-uint16nan = numpy.iinfo(numpy.uint16).max
-uint32nan = numpy.iinfo(numpy.uint32).max
-uint64nan = numpy.iinfo(numpy.uint64).max
+null[uint8] = numpy.iinfo(numpy.uint8).max
+null[uint16] = numpy.iinfo(numpy.uint16).max
+null[uint32] = numpy.iinfo(numpy.uint32).max
+null[uint64] = numpy.iinfo(numpy.uint64).max
 
 # IEEE defines a float NaN for us
-float32nan = numpy.float32("nan")
-float64nan = numpy.float64("nan")
-float128nan = numpy.float128("nan")
-complex64nan = numpy.complex64(numpy.float32("nan") + numpy.float32("nan")*1j)
-complex128nan = numpy.complex128(numpy.float64("nan") + numpy.float64("nan")*1j)
-complex256nan = numpy.complex256(numpy.float128("nan") + numpy.float128("nan")*1j)
+null[float32] = numpy.float32("nan")
+null[float64] = numpy.float64("nan")
+null[float128] = numpy.float128("nan")
+null[complex64] = numpy.complex64(numpy.float32("nan") + numpy.float32("nan")*1j)
+null[complex128] = numpy.complex128(numpy.float64("nan") + numpy.float64("nan")*1j)
+null[complex256] = numpy.complex256(numpy.float128("nan") + numpy.float128("nan")*1j)
 
 # nice feature: reinterpret_cast<int NaN> == float NaN (independent of endianness)
-assert int32nan == numpy.asscalar(numpy.cast["int32"](numpy.float32("nan")))
-assert int64nan == numpy.asscalar(numpy.cast["int64"](numpy.float64("nan")))
+assert null[int32] == numpy.asscalar(numpy.cast["int32"](null[float32]))
+assert null[int64] == numpy.asscalar(numpy.cast["int64"](null[float64]))
 
 def selecttype(min, max, whole, real, nullable):
     from shredtypes.typesystem.defs import nullable as n

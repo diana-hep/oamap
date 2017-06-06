@@ -5,19 +5,24 @@ from shredtypes.typesystem.lr import *
 from shredtypes.flat.np import *
 from shredtypes.flat.names import *
 
-sizetype = numpy.dtype(numpy.uint64)
-tagtype = numpy.dtype(numpy.uint8)
+sizetype = numpy.dtype(numpy.uint64)               # max list size is 18446744073709551613
+sizetypenull = int(numpy.cast[sizetype.type](-1))  # 18446744073709551615
+sizetypeterm = int(numpy.cast[sizetype.type](-2))  # 18446744073709551614
+
+tagtype = numpy.dtype(numpy.uint8)                 # max number of union possibilities is 253
+tagtypenull = int(numpy.cast[tagtype.type](-1))    # 255
+tagtypeterm = int(numpy.cast[tagtype.type](-2))    # 254
+
+def modifiers(tpe, name):
+    if tpe.nullable:
+        name = name.nullable()
+    if tpe.label is not None:
+        name = name.label(tpe.label)
+    if tpe.runtime is not None:
+        name = name.runtime(tpe.runtime)
+    return name
 
 def declare(tpe, name):
-    def modifiers(tpe, name):
-        if tpe.nullable:
-            name = name.nullable()
-        if tpe.label is not None:
-            name = name.label(tpe.label)
-        if tpe.runtime is not None:
-            name = name.runtime(tpe.runtime)
-        return name
-
     def assign(name, dtype, out, memo):
         oldname = None
         for n in out:
@@ -158,3 +163,51 @@ def extracttype(dtypes, name):
         return tpe
 
     return check(recurse(parsed, {}))
+
+def toflat(obj, tpe, arrays, prefix):
+    arrays = dict((Name.parse(n), a) for n, a in arrays.items())
+
+    def has(x, n):
+        if x is None:
+            return False
+        elif isinstance(x, dict):
+            return n in x
+        else:
+            return hasattr(x, n)
+
+    def get(x, n):
+        if isinstance(x, dict):
+            return x[n]
+        else:
+            return getattr(x, n)
+
+    def recurse(obj, tpe, name):
+        if isinstance(tpe, Primitive):
+            if tpe.nullable and obj is None:
+                arrays[tpe.arrayname].append(null[tpe])
+            else:
+                arrays[tpe.arrayname].append(obj)
+
+        elif isinstance(tpe, List):
+            if tpe.nullable and obj is None:
+                length = sizetypenull
+            else:
+                length = len(obj)
+            for n, a in arrays.items():
+                if n.issize and n.startswith(name):
+                    a.append(length)
+            if not tpe.nullable or obj is not None:
+                for x in obj:
+                    recurse(x, tpe.items, modifiers(tpe, name).list(tpe.items.label))
+
+        elif isinstance(tpe, Record):
+            for fn, ft in tpe.fields.items():
+                if tpe.nullable and not has(obj, fn):
+                    recurse(None, ft, modifiers(tpe, name).field(fn))
+                else:
+                    recurse(get(obj, fn), ft, modifiers(tpe, name).field(fn))
+
+        else:
+            assert False
+
+    recurse(obj, tpe, Name(prefix))
