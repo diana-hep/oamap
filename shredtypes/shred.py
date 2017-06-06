@@ -60,30 +60,6 @@ def declare(tpe, name):
     dtypes = {}
     recurse(tpe, Name(name), (), None, dtypes, set())
 
-    # def deepest(name, names):
-    #     out = name
-    #     for n in names:
-    #         if n.eqbylabel(name) and n.depth > name.depth:
-    #             out = n
-    #     return out
-
-    # def update(tpe, dtypes, memo):
-    #     if tpe._arrayname is not None:
-    #         tpe._arrayname = deepest(tpe._arrayname, dtypes)
-
-    #     if isinstance(tpe, List):
-    #         memo.add(id(tpe))
-    #         if id(tpe.items) not in memo:
-    #             update(tpe.items, dtypes, memo)
-
-    #     elif isinstance(tpe, Record):
-    #         memo.add(id(tpe))
-    #         for ft in tpe.fields.values():
-    #             if id(ft) not in memo:
-    #                 update(ft, dtypes, memo)
-
-    # update(tpe, dtypes, set())
-
     def stringnames(tpe, memo):
         if tpe._arrayname is not None:
             tpe._arrayname = str(tpe._arrayname)
@@ -177,6 +153,7 @@ def extracttype(dtypes, name):
             parsed[p] = d
 
     def check(tpe):
+        # important! also assigns arraynames via declare()
         assert dtypes == declare(tpe, name)
         return tpe
 
