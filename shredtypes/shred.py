@@ -26,7 +26,7 @@ def declare(tpe, name):
     def assign(name, dtype, out, memo):
         oldname = None
         for n in out:
-            if n.eqbylabel(name):
+            if n.bylabelequal(name):
                 memo.add(n.lastlabel)
                 oldname = n
                 break

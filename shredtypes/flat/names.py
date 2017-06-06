@@ -84,6 +84,9 @@ class Name(object):
     def __eq__(self, other):
         return other.__class__ == Name and self._prefix == other._prefix and self._path == other._path
 
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def __hash__(self):
         return hash((self.__class__, self._prefix, self._path))
 
@@ -94,6 +97,8 @@ class Name(object):
             return "?"
         def __eq__(self, other):
             return other.__class__ == Name.NULLABLE
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__,))
 
@@ -116,6 +121,8 @@ class Name(object):
             return "%" + self.label
         def __eq__(self, other):
             return other.__class__ == Name.LABEL and self.label == other.label
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__, self.label))
 
@@ -138,6 +145,8 @@ class Name(object):
             return "$" + self.runtime
         def __eq__(self, other):
             return other.__class__ == Name.RUNTIME and self.runtime == other.runtime
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__, self.runtime))
 
@@ -163,6 +172,8 @@ class Name(object):
                 return "[" + self.label + "]"
         def __eq__(self, other):
             return other.__class__ == Name.LIST and self.label == other.label
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__, self.label))
 
@@ -183,6 +194,8 @@ class Name(object):
             return "#"
         def __eq__(self, other):
             return other.__class__ == Name.UNION
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__,))
 
@@ -205,6 +218,8 @@ class Name(object):
             return "-" + self.field
         def __eq__(self, other):
             return other.__class__ == Name.FIELD and self.field == other.field
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__, self.field))
 
@@ -225,6 +240,8 @@ class Name(object):
             return "@size"
         def __eq__(self, other):
             return other.__class__ == Name.SIZE
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__,))
 
@@ -242,6 +259,8 @@ class Name(object):
             return "@tag"
         def __eq__(self, other):
             return other.__class__ == Name.TAG
+        def __ne__(self, other):
+            return not self.__eq__(other)
         def __hash__(self):
             return hash((self.__class__,))
 
@@ -272,7 +291,10 @@ class Name(object):
         else:
             return self._path[index].label
         
-    def eqbylabel(self, other):
+    def bylabelequal(self, other):
+        if self._prefix != other._prefix:
+            return False
+
         selfindex = self.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
         if selfindex is None:
             return False
@@ -286,7 +308,26 @@ class Name(object):
     def startswith(self, start):
         if self._prefix != start._prefix:
             return False
-        for i, x in enumerate(start):
+        for i, x in enumerate(start._path):
             if i >= len(self._path) or self._path[i] != x:
+                return False
+        return True
+
+    def bylabelstartswith(self, start):
+        if self._prefix != start._prefix:
+            return False
+
+        selfindex = self.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
+        if selfindex is None:
+            return False
+
+        startindex = start.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
+        if startindex is None:
+            return False
+        
+        selfpath = self._path[selfindex:]
+        startpath = start._path[startindex:]
+        for i, x in enumerate(startpath):
+            if i >= len(selfpath) or selfpath[i] != x:
                 return False
         return True
