@@ -151,12 +151,15 @@ class List(Type):
                 return False
             
 class Record(Type):
-    def __init__(self, fields, nullable=False, label=None, runtime=None, repr=None):
+    def __init__(self, fields, label=None, runtime=None, repr=None):
         for field in fields:
             if re.match(self.identifier, field) is None:
                 raise ValueError("field names must match [a-zA-Z_][0-9a-zA-Z_]*: {0}".format(field))
         self._fields = fields
-        super(Record, self).__init__(nullable, label, runtime, repr)
+        # due to the fact that nulls are stored as special primitive values and
+        # there's no storage associated with a Record, Records aren't nullable
+        # (have to do a Union of a Record with a nullable primitive to get that behavior)
+        super(Record, self).__init__(False, label, runtime, repr)
 
     @property
     def fields(self):

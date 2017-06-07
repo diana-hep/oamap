@@ -161,6 +161,8 @@ def extracttype(dtypes, name):
 
 def toflat(obj, tpe, arrays, prefix):
     arrays = dict((Name.parse(prefix, n), a) for n, a in arrays.items())
+    if None in arrays:
+        del arrays[None]
 
     def has(x, n):
         if x is None:
@@ -205,6 +207,60 @@ def toflat(obj, tpe, arrays, prefix):
                     recurse(get(obj, fn), ft, modifiers(tpe, name).field(fn))
 
         else:
-            assert False
+            assert False, "unrecognized type: {0}".format(tpe)
 
     recurse(obj, tpe, Name(prefix))
+
+def fromflat(arrays, indexes, tpe, prefix):
+    arrays = dict((Name.parse(prefix, n), a) for n, a in arrays.items())
+    indexes = dict((Name.parse(prefix, n), i) for n, i in indexes.items())
+    if None in arrays:
+        del arrays[None]
+    if None in indexes:
+        del indexes[None]
+
+    def recurse(tpe, name):
+        if isinstance(tpe, Primitive):
+            obj = arrays[name][indexes[name]]
+            indexes[name] += 1
+
+            if tpe.nullable:
+                if tpe.dtype.kind == "i" or tpe.dtype.kind == "u":
+                    if obj == null[tpe]:
+                        return None
+                elif tpe.dtype.kind == "f":
+                    if numpy.isnan(obj):
+                        return None
+                elif tpe.dtype.kind == "c":
+                    if numpy.isnan(obj.real) and numpy.isnan(obj.imag):
+                        return None
+
+            return obj
+
+        elif isinstance(tpe, List):
+            length = None
+            for n, a in arrays.items():
+                if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
+                    l = arrays[n][indexes[n]]
+                    indexes[n] += 1
+
+                    if length is None:
+                        length = l
+                    else:
+                        assert l == length, "misaligned list index"
+
+                assert length is not None, "missing list index"
+
+                if tpe.nullable and length == null[sizetype]:
+                    return None
+                else:
+                    newname = modifiers(tpe, name).list(tpe.items.label)
+                    return [recurse(tpe.items, newname) for i in range(length)]
+
+        elif isinstance(tpe, Record):
+            return dict((fn, recurse(ft, modifiers(tpe, name).field(fn))) for fn, ft in tpe.fields.items())
+
+        else:
+            assert False, "unrecognized type: {0}".format(tpe)
+
+    return recurse(tpe, Name(prefix))
