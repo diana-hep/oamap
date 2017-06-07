@@ -317,11 +317,11 @@ class Name(object):
         if self._prefix != start._prefix:
             return False
 
-        selfindex = self.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
+        selfindex = self.lastindex(lambda x: isinstance(x, Name.LABEL))
         if selfindex is None:
             return False
 
-        startindex = start.lastindex(lambda x: isinstance(x, Name.LABEL) or (isinstance(x, Name.LIST) and x.label is not None))
+        startindex = start.lastindex(lambda x: isinstance(x, Name.LABEL))
         if startindex is None:
             return False
         
