@@ -1,4 +1,4 @@
-import numpy
+import math
 
 from shredtypes.typesystem.np import *
 from shredtypes.typesystem.lr import *
@@ -160,10 +160,6 @@ def extracttype(dtypes, name):
     return check(recurse(parsed, {}))
 
 def toflat(obj, tpe, arrays, prefix):
-    arrays = dict((Name.parse(prefix, n), a) for n, a in arrays.items())
-    if None in arrays:
-        del arrays[None]
-
     def has(x, n):
         if x is None:
             return False
@@ -181,9 +177,9 @@ def toflat(obj, tpe, arrays, prefix):
     def recurse(obj, tpe, name):
         if isinstance(tpe, Primitive):
             if tpe.nullable and obj is None:
-                arrays[Name.parse(prefix, tpe.arrayname)].append(null[tpe])
+                arrays.byname(tpe.arrayname).append(null[tpe])
             else:
-                arrays[Name.parse(prefix, tpe.arrayname)].append(obj)
+                arrays.byname(tpe.arrayname).append(obj)
 
         elif isinstance(tpe, List):
             if tpe.nullable and obj is None:
@@ -191,7 +187,7 @@ def toflat(obj, tpe, arrays, prefix):
             else:
                 length = len(obj)
 
-            for n, a in arrays.items():
+            for n, a in arrays.parsedpairs(prefix):
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
                     a.append(length)
 
@@ -211,39 +207,32 @@ def toflat(obj, tpe, arrays, prefix):
 
     recurse(obj, tpe, Name(prefix))
 
-def fromflat(arrays, indexes, tpe, prefix):
-    arrays = dict((Name.parse(prefix, n), a) for n, a in arrays.items())
-    indexes = dict((Name.parse(prefix, n), i) for n, i in indexes.items())
-    if None in arrays:
-        del arrays[None]
-    if None in indexes:
-        del indexes[None]
+def fromflat(arrays, tpe, prefix):
+    iters = arrays.parsediterators(prefix)
 
     def recurse(tpe, name):
         if isinstance(tpe, Primitive):
             newname = Name.parse(prefix, tpe.arrayname)
-            obj = arrays[newname][indexes[newname]]
-            indexes[newname] += 1
+            obj = iters[newname].__next__()
 
             if tpe.nullable:
                 if tpe.dtype.kind == "i" or tpe.dtype.kind == "u":
                     if obj == null[tpe]:
                         return None
                 elif tpe.dtype.kind == "f":
-                    if numpy.isnan(obj):
+                    if math.isnan(obj):
                         return None
                 elif tpe.dtype.kind == "c":
-                    if numpy.isnan(obj.real) and numpy.isnan(obj.imag):
+                    if math.isnan(obj.real) and math.isnan(obj.imag):
                         return None
 
             return obj
 
         elif isinstance(tpe, List):
             length = None
-            for n, a in arrays.items():
+            for n, it in iters.items():
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
-                    l = arrays[n][indexes[n]]
-                    indexes[n] += 1
+                    l = it.__next__()
 
                     if length is None:
                         length = l

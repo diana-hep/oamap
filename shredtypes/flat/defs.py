@@ -1,5 +1,7 @@
 import struct
 
+from shredtypes.flat.names import *
+
 class Array(object):
     def __init__(self, dtype, length):
         self._dtype = dtype
@@ -118,15 +120,8 @@ class ArrayStream(Array):
 
         return self.Iterator(self._stream, self._dtype.itemsize, self._length, cast)
 
-class Cursor(object):
-    def __init__(self, data, size):
-        self.data = data
-        self.size = size
-        self.dataindex = 0
-        self.sizeindex = 0
-
 class ArrayGroup(object):
-    def __init__(self, **arrays):
+    def __init__(self, arrays):
         self._namespace = arrays.copy()
         self._names = sorted(self._namespace)
         self._values = [self._namespace[x] for x in self._names]
@@ -142,8 +137,22 @@ class ArrayGroup(object):
     def byname(self, name):
         return self._namespace[name]
 
+    def byparsed(self, name):
+        return self._namespace[str(name)]
+
     def byindex(self, index):
         return self._values[self._order[index]]
 
-    def cursor(self, dataname, sizename):
-        return Cursor(self.byname(dataname), self.byname(sizename))
+    @property
+    def pairs(self):
+        return zip(self._names, self._values)
+
+    def parsedpairs(self, prefix):
+        return zip([Name.parse(prefix, n) for n in self._names], self._values)
+
+    @property
+    def iterators(self):
+        return dict((n, iter(v)) for n, v in zip(self._names, self._values))
+
+    def parsediterators(self, prefix):
+        return dict((Name.parse(prefix, n), iter(v)) for n, v in zip(self._names, self._values))

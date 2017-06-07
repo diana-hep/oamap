@@ -32,11 +32,20 @@ class NumpyFillable(ArrayInMemory):
         self._lastlength += 1
         self._length += 1
 
+    def reset(self):
+        self._arrays = [self._arrays[0]]
+        self._length = 0
+        self._lastlength = 0
+
     @property
-    def contiguous(self):
-        arrays = list(self._arrays)
-        arrays[-1] = arrays[-1][:self._lastlength]
-        return numpy.concatenate(arrays)
+    def array(self):
+        assert len(self._arrays) != 0
+        if len(self._arrays) == 1:
+            return self._arrays[0][:self._lastlength]
+        else:
+            arrays = list(self._arrays)
+            arrays[-1] = arrays[-1][:self._lastlength]
+            return numpy.concatenate(arrays)
 
     class Iterator(object):
         def __init__(self, arrays, length):
@@ -84,21 +93,22 @@ class NumpyStream(ArrayStream):
         super(NumpyStream, self).__init__(stream, dtype, headerdata["shape"][0])
 
 class NumpyInMemoryGroup(ArrayGroup):
-    def __init__(self, **arrays):
+    def __init__(self, arrays):
         super(NumpyGroup, self).__init__(dict((n, NumpyInMemory(v)) for n, v in arrays.items()))
 
 class NumpyFillableGroup(ArrayGroup):
     chunksize = 1024**2   # 1 MB
 
-    def __init__(self, **dtypes):
+    def __init__(self, dtypes):
         self._dtypes = dtypes
-        self.reset()
+        super(NumpyFillableGroup, self).__init__(dict((n, NumpyFillable(d, self.chunksize)) for n, d in self._dtypes.items()))
 
     def reset(self):
-        super(NumpyFillableGroup, self).__init__(dict(n, NumpyFillable(d, self.chunksize)) for n, d in self._dtypes.items())
+        for v in self._values:
+            v.reset()
 
     def write(self, file, compress=True):
-        arrays = dict((n, self.byname(n).contiguous) for n in self.names)
+        arrays = dict((n, self.byname(n).array) for n in self.names)
         if compress:
             numpy.savez_compressed(file, arrays)
         else:
