@@ -221,8 +221,9 @@ def fromflat(arrays, indexes, tpe, prefix):
 
     def recurse(tpe, name):
         if isinstance(tpe, Primitive):
-            obj = arrays[name][indexes[name]]
-            indexes[name] += 1
+            newname = Name.parse(prefix, tpe.arrayname)
+            obj = arrays[newname][indexes[newname]]
+            indexes[newname] += 1
 
             if tpe.nullable:
                 if tpe.dtype.kind == "i" or tpe.dtype.kind == "u":
