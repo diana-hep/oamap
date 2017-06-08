@@ -33,18 +33,71 @@ def generate(arrays, tpe, prefix):
             namenum += 1
     getnamenum = getattr(nn_generate(), "__next__", getattr(nn_generate(), "next"))
 
-    def recurse(tpe, name, memo):
-        if name.bylabelpath in memo:
-            return memo[name.bylabelpath]
+    def firstpass(tpe, name, funcnames):
+        if name.bylabelpath in funcnames:
+            return funcnames[name.bylabelpath]
 
-        global namenum
         if isinstance(tpe, Primitive):
             namenum = getnamenum()
             getter = "get_{0}_{1}".format(prefix, namenum)
             updater = "update_{0}_{1}".format(prefix, namenum)
 
             i = arrayid[Name.parse(prefix, tpe.arrayname)]
-            memo[name.bylabelpath] = getter, updater, [i]
+            funcnames[name.bylabelpath] = getter, updater, [i]
+
+        elif isinstance(tpe, List):
+            namenum = getnamenum()
+            getter = "get_{0}_{1}".format(prefix, namenum)
+            updater = "update_{0}_{1}".format(prefix, namenum)
+
+            ids = []
+            for n, i in arrayid.items():
+                if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
+                    ids.append(i)
+
+            funcnames[name.bylabelpath] = getter, updater, ids
+
+            itemsgetter, itemsupdater, itemsids = \
+                firstpass(tpe.items, modifiers(tpe, name).list(tpe.items.label), funcnames)
+            ids.append(itemsids)
+
+        elif isinstance(tpe, Record):
+            namenum = getnamenum()
+            getter = "get_{0}_{1}".format(prefix, namenum)
+            updater = "update_{0}_{1}".format(prefix, namenum)
+
+            ids = []
+            funcnames[name.bylabelpath] = getter, updater, ids
+
+            for fn, ft in tpe.fields.items():
+                fgetter, fupdater, fids = firstpass(ft, modifiers(tpe, name).field(fn), funcnames)
+                ids.append(fids)
+
+        else:
+            assert False, "unrecognized type: {0}".format(tpe)
+
+        return funcnames[name.bylabelpath]
+
+    def flatten(lst):
+        def recurse(lst, memo):
+            if id(lst) not in memo:
+                memo.add(id(lst))
+                for x in lst:
+                    if isinstance(x, list):
+                        for y in recurse(x, memo):
+                            yield y
+                    else:
+                        yield x
+        return sorted(set(recurse(lst, set())))
+
+    def secondpass(tpe, name, funcnames, memo):
+        if name.bylabelpath in memo:
+            return funcnames[name.bylabelpath]
+        memo.add(name.bylabelpath)
+
+        if isinstance(tpe, Primitive):
+            getter, updater, ids = funcnames[name.bylabelpath]
+            i, = ids
 
             code = """
 def {getter}(index):
@@ -56,40 +109,31 @@ def {updater}(countdown, index_{i}):
             execute(code, namespace)
             print(code)
 
-            return memo[name.bylabelpath]
+            return funcnames[name.bylabelpath]
 
         elif isinstance(tpe, List):
-            namenum = getnamenum()
-            getter = "get_{0}_{1}".format(prefix, namenum)
-            updater = "update_{0}_{1}".format(prefix, namenum)
+            getter, updater, ids = funcnames[name.bylabelpath]
 
-            ids = []
             countdowns = []
             for n, i in arrayid.items():
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
                     countdowns.append(i)
-                    if i not in ids:
-                        ids.append(i)
-            memo[name.bylabelpath] = getter, updater, ids
 
             itemsgetter, itemsupdater, itemsids = \
-                recurse(tpe.items, modifiers(tpe, name).list(tpe.items.label), memo)
-            for i in itemsids:
-                if i not in ids:
-                    ids.append(i)
-
-            itemsargs = ", ".join("index_{0}".format(i) for i in itemsids)
-            selfitemsargs = ", ".join("self.index_{0}".format(i) for i in itemsids)
+                secondpass(tpe.items, modifiers(tpe, name).list(tpe.items.label), funcnames, memo)
+            
+            itemsargs = ", ".join("index_{0}".format(i) for i in flatten(itemsids))
+            selfitemsargs = ", ".join("self.index_{0}".format(i) for i in flatten(itemsids))
 
             assert len(countdowns) > 0, "missing list index"
             selfcountdown = "self.countdown = int(array_{0}[index_{0}])".format(countdowns[0])
             subcountdown = "subcountdown = int(array_{0}[index_{0}])".format(countdowns[0])
             incrementcountdowns = "; ".join("index_{0} += 1".format(i) for i in countdowns)
 
-            indexes = ", ".join("index_{0}".format(i) for i in ids)
-            strindexes = ", ".join("\"index_{0}\"".format(i) for i in ids)
-            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in ids)
-            selfindexes = ", ".join("self.index_{0}".format(i) for i in ids)
+            indexes = ", ".join("index_{0}".format(i) for i in flatten(ids))
+            strindexes = ", ".join("\"index_{0}\"".format(i) for i in flatten(ids))
+            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in flatten(ids))
+            selfindexes = ", ".join("self.index_{0}".format(i) for i in flatten(ids))
 
             code = """
 class {getter}(object):
@@ -132,27 +176,19 @@ def {updater}(countdown, {indexes}):
             execute(code, namespace)
             print(code)
 
-            return memo[name.bylabelpath]
+            return funcnames[name.bylabelpath]
 
         elif isinstance(tpe, Record):
-            namenum = getnamenum()
-            getter = "get_{0}_{1}".format(prefix, namenum)
-            updater = "update_{0}_{1}".format(prefix, namenum)
-
-            ids = []
-            memo[name.bylabelpath] = getter, updater, ids
+            getter, updater, ids = funcnames[name.bylabelpath]
 
             fieldsgetters = {}
             fieldsupdaters = {}
             fieldsids = {}
             for fn, ft in tpe.fields.items():
-                fgetter, fupdater, fids = recurse(ft, modifiers(tpe, name).field(fn), memo)
+                fgetter, fupdater, fids = secondpass(ft, modifiers(tpe, name).field(fn), funcnames, memo)
                 fieldsgetters[fn] = fgetter
                 fieldsupdaters[fn] = fupdater
                 fieldsids[fn] = fids
-                for i in fids:
-                    if i not in ids:
-                        ids.append(i)
 
             properties = ""
             for fn in tpe.fields:
@@ -162,17 +198,17 @@ def {updater}(countdown, {indexes}):
         return {getter}({indexes})
 """.format(fn = fn,
            getter = fieldsgetters[fn],
-           indexes = ", ".join("self.index_{0}".format(i) for i in fieldsids[fn]))
+           indexes = ", ".join("self.index_{0}".format(i) for i in flatten(fieldsids[fn])))
 
             callfieldsupdaters = ""
             for fn in tpe.fields:
                 callfieldsupdaters += "    {indexes} = {updater}(countdown, {indexes})\n".format(
                     updater = fieldsupdaters[fn],
-                    indexes = ", ".join("index_{0}".format(i) for i in fieldsids[fn]))
+                    indexes = ", ".join("index_{0}".format(i) for i in flatten(fieldsids[fn])))
 
-            indexes = ", ".join("index_{0}".format(i) for i in ids)
-            strindexes = ", ".join("\"index_{0}\"".format(i) for i in ids)
-            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in ids)
+            indexes = ", ".join("index_{0}".format(i) for i in flatten(ids))
+            strindexes = ", ".join("\"index_{0}\"".format(i) for i in flatten(ids))
+            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in flatten(ids))
 
             code = """
 class {getter}(object):
@@ -189,11 +225,20 @@ def {updater}(countdown, {indexes}):
             execute(code, namespace)
             print(code)
 
-            return memo[name.bylabelpath]
+            return funcnames[name.bylabelpath]
 
-        else:
-            assert False, "unrecognized type: {0}".format(tpe)
-
-    getter, updater, ids = recurse(tpe, Name(prefix), {})
+    funcnames = {}
+    firstpass(tpe, Name(prefix), funcnames)
+    getter, updater, ids = secondpass(tpe, Name(prefix), funcnames, set())
 
     return eval("{0}({1})".format(getter, ", ".join("0" for i in ids)), namespace)
+
+iterator = generate(arrays, tpe, "x")
+
+def analyze(tree, indent=""):
+    print(indent + "data " + str(tree.data))
+    for child in tree.children:
+        analyze(child, indent + "  ")
+
+for x in iterator:
+    analyze(x)
