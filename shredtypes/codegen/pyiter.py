@@ -10,13 +10,22 @@ from shredtypes.shred import *
 tpe = resolve(List(Record(dict(children=List("T"), data=float64), label="T")))
 dtypes = declare(tpe, "x")
 arrays = NumpyFillableGroup(dtypes)
-toflat([{"children": [{"children": [{"children": [], "data": 3.3}], "data": 2.2}, {"children": [], "data": 4.4}], "data": 1.1}, {"children": [], "data": 5.5}], tpe, arrays, "x")
+toflat([{"children": [{"children": [{"children": [], "data": 1.1}], "data": 2.2}, {"children": [], "data": 3.3}], "data": 4.4}, {"children": [], "data": 5.5}], tpe, arrays, "x")
+
+class JITList(object):
+    __slots__ = []
+
+class JITIterator(object):
+    __slots__ = []
+
+class JITRecord(object):
+    __slots__ = []
 
 def execute(code, namespace):
     exec(code, namespace)
 
 def generate(arrays, tpe, prefix):
-    namespace = {}
+    namespace = {"JITList": JITList, "JITIterator": JITIterator, "JITRecord": JITRecord}
     if sys.version_info[0] > 2:
         namespace["xrange"] = range
 
@@ -101,13 +110,16 @@ def generate(arrays, tpe, prefix):
 
             code = """
 def {getter}(index):
+    print "{name}", index, array_{i}[index]
     return array_{i}[index]
 
 def {updater}(countdown, index_{i}):
+    # print "updating {name} countdown", countdown, "index_{i}", index_{i}, "to", index_{i} + countdown
     return index_{i} + countdown
-""".format(getter = getter, updater = updater, i = i)
+
+{getter}.__name__ = \"{name}\"""".format(getter = getter, updater = updater, i = i, name = str(name))
             execute(code, namespace)
-            print(code)
+            # print(code)
 
             return funcnames[name.bylabelpath]
 
@@ -135,19 +147,23 @@ def {updater}(countdown, index_{i}):
             assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in flatten(ids))
             selfindexes = ", ".join("self.index_{0}".format(i) for i in flatten(ids))
 
+            variables = vars().copy()
+            variables["name"] = str(name)
             code = """
-class {getter}(object):
+class {getter}(JITList):
     __slots__ = ["countdown", {strindexes}]
 
     def __init__(self, {indexes}):
+        print "{name} LIST {indexes}", {indexes}
         {selfcountdown}
         {incrementcountdowns}
+        print "{name} LIST {indexes}", {indexes}, "(assigned)"
         {assignindexes}
 
     def __iter__(self):
         return self.Iterator(self.countdown, {selfindexes})
 
-    class Iterator(object):
+    class Iterator(JITIterator):
         __slots__ = ["countdown", {strindexes}]
 
         def __init__(self, countdown, {indexes}):
@@ -172,9 +188,10 @@ def {updater}(countdown, {indexes}):
         {incrementcountdowns}
         {itemsargs} = {itemsupdater}(subcountdown, {itemsargs})
     return {indexes}
-""".format(**vars())
+
+{getter}.__name__ = \"{name}\"""".format(**variables)
             execute(code, namespace)
-            print(code)
+            # print(code)
 
             return funcnames[name.bylabelpath]
 
@@ -202,7 +219,7 @@ def {updater}(countdown, {indexes}):
 
             callfieldsupdaters = ""
             for fn in tpe.fields:
-                callfieldsupdaters += "    {indexes} = {updater}(countdown, {indexes})\n".format(
+                callfieldsupdaters += "        {indexes} = {updater}(1, {indexes})\n".format(
                     updater = fieldsupdaters[fn],
                     indexes = ", ".join("index_{0}".format(i) for i in flatten(fieldsids[fn])))
 
@@ -210,20 +227,25 @@ def {updater}(countdown, {indexes}):
             strindexes = ", ".join("\"index_{0}\"".format(i) for i in flatten(ids))
             assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in flatten(ids))
 
+            variables = vars().copy()
+            variables["name"] = str(name)
             code = """
-class {getter}(object):
+class {getter}(JITRecord):
     __slots__ = [{strindexes}]
 
     def __init__(self, {indexes}):
+        print "{name} RECORD {indexes}", {indexes}
         {assignindexes}
 {properties}
 
 def {updater}(countdown, {indexes}):
+    for i in xrange(countdown):
 {callfieldsupdaters}
     return {indexes}
-""".format(**vars())
+
+{getter}.__name__ = \"{name}\"""".format(**variables)
             execute(code, namespace)
-            print(code)
+            # print(code)
 
             return funcnames[name.bylabelpath]
 
@@ -235,10 +257,8 @@ def {updater}(countdown, {indexes}):
 
 iterator = generate(arrays, tpe, "x")
 
-def analyze(tree, indent=""):
-    print(indent + "data " + str(tree.data))
-    for child in tree.children:
-        analyze(child, indent + "  ")
+def analyze(tree):
+    return "{{'children': [{0}], 'data': {1}}}".format(", ".join(map(analyze, tree.children)), tree.data)
 
 for x in iterator:
-    analyze(x)
+    print(analyze(x))
