@@ -134,6 +134,9 @@ class ArrayGroup(object):
     def names(self):
         return self._names
 
+    def parsednames(self, prefix):
+        return [Name.parse(prefix, n) for n in self._names]
+
     def byname(self, name):
         return self._namespace[name]
 
