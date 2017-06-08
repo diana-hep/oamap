@@ -10,7 +10,7 @@ from shredtypes.shred import *
 tpe = resolve(List(Record(dict(children=List("T"), data=float64), label="T")))
 dtypes = declare(tpe, "x")
 arrays = NumpyFillableGroup(dtypes)
-toflat([{"children": [{"children": [{"children": [], "data": 1.1}], "data": 2.2}, {"children": [], "data": 3.3}], "data": 4.4}, {"children": [], "data": 5.5}], tpe, arrays, "x")
+toflat([{"data": 1.1, "children": [{"data": 2.2, "children": [{"data": 3.3, "children": []}]}, {"data": 4.4, "children": []}]},{"data": 5.5, "children": []}], tpe, arrays, "x")
 
 class JITList(object):
     __slots__ = []
@@ -258,7 +258,7 @@ def {updater}(countdown, {indexes}):
 iterator = generate(arrays, tpe, "x")
 
 def analyze(tree):
-    return "{{'children': [{0}], 'data': {1}}}".format(", ".join(map(analyze, tree.children)), tree.data)
+    return "{{'data': {0}, 'children': [{1}]}}".format(tree.data, ", ".join(map(analyze, tree.children)))
 
 for x in iterator:
     print(analyze(x))

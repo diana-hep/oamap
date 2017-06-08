@@ -233,19 +233,18 @@ def fromflat(arrays, tpe, prefix):
             for n, it in iters.items():
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
                     l = it.__next__()
-
                     if length is None:
                         length = l
                     else:
                         assert l == length, "misaligned list index"
 
-                assert length is not None, "missing list index"
+            assert length is not None, "missing list index"
 
-                if tpe.nullable and length == null[sizetype]:
-                    return None
-                else:
-                    newname = modifiers(tpe, name).list(tpe.items.label)
-                    return [recurse(tpe.items, newname) for i in range(length)]
+            if tpe.nullable and length == null[sizetype]:
+                return None
+            else:
+                newname = modifiers(tpe, name).list(tpe.items.label)
+                return [recurse(tpe.items, newname) for i in range(length)]
 
         elif isinstance(tpe, Record):
             return dict((fn, recurse(ft, modifiers(tpe, name).field(fn))) for fn, ft in tpe.fields.items())
