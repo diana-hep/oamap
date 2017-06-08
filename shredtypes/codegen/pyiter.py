@@ -1,3 +1,5 @@
+import sys
+
 from shredtypes.typesystem.np import *
 from shredtypes.typesystem.lr import *
 from shredtypes.flat.names import *
@@ -8,9 +10,15 @@ dtypes = declare(tpe, "x")
 arrays = NumpyFillableGroup(dtypes)
 toflat([1, 2, 3], tpe, arrays, "x")
 
+def execute(code, namespace):
+    exec(code, namespace)
+
 def generate(arrays, tpe, prefix):
-    arrayid = {}
     namespace = {}
+    if sys.version_info[0] > 2:
+        namespace["xrange"] = range
+
+    arrayid = {}
     for i, n in enumerate(arrays.names):
         print("array_{0} = arrays.byname(\"{1}\").array".format(i, n))
         namespace["array_{0}".format(i)] = arrays.byname(n).array
@@ -38,7 +46,7 @@ def {getter}(index):
 def {updater}(countdown, index_{i}):
     return index_{i} + countdown
 """.format(getter = getter, updater = updater, i = i)
-            # exec(code, namespace)
+            execute(code, namespace)
             print(code)
 
             return getter, updater, (i,)
@@ -58,10 +66,14 @@ def {updater}(countdown, index_{i}):
             arraysneeded = itemsarraysneeded
             for n, i in arrayid.items():
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
+                    countdowns.append(i)
                     if i not in arraysneeded:
                         arraysneeded += (i,)
-            selfcountdown = "; ".join("self.countdown = index_{0}".format(i) for i in countdowns)
-            subcountdown = "; ".join("subcountdown = index_{0}".format(i) for i in countdowns)
+
+            assert len(countdowns) > 0, "missing list index"
+            selfcountdown = "self.countdown = array_{0}[index_{0}]".format(countdowns[0])
+            subcountdown = "subcountdown = array_{0}[index_{0}]".format(countdowns[0])
+            incrementcountdowns = "; ".join("index_{0} += 1".format(i) for i in countdowns)
 
             indexes = ", ".join("index_{0}".format(i) for i in arraysneeded)
             strindexes = ", ".join("\"index_{0}\"".format(i) for i in arraysneeded)
@@ -69,13 +81,19 @@ def {updater}(countdown, index_{i}):
             selfindexes = ", ".join("self.index_{0}".format(i) for i in arraysneeded)
 
             code = """
-from builtins import object
-
 class {getter}(object):
     __slots__ = ["countdown", {strindexes}]
 
+    def __init__(self, {indexes}):
+        {selfcountdown}
+        {incrementcountdowns}
+        {assignindexes}
+
+    def __iter__(self):
+        return self.Iterator(self.countdown, {selfindexes})
+
     class Iterator(object):
-        __slots__ = [{strindexes}]
+        __slots__ = ["countdown", {strindexes}]
 
         def __init__(self, countdown, {indexes}):
             self.countdown = countdown
@@ -84,31 +102,27 @@ class {getter}(object):
         def __next__(self):
             self.countdown -= 1
             if self.countdown >= 0:
-                out = {itemsgetter}({itemsargs})
-                {selfitemsargs} = {itemsupdater}(1, {itemsargs})
+                out = {itemsgetter}({selfitemsargs})
+                {selfitemsargs} = {itemsupdater}(1, {selfitemsargs})
                 return out
 
             else:
                 raise StopIteration
 
-    def __init__(self, {indexes}):
-        {selfcountdown}
-        {assignindexes}
-
-    def __iter__(self):
-        return self.Iterator(self.countdown, {selfindexes})
+        next = __next__
 
 def {updater}(countdown, {indexes}):
-    countdown -= 1
-    while countdown >= 0:
+    for i in xrange(countdown):
         {subcountdown}
+        {incrementcountdowns}
         {itemsargs} = {itemsupdater}(subcountdown, {itemsargs})
     return {indexes}
 """.format(**vars())
-            # exec(code, namespace)
+            execute(code, namespace)
             print(code)
 
             return getter, updater, arraysneeded
 
     getter, updater, arraysneeded = recurse(tpe, Name(prefix))
-    print(getter)
+
+    return eval("{0}({1})".format(getter, ", ".join("0" for i in arraysneeded)), namespace)
