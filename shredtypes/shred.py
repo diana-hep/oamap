@@ -208,12 +208,13 @@ def toflat(obj, tpe, arrays, prefix):
     recurse(obj, tpe, Name(prefix))
 
 def fromflat(arrays, tpe, prefix):
-    iters = arrays.parsediterators(prefix)
+    lookup = arrays.parsedarrays(prefix)
 
-    def recurse(tpe, name):
+    def recurse(tpe, name, indexes):
         if isinstance(tpe, Primitive):
             newname = Name.parse(prefix, tpe.arrayname)
-            obj = iters[newname].__next__()
+            obj = lookup[newname][indexes[newname]]
+            indexes[newname] += 1
 
             if tpe.nullable:
                 if tpe.dtype.kind == "i" or tpe.dtype.kind == "u":
@@ -230,9 +231,10 @@ def fromflat(arrays, tpe, prefix):
 
         elif isinstance(tpe, List):
             length = None
-            for n, it in iters.items():
+            for n in lookup:
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
-                    l = it.__next__()
+                    l = lookup[n][indexes[n]]
+                    indexes[n] += 1
                     if length is None:
                         length = l
                     else:
@@ -244,14 +246,15 @@ def fromflat(arrays, tpe, prefix):
                 return None
             else:
                 newname = modifiers(tpe, name).list(tpe.items.label)
-                return [recurse(tpe.items, newname) for i in range(length)]
+                return [recurse(tpe.items, newname, indexes) for i in range(length)]
 
         elif isinstance(tpe, Record):
-            return {"children": recurse(tpe.fields["children"], modifiers(tpe, name).field("children")), "data": recurse(tpe.fields["data"], modifiers(tpe, name).field("data"))}
+            return {"children": recurse(tpe.fields["children"], modifiers(tpe, name).field("children"), indexes.copy()), "data": recurse(tpe.fields["data"], modifiers(tpe, name).field("data"), indexes.copy())}
+            # return {"data": recurse(tpe.fields["data"], modifiers(tpe, name).field("data"), indexes), "children": recurse(tpe.fields["children"], modifiers(tpe, name).field("children"), indexes)}
                    
                    # dict((fn, recurse(ft, modifiers(tpe, name).field(fn))) for fn, ft in tpe.fields.items())
 
         else:
             assert False, "unrecognized type: {0}".format(tpe)
 
-    return recurse(tpe, Name(prefix))
+    return recurse(tpe, Name(prefix), arrays.parsedindexes(prefix))

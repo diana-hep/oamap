@@ -159,3 +159,17 @@ class ArrayGroup(object):
 
     def parsediterators(self, prefix):
         return dict((Name.parse(prefix, n), iter(v)) for n, v in zip(self._names, self._values))
+
+    @property
+    def arrays(self):
+        return dict((n, v.array) for n, v in zip(self._names, self._values))
+
+    def parsedarrays(self, prefix):
+        return dict((Name.parse(prefix, n), v.array) for n, v in zip(self._names, self._values))
+
+    @property
+    def indexes(self):
+        return dict((n, 0) for n in self._names)
+
+    def parsedindexes(self, prefix):
+        return dict((Name.parse(prefix, n), 0) for n in self._names)
