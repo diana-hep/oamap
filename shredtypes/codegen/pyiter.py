@@ -109,17 +109,16 @@ def generate(arrays, tpe, prefix):
             i, = ids
 
             code = """
-def {getter}(index):
-    print "{name}", index, array_{i}[index]
-    return array_{i}[index]
+def {getter}(index_{i}):
+    print "{getter} DATA", index_{i}, array_{i}[index_{i}]
+    return array_{i}[index_{i}]
 
 def {updater}(countdown, index_{i}):
-    # print "updating {name} countdown", countdown, "index_{i}", index_{i}, "to", index_{i} + countdown
     return index_{i} + countdown
 
 {getter}.__name__ = \"{name}\"""".format(getter = getter, updater = updater, i = i, name = str(name))
             execute(code, namespace)
-            # print(code)
+            print(code)
 
             return funcnames[name.bylabelpath]
 
@@ -154,10 +153,9 @@ class {getter}(JITList):
     __slots__ = ["countdown", {strindexes}]
 
     def __init__(self, {indexes}):
-        print "{name} LIST {indexes}", {indexes}
+        print "{getter} LIST", index_0
         {selfcountdown}
         {incrementcountdowns}
-        print "{name} LIST {indexes}", {indexes}, "(assigned)"
         {assignindexes}
 
     def __iter__(self):
@@ -191,7 +189,7 @@ def {updater}(countdown, {indexes}):
 
 {getter}.__name__ = \"{name}\"""".format(**variables)
             execute(code, namespace)
-            # print(code)
+            print(code)
 
             return funcnames[name.bylabelpath]
 
@@ -234,10 +232,9 @@ class {getter}(JITRecord):
     __slots__ = [{strindexes}]
 
     def __init__(self, {indexes}):
-        print "{name} RECORD {indexes}", {indexes}
+        print "{getter} RECORD", index_0
         {assignindexes}
 {properties}
-
 def {updater}(countdown, {indexes}):
     for i in xrange(countdown):
 {callfieldsupdaters}
@@ -245,7 +242,7 @@ def {updater}(countdown, {indexes}):
 
 {getter}.__name__ = \"{name}\"""".format(**variables)
             execute(code, namespace)
-            # print(code)
+            print(code)
 
             return funcnames[name.bylabelpath]
 

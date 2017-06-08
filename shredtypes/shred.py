@@ -247,7 +247,9 @@ def fromflat(arrays, tpe, prefix):
                 return [recurse(tpe.items, newname) for i in range(length)]
 
         elif isinstance(tpe, Record):
-            return dict((fn, recurse(ft, modifiers(tpe, name).field(fn))) for fn, ft in tpe.fields.items())
+            return {"children": recurse(tpe.fields["children"], modifiers(tpe, name).field("children")), "data": recurse(tpe.fields["data"], modifiers(tpe, name).field("data"))}
+                   
+                   # dict((fn, recurse(ft, modifiers(tpe, name).field(fn))) for fn, ft in tpe.fields.items())
 
         else:
             assert False, "unrecognized type: {0}".format(tpe)
