@@ -1,3 +1,5 @@
+# import os; os.chdir("..")
+
 import sys
 
 from shredtypes.typesystem.np import *
@@ -5,10 +7,10 @@ from shredtypes.typesystem.lr import *
 from shredtypes.flat.names import *
 from shredtypes.shred import *
 
-tpe = List(int32)
+tpe = List(List(int32))
 dtypes = declare(tpe, "x")
 arrays = NumpyFillableGroup(dtypes)
-toflat([1, 2, 3], tpe, arrays, "x")
+toflat([[1, 2, 3], [], [4, 5]], tpe, arrays, "x")
 
 def execute(code, namespace):
     exec(code, namespace)
@@ -71,8 +73,8 @@ def {updater}(countdown, index_{i}):
                         arraysneeded += (i,)
 
             assert len(countdowns) > 0, "missing list index"
-            selfcountdown = "self.countdown = array_{0}[index_{0}]".format(countdowns[0])
-            subcountdown = "subcountdown = array_{0}[index_{0}]".format(countdowns[0])
+            selfcountdown = "self.countdown = int(array_{0}[index_{0}])".format(countdowns[0])
+            subcountdown = "subcountdown = int(array_{0}[index_{0}])".format(countdowns[0])
             incrementcountdowns = "; ".join("index_{0} += 1".format(i) for i in countdowns)
 
             indexes = ", ".join("index_{0}".format(i) for i in arraysneeded)
