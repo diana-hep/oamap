@@ -279,7 +279,7 @@ class Name(object):
         index = len(self._path)
         while index >= 0:
             index -= 1
-            if predicate(self._path[index]):
+            if index >= 0 and predicate(self._path[index]):
                 return index
         return None
 
@@ -290,6 +290,14 @@ class Name(object):
             return None
         else:
             return self._path[index].label
+
+    @property
+    def bylabelpath(self):
+        index = self.lastindex(lambda x: isinstance(x, Name.LABEL))
+        if index is None:
+            return self._path
+        else:
+            return self._path[index:]
         
     def bylabelequal(self, other):
         if self._prefix != other._prefix:

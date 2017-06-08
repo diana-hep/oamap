@@ -7,10 +7,10 @@ from shredtypes.typesystem.lr import *
 from shredtypes.flat.names import *
 from shredtypes.shred import *
 
-tpe = List(Record({"a": int32, "b": List(float64)}))
+tpe = resolve(List(Record(dict(children=List("T"), data=float64), label="T")))
 dtypes = declare(tpe, "x")
 arrays = NumpyFillableGroup(dtypes)
-toflat([{"a": 1, "b": [0.1, 1.1, 2.1]}, {"a": 2, "b": []}, {"a": 3, "b": [0.3, 3.3]}], tpe, arrays, "x")
+toflat([{"children": [{"children": [{"children": [], "data": 3.3}], "data": 2.2}, {"children": [], "data": 4.4}], "data": 1.1}, {"children": [], "data": 5.5}], tpe, arrays, "x")
 
 def execute(code, namespace):
     exec(code, namespace)
@@ -33,7 +33,10 @@ def generate(arrays, tpe, prefix):
             namenum += 1
     getnamenum = getattr(nn_generate(), "__next__", getattr(nn_generate(), "next"))
 
-    def recurse(tpe, name):
+    def recurse(tpe, name, memo):
+        if name.bylabelpath in memo:
+            return memo[name.bylabelpath]
+
         global namenum
         if isinstance(tpe, Primitive):
             namenum = getnamenum()
@@ -41,6 +44,8 @@ def generate(arrays, tpe, prefix):
             updater = "update_{0}_{1}".format(prefix, namenum)
 
             i = arrayid[Name.parse(prefix, tpe.arrayname)]
+            memo[name.bylabelpath] = getter, updater, [i]
+
             code = """
 def {getter}(index):
     return array_{i}[index]
@@ -51,26 +56,30 @@ def {updater}(countdown, index_{i}):
             execute(code, namespace)
             print(code)
 
-            return getter, updater, (i,)
+            return memo[name.bylabelpath]
 
         elif isinstance(tpe, List):
-            itemsgetter, itemsupdater, itemsids = \
-                recurse(tpe.items, modifiers(tpe, name).list(tpe.items.label))
-
-            itemsargs = ", ".join("index_{0}".format(i) for i in itemsids)
-            selfitemsargs = ", ".join("self.index_{0}".format(i) for i in itemsids)
-
             namenum = getnamenum()
             getter = "get_{0}_{1}".format(prefix, namenum)
             updater = "update_{0}_{1}".format(prefix, namenum)
 
+            ids = []
             countdowns = []
-            ids = itemsids
             for n, i in arrayid.items():
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
                     countdowns.append(i)
                     if i not in ids:
-                        ids += (i,)
+                        ids.append(i)
+            memo[name.bylabelpath] = getter, updater, ids
+
+            itemsgetter, itemsupdater, itemsids = \
+                recurse(tpe.items, modifiers(tpe, name).list(tpe.items.label), memo)
+            for i in itemsids:
+                if i not in ids:
+                    ids.append(i)
+
+            itemsargs = ", ".join("index_{0}".format(i) for i in itemsids)
+            selfitemsargs = ", ".join("self.index_{0}".format(i) for i in itemsids)
 
             assert len(countdowns) > 0, "missing list index"
             selfcountdown = "self.countdown = int(array_{0}[index_{0}])".format(countdowns[0])
@@ -123,19 +132,27 @@ def {updater}(countdown, {indexes}):
             execute(code, namespace)
             print(code)
 
-            return getter, updater, ids
+            return memo[name.bylabelpath]
 
         elif isinstance(tpe, Record):
+            namenum = getnamenum()
+            getter = "get_{0}_{1}".format(prefix, namenum)
+            updater = "update_{0}_{1}".format(prefix, namenum)
+
+            ids = []
+            memo[name.bylabelpath] = getter, updater, ids
+
             fieldsgetters = {}
             fieldsupdaters = {}
             fieldsids = {}
-            ids = ()
             for fn, ft in tpe.fields.items():
-                fgetter, fupdater, fids = recurse(ft, modifiers(tpe, name).field(fn))
+                fgetter, fupdater, fids = recurse(ft, modifiers(tpe, name).field(fn), memo)
                 fieldsgetters[fn] = fgetter
                 fieldsupdaters[fn] = fupdater
                 fieldsids[fn] = fids
-                ids += fids
+                for i in fids:
+                    if i not in ids:
+                        ids.append(i)
 
             properties = ""
             for fn in tpe.fields:
@@ -152,10 +169,6 @@ def {updater}(countdown, {indexes}):
                 callfieldsupdaters += "    {indexes} = {updater}(countdown, {indexes})\n".format(
                     updater = fieldsupdaters[fn],
                     indexes = ", ".join("index_{0}".format(i) for i in fieldsids[fn]))
-
-            namenum = getnamenum()
-            getter = "get_{0}_{1}".format(prefix, namenum)
-            updater = "update_{0}_{1}".format(prefix, namenum)
 
             indexes = ", ".join("index_{0}".format(i) for i in ids)
             strindexes = ", ".join("\"index_{0}\"".format(i) for i in ids)
@@ -176,11 +189,11 @@ def {updater}(countdown, {indexes}):
             execute(code, namespace)
             print(code)
 
-            return getter, updater, ids
+            return memo[name.bylabelpath]
 
         else:
             assert False, "unrecognized type: {0}".format(tpe)
 
-    getter, updater, ids = recurse(tpe, Name(prefix))
+    getter, updater, ids = recurse(tpe, Name(prefix), {})
 
     return eval("{0}({1})".format(getter, ", ".join("0" for i in ids)), namespace)
