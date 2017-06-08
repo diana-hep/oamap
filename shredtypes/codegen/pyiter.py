@@ -7,10 +7,10 @@ from shredtypes.typesystem.lr import *
 from shredtypes.flat.names import *
 from shredtypes.shred import *
 
-tpe = List(List(int32))
+tpe = List(Record({"a": int32, "b": List(float64)}))
 dtypes = declare(tpe, "x")
 arrays = NumpyFillableGroup(dtypes)
-toflat([[1, 2, 3], [], [4, 5]], tpe, arrays, "x")
+toflat([{"a": 1, "b": [0.1, 1.1, 2.1]}, {"a": 2, "b": []}, {"a": 3, "b": [0.3, 3.3]}], tpe, arrays, "x")
 
 def execute(code, namespace):
     exec(code, namespace)
@@ -54,33 +54,33 @@ def {updater}(countdown, index_{i}):
             return getter, updater, (i,)
 
         elif isinstance(tpe, List):
-            itemsgetter, itemsupdater, itemsarraysneeded = \
+            itemsgetter, itemsupdater, itemsids = \
                 recurse(tpe.items, modifiers(tpe, name).list(tpe.items.label))
 
-            itemsargs = ", ".join("index_{0}".format(i) for i in itemsarraysneeded)
-            selfitemsargs = ", ".join("self.index_{0}".format(i) for i in itemsarraysneeded)
+            itemsargs = ", ".join("index_{0}".format(i) for i in itemsids)
+            selfitemsargs = ", ".join("self.index_{0}".format(i) for i in itemsids)
 
             namenum = getnamenum()
             getter = "get_{0}_{1}".format(prefix, namenum)
             updater = "update_{0}_{1}".format(prefix, namenum)
 
             countdowns = []
-            arraysneeded = itemsarraysneeded
+            ids = itemsids
             for n, i in arrayid.items():
                 if n.issize and (n.startswith(name) or n.bylabelstartswith(name)):
                     countdowns.append(i)
-                    if i not in arraysneeded:
-                        arraysneeded += (i,)
+                    if i not in ids:
+                        ids += (i,)
 
             assert len(countdowns) > 0, "missing list index"
             selfcountdown = "self.countdown = int(array_{0}[index_{0}])".format(countdowns[0])
             subcountdown = "subcountdown = int(array_{0}[index_{0}])".format(countdowns[0])
             incrementcountdowns = "; ".join("index_{0} += 1".format(i) for i in countdowns)
 
-            indexes = ", ".join("index_{0}".format(i) for i in arraysneeded)
-            strindexes = ", ".join("\"index_{0}\"".format(i) for i in arraysneeded)
-            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in arraysneeded)
-            selfindexes = ", ".join("self.index_{0}".format(i) for i in arraysneeded)
+            indexes = ", ".join("index_{0}".format(i) for i in ids)
+            strindexes = ", ".join("\"index_{0}\"".format(i) for i in ids)
+            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in ids)
+            selfindexes = ", ".join("self.index_{0}".format(i) for i in ids)
 
             code = """
 class {getter}(object):
@@ -123,8 +123,64 @@ def {updater}(countdown, {indexes}):
             execute(code, namespace)
             print(code)
 
-            return getter, updater, arraysneeded
+            return getter, updater, ids
 
-    getter, updater, arraysneeded = recurse(tpe, Name(prefix))
+        elif isinstance(tpe, Record):
+            fieldsgetters = {}
+            fieldsupdaters = {}
+            fieldsids = {}
+            ids = ()
+            for fn, ft in tpe.fields.items():
+                fgetter, fupdater, fids = recurse(ft, modifiers(tpe, name).field(fn))
+                fieldsgetters[fn] = fgetter
+                fieldsupdaters[fn] = fupdater
+                fieldsids[fn] = fids
+                ids += fids
 
-    return eval("{0}({1})".format(getter, ", ".join("0" for i in arraysneeded)), namespace)
+            properties = ""
+            for fn in tpe.fields:
+                properties += """
+    @property
+    def {fn}(self):
+        return {getter}({indexes})
+""".format(fn = fn,
+           getter = fieldsgetters[fn],
+           indexes = ", ".join("self.index_{0}".format(i) for i in fieldsids[fn]))
+
+            callfieldsupdaters = ""
+            for fn in tpe.fields:
+                callfieldsupdaters += "    {indexes} = {updater}(countdown, {indexes})\n".format(
+                    updater = fieldsupdaters[fn],
+                    indexes = ", ".join("index_{0}".format(i) for i in fieldsids[fn]))
+
+            namenum = getnamenum()
+            getter = "get_{0}_{1}".format(prefix, namenum)
+            updater = "update_{0}_{1}".format(prefix, namenum)
+
+            indexes = ", ".join("index_{0}".format(i) for i in ids)
+            strindexes = ", ".join("\"index_{0}\"".format(i) for i in ids)
+            assignindexes = "; ".join("self.index_{0} = index_{0}".format(i) for i in ids)
+
+            code = """
+class {getter}(object):
+    __slots__ = [{strindexes}]
+
+    def __init__(self, {indexes}):
+        {assignindexes}
+{properties}
+
+def {updater}(countdown, {indexes}):
+{callfieldsupdaters}
+    return {indexes}
+""".format(**vars())
+            execute(code, namespace)
+            print(code)
+
+            return getter, updater, ids
+
+        else:
+            assert False, "unrecognized type: {0}".format(tpe)
+
+    getter, updater, ids = recurse(tpe, Name(prefix))
+
+    return eval("{0}({1})".format(getter, ", ".join("0" for i in ids)), namespace)
