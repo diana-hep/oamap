@@ -24,8 +24,12 @@ class Type(object):
         return self.__class__.__name__
 
     @property
-    def params(self):
+    def args(self):
         return ()
+
+    @property
+    def kwds(self):
+        return {}
 
     @property
     def children(self):
@@ -40,10 +44,10 @@ class Type(object):
         return None
 
     def __repr__(self):
-        return "{0}({1})".format(self.generic, ", ".join(map(repr, self.params)))
+        return self.generic + "(" + ", ".join([repr(v) for v in self.args] + [n + " = " + repr(v) for n, v in sorted(self.kwds)]) + ")"
 
     def __eq__(self, other):
-        return self.generic == other.generic and self.params == other.params
+        return self.generic == other.generic and self.args == other.args
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -51,27 +55,20 @@ class Type(object):
     def __lt__(self, other):
         if isinstance(other, Type):
             if self.generic == other.generic:
-                return self.params < other.params
+                return self.args < other.args
             else:
                 return self.generic < other.generic
         else:
             return False
 
     def __hash__(self):
-        return hash((self.generic, self.params))
+        return hash((self.generic, self.args))
 
     def __contains__(self, element):
         raise NotImplementedError
 
     def issubtype(self, supertype):
         raise NotImplementedError
-
-class TypeWithRepr(Type):
-    def __init__(self, repr):
-        self._repr = repr
-
-    def __repr__(self):
-        return self._repr
 
 class Nullable(Type):
     def __init__(self, type):
@@ -84,7 +81,7 @@ class Nullable(Type):
         return self._type
 
     @property
-    def params(self):
+    def args(self):
         return (self._type,)
 
     @property
@@ -99,7 +96,7 @@ class Nullable(Type):
         return element is None or element in self._type
 
     def issubtype(self, supertype):
-        return supertype.generic == self.generic and self._type.issubtype(supertype._type)
+        return supertype.generic == "Nullable" and self._type.issubtype(supertype._type)
 
 class Primitive(Type):
     def __init__(self, dtype):
@@ -111,7 +108,7 @@ class Primitive(Type):
         return self._dtype
 
     @property
-    def params(self):
+    def args(self):
         return (self._dtype,)
 
     def __contains__(self, element):
@@ -140,7 +137,7 @@ class Primitive(Type):
             return False
 
     def issubtype(self, supertype):
-        if supertype.generic == self.generic:
+        if supertype.generic == "Primitive":
             if supertype._dtype.kind == "c":
                 if self._dtype.kind == "i" or self._dtype.kind == "u":
                     return True
@@ -179,5 +176,12 @@ class Primitive(Type):
 
 class PrimitiveWithRepr(Type):
     def __init__(self, dtype, repr):
-        TypeWithRepr.__init__(self, repr)
+        self._repr = repr
         Primitive.__init__(self, dtype)
+
+    @property
+    def generic(self):
+        return "Primitive"
+
+    def __repr__(self):
+        return self._repr
