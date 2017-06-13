@@ -4,7 +4,7 @@ from functools import reduce
 
 import numpy
 
-from pquiver.typesystem.defs import Nullable
+from pquiver.typesystem.defs import Optional
 from pquiver.typesystem.defs import Type
 from pquiver.typesystem.defs import TypeDefinitionError
 from pquiver.typesystem.lrup import List
@@ -12,12 +12,12 @@ from pquiver.typesystem.lrup import Record
 from pquiver.typesystem import np
 
 class Intermediate(Type):
-    def __init__(self, nullable):
-        self._nullable = nullable
+    def __init__(self, optional):
+        self._optional = optional
 
     @property
-    def nullable(self):
-        return self._nullable
+    def optional(self):
+        return self._optional
 
     @property
     def concrete(self):
@@ -31,18 +31,18 @@ class Unknown(Intermediate):
 class Boolean(Intermediate):
     @property
     def concrete(self):
-        if self.nullable:
-            return Nullable(np.boolean)
+        if self.optional:
+            return Optional(np.boolean)
         else:
             return np.boolean
 
 class Number(Intermediate):
-    def __init__(self, min, max, whole, real, nullable):
+    def __init__(self, min, max, whole, real, optional):
         self._min = min
         self._max = max
         self._whole = whole
         self._real = real
-        super(Number, self).__init__(nullable)
+        super(Number, self).__init__(optional)
 
     @property
     def min(self):
@@ -61,72 +61,72 @@ class Number(Intermediate):
         return self._real
 
     @property
-    def nullable(self):
-        return self._nullable
+    def optional(self):
+        return self._optional
 
     @property
     def concrete(self):
         if self.whole:
             if self.min >= 0:
                 if self.max <= numpy.iinfo(numpy.uint8).max:
-                    return Nullable(np.uint8) if nullable else np.uint8
+                    return Optional(np.uint8) if optional else np.uint8
                 elif self.max <= numpy.iinfo(numpy.uint16).max:
-                    return Nullable(np.uint16) if nullable else np.uint16
+                    return Optional(np.uint16) if optional else np.uint16
                 elif self.max <= numpy.iinfo(numpy.uint32).max:
-                    return Nullable(np.uint32) if nullable else np.uint32
+                    return Optional(np.uint32) if optional else np.uint32
                 elif self.max <= numpy.iinfo(numpy.uint64).max:
-                    return Nullable(np.uint64) if nullable else np.uint64
+                    return Optional(np.uint64) if optional else np.uint64
                 else:
-                    return Nullable(np.float64) if nullable else np.float64
+                    return Optional(np.float64) if optional else np.float64
             else:
                 if numpy.iinfo(numpy.int8).min <= self.min and self.max <= numpy.iinfo(numpy.int8).max:
-                    return Nullable(np.int8) if nullable else np.int8
+                    return Optional(np.int8) if optional else np.int8
                 elif numpy.iinfo(numpy.int16).min <= self.min and self.max <= numpy.iinfo(numpy.int16).max:
-                    return Nullable(np.int16) if nullable else np.int16
+                    return Optional(np.int16) if optional else np.int16
                 elif numpy.iinfo(numpy.int32).min <= self.min and self.max <= numpy.iinfo(numpy.int32).max:
-                    return Nullable(np.int32) if nullable else np.int32
+                    return Optional(np.int32) if optional else np.int32
                 elif numpy.iinfo(numpy.int64).min <= self.min and self.max <= numpy.iinfo(numpy.int64).max:
-                    return Nullable(np.int64) if nullable else np.int64
+                    return Optional(np.int64) if optional else np.int64
                 else:
-                    return Nullable(np.float64) if nullable else np.float64
+                    return Optional(np.float64) if optional else np.float64
         elif self.real:
-            return Nullable(np.float64) if nullable else np.float64
+            return Optional(np.float64) if optional else np.float64
         else:
-            return Nullable(np.complex128) if nullable else np.complex128
+            return Optional(np.complex128) if optional else np.complex128
 
 class IntermediateList(List, Intermediate):
-    def __init__(self, items, nullable):
+    def __init__(self, items, optional):
         List.__init__(self, items)
-        Intermediate.__init__(self, nullable)
+        Intermediate.__init__(self, optional)
 
     @property
     def concrete(self):
-        if self.nullable:
-            return Nullable(List(self.items))
+        if self.optional:
+            return Optional(List(self.items))
         else:
             return List(self.items)
 
 class IntermediateRecord(Record, Intermediate):
-    def __init__(self, fields, nullable):
+    def __init__(self, fields, optional):
         Record.__init__(self, **fields)
-        Intermediate.__init__(self, nullable)
+        Intermediate.__init__(self, optional)
 
     @property
     def concrete(self):
-        if self.nullable:
-            return Nullable(Record(**dict(self.fields)))
+        if self.optional:
+            return Optional(Record(**dict(self.fields)))
         else:
             return Record(**dict(self.fields))
 
 def heterogeneous(types):
     if len(types) == 0 or all(isinstance(x, Unknown) for x in types):
-        if any(x.nullable for x in types):
+        if any(x.optional for x in types):
             return Unknown(True)
         else:
             return Unknown(False)
 
     elif all(isinstance(x, (Unknown, Boolean)) for x in types):
-        if any(x.nullable for x in types):
+        if any(x.optional for x in types):
             return Boolean(True)
         else:
             return Boolean(False)
@@ -136,17 +136,17 @@ def heterogeneous(types):
                       max(x.max for x in types if isinstance(x, Number)),
                       all(x.whole for x in types if isinstance(x, Number)),
                       all(x.real for x in types if isinstance(x, Number)),
-                      any(x.nullable for x in types))
+                      any(x.optional for x in types))
 
     elif all(isinstance(x, (Unknown, IntermediateList)) for x in types):
         return IntermediateList(homogeneous([x.items for x in types if isinstance(x, IntermediateList)]),
-                                any(x.nullable for x in types))
+                                any(x.optional for x in types))
 
     elif all(isinstance(x, (Unknown, IntermediateRecord)) for x in types):
         fields = {}
         for n in reduce(lambda x, y: x.union(y), (set(x.fields) for x in types if isinstance(x, IntermediateRecord)), set()):
-            fields[n] = homogeneous([x.fields.get(n, nullable) for x in types if isinstance(x, IntermediateRecord)])
-        return IntermediateRecord(fields, any(x.nullable for x in types))
+            fields[n] = homogeneous([x.fields.get(n, optional) for x in types if isinstance(x, IntermediateRecord)])
+        return IntermediateRecord(fields, any(x.optional for x in types))
 
     else:
         raise TypeDefinitionError("unable to find a common type among the following:\n    {0}".format("\n    ".join(map(repr, types))))

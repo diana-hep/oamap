@@ -36,7 +36,7 @@ class Type(object):
         return ()
 
     @property
-    def nullable(self):
+    def optional(self):
         return False
 
     @property
@@ -70,9 +70,9 @@ class Type(object):
     def issubtype(self, supertype):
         raise NotImplementedError
 
-class Nullable(Type):
+class Optional(Type):
     def __init__(self, type):
-        while isinstance(type, Nullable):
+        while isinstance(type, Optional):
             type = type._type
         self._type = type
 
@@ -89,14 +89,14 @@ class Nullable(Type):
         return (self._type,)
 
     @property
-    def nullable(self):
+    def optional(self):
         return True
 
     def __contains__(self, element):
         return element is None or element in self._type
 
     def issubtype(self, supertype):
-        return supertype.generic == "Nullable" and self._type.issubtype(supertype._type)
+        return supertype.generic == "Optional" and self._type.issubtype(supertype._type)
 
 class Primitive(Type):
     def __init__(self, dtype):
