@@ -26,7 +26,7 @@ class ArrayInMemory(Array):
 
     def byindex(self, index):
         if index < 0 or index >= self._length:
-            raise IndexError("index {0} out of bounds for Array".format(index))
+            raise IndexError("index {0} out of bounds for ArrayInMemory".format(index))
         else:
             return self._array[index]
 
@@ -49,6 +49,55 @@ class ArrayInMemory(Array):
     def __iter__(self):
         return self.Iterator(self._array, self._length)
 
+class ArrayInMemoryPages(Array):
+    def __init__(self, arrays, dtype, length):
+        assert len(arrays) > 0
+        for a in arrays:
+            assert len(a.shape) == 1
+        self._arrays = arrays
+        super(ArrayInMemoryPages, self).__init__(dtype, length)
+
+    @property
+    def pages(self):
+        return self._arrays
+
+    def byindex(self, index):
+        if index < 0 or index >= self._length:
+            raise IndexError("index {0} out of bounds for ArrayInMemoryPages".format(index))
+        for array in self._arrays:
+            if index >= self._arrays.shape[0]:
+                index -= self._arrays.shape[0]
+            else:
+                return self._arrays[index]
+        assert False, "index reduced to {0} after {1} for length {2}".format(index, sum(a.shape[0] for a in self._arrays), self._length)
+
+    class Iterator(object):
+        def __init__(self, arrays, length):
+            self._arrays = arrays
+            self._countdown = length
+            self._arrayindex = 0
+            self._index = 0
+
+        def __next__(self):
+            if self._countdown == 0:
+                raise StopIteration
+            self._countdown -= 1
+
+            array = self._arrays[self._arrayindex]
+            if self._index >= array.shape[0]:
+                self._arrayindex += 1
+                self._index = 0
+                array = self._arrays[self._arrayindex]
+
+            out = array[self._index]
+            self._index += 1
+            return out
+
+        next = __next__
+
+    def __iter__(self):
+        return self.Iterator(self._arrays, self._length)
+            
 class ArrayStream(Array):
     class Iterator(object):
         def __init__(self, stream, itemsize, length, cast):
@@ -134,6 +183,10 @@ class ArrayGroup(object):
     @property
     def numArrays(self):
         return len(self._arrays)
+
+    @property
+    def pairs(self):
+        return self._arrays
 
     @property
     def names(self):
