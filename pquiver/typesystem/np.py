@@ -30,7 +30,7 @@ complex128 = PrimitiveWithRepr(numpy.dtype("complex128"), repr="complex128")
 complex256 = PrimitiveWithRepr(numpy.dtype("complex256"), repr="complex256")
 
 def identifytype(primitive):
-    if primitive.optional:
+    if isinstance(primitive, Optional):
         return Optional(identifytype(primitive.type))
 
     elif primitive.rtname is None:

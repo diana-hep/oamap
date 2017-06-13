@@ -36,10 +36,6 @@ class Type(object):
         return ()
 
     @property
-    def optional(self):
-        return False
-
-    @property
     def rtname(self):
         return None
 

@@ -109,4 +109,37 @@ def extracttype(dtypes, prefix):
 
     return recurse(parsed)
 
+def toflat(obj, tpe, group, prefix):
+    def has(x, n):
+        if x is None:
+            return False
+        elif isinstance(x, dict):
+            return n in x
+        else:
+            return hasattr(x, n)
 
+    def get(x, n):
+        if isinstance(x, dict):
+            return x[n]
+        else:
+            return getattr(x, n)
+
+    def recurse(obj, tpe, name, optional):
+
+
+
+
+
+        if isinstance(tpe, Optional):
+            recurse(obj, tpe.type, name, True)
+
+        elif isinstance(tpe, Primitive):
+            if optional and obj is None:
+                group.byname(
+
+
+
+
+
+
+    recurse(obj, tpe, ArrayName(prefix), False)
