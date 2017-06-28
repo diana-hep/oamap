@@ -1,4 +1,4 @@
-# Portable-Arrow
+# PLOUR: Primitives, Lists, Options, Unions, Records
 
 Motivation for this project will go here.
 
