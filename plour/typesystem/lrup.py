@@ -1,8 +1,8 @@
 import re
 
-from pquiver.typesystem.defs import Type
-from pquiver.typesystem.defs import TypeDefinitionError
-from pquiver.typesystem import naming
+from plour.typesystem.defs import Type
+from plour.typesystem.defs import TypeDefinitionError
+from plour.typesystem import naming
 
 class List(Type):
     def __init__(self, items):

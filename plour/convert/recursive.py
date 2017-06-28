@@ -1,7 +1,7 @@
-from pquiver.typesystem.defs import *
-from pquiver.typesystem.np import *
-from pquiver.typesystem.lrup import *
-from pquiver.typesystem.naming import *
+from plour.typesystem.defs import *
+from plour.typesystem.np import *
+from plour.typesystem.lrup import *
+from plour.typesystem.naming import *
 
 def declare(tpe, prefix, sizetype=uint64, tagtype=uint8):
     def modifiers(tpe, name):

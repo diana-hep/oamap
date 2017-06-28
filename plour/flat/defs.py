@@ -1,6 +1,6 @@
 import struct
 
-from pquiver.typesystem.naming import ArrayName
+from plour.typesystem.naming import ArrayName
 
 class Array(object):
     def __init__(self, dtype, length):

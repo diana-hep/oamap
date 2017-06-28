@@ -1,6 +1,6 @@
 import re
 
-from pquiver.typesystem import naming
+from plour.typesystem import naming
 
 class TypeDefinitionError(Exception): pass
 

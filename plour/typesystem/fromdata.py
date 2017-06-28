@@ -4,12 +4,12 @@ from functools import reduce
 
 import numpy
 
-from pquiver.typesystem.defs import Optional
-from pquiver.typesystem.defs import Type
-from pquiver.typesystem.defs import TypeDefinitionError
-from pquiver.typesystem.lrup import List
-from pquiver.typesystem.lrup import Record
-from pquiver.typesystem import np
+from plour.typesystem.defs import Optional
+from plour.typesystem.defs import Type
+from plour.typesystem.defs import TypeDefinitionError
+from plour.typesystem.lrup import List
+from plour.typesystem.lrup import Record
+from plour.typesystem import np
 
 class Intermediate(Type):
     def __init__(self, optional):
