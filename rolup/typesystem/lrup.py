@@ -1,8 +1,8 @@
 import re
 
-from plour.typesystem.defs import Type
-from plour.typesystem.defs import TypeDefinitionError
-from plour.typesystem import naming
+from rolup.typesystem.defs import Type
+from rolup.typesystem.defs import TypeDefinitionError
+from rolup.typesystem import naming
 
 class List(Type):
     def __init__(self, items):

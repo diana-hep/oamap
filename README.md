@@ -1,4 +1,4 @@
-# PLOUR: Primitives, Lists, Options, Unions, Records
+# ROLUP: Records, Options, Lists, Unions, and Primitives
 
 Motivation for this project will go here.
 

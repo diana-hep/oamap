@@ -1,6 +1,6 @@
 import re
 
-from plour.typesystem import naming
+from rolup.typesystem import naming
 
 class TypeDefinitionError(Exception): pass
 

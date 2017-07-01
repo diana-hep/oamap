@@ -1,7 +1,7 @@
-from plour.typesystem.defs import *
-from plour.typesystem.np import *
-from plour.typesystem.lrup import *
-from plour.typesystem.naming import *
+from rolup.typesystem.defs import *
+from rolup.typesystem.np import *
+from rolup.typesystem.lrup import *
+from rolup.typesystem.naming import *
 
 def declare(tpe, prefix, sizetype=uint64, tagtype=uint8):
     def modifiers(tpe, name):

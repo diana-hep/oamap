@@ -1,8 +1,8 @@
 import numpy
 
-from plour.typesystem.defs import Optional
-from plour.typesystem.defs import Primitive
-from plour.typesystem.defs import PrimitiveWithRepr
+from rolup.typesystem.defs import Optional
+from rolup.typesystem.defs import Primitive
+from rolup.typesystem.defs import PrimitiveWithRepr
 
 # logical
 boolean = PrimitiveWithRepr(numpy.dtype("bool"), repr="boolean")

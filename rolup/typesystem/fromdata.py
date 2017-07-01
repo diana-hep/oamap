@@ -4,12 +4,12 @@ from functools import reduce
 
 import numpy
 
-from plour.typesystem.defs import Optional
-from plour.typesystem.defs import Type
-from plour.typesystem.defs import TypeDefinitionError
-from plour.typesystem.lrup import List
-from plour.typesystem.lrup import Record
-from plour.typesystem import np
+from rolup.typesystem.defs import Optional
+from rolup.typesystem.defs import Type
+from rolup.typesystem.defs import TypeDefinitionError
+from rolup.typesystem.lrup import List
+from rolup.typesystem.lrup import Record
+from rolup.typesystem import np
 
 class Intermediate(Type):
     def __init__(self, optional):

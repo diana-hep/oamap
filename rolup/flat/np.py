@@ -4,10 +4,10 @@ import zipfile
 
 import numpy
 
-from plour.flat.defs import Array
-from plour.flat.defs import ArrayInMemory
-from plour.flat.defs import ArrayStream
-from plour.flat.defs import ArrayGroup
+from rolup.flat.defs import Array
+from rolup.flat.defs import ArrayInMemory
+from rolup.flat.defs import ArrayStream
+from rolup.flat.defs import ArrayGroup
 
 def npzipheader(stream):
     assert stream.read(6) == "\x93NUMPY"
