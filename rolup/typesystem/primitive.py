@@ -4,34 +4,34 @@ from rolup.util import *
 from rolup.typesystem.type import Type
 
 class Primitive(Type):
-    def __init__(self, dtype):
-        self.dtype = dtype
+    def __init__(self, of):
+        self.of = of
         super(Primitive, self).__init__()
 
     @property
     def args(self):
-        return (self.dtype,)
+        return (self.of,)
 
     def __contains__(self, element):
         if element is True or element is False:
-            return self.dtype.kind == "b"
+            return self.of.kind == "b"
 
         elif isinstance(element, complex):
-            return self.dtype.kind == "c"
+            return self.of.kind == "c"
 
         elif isinstance(element, float):
-            return self.dtype.kind == "c" or self.dtype.kind == "f"
+            return self.of.kind == "c" or self.of.kind == "f"
 
         elif isinstance(element, int):
-            return self.dtype.kind == "c" or self.dtype.kind == "f":
+            return self.of.kind == "c" or self.of.kind == "f":
                 return True
 
-            elif self.dtype.kind == "i":
-                bits = self.dtype.itemsize * 8 - 1
+            elif self.of.kind == "i":
+                bits = self.of.itemsize * 8 - 1
                 return -2**bits <= element < 2**bits
 
-            elif self.dtype.kind == "u":
-                bits = self.dtype.itemsize * 8
+            elif self.of.kind == "u":
+                bits = self.of.itemsize * 8
                 return 0 <= element < 2**bits
 
             else:
@@ -42,36 +42,36 @@ class Primitive(Type):
 
     def issubtype(self, supertype):
         if isinstance(supertype, Primitive) and self.rtname == supertype.rtname:
-            if supertype.dtype.kind == "b":
-                return self.dtype.kind == "b"
+            if supertype.of.kind == "b":
+                return self.of.kind == "b"
 
-            elif supertype.dtype.kind == "c":
-                if self.dtype.kind == "i" or self.dtype.kind == "u":
+            elif supertype.of.kind == "c":
+                if self.of.kind == "i" or self.of.kind == "u":
                     return True
-                elif self.dtype.kind == "c" or self.dtype.kind == "f":
-                    return self.dtype.itemsize <= supertype.dtype.itemsize
+                elif self.of.kind == "c" or self.of.kind == "f":
+                    return self.of.itemsize <= supertype.of.itemsize
                 else:
                     return False
 
-            elif supertype.dtype.kind == "f":
-                if self.dtype.kind == "i" or self.dtype.kind == "u":
+            elif supertype.of.kind == "f":
+                if self.of.kind == "i" or self.of.kind == "u":
                     return True
-                elif self.dtype.kind == "f":
-                    return self.dtype.itemsize <= supertype.dtype.itemsize
+                elif self.of.kind == "f":
+                    return self.of.itemsize <= supertype.of.itemsize
                 else:
                     return False
 
-            elif supertype.dtype.kind == "i":
-                if self.dtype.kind == "i":
-                    return self.dtype.itemsize <= supertype.dtype.itemsize
-                elif self.dtype.kind == "u":
-                    return self.dtype.itemsize <= supertype.dtype.itemsize - 0.125
+            elif supertype.of.kind == "i":
+                if self.of.kind == "i":
+                    return self.of.itemsize <= supertype.of.itemsize
+                elif self.of.kind == "u":
+                    return self.of.itemsize <= supertype.of.itemsize - 0.125
                 else:
                     return False
 
-            elif supertype.dtype.kind == "u":
-                if self.dtype.kind == "u":
-                    return self.dtype.itemsize <= supertype.dtype.itemsize
+            elif supertype.of.kind == "u":
+                if self.of.kind == "u":
+                    return self.of.itemsize <= supertype.of.itemsize
                 else:
                     return False
 
@@ -81,10 +81,13 @@ class Primitive(Type):
         else:
             return False
 
+    def toJson(self):
+        return str(self.numpy.of)
+
 class PrimitiveWithRepr(Primitive):
-    def __init__(self, dtype, repr):
+    def __init__(self, of, repr):
         self._repr = repr
-        Primitive.__init__(self, dtype)
+        Primitive.__init__(self, of)
 
     def __repr__(self):
         return self._repr
@@ -113,3 +116,27 @@ float128 = PrimitiveWithRepr(numpy.dtype("float128"), repr="float128")
 complex64 = PrimitiveWithRepr(numpy.dtype("complex64"), repr="complex64")
 complex128 = PrimitiveWithRepr(numpy.dtype("complex128"), repr="complex128")
 complex256 = PrimitiveWithRepr(numpy.dtype("complex256"), repr="complex256")
+
+def withrepr(obj):
+    if isinstance(obj, Primitive):
+        if obj.of == boolean.of: return boolean
+
+        elif obj.of == int8.of: return int8
+        elif obj.of == int16.of: return int16
+        elif obj.of == int32.of: return int32
+        elif obj.of == int64.of: return int64
+
+        elif obj.of == uint8.of: return uint8
+        elif obj.of == uint16.of: return uint16
+        elif obj.of == uint32.of: return uint32
+        elif obj.of == uint64.of: return uint64
+
+        elif obj.of == float32.of: return float32
+        elif obj.of == float64.of: return float64
+        elif obj.of == float128.of: return float128
+
+        elif obj.of == complex64.of: return complex64
+        elif obj.of == complex128.of: return complex128
+        elif obj.of == complex256.of: return complex256
+
+    return obj

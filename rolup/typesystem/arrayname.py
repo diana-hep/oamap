@@ -1,9 +1,4 @@
-import re
-
 from rolup.util import *
-
-identifier = re.compile("^([a-zA-Z_][0-9a-zA-Z_]*)")
-indexnumber = re.compile("^([1-9][0-9]*)")
 
 class ArrayName(object):
     def __init__(self, prefix, *path, delimiter="-"):
