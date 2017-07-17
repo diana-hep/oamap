@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import unittest
+from collections import namedtuple
 
 from rolup.typesystem import *
 
@@ -22,10 +23,71 @@ class TestTypesystem(unittest.TestCase):
     def runTest(self):
         pass
 
+    def test_contain_element_others(self):
+        type123 = namedtuple("type123", ["one", "two", "three"])
+        type13 = namedtuple("type13", ["one", "three"])
+        type0 = namedtuple("type0", [])
+
+        # R
+        self.assertTrue({"one": 1, "two": 2.2, "three": None} in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue({"one": 1, "two": None, "three": None} not in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue({"one": 1, "three": None} not in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue({"one": 1, "two": None, "three": None} in Record(one=int32, three=Option(uint8)))
+        self.assertTrue({"one": 1, "three": None} in Record(one=int32, three=Option(uint8)))
+        self.assertTrue({"one": 1, "two": None, "three": None} in Record())
+        self.assertTrue({"one": 1, "three": None} in Record())
+        self.assertTrue({} in Record())
+        self.assertTrue({} not in Record(one=int32, two=float64, three=Option(uint8)))
+
+        self.assertTrue(type123(1, 2.2, None) in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue(type123(1, None, None) not in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue(type13(1, None) not in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue(type123(1, None, None) in Record(one=int32, three=Option(uint8)))
+        self.assertTrue(type13(1, None) in Record(one=int32, three=Option(uint8)))
+        self.assertTrue(type123(1, None, None) in Record())
+        self.assertTrue(type13(1, None) in Record())
+        self.assertTrue(type0() in Record())
+        self.assertTrue(type0() not in Record(one=int32, two=float64, three=Option(uint8)))
+
+        # O
+        self.assertTrue(None in Option(uint8))
+        self.assertTrue(0 in Option(uint8))
+        self.assertTrue(False not in Option(uint8))
+        self.assertTrue([] not in Option(uint8))
+
+        # L
+        self.assertTrue([] in List(uint8))
+        self.assertTrue(None not in List(uint8))
+        self.assertTrue({} not in List(uint8))
+        self.assertTrue([0] in List(uint8))
+        self.assertTrue([False] not in List(uint8))
+
+        # U
+        self.assertTrue(0 in Union(int8, uint16))
+        self.assertTrue(300 in Union(int8, uint16))
+        self.assertTrue(-127 in Union(int8, uint16))
+        self.assertTrue(-300 not in Union(int8, uint16))
+        self.assertTrue(3.14 not in Union(int8, uint16))
+        self.assertTrue(False not in Union(int8, uint16))
+        self.assertTrue([] not in Union(int8, uint16))
+        self.assertTrue(None not in Union(int8, uint16))
+        self.assertTrue(type0() not in Union(int8, uint16))
+
+        self.assertTrue(0 in Union(Option(int8), uint16))
+        self.assertTrue(300 in Union(Option(int8), uint16))
+        self.assertTrue(-127 in Union(Option(int8), uint16))
+        self.assertTrue(-300 not in Union(Option(int8), uint16))
+        self.assertTrue(3.14 not in Union(Option(int8), uint16))
+        self.assertTrue(False not in Union(Option(int8), uint16))
+        self.assertTrue([] not in Union(Option(int8), uint16))
+        self.assertTrue(None in Union(Option(int8), uint16))
+        self.assertTrue(type0() not in Union(Option(int8), uint16))
+
     def test_contain_element_primitives(self):
         inf = float("inf")
         nan = float("nan")
 
+        # P
         self.assertTrue(False in boolean)
         self.assertTrue(True in boolean)
         self.assertTrue(0 not in boolean)
@@ -145,6 +207,8 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in uint64)
         self.assertTrue(True not in uint64)
 
+        self.assertTrue(0 in float32)
+        self.assertTrue(1 in float32)
         self.assertTrue(0.0 in float32)
         self.assertTrue(1.0 in float32)
         self.assertTrue(inf in float32)
@@ -155,6 +219,8 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in float32)
         self.assertTrue(True not in float32)
 
+        self.assertTrue(0 in float64)
+        self.assertTrue(1 in float64)
         self.assertTrue(0.0 in float64)
         self.assertTrue(1.0 in float64)
         self.assertTrue(inf in float64)
@@ -165,6 +231,8 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in float64)
         self.assertTrue(True not in float64)
 
+        self.assertTrue(0 in float128)
+        self.assertTrue(1 in float128)
         self.assertTrue(0.0 in float128)
         self.assertTrue(1.0 in float128)
         self.assertTrue(inf in float128)
@@ -175,6 +243,8 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in float128)
         self.assertTrue(True not in float128)
 
+        self.assertTrue(0 in complex64)
+        self.assertTrue(1 in complex64)
         self.assertTrue(0.0 in complex64)
         self.assertTrue(1.0 in complex64)
         self.assertTrue(inf in complex64)
@@ -185,6 +255,8 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in complex64)
         self.assertTrue(True not in complex64)
 
+        self.assertTrue(0 in complex128)
+        self.assertTrue(1 in complex128)
         self.assertTrue(0.0 in complex128)
         self.assertTrue(1.0 in complex128)
         self.assertTrue(inf in complex128)
@@ -195,6 +267,8 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in complex128)
         self.assertTrue(True not in complex128)
 
+        self.assertTrue(0 in complex256)
+        self.assertTrue(1 in complex256)
         self.assertTrue(0.0 in complex256)
         self.assertTrue(1.0 in complex256)
         self.assertTrue(inf in complex256)
@@ -205,51 +279,281 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(False not in complex256)
         self.assertTrue(True not in complex256)
 
+    def test_contain_set_others(self):
+        # R
+        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
+        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int64, two=float64, three=Option(uint8))))
+        self.assertFalse(Record(one=int64, two=float64, three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
+        self.assertFalse(Record(one=int32, two=Option(float64), three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
+        self.assertFalse(Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int32, two=Option(float64), three=Option(uint8))))
+        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int32, three=Option(uint8))))
+        self.assertFalse(Record(one=int32, three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
+        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record()))
+        self.assertFalse(Record().issubtype(Record(one=int32, two=float64, three=Option(uint8))))
+        self.assertTrue (Record().issubtype(Record()))
+
+        # O
+        self.assertTrue (Option(uint8).issubtype(Option(uint8)))
+        self.assertTrue (Option(uint8).issubtype(Option(uint64)))
+        self.assertFalse(Option(uint64).issubtype(Option(uint8)))
+        self.assertFalse(uint64.issubtype(Option(uint8)))
+        self.assertFalse(List(uint64).issubtype(Option(uint8)))
+
+        # L
+        self.assertTrue (List(uint8).issubtype(List(uint8)))
+        self.assertTrue (List(uint8).issubtype(List(uint64)))
+        self.assertFalse(List(uint64).issubtype(List(uint8)))
+        self.assertFalse(uint64.issubtype(List(uint8)))
+        self.assertFalse(Option(uint64).issubtype(List(uint8)))
+
+        # U
+        self.assertTrue (Union(int8, uint16).issubtype(Union(int8, uint16)))
+        self.assertTrue (Union(int8, uint16).issubtype(Union(int8, uint16, float64)))
+        self.assertFalse(Union(int8, uint16, float64).issubtype(Union(int8, uint16)))
+        self.assertTrue (Union(int8, uint16).issubtype(int32))
+        self.assertFalse(Union(int8, uint16).issubtype(uint8))
+        self.assertTrue (int8.issubtype(Union(int8, uint16)))
+        self.assertTrue (uint8.issubtype(Union(int8, uint16)))
+        self.assertFalse(uint32.issubtype(Union(int8, uint16)))
+
     def test_contain_set_primitives(self):
-        boolean in boolean
-        boolean not in int8
-        boolean not in int16
-        boolean not in int32
-        boolean not in int64
-        boolean not in uint8
-        boolean not in uint16
-        boolean not in uint32
-        boolean not in uint64
-        boolean not in float32
-        boolean not in float64
-        boolean not in float128
-        boolean not in complex64
-        boolean not in complex128
-        boolean not in complex256
+        # P
+        self.assertTrue (boolean.issubtype(boolean))
+        self.assertFalse(boolean.issubtype(int8))
+        self.assertFalse(boolean.issubtype(int16))
+        self.assertFalse(boolean.issubtype(int32))
+        self.assertFalse(boolean.issubtype(int64))
+        self.assertFalse(boolean.issubtype(uint8))
+        self.assertFalse(boolean.issubtype(uint16))
+        self.assertFalse(boolean.issubtype(uint32))
+        self.assertFalse(boolean.issubtype(uint64))
+        self.assertFalse(boolean.issubtype(float32))
+        self.assertFalse(boolean.issubtype(float64))
+        self.assertFalse(boolean.issubtype(float128))
+        self.assertFalse(boolean.issubtype(complex64))
+        self.assertFalse(boolean.issubtype(complex128))
+        self.assertFalse(boolean.issubtype(complex256))
 
-        int8 not in boolean
-        int8 in int8
-        int8 in int16
-        int8 in int32
-        int8 in int64
-        int8 not in uint8
-        int8 not in uint16
-        int8 not in uint32
-        int8 not in uint64
-        int8 in float32
-        int8 in float64
-        int8 in float128
-        int8 in complex64
-        int8 in complex128
-        int8 in complex256
+        self.assertFalse(int8.issubtype(boolean))
+        self.assertTrue (int8.issubtype(int8))
+        self.assertTrue (int8.issubtype(int16))
+        self.assertTrue (int8.issubtype(int32))
+        self.assertTrue (int8.issubtype(int64))
+        self.assertFalse(int8.issubtype(uint8))
+        self.assertFalse(int8.issubtype(uint16))
+        self.assertFalse(int8.issubtype(uint32))
+        self.assertFalse(int8.issubtype(uint64))
+        self.assertTrue (int8.issubtype(float32))
+        self.assertTrue (int8.issubtype(float64))
+        self.assertTrue (int8.issubtype(float128))
+        self.assertTrue (int8.issubtype(complex64))
+        self.assertTrue (int8.issubtype(complex128))
+        self.assertTrue (int8.issubtype(complex256))
 
-        # int16 in boolean
-        # int16 in int8
-        # int16 in int16
-        # int16 in int32
-        # int16 in int64
-        # int16 not in uint8
-        # int16 not in uint16
-        # int16 not in uint32
-        # int16 not in uint64
-        # int16 in float32
-        # int16 in float64
-        # int16 in float128
-        # int16 in complex64
-        # int16 in complex128
-        # int16 in complex256
+        self.assertFalse(int16.issubtype(boolean))
+        self.assertFalse(int16.issubtype(int8))
+        self.assertTrue (int16.issubtype(int16))
+        self.assertTrue (int16.issubtype(int32))
+        self.assertTrue (int16.issubtype(int64))
+        self.assertFalse(int16.issubtype(uint8))
+        self.assertFalse(int16.issubtype(uint16))
+        self.assertFalse(int16.issubtype(uint32))
+        self.assertFalse(int16.issubtype(uint64))
+        self.assertTrue (int16.issubtype(float32))
+        self.assertTrue (int16.issubtype(float64))
+        self.assertTrue (int16.issubtype(float128))
+        self.assertTrue (int16.issubtype(complex64))
+        self.assertTrue (int16.issubtype(complex128))
+        self.assertTrue (int16.issubtype(complex256))
+
+        self.assertFalse(int32.issubtype(boolean))
+        self.assertFalse(int32.issubtype(int8))
+        self.assertFalse(int32.issubtype(int16))
+        self.assertTrue (int32.issubtype(int32))
+        self.assertTrue (int32.issubtype(int64))
+        self.assertFalse(int32.issubtype(uint8))
+        self.assertFalse(int32.issubtype(uint16))
+        self.assertFalse(int32.issubtype(uint32))
+        self.assertFalse(int32.issubtype(uint64))
+        self.assertTrue (int32.issubtype(float32))
+        self.assertTrue (int32.issubtype(float64))
+        self.assertTrue (int32.issubtype(float128))
+        self.assertTrue (int32.issubtype(complex64))
+        self.assertTrue (int32.issubtype(complex128))
+        self.assertTrue (int32.issubtype(complex256))
+
+        self.assertFalse(int64.issubtype(boolean))
+        self.assertFalse(int64.issubtype(int8))
+        self.assertFalse(int64.issubtype(int16))
+        self.assertFalse(int64.issubtype(int32))
+        self.assertTrue (int64.issubtype(int64))
+        self.assertFalse(int64.issubtype(uint8))
+        self.assertFalse(int64.issubtype(uint16))
+        self.assertFalse(int64.issubtype(uint32))
+        self.assertFalse(int64.issubtype(uint64))
+        self.assertTrue (int64.issubtype(float32))
+        self.assertTrue (int64.issubtype(float64))
+        self.assertTrue (int64.issubtype(float128))
+        self.assertTrue (int64.issubtype(complex64))
+        self.assertTrue (int64.issubtype(complex128))
+        self.assertTrue (int64.issubtype(complex256))
+
+        self.assertFalse(uint8.issubtype(boolean))
+        self.assertFalse(uint8.issubtype(int8))
+        self.assertTrue (uint8.issubtype(int16))
+        self.assertTrue (uint8.issubtype(int32))
+        self.assertTrue (uint8.issubtype(int64))
+        self.assertTrue (uint8.issubtype(uint8))
+        self.assertTrue (uint8.issubtype(uint16))
+        self.assertTrue (uint8.issubtype(uint32))
+        self.assertTrue (uint8.issubtype(uint64))
+        self.assertTrue (uint8.issubtype(float32))
+        self.assertTrue (uint8.issubtype(float64))
+        self.assertTrue (uint8.issubtype(float128))
+        self.assertTrue (uint8.issubtype(complex64))
+        self.assertTrue (uint8.issubtype(complex128))
+        self.assertTrue (uint8.issubtype(complex256))
+
+        self.assertFalse(uint16.issubtype(boolean))
+        self.assertFalse(uint16.issubtype(int8))
+        self.assertFalse(uint16.issubtype(int16))
+        self.assertTrue (uint16.issubtype(int32))
+        self.assertTrue (uint16.issubtype(int64))
+        self.assertFalse(uint16.issubtype(uint8))
+        self.assertTrue (uint16.issubtype(uint16))
+        self.assertTrue (uint16.issubtype(uint32))
+        self.assertTrue (uint16.issubtype(uint64))
+        self.assertTrue (uint16.issubtype(float32))
+        self.assertTrue (uint16.issubtype(float64))
+        self.assertTrue (uint16.issubtype(float128))
+        self.assertTrue (uint16.issubtype(complex64))
+        self.assertTrue (uint16.issubtype(complex128))
+        self.assertTrue (uint16.issubtype(complex256))
+
+        self.assertFalse(uint32.issubtype(boolean))
+        self.assertFalse(uint32.issubtype(int8))
+        self.assertFalse(uint32.issubtype(int16))
+        self.assertFalse(uint32.issubtype(int32))
+        self.assertTrue (uint32.issubtype(int64))
+        self.assertFalse(uint32.issubtype(uint8))
+        self.assertFalse(uint32.issubtype(uint16))
+        self.assertTrue (uint32.issubtype(uint32))
+        self.assertTrue (uint32.issubtype(uint64))
+        self.assertTrue (uint32.issubtype(float32))
+        self.assertTrue (uint32.issubtype(float64))
+        self.assertTrue (uint32.issubtype(float128))
+        self.assertTrue (uint32.issubtype(complex64))
+        self.assertTrue (uint32.issubtype(complex128))
+        self.assertTrue (uint32.issubtype(complex256))
+
+        self.assertFalse(uint64.issubtype(boolean))
+        self.assertFalse(uint64.issubtype(int8))
+        self.assertFalse(uint64.issubtype(int16))
+        self.assertFalse(uint64.issubtype(int32))
+        self.assertFalse(uint64.issubtype(int64))
+        self.assertFalse(uint64.issubtype(uint8))
+        self.assertFalse(uint64.issubtype(uint16))
+        self.assertFalse(uint64.issubtype(uint32))
+        self.assertTrue (uint64.issubtype(uint64))
+        self.assertTrue (uint64.issubtype(float32))
+        self.assertTrue (uint64.issubtype(float64))
+        self.assertTrue (uint64.issubtype(float128))
+        self.assertTrue (uint64.issubtype(complex64))
+        self.assertTrue (uint64.issubtype(complex128))
+        self.assertTrue (uint64.issubtype(complex256))
+
+        self.assertFalse(float32.issubtype(boolean))
+        self.assertFalse(float32.issubtype(int8))
+        self.assertFalse(float32.issubtype(int16))
+        self.assertFalse(float32.issubtype(int32))
+        self.assertFalse(float32.issubtype(int64))
+        self.assertFalse(float32.issubtype(uint8))
+        self.assertFalse(float32.issubtype(uint16))
+        self.assertFalse(float32.issubtype(uint32))
+        self.assertFalse(float32.issubtype(uint64))
+        self.assertTrue (float32.issubtype(float32))
+        self.assertTrue (float32.issubtype(float64))
+        self.assertTrue (float32.issubtype(float128))
+        self.assertTrue (float32.issubtype(complex64))
+        self.assertTrue (float32.issubtype(complex128))
+        self.assertTrue (float32.issubtype(complex256))
+
+        self.assertFalse(float64.issubtype(boolean))
+        self.assertFalse(float64.issubtype(int8))
+        self.assertFalse(float64.issubtype(int16))
+        self.assertFalse(float64.issubtype(int32))
+        self.assertFalse(float64.issubtype(int64))
+        self.assertFalse(float64.issubtype(uint8))
+        self.assertFalse(float64.issubtype(uint16))
+        self.assertFalse(float64.issubtype(uint32))
+        self.assertFalse(float64.issubtype(uint64))
+        self.assertFalse(float64.issubtype(float32))
+        self.assertTrue (float64.issubtype(float64))
+        self.assertTrue (float64.issubtype(float128))
+        self.assertTrue (float64.issubtype(complex64))
+        self.assertTrue (float64.issubtype(complex128))
+        self.assertTrue (float64.issubtype(complex256))
+
+        self.assertFalse(float128.issubtype(boolean))
+        self.assertFalse(float128.issubtype(int8))
+        self.assertFalse(float128.issubtype(int16))
+        self.assertFalse(float128.issubtype(int32))
+        self.assertFalse(float128.issubtype(int64))
+        self.assertFalse(float128.issubtype(uint8))
+        self.assertFalse(float128.issubtype(uint16))
+        self.assertFalse(float128.issubtype(uint32))
+        self.assertFalse(float128.issubtype(uint64))
+        self.assertFalse(float128.issubtype(float32))
+        self.assertFalse(float128.issubtype(float64))
+        self.assertTrue (float128.issubtype(float128))
+        self.assertFalse(float128.issubtype(complex64))
+        self.assertTrue (float128.issubtype(complex128))
+        self.assertTrue (float128.issubtype(complex256))
+
+        self.assertFalse(complex64.issubtype(boolean))
+        self.assertFalse(complex64.issubtype(int8))
+        self.assertFalse(complex64.issubtype(int16))
+        self.assertFalse(complex64.issubtype(int32))
+        self.assertFalse(complex64.issubtype(int64))
+        self.assertFalse(complex64.issubtype(uint8))
+        self.assertFalse(complex64.issubtype(uint16))
+        self.assertFalse(complex64.issubtype(uint32))
+        self.assertFalse(complex64.issubtype(uint64))
+        self.assertFalse(complex64.issubtype(float32))
+        self.assertFalse(complex64.issubtype(float64))
+        self.assertFalse(complex64.issubtype(float128))
+        self.assertTrue (complex64.issubtype(complex64))
+        self.assertTrue (complex64.issubtype(complex128))
+        self.assertTrue (complex64.issubtype(complex256))
+
+        self.assertFalse(complex128.issubtype(boolean))
+        self.assertFalse(complex128.issubtype(int8))
+        self.assertFalse(complex128.issubtype(int16))
+        self.assertFalse(complex128.issubtype(int32))
+        self.assertFalse(complex128.issubtype(int64))
+        self.assertFalse(complex128.issubtype(uint8))
+        self.assertFalse(complex128.issubtype(uint16))
+        self.assertFalse(complex128.issubtype(uint32))
+        self.assertFalse(complex128.issubtype(uint64))
+        self.assertFalse(complex128.issubtype(float32))
+        self.assertFalse(complex128.issubtype(float64))
+        self.assertFalse(complex128.issubtype(float128))
+        self.assertFalse(complex128.issubtype(complex64))
+        self.assertTrue (complex128.issubtype(complex128))
+        self.assertTrue (complex128.issubtype(complex256))
+
+        self.assertFalse(complex256.issubtype(boolean))
+        self.assertFalse(complex256.issubtype(int8))
+        self.assertFalse(complex256.issubtype(int16))
+        self.assertFalse(complex256.issubtype(int32))
+        self.assertFalse(complex256.issubtype(int64))
+        self.assertFalse(complex256.issubtype(uint8))
+        self.assertFalse(complex256.issubtype(uint16))
+        self.assertFalse(complex256.issubtype(uint32))
+        self.assertFalse(complex256.issubtype(uint64))
+        self.assertFalse(complex256.issubtype(float32))
+        self.assertFalse(complex256.issubtype(float64))
+        self.assertFalse(complex256.issubtype(float128))
+        self.assertFalse(complex256.issubtype(complex64))
+        self.assertFalse(complex256.issubtype(complex128))
+        self.assertTrue (complex256.issubtype(complex256))

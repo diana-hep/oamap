@@ -34,8 +34,9 @@ class Option(Type):
         return element is None or element in self.of
 
     def issubtype(self, supertype):
-        return isinstance(supertype, Option) and self.rtname == supertype.rtname \
-               and self.of.issubtype(supertype.of)        # options are covariant
+        return super(Option, self).issubtype(supertype) or \
+               (isinstance(supertype, Option) and self.rtname == supertype.rtname
+                and self.of.issubtype(supertype.of))      # options are covariant
 
     def toJson(self):
         return {"option": self.of.toJson()}

@@ -34,18 +34,24 @@ class Union(Type):
         return any(element in x for x in self.of)
 
     def issubtype(self, supertype):
+        # Type.issubtype(supertype) handles the inverse case (supertype is a Union and self isn't); all other Types try that first
+
         if isinstance(supertype, Union) and self.rtname == supertype.rtname:
-            # everything that supertype can be must also be allowed for self
-            for supert in supertype.of:
-                if not any(selft.issubtype(supert) for selft in self.of):
+            # supertype is a Union; everything that we have must fit into one of its possibilities
+            for tpe in self.of:
+                if not any(tpe.issubtype(x) for x in supertype.of):
+                    return False
+            return True
+
+        elif self.rtname == supertype.rtname:
+            # supertype is not a Union; everything that we have must fit into it
+            for tpe in self.of:
+                if not tpe.issubtype(supertype):
                     return False
             return True
 
         else:
-            # supertype is not a Union; some unioned primitives might be contained within a primitive
-            if not any(selft.issubtype(supertype) for selft in self.of):
-                return False
-            return True
+            return False
 
     def toJson(self):
         return {"union": [x.toJson() for x in self.of]}

@@ -76,10 +76,15 @@ class Type(object):
         return hash((self.__class__, self.rtname, self.args, tuple(sorted(self.kwds.items()))))
 
     def __contains__(self, element):
-        raise NotImplementedError
+        return False
 
     def issubtype(self, supertype):
-        raise NotImplementedError
+        from rolup.typesystem.union import Union
+        if isinstance(supertype, Union):
+            # supertype is a Union; we must fit into any of its possibilities
+            return any(self.issubtype(x) for x in supertype.of)
+        else:
+            return False
 
     def __repr__(self):
         args = [repr(v) for v in self.args]

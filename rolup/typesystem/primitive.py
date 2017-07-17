@@ -57,7 +57,10 @@ class Primitive(Type):
             return False
 
     def issubtype(self, supertype):
-        if isinstance(supertype, Primitive) and self.rtname == supertype.rtname:
+        if super(Primitive, self).issubtype(supertype):
+            return True
+
+        elif isinstance(supertype, Primitive) and self.rtname == supertype.rtname:
             if supertype.of.kind == "b":
                 return self.of.kind == "b"
 

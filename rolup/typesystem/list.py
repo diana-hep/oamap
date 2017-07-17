@@ -27,6 +27,8 @@ class List(Type):
         return (self.of,)
 
     def __contains__(self, element):
+        if isinstance(element, dict):
+            return False
         try:
             iter(element)
         except TypeError:
@@ -35,8 +37,9 @@ class List(Type):
             return all(x in self.of for x in element)     # lists are covariant
 
     def issubtype(self, supertype):
-        return isinstance(supertype, List) and self.rtname == supertype.rtname \
-               and self.of.issubtype(supertype.of)        # lists are covariant
+        return super(List, self).issubtype(supertype) or \
+               (isinstance(supertype, List) and self.rtname == supertype.rtname
+                and self.of.issubtype(supertype.of))      # lists are covariant
 
     def toJson(self):
         return {"list": self.of.toJson()}
