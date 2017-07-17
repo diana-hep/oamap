@@ -17,7 +17,7 @@
 from rolup.util import *
 
 class ArrayName(object):
-    def __init__(self, prefix, path, delimiter="-"):
+    def __init__(self, prefix, path=(), delimiter="-"):
         self.prefix = prefix
         self.path = path
         self.delimiter = delimiter
@@ -34,8 +34,13 @@ class ArrayName(object):
         delimiter = "" if self.delimiter == "-" else ", delimiter = " + repr(self.delimiter)
         return "ArrayName({0}, {1}{2})".format(repr(self.prefix), repr(self.path), delimiter)
 
+    def str(self, prefix=None):
+        if prefix is None:
+            prefix = self.prefix
+        return prefix + "".join(self.delimiter + "".join(x) for x in self.path)
+
     def __str__(self):
-        return self.prefix + "".join(self.delimiter + "".join(x) for x in self.path)
+        return self.str()
 
     def __eq__(self, other):
         return isinstance(other, ArrayName) and self.prefix == other.prefix and self.path == other.path and self.delimiter == other.delimiter
@@ -58,18 +63,11 @@ class ArrayName(object):
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__.__name__, other.__class__.__name__))
 
-    def drop(self):
-        return ArrayName(self.prefix, self.path[1:], self.delimiter)
+    # R
+    def toRecord(self, fieldname):
+        return ArrayName(self.prefix, self.path + (("R_", fieldname),), self.delimiter)
 
-    def toListSize(self):
-        return ArrayName(self.prefix, self.path + (("Ls",),), self.delimiter)
-
-    def toListOffset(self):
-        return ArrayName(self.prefix, self.path + (("Lo",),), self.delimiter)
-
-    def toListData(self):
-        return ArrayName(self.prefix, self.path + (("Ld",),), self.delimiter)
-
+    # O
     def toOptionSize(self):
         return ArrayName(self.prefix, self.path + (("Os",),), self.delimiter)
 
@@ -79,10 +77,18 @@ class ArrayName(object):
     def toOptionData(self):
         return ArrayName(self.prefix, self.path + (("Od",),), self.delimiter)
 
-    def toRecord(self, fieldname):
-        return ArrayName(self.prefix, self.path + (("R_", fieldname),), self.delimiter)
+    # L
+    def toListSize(self):
+        return ArrayName(self.prefix, self.path + (("Ls",),), self.delimiter)
 
-    def toUnionType(self):
+    def toListOffset(self):
+        return ArrayName(self.prefix, self.path + (("Lo",),), self.delimiter)
+
+    def toListData(self):
+        return ArrayName(self.prefix, self.path + (("Ld",),), self.delimiter)
+
+    # U
+    def toUnionTag(self):
         return ArrayName(self.prefix, self.path + (("Ut",),), self.delimiter)
 
     def toUnionOffset(self):
@@ -91,6 +97,7 @@ class ArrayName(object):
     def toUnionData(self, tagnum):
         return ArrayName(self.prefix, self.path + (("Ud", repr(tagnum)),), self.delimiter)
 
+    # runtime
     def toRuntime(self, rtname, *args):
         path = list(self.path)
         path.append(("T_", rtname))
@@ -108,18 +115,17 @@ class ArrayName(object):
 
         return ArrayName(self.prefix, tuple(path), self.delimiter)
 
+    # R
     @property
-    def isListSize(self):
-        return len(self.path) > 0 and self.path[0] == ("Ls",)
+    def isRecord(self):
+        return len(self.path) > 0 and self.path[0][0] == "R_"
 
     @property
-    def isListOffset(self):
-        return len(self.path) > 0 and self.path[0] == ("Lo",)
+    def fieldname(self):
+        assert self.isRecord
+        return self.path[0][1]
 
-    @property
-    def isListData(self):
-        return len(self.path) > 0 and self.path[0] == ("Ld",)
-
+    # O
     @property
     def isOptionSize(self):
         return len(self.path) > 0 and self.path[0] == ("Os",)
@@ -132,17 +138,22 @@ class ArrayName(object):
     def isOptionData(self):
         return len(self.path) > 0 and self.path[0] == ("Od",)
 
+    # L
     @property
-    def isRecord(self):
-        return len(self.path) > 0 and self.path[0][0] == "R_"
+    def isListSize(self):
+        return len(self.path) > 0 and self.path[0] == ("Ls",)
 
     @property
-    def fieldname(self):
-        assert self.isRecord
-        return self.path[0][1]
+    def isListOffset(self):
+        return len(self.path) > 0 and self.path[0] == ("Lo",)
 
     @property
-    def isUnionType(self):
+    def isListData(self):
+        return len(self.path) > 0 and self.path[0] == ("Ld",)
+
+    # U
+    @property
+    def isUnionTag(self):
         return len(self.path) > 0 and self.path[0] == ("Ut",)
 
     @property
@@ -158,6 +169,16 @@ class ArrayName(object):
         assert self.isUnionData
         return int(self.path[0][1])
 
+    # P
+    @property
+    def isPrimitive(self):
+        return len(self.path) == 0
+
+    def drop(self):
+        assert not self.isPrimitive
+        return ArrayName(self.prefix, self.path[1:], self.delimiter)
+
+    # runtime
     @property
     def isRuntime(self):
         return len(self.path) > 0 and self.path[0][0] == "T_"

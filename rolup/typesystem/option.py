@@ -19,11 +19,9 @@ from rolup.typesystem.type import Type
 
 class Option(Type):
     def __init__(self, of):
-        def flatten(x):
-            while isinstance(x, Option):
-                x = x.of
-            return x
-        self.of = flatten(of)
+        while isinstance(x, Option):
+            of = of.of
+        self.of = of
         super(Option, self).__init__()
 
     @property

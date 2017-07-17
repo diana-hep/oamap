@@ -29,3 +29,7 @@ class TestTypesColumns(unittest.TestCase):
         print type2columns(float64, "x")
         print type2columns(List(float64), "x")
         print type2columns(List(List(float64)), "x")
+        print type2columns(Record(x=int8, y=float64), "x")
+        print type2columns(List(Record(x=int8, y=float64)), "x")
+        print type2columns(Record(x=int8, y=List(float64)), "x")
+        print type2columns(List(Record(x=int8, y=List(float64))), "x")

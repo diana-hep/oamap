@@ -116,30 +116,21 @@ class Type(object):
         from rolup.typesystem.primitive import withrepr
 
         if isinstance(obj, dict):
-            if "record" in obj:
-                objrecord = obj["record"]
-                if isinstance(objrecord, dict):
-                    objrecord = [objrecord]
-                assert isinstance(objrecord, list)
+            if "record" in obj:      # R
+                assert isinstance(obj["record"], dict)
+                tpe = Record(**dict((fn, Type.fromJson(ft)) for fn, ft in obj["record"].items()))
 
-                fields = []
-                for x in objrecord:
-                    for fn, ft in x.items():
-                        fields.append((fn, Type.fromJson(ft)))
-
-                tpe = Record.fromfields(fields)
-
-            elif "option" in obj:
+            elif "option" in obj:    # O
                 tpe = Option(Type.fromJson(obj["option"]))
 
-            elif "list" in obj:
+            elif "list" in obj:      # L
                 tpe = List(Type.fromJson(obj["list"]))
 
-            elif "union" in obj:
+            elif "union" in obj:     # U
                 assert isinstance(obj["union"], list)
                 tpe = Union(*[Type.fromJson(x) for x in obj["union"]])
 
-            elif "primitive" in obj:
+            elif "primitive" in obj: # P
                 tpe = withrepr(Primitive(numpy.dtype(obj["primitive"])))
 
             else:

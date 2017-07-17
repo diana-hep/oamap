@@ -20,12 +20,6 @@ from rolup.util import *
 from rolup.typesystem.type import Type
 
 class Record(Type):
-    @staticmethod
-    def fromfields(self, fields):
-        out = Record()
-        out.of = fields
-        return out
-
     def __init__(self, *positional, **named):
         self.of = [(repr(i), x) for i, x in enumerate(positional)] + sorted(named.items())
         super(Record, self).__init__()
@@ -80,4 +74,4 @@ class Record(Type):
             return False
 
     def toJson(self):
-        return {"record": [{fn: ft.toJson()} for fn, ft in self.of]}
+        return {"record": dict((fn, ft.toJson()) for fn, ft in self.of)}

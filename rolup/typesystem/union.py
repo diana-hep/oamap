@@ -20,10 +20,13 @@ from rolup.typesystem.type import Type
 class Union(Type):
     def __init__(self, *of):
         def flatten(x):
-            while isinstance(x, Union):
-                x = x.of
-            return x
-        self.of = tuple(map(flatten, of))
+            if isinstance(x, Union):
+                for y in x.of:
+                    yield y
+            else:
+                yield x
+
+        self.of = tuple(sorted(flatten(of)))    HERE!!!
         super(Union, self).__init__()
 
     @property
