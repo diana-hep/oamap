@@ -17,7 +17,7 @@
 from rolup.util import *
 
 class ArrayName(object):
-    def __init__(self, prefix, *path, delimiter="-"):
+    def __init__(self, prefix, path, delimiter="-"):
         self.prefix = prefix
         self.path = path
         self.delimiter = delimiter
@@ -28,14 +28,14 @@ class ArrayName(object):
             return None
         else:
             path = tuple((token[:2], token[2:]) for token in string[len(prefix):].split(delimiter))
-            return ArrayName(prefix, *path, delimiter)
+            return ArrayName(prefix, *path, delimiter=delimiter)
 
     def __repr__(self):
         delimiter = "" if self.delimiter == "-" else ", delimiter = " + repr(self.delimiter)
         return "ArrayName({0}, {1}{2})".format(repr(self.prefix), repr(self.path), delimiter)
 
     def __str__(self):
-        return self.prefix + self.delimiter.join(map(str, self.path))
+        return self.prefix + "".join(self.delimiter + "".join(x) for x in self.path)
 
     def __eq__(self, other):
         return isinstance(other, ArrayName) and self.prefix == other.prefix and self.path == other.path and self.delimiter == other.delimiter
@@ -194,7 +194,7 @@ class ArrayName(object):
     def dropRuntime(self):
         assert self.isRuntime
         if len(self.path) < 2 or self.path[1] != ("Td",):
-            return return ArrayName(self.prefix, self.path[1:], self.delimiter)
+            return ArrayName(self.prefix, self.path[1:], self.delimiter)
 
         else:
             stack = 0

@@ -41,6 +41,10 @@ class Type(object):
     @property
     def rtname(self):
         return None
+
+    @property
+    def rtargs(self):
+        return None
     
     @property
     def args(self):
