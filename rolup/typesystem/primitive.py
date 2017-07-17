@@ -38,7 +38,7 @@ class Primitive(Type):
         elif isinstance(element, float):
             return self.of.kind == "c" or self.of.kind == "f"
 
-        elif isinstance(element, int):
+        elif isinstance(element, (int, long)):
             if self.of.kind == "c" or self.of.kind == "f":
                 return True
 
