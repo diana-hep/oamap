@@ -1,0 +1,1 @@
+class TypeDefinitionError(Exception): pass
