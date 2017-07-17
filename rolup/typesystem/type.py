@@ -104,7 +104,7 @@ class Type(object):
 
                 tpe = Record.fromfields(fields)
 
-            elif "option": in obj:
+            elif "option" in obj:
                 tpe = Option(Type.fromJson(obj["option"]))
 
             elif "list" in obj:

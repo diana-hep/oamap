@@ -23,7 +23,7 @@ class Primitive(Type):
             return self.of.kind == "c" or self.of.kind == "f"
 
         elif isinstance(element, int):
-            return self.of.kind == "c" or self.of.kind == "f":
+            if self.of.kind == "c" or self.of.kind == "f":
                 return True
 
             elif self.of.kind == "i":
