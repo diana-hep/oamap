@@ -38,7 +38,7 @@ setup(name = "rolup",
       download_url = "",
       license = "Apache Software License v2",
       test_suite = "tests",
-      install_requires = ["numpy"],
+      install_requires = ["numpy", "numba"],
       tests_require = [],
       classifiers = [
           "Development Status :: 1 - Planning",
