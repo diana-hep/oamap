@@ -19,6 +19,8 @@ from collections import namedtuple
 
 import numpy
 from rolup.typesystem import *
+from rolup.typesystem.arrayname import ArrayName
+from rolup.typesystem.columns import type2columns, columns2type
 
 class TestTypesystem(unittest.TestCase):
     def runTest(self):
@@ -224,6 +226,50 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(int8, Type.fromJsonString(boolean.toJsonString()))
         self.assertNotEqual(boolean, Type.fromJsonString(uint8.toJsonString()))
         self.assertNotEqual(uint8, Type.fromJsonString(boolean.toJsonString()))
+
+    def test_arrayname(self):
+        self.assertEqual(ArrayName("prefix"), ArrayName.parse(str(ArrayName("prefix")), "prefix"))
+
+        self.assertEqual(ArrayName("prefix").toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toRecord("x")), "prefix"))
+        self.assertEqual(ArrayName("prefix").toOptionSize(), ArrayName.parse(str(ArrayName("prefix").toOptionSize()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toOptionOffset(), ArrayName.parse(str(ArrayName("prefix").toOptionOffset()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toOptionData(), ArrayName.parse(str(ArrayName("prefix").toOptionData()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListSize(), ArrayName.parse(str(ArrayName("prefix").toListSize()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListOffset()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData(), ArrayName.parse(str(ArrayName("prefix").toListData()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toUnionTag()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toUnionOffset(), ArrayName.parse(str(ArrayName("prefix").toUnionOffset()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toUnionData(3)), "prefix"))
+
+        self.assertEqual(ArrayName("prefix").toListData().toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toListData().toRecord("x")), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toOptionSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionSize()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toOptionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionOffset()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toOptionData(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionData()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toListSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toListSize()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toListData(), ArrayName.parse(str(ArrayName("prefix").toListData().toListData()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionTag()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toUnionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionOffset()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionData(3)), "prefix"))
+
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toListData().toRecord("x")), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toOptionSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionSize()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toOptionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionOffset()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toOptionData(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionData()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toListSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toListSize()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toListData(), ArrayName.parse(str(ArrayName("prefix").toListData().toListData()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionTag()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionOffset()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionData(3)), "prefix"))
+
+    def test_columns(self):
+        print "HERE"
+        print type2columns(boolean, "prefix")
+
+        self.assertEqual(boolean, columns2type(type2columns(boolean, "prefix"), "prefix"))
+
+
 
     def test_contain_element_others(self):
         type123 = namedtuple("type123", ["one", "two", "three"])

@@ -23,12 +23,12 @@ class ArrayName(object):
         self.delimiter = delimiter
 
     @staticmethod
-    def parse(prefix, string, delimiter="-"):
+    def parse(string, prefix, delimiter="-"):
         if not string.startswith(prefix):
             return None
         else:
-            path = tuple((token[:2], token[2:]) for token in string[len(prefix):].split(delimiter))
-            return ArrayName(prefix, *path, delimiter=delimiter)
+            path = tuple((token[:2], token[2:]) if len(token) > 2 else (token,) for token in string[len(prefix):].split(delimiter) if token != "")
+            return ArrayName(prefix, path, delimiter=delimiter)
 
     def __repr__(self):
         delimiter = "" if self.delimiter == "-" else ", delimiter = " + repr(self.delimiter)

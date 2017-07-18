@@ -107,5 +107,5 @@ def columns2type(cols, prefix, delimiter="-"):
         else:
             raise TypeDefinitionError("unexpected set of columns: {0}".format(", ".join(n.str(prefix="") for n, d in cols)))
         
-    parsed = [(ArrayName.parse(prefix, n, delimiter=delimiter), d) for n, d in cols.items()]
+    parsed = [(ArrayName.parse(n, prefix, delimiter=delimiter), d) for n, d in cols.items()]
     return recurse([(n, d) for n, d in parsed if n is not None])
