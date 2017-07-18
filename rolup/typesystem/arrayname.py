@@ -98,19 +98,19 @@ class ArrayName(object):
         return ArrayName(self.prefix, self.path + (("Ud", repr(tagnum)),), self.delimiter)
 
     # runtime
-    def toRuntime(self, rtname, *args):
+    def toRuntime(self, rtname, *rtargs):
         path = list(self.path)
         path.append(("T_", rtname))
 
-        if len(args) > 0:
+        if len(rtargs) > 0:
             path.append(("Td",))
 
-        for i, arg in enumerate(args):
+        for i, arg in enumerate(rtargs):
             if i != 0:
                 path.append(("Tl",))
             path.extend((token[:2], token[2:]) for token in arg.split(self.delimiter))
 
-        if len(args) > 0:
+        if len(rtargs) > 0:
             path.append(("Tb",))
 
         return ArrayName(self.prefix, tuple(path), self.delimiter)

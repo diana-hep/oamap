@@ -17,11 +17,213 @@
 import unittest
 from collections import namedtuple
 
+import numpy
 from rolup.typesystem import *
 
 class TestTypesystem(unittest.TestCase):
     def runTest(self):
         pass
+
+    def test_representations(self):
+        # R
+        self.assertEqual(Record(), Record())
+        self.assertEqual(Record(x=int32, y=float64), Record(x=int32, y=float64))
+        self.assertNotEqual(Record(x=int32, y=float64), Record(x=int32))
+        self.assertNotEqual(Record(x=int32), Record(x=int32, y=float64))
+        self.assertNotEqual(Record(x=int32, y=float64), Record(y=float64))
+        self.assertNotEqual(Record(y=float64), Record(x=int32, y=float64))
+        self.assertNotEqual(Record(x=int32, y=float64), Record(y=int32, x=float64))
+
+        self.assertEqual(Record(x=int32, y=List(float64)), Record(x=int32, y=List(float64)))
+        self.assertEqual(List(Record(x=int32, y=float64)), List(Record(x=int32, y=float64)))
+        self.assertNotEqual(List(Record(x=int32, y=float64)), Record(x=int32, y=List(float64)))
+
+        self.assertEqual(Record(x=int32, y=Option(float64)), Record(x=int32, y=Option(float64)))
+        self.assertEqual(Option(Record(x=int32, y=float64)), Option(Record(x=int32, y=float64)))
+        self.assertNotEqual(Option(Record(x=int32, y=float64)), Record(x=int32, y=Option(float64)))
+
+        self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Record(x=int32, y=Union(int8, uint16)))
+        self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Record(x=int32, y=Union(uint16, int8)))
+
+        self.assertEqual(Record(int32, float64), Record(**{"0": int32, "1": float64}))
+        self.assertEqual(Record(int32, x=float64), Record(**{"0": int32, "x": float64}))
+
+        # O
+        self.assertEqual(Option(boolean), Option(boolean))
+        self.assertNotEqual(Option(boolean), boolean)
+        self.assertNotEqual(boolean, Option(boolean))
+
+        self.assertEqual(Option(boolean), Option(Primitive(numpy.dtype(numpy.bool))))
+        self.assertNotEqual(Option(boolean), Primitive(numpy.dtype(numpy.bool)))
+        self.assertNotEqual(boolean, Option(Primitive(numpy.dtype(numpy.bool))))
+
+        self.assertEqual(Option(Option(boolean)), Option(Option(boolean)))
+        self.assertEqual(Option(Option(boolean)), Option(boolean))
+        self.assertEqual(Option(boolean), Option(Option(boolean)))
+        self.assertNotEqual(Option(Option(boolean)), boolean)
+        self.assertNotEqual(boolean, Option(Option(boolean)))
+
+        # L
+        self.assertEqual(List(boolean), List(boolean))
+        self.assertNotEqual(List(boolean), boolean)
+        self.assertNotEqual(boolean, List(boolean))
+
+        self.assertEqual(List(boolean), List(Primitive(numpy.dtype(numpy.bool))))
+        self.assertNotEqual(List(boolean), Primitive(numpy.dtype(numpy.bool)))
+        self.assertNotEqual(boolean, List(Primitive(numpy.dtype(numpy.bool))))
+
+        self.assertEqual(List(List(boolean)), List(List(boolean)))
+        self.assertNotEqual(List(List(boolean)), List(boolean))
+        self.assertNotEqual(List(boolean), List(List(boolean)))
+
+        # U
+        self.assertEqual(Union(), Union())
+        self.assertEqual(Union(int8, uint16), Union(int8, uint16))
+        self.assertEqual(Union(int8, uint16), Union(uint16, int8))
+        self.assertNotEqual(Union(int8, uint16), Union(int8, float64))
+        self.assertNotEqual(Union(int8, uint16), Union(float64, int8))
+        self.assertNotEqual(Union(int8, int16), int16)
+        self.assertNotEqual(Union(int8, int16), Union(int16))
+        self.assertEqual(Union(int16), Union(int16))
+
+        # P
+        self.assertEqual(boolean, Primitive(numpy.dtype(numpy.bool)))
+
+        self.assertEqual(int8, Primitive(numpy.dtype(numpy.int8)))
+        self.assertEqual(int16, Primitive(numpy.dtype(numpy.int16)))
+        self.assertEqual(int32, Primitive(numpy.dtype(numpy.int32)))
+        self.assertEqual(int64, Primitive(numpy.dtype(numpy.int64)))
+
+        self.assertEqual(uint8, Primitive(numpy.dtype(numpy.uint8)))
+        self.assertEqual(uint16, Primitive(numpy.dtype(numpy.uint16)))
+        self.assertEqual(uint32, Primitive(numpy.dtype(numpy.uint32)))
+        self.assertEqual(uint64, Primitive(numpy.dtype(numpy.uint64)))
+
+        self.assertEqual(float32, Primitive(numpy.dtype(numpy.float32)))
+        self.assertEqual(float64, Primitive(numpy.dtype(numpy.float64)))
+        self.assertEqual(float128, Primitive(numpy.dtype(numpy.float128)))
+
+        self.assertEqual(complex64, Primitive(numpy.dtype(numpy.complex64)))
+        self.assertEqual(complex128, Primitive(numpy.dtype(numpy.complex128)))
+        self.assertEqual(complex256, Primitive(numpy.dtype(numpy.complex256)))
+
+        self.assertNotEqual(boolean, Primitive(numpy.dtype(numpy.int8)))
+        self.assertNotEqual(int8, Primitive(numpy.dtype(numpy.bool)))
+        self.assertNotEqual(boolean, Primitive(numpy.dtype(numpy.uint8)))
+        self.assertNotEqual(uint8, Primitive(numpy.dtype(numpy.bool)))
+
+    def test_json(self):
+        # R
+        self.assertEqual(Record(), Type.fromJsonString(Record().toJsonString()))
+        self.assertEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(x=int32, y=float64).toJsonString()))
+        self.assertNotEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(x=int32).toJsonString()))
+        self.assertNotEqual(Record(x=int32), Type.fromJsonString(Record(x=int32, y=float64).toJsonString()))
+        self.assertNotEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(y=float64).toJsonString()))
+        self.assertNotEqual(Record(y=float64), Type.fromJsonString(Record(x=int32, y=float64).toJsonString()))
+        self.assertNotEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(y=int32, x=float64).toJsonString()))
+
+        self.assertEqual(Record(x=int32, y=List(float64)), Type.fromJsonString(Record(x=int32, y=List(float64)).toJsonString()))
+        self.assertEqual(List(Record(x=int32, y=float64)), Type.fromJsonString(List(Record(x=int32, y=float64)).toJsonString()))
+        self.assertNotEqual(List(Record(x=int32, y=float64)), Type.fromJsonString(Record(x=int32, y=List(float64)).toJsonString()))
+
+        self.assertEqual(Record(x=int32, y=Option(float64)), Type.fromJsonString(Record(x=int32, y=Option(float64)).toJsonString()))
+        self.assertEqual(Option(Record(x=int32, y=float64)), Type.fromJsonString(Option(Record(x=int32, y=float64)).toJsonString()))
+        self.assertNotEqual(Option(Record(x=int32, y=float64)), Type.fromJsonString(Record(x=int32, y=Option(float64)).toJsonString()))
+
+        self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Type.fromJsonString(Record(x=int32, y=Union(int8, uint16)).toJsonString()))
+        self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Type.fromJsonString(Record(x=int32, y=Union(uint16, int8)).toJsonString()))
+
+        self.assertEqual(Record(int32, float64), Type.fromJsonString(Record(**{"0": int32, "1": float64}).toJsonString()))
+        self.assertEqual(Record(int32, x=float64), Type.fromJsonString(Record(**{"0": int32, "x": float64}).toJsonString()))
+
+        # O
+        self.assertEqual(Option(boolean), Type.fromJsonString(Option(boolean).toJsonString()))
+        self.assertNotEqual(Option(boolean), Type.fromJsonString(boolean.toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(Option(boolean).toJsonString()))
+
+        self.assertEqual(Option(boolean), Type.fromJsonString(Option(Primitive(numpy.dtype(numpy.bool))).toJsonString()))
+        self.assertNotEqual(Option(boolean), Type.fromJsonString(Primitive(numpy.dtype(numpy.bool)).toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(Option(Primitive(numpy.dtype(numpy.bool))).toJsonString()))
+
+        self.assertEqual(Option(Option(boolean)), Type.fromJsonString(Option(Option(boolean)).toJsonString()))
+        self.assertEqual(Option(Option(boolean)), Type.fromJsonString(Option(boolean).toJsonString()))
+        self.assertEqual(Option(boolean), Type.fromJsonString(Option(Option(boolean)).toJsonString()))
+        self.assertNotEqual(Option(Option(boolean)), Type.fromJsonString(boolean.toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(Option(Option(boolean)).toJsonString()))
+
+        # L
+        self.assertEqual(List(boolean), Type.fromJsonString(List(boolean).toJsonString()))
+        self.assertNotEqual(List(boolean), Type.fromJsonString(boolean.toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(List(boolean).toJsonString()))
+
+        self.assertEqual(List(boolean), Type.fromJsonString(List(Primitive(numpy.dtype(numpy.bool))).toJsonString()))
+        self.assertNotEqual(List(boolean), Type.fromJsonString(Primitive(numpy.dtype(numpy.bool)).toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(List(Primitive(numpy.dtype(numpy.bool))).toJsonString()))
+
+        self.assertEqual(List(List(boolean)), Type.fromJsonString(List(List(boolean)).toJsonString()))
+        self.assertNotEqual(List(List(boolean)), Type.fromJsonString(List(boolean).toJsonString()))
+        self.assertNotEqual(List(boolean), Type.fromJsonString(List(List(boolean)).toJsonString()))
+
+        # U
+        self.assertEqual(Union(), Type.fromJsonString(Union().toJsonString()))
+        self.assertEqual(Union(int8, uint16), Type.fromJsonString(Union(int8, uint16).toJsonString()))
+        self.assertEqual(Union(int8, uint16), Type.fromJsonString(Union(uint16, int8).toJsonString()))
+        self.assertNotEqual(Union(int8, uint16), Type.fromJsonString(Union(int8, float64).toJsonString()))
+        self.assertNotEqual(Union(int8, uint16), Type.fromJsonString(Union(float64, int8).toJsonString()))
+        self.assertNotEqual(Union(int8, int16), Type.fromJsonString(int16.toJsonString()))
+        self.assertNotEqual(Union(int8, int16), Type.fromJsonString(Union(int16).toJsonString()))
+        self.assertEqual(Union(int16), Type.fromJsonString(Union(int16).toJsonString()))
+
+        # P
+        self.assertEqual(boolean, Type.fromJsonString(Primitive(numpy.dtype(numpy.bool)).toJsonString()))
+
+        self.assertEqual(int8, Type.fromJsonString(Primitive(numpy.dtype(numpy.int8)).toJsonString()))
+        self.assertEqual(int16, Type.fromJsonString(Primitive(numpy.dtype(numpy.int16)).toJsonString()))
+        self.assertEqual(int32, Type.fromJsonString(Primitive(numpy.dtype(numpy.int32)).toJsonString()))
+        self.assertEqual(int64, Type.fromJsonString(Primitive(numpy.dtype(numpy.int64)).toJsonString()))
+
+        self.assertEqual(uint8, Type.fromJsonString(Primitive(numpy.dtype(numpy.uint8)).toJsonString()))
+        self.assertEqual(uint16, Type.fromJsonString(Primitive(numpy.dtype(numpy.uint16)).toJsonString()))
+        self.assertEqual(uint32, Type.fromJsonString(Primitive(numpy.dtype(numpy.uint32)).toJsonString()))
+        self.assertEqual(uint64, Type.fromJsonString(Primitive(numpy.dtype(numpy.uint64)).toJsonString()))
+
+        self.assertEqual(float32, Type.fromJsonString(Primitive(numpy.dtype(numpy.float32)).toJsonString()))
+        self.assertEqual(float64, Type.fromJsonString(Primitive(numpy.dtype(numpy.float64)).toJsonString()))
+        self.assertEqual(float128, Type.fromJsonString(Primitive(numpy.dtype(numpy.float128)).toJsonString()))
+
+        self.assertEqual(complex64, Type.fromJsonString(Primitive(numpy.dtype(numpy.complex64)).toJsonString()))
+        self.assertEqual(complex128, Type.fromJsonString(Primitive(numpy.dtype(numpy.complex128)).toJsonString()))
+        self.assertEqual(complex256, Type.fromJsonString(Primitive(numpy.dtype(numpy.complex256)).toJsonString()))
+
+        self.assertNotEqual(boolean, Type.fromJsonString(Primitive(numpy.dtype(numpy.int8)).toJsonString()))
+        self.assertNotEqual(int8, Type.fromJsonString(Primitive(numpy.dtype(numpy.bool)).toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(Primitive(numpy.dtype(numpy.uint8)).toJsonString()))
+        self.assertNotEqual(uint8, Type.fromJsonString(Primitive(numpy.dtype(numpy.bool)).toJsonString()))
+
+        self.assertEqual(boolean, Type.fromJsonString(boolean.toJsonString()))
+
+        self.assertEqual(int8, Type.fromJsonString(int8.toJsonString()))
+        self.assertEqual(int16, Type.fromJsonString(int16.toJsonString()))
+        self.assertEqual(int32, Type.fromJsonString(int32.toJsonString()))
+        self.assertEqual(int64, Type.fromJsonString(int64.toJsonString()))
+
+        self.assertEqual(uint8, Type.fromJsonString(uint8.toJsonString()))
+        self.assertEqual(uint16, Type.fromJsonString(uint16.toJsonString()))
+        self.assertEqual(uint32, Type.fromJsonString(uint32.toJsonString()))
+        self.assertEqual(uint64, Type.fromJsonString(uint64.toJsonString()))
+
+        self.assertEqual(float32, Type.fromJsonString(float32.toJsonString()))
+        self.assertEqual(float64, Type.fromJsonString(float64.toJsonString()))
+        self.assertEqual(float128, Type.fromJsonString(float128.toJsonString()))
+
+        self.assertEqual(complex64, Type.fromJsonString(complex64.toJsonString()))
+        self.assertEqual(complex128, Type.fromJsonString(complex128.toJsonString()))
+        self.assertEqual(complex256, Type.fromJsonString(complex256.toJsonString()))
+
+        self.assertNotEqual(boolean, Type.fromJsonString(int8.toJsonString()))
+        self.assertNotEqual(int8, Type.fromJsonString(boolean.toJsonString()))
+        self.assertNotEqual(boolean, Type.fromJsonString(uint8.toJsonString()))
+        self.assertNotEqual(uint8, Type.fromJsonString(boolean.toJsonString()))
 
     def test_contain_element_others(self):
         type123 = namedtuple("type123", ["one", "two", "three"])

@@ -21,12 +21,14 @@ from rolup.typesystem.type import Type
 
 class Primitive(Type):
     def __init__(self, of):
+        if not isinstance(of, numpy.dtype):
+            of = numpy.dtype(of)
         self.of = of
         super(Primitive, self).__init__()
 
     @property
     def args(self):
-        return (self.of,)
+        return (str(self.of),)
 
     def __contains__(self, element):
         if element is True or element is False:
@@ -60,7 +62,7 @@ class Primitive(Type):
         if super(Primitive, self).issubtype(supertype):
             return True
 
-        elif isinstance(supertype, Primitive) and self.rtname == supertype.rtname:
+        elif (isinstance(supertype, self.__class__) or isinstance(self, supertype.__class__)) and supertype.rtname == self.rtname and supertype.rtargs == self.rtargs:
             if supertype.of.kind == "b":
                 return self.of.kind == "b"
 
@@ -101,7 +103,7 @@ class Primitive(Type):
             return False
 
     def toJson(self):
-        return str(self.numpy.of)
+        return str(self.of)
 
 class PrimitiveWithRepr(Primitive):
     def __init__(self, of, repr):

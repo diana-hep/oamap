@@ -38,7 +38,7 @@ class List(Type):
 
     def issubtype(self, supertype):
         return super(List, self).issubtype(supertype) or \
-               (isinstance(supertype, List) and self.rtname == supertype.rtname
+               ((isinstance(supertype, self.__class__) or isinstance(self, supertype.__class__)) and supertype.rtname == self.rtname and supertype.rtargs == self.rtargs
                 and self.of.issubtype(supertype.of))      # lists are covariant
 
     def toJson(self):

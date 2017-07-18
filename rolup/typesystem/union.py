@@ -20,13 +20,18 @@ from rolup.typesystem.type import Type
 class Union(Type):
     def __init__(self, *of):
         def flatten(x):
-            if isinstance(x, Union):
-                for y in x.of:
+            if isinstance(x, tuple):
+                for y in x:
+                    for z in flatten(y):
+                        yield z
+
+            elif isinstance(x, Union):
+                for y in flatten(x.of):
                     yield y
             else:
                 yield x
 
-        self.of = tuple(sorted(flatten(of)))    HERE!!!
+        self.of = tuple(sorted(flatten(of)))
         super(Union, self).__init__()
 
     @property
@@ -39,7 +44,7 @@ class Union(Type):
     def issubtype(self, supertype):
         # Type.issubtype(supertype) handles the inverse case (supertype is a Union and self isn't); all other Types try that first
 
-        if isinstance(supertype, Union) and self.rtname == supertype.rtname:
+        if isinstance(supertype, Union) and supertype.rtname == self.rtname and supertype.rtargs == self.rtargs:
             # supertype is a Union; everything that we have must fit into one of its possibilities
             for tpe in self.of:
                 if not any(tpe.issubtype(x) for x in supertype.of):

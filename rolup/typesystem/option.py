@@ -19,7 +19,7 @@ from rolup.typesystem.type import Type
 
 class Option(Type):
     def __init__(self, of):
-        while isinstance(x, Option):
+        while isinstance(of, Option):
             of = of.of
         self.of = of
         super(Option, self).__init__()
@@ -33,7 +33,7 @@ class Option(Type):
 
     def issubtype(self, supertype):
         return super(Option, self).issubtype(supertype) or \
-               (isinstance(supertype, Option) and self.rtname == supertype.rtname
+               ((isinstance(supertype, self.__class__) or isinstance(self, supertype.__class__)) and supertype.rtname == self.rtname and supertype.rtargs == self.rtargs
                 and self.of.issubtype(supertype.of))      # options are covariant
 
     def toJson(self):

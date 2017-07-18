@@ -68,7 +68,7 @@ def columns2type(cols, prefix, delimiter="-"):
             for fieldname, cols in fields.items():
                 fields[fieldname] = recurse(cols)
 
-            return Record(**HERE!!!
+            return Record(**fields)
 
         # O
         elif all(n.isOptionSize or n.isOptionData for n, d in cols):
@@ -81,7 +81,7 @@ def columns2type(cols, prefix, delimiter="-"):
             return List(recurse([(n.drop(), d) for n, d in cols if n.isListData]))
             
         # U
-        elif all(n.isUnionTag or n.isUnionOffset or n.isUnionData or for n, d in cols):
+        elif all(n.isUnionTag or n.isUnionOffset or n.isUnionData for n, d in cols):
             assert sum(1 for n, d in cols if n.isUnionTag) == 1
             assert sum(1 for n, d in cols if n.isUnionOffset) == 1
 

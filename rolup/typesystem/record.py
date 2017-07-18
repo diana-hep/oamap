@@ -65,7 +65,7 @@ class Record(Type):
         if super(Record, self).issubtype(supertype):
             return True
 
-        elif isinstance(supertype, Record):
+        elif (isinstance(supertype, self.__class__) or isinstance(self, supertype.__class__)) and supertype.rtname == self.rtname and supertype.rtargs == self.rtargs:
             for fn, ft in supertype.of:
                 if not self.has(fn) or not self.field(fn).issubtype(supertype.field(fn)):
                     return False

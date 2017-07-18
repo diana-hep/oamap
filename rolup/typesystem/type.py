@@ -55,29 +55,30 @@ class Type(object):
         return {}
         
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.rtname == other.rtname and self.args == other.args and self.kwds == other.kwds
+        return (isinstance(other, self.__class__) or isinstance(self, other.__class__)) and self.rtname == other.rtname and self.rtargs == other.rtargs and self.args == other.args and self.kwds == other.kwds
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __lt__(self, other):
         if isinstance(other, Type):
-            selfrtname = "" if self.rtname is None else self.rtname
-            otherrtname = "" if other.rtname is None else other.rtname
-            if selfrtname == otherrtname:
-                if isinstance(other, self.__class__):
-                    selfargs = self.args + tuple(sorted(self.kwds.items()))
-                    otherargs = other.args + tuple(sorted(other.kwds.items()))
-                    return selfargs < otherargs
+            if self.rtname == other.rtname:
+                if self.rtargs == other.rtargs:
+                    if (isinstance(other, self.__class__) or isinstance(self, other.__class__)):
+                        selfargs = self.args + tuple(sorted(self.kwds.items()))
+                        otherargs = other.args + tuple(sorted(other.kwds.items()))
+                        return selfargs < otherargs
+                    else:
+                        return self.__class__.__name__ < other.__class__.__name__
                 else:
-                    return self.__class__.__name__ < other.__class__.__name__
+                    return (() if self.rtargs is None else self.rtargs) < (() if other.rtargs is None else other.rtargs)
             else:
-                return selfrtname < otherrtname
+                return ("" if self.rtname is None else self.rtname) < ("" if other.rtname is None else other.rtname)
         else:
             return False
 
     def __hash__(self):
-        return hash((self.__class__, self.rtname, self.args, tuple(sorted(self.kwds.items()))))
+        return hash((self.__class__, self.rtname, self.rtargs, self.args, tuple(sorted(self.kwds.items()))))
 
     def __contains__(self, element):
         return False
@@ -136,7 +137,7 @@ class Type(object):
             else:
                 raise TypeDefinitionError("unrecognized type in JSON: {0}".format(obj))
 
-            return Type.withrt(tpe, obj.get("rtname"), *obj.get("rtargs", []))
+            return Type.withrt(tpe, obj.get("rtname"), *obj.get("rtargs", ()))
 
         else:
             return withrepr(Primitive(numpy.dtype(obj)))
