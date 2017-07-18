@@ -264,12 +264,117 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionData(3)), "prefix"))
 
     def test_columns(self):
-        print "HERE"
-        print type2columns(boolean, "prefix")
+        # R
+        self.assertEqual(Record(), columns2type(type2columns(Record(), "prefix"), "prefix"))
+        self.assertEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(x=int32, y=float64), "prefix"), "prefix"))
+        self.assertNotEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(x=int32), "prefix"), "prefix"))
+        self.assertNotEqual(Record(x=int32), columns2type(type2columns(Record(x=int32, y=float64), "prefix"), "prefix"))
+        self.assertNotEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(y=float64), "prefix"), "prefix"))
+        self.assertNotEqual(Record(y=float64), columns2type(type2columns(Record(x=int32, y=float64), "prefix"), "prefix"))
+        self.assertNotEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(y=int32, x=float64), "prefix"), "prefix"))
+
+        self.assertEqual(Record(x=int32, y=List(float64)), columns2type(type2columns(Record(x=int32, y=List(float64)), "prefix"), "prefix"))
+        self.assertEqual(List(Record(x=int32, y=float64)), columns2type(type2columns(List(Record(x=int32, y=float64)), "prefix"), "prefix"))
+        self.assertNotEqual(List(Record(x=int32, y=float64)), columns2type(type2columns(Record(x=int32, y=List(float64)), "prefix"), "prefix"))
+
+        self.assertEqual(Record(x=int32, y=Option(float64)), columns2type(type2columns(Record(x=int32, y=Option(float64)), "prefix"), "prefix"))
+        self.assertEqual(Option(Record(x=int32, y=float64)), columns2type(type2columns(Option(Record(x=int32, y=float64)), "prefix"), "prefix"))
+        self.assertNotEqual(Option(Record(x=int32, y=float64)), columns2type(type2columns(Record(x=int32, y=Option(float64)), "prefix"), "prefix"))
+
+        self.assertEqual(Record(x=int32, y=Union(int8, uint16)), columns2type(type2columns(Record(x=int32, y=Union(int8, uint16)), "prefix"), "prefix"))
+        self.assertEqual(Record(x=int32, y=Union(int8, uint16)), columns2type(type2columns(Record(x=int32, y=Union(uint16, int8)), "prefix"), "prefix"))
+
+        self.assertEqual(Record(int32, float64), columns2type(type2columns(Record(**{"0": int32, "1": float64}), "prefix"), "prefix"))
+        self.assertEqual(Record(int32, x=float64), columns2type(type2columns(Record(**{"0": int32, "x": float64}), "prefix"), "prefix"))
+
+        # O
+        self.assertEqual(Option(boolean), columns2type(type2columns(Option(boolean), "prefix"), "prefix"))
+        self.assertNotEqual(Option(boolean), columns2type(type2columns(boolean, "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(Option(boolean), "prefix"), "prefix"))
+
+        self.assertEqual(Option(boolean), columns2type(type2columns(Option(Primitive(numpy.dtype(numpy.bool))), "prefix"), "prefix"))
+        self.assertNotEqual(Option(boolean), columns2type(type2columns(Primitive(numpy.dtype(numpy.bool)), "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(Option(Primitive(numpy.dtype(numpy.bool))), "prefix"), "prefix"))
+
+        self.assertEqual(Option(Option(boolean)), columns2type(type2columns(Option(Option(boolean)), "prefix"), "prefix"))
+        self.assertEqual(Option(Option(boolean)), columns2type(type2columns(Option(boolean), "prefix"), "prefix"))
+        self.assertEqual(Option(boolean), columns2type(type2columns(Option(Option(boolean)), "prefix"), "prefix"))
+        self.assertNotEqual(Option(Option(boolean)), columns2type(type2columns(boolean, "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(Option(Option(boolean)), "prefix"), "prefix"))
+
+        # L
+        self.assertEqual(List(boolean), columns2type(type2columns(List(boolean), "prefix"), "prefix"))
+        self.assertNotEqual(List(boolean), columns2type(type2columns(boolean, "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(List(boolean), "prefix"), "prefix"))
+
+        self.assertEqual(List(boolean), columns2type(type2columns(List(Primitive(numpy.dtype(numpy.bool))), "prefix"), "prefix"))
+        self.assertNotEqual(List(boolean), columns2type(type2columns(Primitive(numpy.dtype(numpy.bool)), "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(List(Primitive(numpy.dtype(numpy.bool))), "prefix"), "prefix"))
+
+        self.assertEqual(List(List(boolean)), columns2type(type2columns(List(List(boolean)), "prefix"), "prefix"))
+        self.assertNotEqual(List(List(boolean)), columns2type(type2columns(List(boolean), "prefix"), "prefix"))
+        self.assertNotEqual(List(boolean), columns2type(type2columns(List(List(boolean)), "prefix"), "prefix"))
+
+        # U
+        self.assertEqual(Union(), columns2type(type2columns(Union(), "prefix"), "prefix"))
+        self.assertEqual(Union(int8, uint16), columns2type(type2columns(Union(int8, uint16), "prefix"), "prefix"))
+        self.assertEqual(Union(int8, uint16), columns2type(type2columns(Union(uint16, int8), "prefix"), "prefix"))
+        self.assertNotEqual(Union(int8, uint16), columns2type(type2columns(Union(int8, float64), "prefix"), "prefix"))
+        self.assertNotEqual(Union(int8, uint16), columns2type(type2columns(Union(float64, int8), "prefix"), "prefix"))
+        self.assertNotEqual(Union(int8, int16), columns2type(type2columns(int16, "prefix"), "prefix"))
+        self.assertNotEqual(Union(int8, int16), columns2type(type2columns(Union(int16), "prefix"), "prefix"))
+        self.assertEqual(Union(int16), columns2type(type2columns(Union(int16), "prefix"), "prefix"))
+
+        # P
+        self.assertEqual(boolean, columns2type(type2columns(Primitive(numpy.dtype(numpy.bool)), "prefix"), "prefix"))
+
+        self.assertEqual(int8, columns2type(type2columns(Primitive(numpy.dtype(numpy.int8)), "prefix"), "prefix"))
+        self.assertEqual(int16, columns2type(type2columns(Primitive(numpy.dtype(numpy.int16)), "prefix"), "prefix"))
+        self.assertEqual(int32, columns2type(type2columns(Primitive(numpy.dtype(numpy.int32)), "prefix"), "prefix"))
+        self.assertEqual(int64, columns2type(type2columns(Primitive(numpy.dtype(numpy.int64)), "prefix"), "prefix"))
+
+        self.assertEqual(uint8, columns2type(type2columns(Primitive(numpy.dtype(numpy.uint8)), "prefix"), "prefix"))
+        self.assertEqual(uint16, columns2type(type2columns(Primitive(numpy.dtype(numpy.uint16)), "prefix"), "prefix"))
+        self.assertEqual(uint32, columns2type(type2columns(Primitive(numpy.dtype(numpy.uint32)), "prefix"), "prefix"))
+        self.assertEqual(uint64, columns2type(type2columns(Primitive(numpy.dtype(numpy.uint64)), "prefix"), "prefix"))
+
+        self.assertEqual(float32, columns2type(type2columns(Primitive(numpy.dtype(numpy.float32)), "prefix"), "prefix"))
+        self.assertEqual(float64, columns2type(type2columns(Primitive(numpy.dtype(numpy.float64)), "prefix"), "prefix"))
+        self.assertEqual(float128, columns2type(type2columns(Primitive(numpy.dtype(numpy.float128)), "prefix"), "prefix"))
+
+        self.assertEqual(complex64, columns2type(type2columns(Primitive(numpy.dtype(numpy.complex64)), "prefix"), "prefix"))
+        self.assertEqual(complex128, columns2type(type2columns(Primitive(numpy.dtype(numpy.complex128)), "prefix"), "prefix"))
+        self.assertEqual(complex256, columns2type(type2columns(Primitive(numpy.dtype(numpy.complex256)), "prefix"), "prefix"))
+
+        self.assertNotEqual(boolean, columns2type(type2columns(Primitive(numpy.dtype(numpy.int8)), "prefix"), "prefix"))
+        self.assertNotEqual(int8, columns2type(type2columns(Primitive(numpy.dtype(numpy.bool)), "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(Primitive(numpy.dtype(numpy.uint8)), "prefix"), "prefix"))
+        self.assertNotEqual(uint8, columns2type(type2columns(Primitive(numpy.dtype(numpy.bool)), "prefix"), "prefix"))
 
         self.assertEqual(boolean, columns2type(type2columns(boolean, "prefix"), "prefix"))
 
+        self.assertEqual(int8, columns2type(type2columns(int8, "prefix"), "prefix"))
+        self.assertEqual(int16, columns2type(type2columns(int16, "prefix"), "prefix"))
+        self.assertEqual(int32, columns2type(type2columns(int32, "prefix"), "prefix"))
+        self.assertEqual(int64, columns2type(type2columns(int64, "prefix"), "prefix"))
 
+        self.assertEqual(uint8, columns2type(type2columns(uint8, "prefix"), "prefix"))
+        self.assertEqual(uint16, columns2type(type2columns(uint16, "prefix"), "prefix"))
+        self.assertEqual(uint32, columns2type(type2columns(uint32, "prefix"), "prefix"))
+        self.assertEqual(uint64, columns2type(type2columns(uint64, "prefix"), "prefix"))
+
+        self.assertEqual(float32, columns2type(type2columns(float32, "prefix"), "prefix"))
+        self.assertEqual(float64, columns2type(type2columns(float64, "prefix"), "prefix"))
+        self.assertEqual(float128, columns2type(type2columns(float128, "prefix"), "prefix"))
+
+        self.assertEqual(complex64, columns2type(type2columns(complex64, "prefix"), "prefix"))
+        self.assertEqual(complex128, columns2type(type2columns(complex128, "prefix"), "prefix"))
+        self.assertEqual(complex256, columns2type(type2columns(complex256, "prefix"), "prefix"))
+
+        self.assertNotEqual(boolean, columns2type(type2columns(int8, "prefix"), "prefix"))
+        self.assertNotEqual(int8, columns2type(type2columns(boolean, "prefix"), "prefix"))
+        self.assertNotEqual(boolean, columns2type(type2columns(uint8, "prefix"), "prefix"))
+        self.assertNotEqual(uint8, columns2type(type2columns(boolean, "prefix"), "prefix"))
 
     def test_contain_element_others(self):
         type123 = namedtuple("type123", ["one", "two", "three"])
