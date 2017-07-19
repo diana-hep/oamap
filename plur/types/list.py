@@ -28,13 +28,16 @@ class List(Type):
 
     def __contains__(self, element):
         if isinstance(element, dict):
-            return False
-        try:
-            iter(element)
-        except TypeError:
-            return False
+            return False   # a dict is iterable but it's a record
+        elif isinstance(element, tuple) and hasattr(element, "_fields"):
+            return False   # a namedtuple is iterable but it's a record
         else:
-            return all(x in self.of for x in element)     # lists are covariant
+            try:
+                iter(element)
+            except TypeError:
+                return False
+            else:
+                return all(x in self.of for x in element)     # lists are covariant
 
     def issubtype(self, supertype):
         return super(List, self).issubtype(supertype) or \

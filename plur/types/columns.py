@@ -17,10 +17,7 @@
 import numpy
 
 from plur.util import *
-from plur.types.primitive import Primitive # P
-from plur.types.list import List           # L
-from plur.types.union import Union         # U
-from plur.types.record import Record       # R
+from plur.types import *
 from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 

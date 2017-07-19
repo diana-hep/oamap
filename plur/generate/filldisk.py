@@ -14,14 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os.path
 import struct
+import tempfile
 
-class FillableDisk(object):
-    def __init__(self, file, dtype, headersize=246):
-        if hasattr(file, "write") and hasattr(file, "seek"):
-            self.file = file
-        else:
-            self.file = open(file, "wb")
+class FillableColumnOnDisk(object):
+    def __init__(self, name, dtype, directory=None, headersize=246):
+        if directory is None:
+            directory = tempfile.gettempdir()
+        self.file = open(os.path.join(directory, name) + ".npy", "wb")
 
         self.dtype = dtype
         self.headersize = headersize
@@ -52,4 +53,4 @@ class FillableDisk(object):
             self.file.seek(6 + 2 + 4)
 
         self.file.write(header)
-        self.file.close()
+        return self.file.name
