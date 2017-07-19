@@ -16,7 +16,7 @@
 
 import json
 
-from rolup.util import *
+from plur.util import *
 
 class Type(object):
     runtimes = {}
@@ -109,20 +109,15 @@ class Type(object):
     @staticmethod
     def fromJson(obj):
         import numpy
-        from rolup.typesystem.record import Record       # R
-        from rolup.typesystem.option import Option       # O
+        from rolup.typesystem.primitive import withrepr
+        from rolup.typesystem.primitive import Primitive # P
         from rolup.typesystem.list import List           # L
         from rolup.typesystem.union import Union         # U
-        from rolup.typesystem.primitive import Primitive # P
-        from rolup.typesystem.primitive import withrepr
+        from rolup.typesystem.record import Record       # R
 
         if isinstance(obj, dict):
-            if "record" in obj:      # R
-                assert isinstance(obj["record"], dict)
-                tpe = Record(**dict((fn, Type.fromJson(ft)) for fn, ft in obj["record"].items()))
-
-            elif "option" in obj:    # O
-                tpe = Option(Type.fromJson(obj["option"]))
+            if "primitive" in obj:   # P
+                tpe = withrepr(Primitive(numpy.dtype(obj["primitive"])))
 
             elif "list" in obj:      # L
                 tpe = List(Type.fromJson(obj["list"]))
@@ -131,8 +126,9 @@ class Type(object):
                 assert isinstance(obj["union"], list)
                 tpe = Union(*[Type.fromJson(x) for x in obj["union"]])
 
-            elif "primitive" in obj: # P
-                tpe = withrepr(Primitive(numpy.dtype(obj["primitive"])))
+            elif "record" in obj:    # R
+                assert isinstance(obj["record"], dict)
+                tpe = Record(**dict((fn, Type.fromJson(ft)) for fn, ft in obj["record"].items()))
 
             else:
                 raise TypeDefinitionError("unrecognized type in JSON: {0}".format(obj))

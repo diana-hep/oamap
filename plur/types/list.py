@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from rolup.util import *
-from rolup.typesystem.type import Type
+from plur.util import *
+from plur.types.type import Type
 
 class List(Type):
     def __init__(self, of):

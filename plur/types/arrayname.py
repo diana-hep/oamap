@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from rolup.util import *
+from plur.util import *
 
 class ArrayName(object):
     def __init__(self, prefix, path=(), delimiter="-"):
@@ -63,24 +63,9 @@ class ArrayName(object):
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__.__name__, other.__class__.__name__))
 
-    # R
-    def toRecord(self, fieldname):
-        return ArrayName(self.prefix, self.path + (("R_", fieldname),), self.delimiter)
-
-    # O
-    def toOptionSize(self):
-        return ArrayName(self.prefix, self.path + (("Os",),), self.delimiter)
-
-    def toOptionOffset(self):
-        return ArrayName(self.prefix, self.path + (("Oo",),), self.delimiter)
-
-    def toOptionData(self):
-        return ArrayName(self.prefix, self.path + (("Od",),), self.delimiter)
+    # P
 
     # L
-    def toListSize(self):
-        return ArrayName(self.prefix, self.path + (("Ls",),), self.delimiter)
-
     def toListOffset(self):
         return ArrayName(self.prefix, self.path + (("Lo",),), self.delimiter)
 
@@ -96,6 +81,10 @@ class ArrayName(object):
 
     def toUnionData(self, tagnum):
         return ArrayName(self.prefix, self.path + (("Ud", repr(tagnum)),), self.delimiter)
+
+    # R
+    def toRecord(self, fieldname):
+        return ArrayName(self.prefix, self.path + (("R_", fieldname),), self.delimiter)
 
     # runtime
     def toRuntime(self, rtname, *rtargs):
@@ -115,28 +104,14 @@ class ArrayName(object):
 
         return ArrayName(self.prefix, tuple(path), self.delimiter)
 
-    # R
-    @property
-    def isRecord(self):
-        return len(self.path) > 0 and self.path[0][0] == "R_"
+    def drop(self):
+        assert not self.isPrimitive
+        return ArrayName(self.prefix, self.path[1:], self.delimiter)
 
+    # P
     @property
-    def fieldname(self):
-        assert self.isRecord
-        return self.path[0][1]
-
-    # O
-    @property
-    def isOptionSize(self):
-        return len(self.path) > 0 and self.path[0] == ("Os",)
-
-    @property
-    def isOptionOffset(self):
-        return len(self.path) > 0 and self.path[0] == ("Oo",)
-
-    @property
-    def isOptionData(self):
-        return len(self.path) > 0 and self.path[0] == ("Od",)
+    def isPrimitive(self):
+        return len(self.path) == 0
 
     # L
     @property
@@ -169,14 +144,15 @@ class ArrayName(object):
         assert self.isUnionData
         return int(self.path[0][1])
 
-    # P
+    # R
     @property
-    def isPrimitive(self):
-        return len(self.path) == 0
+    def isRecord(self):
+        return len(self.path) > 0 and self.path[0][0] == "R_"
 
-    def drop(self):
-        assert not self.isPrimitive
-        return ArrayName(self.prefix, self.path[1:], self.delimiter)
+    @property
+    def fieldname(self):
+        assert self.isRecord
+        return self.path[0][1]
 
     # runtime
     @property

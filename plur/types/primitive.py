@@ -16,8 +16,8 @@
 
 import numpy
 
-from rolup.util import *
-from rolup.typesystem.type import Type
+from plur.util import *
+from plur.types.type import Type
 
 class Primitive(Type):
     def __init__(self, of):

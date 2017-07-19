@@ -16,13 +16,13 @@
 
 import numpy
 
-from rolup.typesystem.record import Record       # R
-from rolup.typesystem.option import Option       # O
-from rolup.typesystem.list import List           # L
-from rolup.typesystem.union import Union         # U
-from rolup.typesystem.primitive import Primitive # P
-from rolup.typesystem.primitive import withrepr
-from rolup.typesystem.arrayname import ArrayName
+from plur.types.record import Record       # R
+from plur.types.option import Option       # O
+from plur.types.list import List           # L
+from plur.types.union import Union         # U
+from plur.types.primitive import Primitive # P
+from plur.types.primitive import withrepr
+from plur.types.arrayname import ArrayName
 
 def type2columns(tpe, prefix, delimiter="-", indextype=numpy.dtype(numpy.uint64)):
     def recurse(name, tpe):
@@ -57,23 +57,10 @@ def type2columns(tpe, prefix, delimiter="-", indextype=numpy.dtype(numpy.uint64)
 
 def columns2type(cols, prefix, delimiter="-"):
     def recurse(cols):
-        # R
-        if all(n.isRecord for n, d in cols):
-            fields = {}
-            for n, d in cols:
-                if n.fieldname not in fields:
-                    fields[n.fieldname] = []
-                fields[n.fieldname].append((n.drop(), d))
-
-            for fieldname, cols in fields.items():
-                fields[fieldname] = recurse(cols)
-
-            return Record(**fields)
-
-        # O
-        elif all(n.isOptionSize or n.isOptionData for n, d in cols):
-            assert sum(1 for n, d in cols if n.isOptionSize) == 1
-            return Option(recurse([(n.drop(), d) for n, d in cols if n.isOptionData]))
+        # P
+        if all(n.isPrimitive for n, d in cols) and len(cols) == 1:
+            (n, d), = cols
+            return withrepr(Primitive(d))
 
         # L
         elif all(n.isListSize or n.isListData for n, d in cols):
@@ -99,10 +86,18 @@ def columns2type(cols, prefix, delimiter="-"):
 
             return Union(*(tpe for tagnum, tpe in sorted(possibilities.items())))
 
-        # P
-        elif all(n.isPrimitive for n, d in cols) and len(cols) == 1:
-            (n, d), = cols
-            return withrepr(Primitive(d))
+        # R
+        elif all(n.isRecord for n, d in cols):
+            fields = {}
+            for n, d in cols:
+                if n.fieldname not in fields:
+                    fields[n.fieldname] = []
+                fields[n.fieldname].append((n.drop(), d))
+
+            for fieldname, cols in fields.items():
+                fields[fieldname] = recurse(cols)
+
+            return Record(**fields)
 
         else:
             raise TypeDefinitionError("unexpected set of columns: {0}".format(", ".join(n.str(prefix="") for n, d in cols)))

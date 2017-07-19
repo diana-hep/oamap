@@ -16,8 +16,8 @@
 
 import re
 
-from rolup.util import *
-from rolup.typesystem.type import Type
+from plur.util import *
+from plur.types.type import Type
 
 class Record(Type):
     def __init__(self, *positional, **named):

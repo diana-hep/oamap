@@ -21,10 +21,10 @@ from setuptools import setup
 
 def get_version():
     g = {}
-    exec(open(os.path.join("rolup", "version.py")).read(), g)
+    exec(open(os.path.join("plur", "version.py")).read(), g)
     return g["__version__"]
 
-setup(name = "rolup",
+setup(name = "plur",
       version = get_version(),
       packages = find_packages(exclude = ["tests"]),
       scripts = [],

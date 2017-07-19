@@ -15,12 +15,11 @@
 # limitations under the License.
 
 import unittest
-from collections import namedtuple
 
 import numpy
-from rolup.typesystem import *
+from plur.types import *
 
-class TestReading(unittest.TestCase):
+class TestCache(unittest.TestCase):
     def runTest(self):
         pass
 
