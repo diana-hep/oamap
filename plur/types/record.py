@@ -20,6 +20,7 @@ from plur.util import *
 from plur.types.type import Type
 
 class Record(Type):
+    _sortorder = 3
     _checkPositional = re.compile("^[1-9][0-9]*$")
     _checkNamed = re.compile("^[a-zA-Z_][a-zA-Z_0-9]*$")
 

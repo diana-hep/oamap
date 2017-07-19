@@ -21,7 +21,6 @@ import numpy
 
 from plur.util import *
 from plur.types import *
-from plur.types.type import Type
 
 def infertype(obj):
     class Intermediate(Type):

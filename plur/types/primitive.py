@@ -20,6 +20,8 @@ from plur.util import *
 from plur.types.type import Type
 
 class Primitive(Type):
+    _sortorder = 0
+
     def __init__(self, of):
         if not isinstance(of, numpy.dtype):
             of = numpy.dtype(of)
@@ -28,7 +30,44 @@ class Primitive(Type):
 
     @property
     def args(self):
-        return (str(self.of),)
+        return (self.of,)
+
+    _ltorder = {numpy.dtype("bool"):        0,
+                numpy.dtype("int8"):        1,
+                numpy.dtype("uint8"):       2,
+                numpy.dtype("int16"):       3,
+                numpy.dtype("uint16"):      4,
+                numpy.dtype("int32"):       5,
+                numpy.dtype("uint32"):      6,
+                numpy.dtype("int64"):       7,
+                numpy.dtype("uint64"):      8,
+                numpy.dtype("float32"):     9,
+                numpy.dtype("float64"):    10,
+                numpy.dtype("float128"):   11,
+                numpy.dtype("complex64"):  12,
+                numpy.dtype("complex128"): 13,
+                numpy.dtype("complex256"): 14,
+                }
+
+    def __lt__(self, other):
+        if isinstance(self, Primitive) and isinstance(other, Primitive):
+            selfi = self._ltorder.get(self.of)
+            otheri = self._ltorder.get(other.of)
+
+            if selfi is None and otheri is None:
+                return str(self.of) < str(other.of)
+
+            elif selfi is None:
+                return False
+
+            elif otheri is None:
+                return True
+
+            else:
+                return selfi < otheri
+
+        else:
+            return super(Primitive, self).__lt__(other)
 
     def __contains__(self, element):
         if element is True or element is False:
@@ -137,6 +176,8 @@ float128 = PrimitiveWithRepr(numpy.dtype("float128"), repr="float128")
 complex64 = PrimitiveWithRepr(numpy.dtype("complex64"), repr="complex64")
 complex128 = PrimitiveWithRepr(numpy.dtype("complex128"), repr="complex128")
 complex256 = PrimitiveWithRepr(numpy.dtype("complex256"), repr="complex256")
+
+primitivetypes = ["boolean", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64", "float128", "complex64", "complex128", "complex256"]
 
 def withrepr(obj):
     if isinstance(obj, Primitive):

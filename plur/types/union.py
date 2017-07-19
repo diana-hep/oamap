@@ -18,6 +18,8 @@ from plur.util import *
 from plur.types.type import Type
 
 class Union(Type):
+    _sortorder = 2
+
     def __init__(self, *of):
         if len(of) == 0:
             raise TypeDefinitionError("union must have at least one possibility")
@@ -34,7 +36,7 @@ class Union(Type):
             else:
                 yield x
 
-        self.of = tuple(sorted(flatten(of)))
+        self.of = tuple(sorted(set(flatten(of))))
         super(Union, self).__init__()
 
     @property

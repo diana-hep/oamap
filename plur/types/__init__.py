@@ -21,29 +21,6 @@ from plur.types.list import List           # L
 from plur.types.union import Union         # U
 from plur.types.record import Record       # R
 
-# logical primitives
-from plur.types.primitive import boolean
+from plur.types.primitive import *
 
-# signed integer primitives
-from plur.types.primitive import int8
-from plur.types.primitive import int16
-from plur.types.primitive import int32
-from plur.types.primitive import int64
-
-# unsigned integer primitives
-from plur.types.primitive import uint8
-from plur.types.primitive import uint16
-from plur.types.primitive import uint32
-from plur.types.primitive import uint64
-
-# floating point primitives
-from plur.types.primitive import float32
-from plur.types.primitive import float64
-from plur.types.primitive import float128
-
-# complex primitives (real float followed by imaginary float)
-from plur.types.primitive import complex64
-from plur.types.primitive import complex128
-from plur.types.primitive import complex256
-
-__all__ = ["Type", "Primitive", "List", "Union", "Record", "boolean", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64", "float128", "complex64", "complex128", "complex256"]
+__all__ = ["Type", "Primitive", "List", "Union", "Record"] + primitivetypes

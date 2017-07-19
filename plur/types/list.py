@@ -18,6 +18,8 @@ from plur.util import *
 from plur.types.type import Type
 
 class List(Type):
+    _sortorder = 1
+
     def __init__(self, of):
         self.of = of
         super(List, self).__init__()
