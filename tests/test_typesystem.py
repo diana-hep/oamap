@@ -67,7 +67,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(List(boolean), List(List(boolean)))
 
         # U
-        self.assertEqual(Union(), Union())
         self.assertEqual(Union(int8, uint16), Union(int8, uint16))
         self.assertEqual(Union(int8, uint16), Union(uint16, int8))
         self.assertNotEqual(Union(int8, uint16), Union(int8, float64))
@@ -77,7 +76,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(Union(int16), Union(int16))
 
         # R
-        self.assertEqual(Record(), Record())
         self.assertEqual(Record(x=int32, y=float64), Record(x=int32, y=float64))
         self.assertNotEqual(Record(x=int32, y=float64), Record(x=int32))
         self.assertNotEqual(Record(x=int32), Record(x=int32, y=float64))
@@ -89,15 +87,11 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(List(Record(x=int32, y=float64)), List(Record(x=int32, y=float64)))
         self.assertNotEqual(List(Record(x=int32, y=float64)), Record(x=int32, y=List(float64)))
 
-        self.assertEqual(Record(x=int32, y=Option(float64)), Record(x=int32, y=Option(float64)))
-        self.assertEqual(Option(Record(x=int32, y=float64)), Option(Record(x=int32, y=float64)))
-        self.assertNotEqual(Option(Record(x=int32, y=float64)), Record(x=int32, y=Option(float64)))
-
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Record(x=int32, y=Union(int8, uint16)))
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Record(x=int32, y=Union(uint16, int8)))
 
-        self.assertEqual(Record(int32, float64), Record(**{"0": int32, "1": float64}))
-        self.assertEqual(Record(int32, x=float64), Record(**{"0": int32, "x": float64}))
+        self.assertEqual(Record(int32, float64), Record.frompairs([("0", int32), ("1", float64)]))
+        self.assertEqual(Record(int32, x=float64), Record.frompairs([("0", int32), ("x", float64)]))
 
     def test_json(self):
         # P
@@ -165,7 +159,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(List(boolean), Type.fromJsonString(List(List(boolean)).toJsonString()))
 
         # U
-        self.assertEqual(Union(), Type.fromJsonString(Union().toJsonString()))
         self.assertEqual(Union(int8, uint16), Type.fromJsonString(Union(int8, uint16).toJsonString()))
         self.assertEqual(Union(int8, uint16), Type.fromJsonString(Union(uint16, int8).toJsonString()))
         self.assertNotEqual(Union(int8, uint16), Type.fromJsonString(Union(int8, float64).toJsonString()))
@@ -175,7 +168,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(Union(int16), Type.fromJsonString(Union(int16).toJsonString()))
 
         # R
-        self.assertEqual(Record(), Type.fromJsonString(Record().toJsonString()))
         self.assertEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(x=int32, y=float64).toJsonString()))
         self.assertNotEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(x=int32).toJsonString()))
         self.assertNotEqual(Record(x=int32), Type.fromJsonString(Record(x=int32, y=float64).toJsonString()))
@@ -187,24 +179,17 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(List(Record(x=int32, y=float64)), Type.fromJsonString(List(Record(x=int32, y=float64)).toJsonString()))
         self.assertNotEqual(List(Record(x=int32, y=float64)), Type.fromJsonString(Record(x=int32, y=List(float64)).toJsonString()))
 
-        self.assertEqual(Record(x=int32, y=Option(float64)), Type.fromJsonString(Record(x=int32, y=Option(float64)).toJsonString()))
-        self.assertEqual(Option(Record(x=int32, y=float64)), Type.fromJsonString(Option(Record(x=int32, y=float64)).toJsonString()))
-        self.assertNotEqual(Option(Record(x=int32, y=float64)), Type.fromJsonString(Record(x=int32, y=Option(float64)).toJsonString()))
-
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Type.fromJsonString(Record(x=int32, y=Union(int8, uint16)).toJsonString()))
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Type.fromJsonString(Record(x=int32, y=Union(uint16, int8)).toJsonString()))
 
-        self.assertEqual(Record(int32, float64), Type.fromJsonString(Record(**{"0": int32, "1": float64}).toJsonString()))
-        self.assertEqual(Record(int32, x=float64), Type.fromJsonString(Record(**{"0": int32, "x": float64}).toJsonString()))
+        self.assertEqual(Record(int32, float64), Type.fromJsonString(Record.frompairs([("0", int32), ("1", float64)]).toJsonString()))
+        self.assertEqual(Record(int32, x=float64), Type.fromJsonString(Record.frompairs([("0", int32), ("x", float64)]).toJsonString()))
 
     def test_arrayname(self):
         self.assertEqual(ArrayName("prefix"), ArrayName.parse(str(ArrayName("prefix")), "prefix"))
 
         self.assertEqual(ArrayName("prefix").toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toRecord("x")), "prefix"))
-        self.assertEqual(ArrayName("prefix").toOptionSize(), ArrayName.parse(str(ArrayName("prefix").toOptionSize()), "prefix"))
-        self.assertEqual(ArrayName("prefix").toOptionOffset(), ArrayName.parse(str(ArrayName("prefix").toOptionOffset()), "prefix"))
-        self.assertEqual(ArrayName("prefix").toOptionData(), ArrayName.parse(str(ArrayName("prefix").toOptionData()), "prefix"))
-        self.assertEqual(ArrayName("prefix").toListSize(), ArrayName.parse(str(ArrayName("prefix").toListSize()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListOffset()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListOffset()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListData(), ArrayName.parse(str(ArrayName("prefix").toListData()), "prefix"))
         self.assertEqual(ArrayName("prefix").toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toUnionTag()), "prefix"))
@@ -212,26 +197,20 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(ArrayName("prefix").toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toUnionData(3)), "prefix"))
 
         self.assertEqual(ArrayName("prefix").toListData().toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toListData().toRecord("x")), "prefix"))
-        self.assertEqual(ArrayName("prefix").toListData().toOptionSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionSize()), "prefix"))
-        self.assertEqual(ArrayName("prefix").toListData().toOptionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionOffset()), "prefix"))
-        self.assertEqual(ArrayName("prefix").toListData().toOptionData(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionData()), "prefix"))
-        self.assertEqual(ArrayName("prefix").toListData().toListSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toListSize()), "prefix"))
+        self.assertEqual(ArrayName("prefix").toListData().toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListData().toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListData().toListData(), ArrayName.parse(str(ArrayName("prefix").toListData().toListData()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListData().toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionTag()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListData().toUnionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionOffset()), "prefix"))
         self.assertEqual(ArrayName("prefix").toListData().toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionData(3)), "prefix"))
 
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toListData().toRecord("x")), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toOptionSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionSize()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toOptionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionOffset()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toOptionData(), ArrayName.parse(str(ArrayName("prefix").toListData().toOptionData()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toListSize(), ArrayName.parse(str(ArrayName("prefix").toListData().toListSize()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toListData(), ArrayName.parse(str(ArrayName("prefix").toListData().toListData()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionTag()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionOffset()), "prefix"))
-        self.assertNotEqual(ArrayName("prefix").toOptionData().toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionData(3)), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toRecord("x"), ArrayName.parse(str(ArrayName("prefix").toListData().toRecord("x")), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toListOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toListOffset()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toListData(), ArrayName.parse(str(ArrayName("prefix").toListData().toListData()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toUnionTag(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionTag()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toUnionOffset(), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionOffset()), "prefix"))
+        self.assertNotEqual(ArrayName("prefix").toRecord("x").toUnionData(3), ArrayName.parse(str(ArrayName("prefix").toListData().toUnionData(3)), "prefix"))
 
     def test_columns(self):
         # P
@@ -299,7 +278,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(List(boolean), columns2type(type2columns(List(List(boolean)), "prefix"), "prefix"))
 
         # U
-        self.assertEqual(Union(), columns2type(type2columns(Union(), "prefix"), "prefix"))
         self.assertEqual(Union(int8, uint16), columns2type(type2columns(Union(int8, uint16), "prefix"), "prefix"))
         self.assertEqual(Union(int8, uint16), columns2type(type2columns(Union(uint16, int8), "prefix"), "prefix"))
         self.assertNotEqual(Union(int8, uint16), columns2type(type2columns(Union(int8, float64), "prefix"), "prefix"))
@@ -309,7 +287,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(Union(int16), columns2type(type2columns(Union(int16), "prefix"), "prefix"))
 
         # R
-        self.assertEqual(Record(), columns2type(type2columns(Record(), "prefix"), "prefix"))
         self.assertEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(x=int32, y=float64), "prefix"), "prefix"))
         self.assertNotEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(x=int32), "prefix"), "prefix"))
         self.assertNotEqual(Record(x=int32), columns2type(type2columns(Record(x=int32, y=float64), "prefix"), "prefix"))
@@ -321,15 +298,11 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(List(Record(x=int32, y=float64)), columns2type(type2columns(List(Record(x=int32, y=float64)), "prefix"), "prefix"))
         self.assertNotEqual(List(Record(x=int32, y=float64)), columns2type(type2columns(Record(x=int32, y=List(float64)), "prefix"), "prefix"))
 
-        self.assertEqual(Record(x=int32, y=Option(float64)), columns2type(type2columns(Record(x=int32, y=Option(float64)), "prefix"), "prefix"))
-        self.assertEqual(Option(Record(x=int32, y=float64)), columns2type(type2columns(Option(Record(x=int32, y=float64)), "prefix"), "prefix"))
-        self.assertNotEqual(Option(Record(x=int32, y=float64)), columns2type(type2columns(Record(x=int32, y=Option(float64)), "prefix"), "prefix"))
-
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), columns2type(type2columns(Record(x=int32, y=Union(int8, uint16)), "prefix"), "prefix"))
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), columns2type(type2columns(Record(x=int32, y=Union(uint16, int8)), "prefix"), "prefix"))
 
-        self.assertEqual(Record(int32, float64), columns2type(type2columns(Record(**{"0": int32, "1": float64}), "prefix"), "prefix"))
-        self.assertEqual(Record(int32, x=float64), columns2type(type2columns(Record(**{"0": int32, "x": float64}), "prefix"), "prefix"))
+        self.assertEqual(Record(int32, float64), columns2type(type2columns(Record.frompairs([("0", int32), ("1", float64)]), "prefix"), "prefix"))
+        self.assertEqual(Record(int32, x=float64), columns2type(type2columns(Record.frompairs([("0", int32), ("x", float64)]), "prefix"), "prefix"))
 
     def test_contain_element_primitives(self):
         inf = float("inf")
@@ -550,36 +523,35 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue(None not in Union(int8, uint16))
         self.assertTrue(type0() not in Union(int8, uint16))
 
-        self.assertTrue(0 in Union(Option(int8), uint16))
-        self.assertTrue(300 in Union(Option(int8), uint16))
-        self.assertTrue(-127 in Union(Option(int8), uint16))
-        self.assertTrue(-300 not in Union(Option(int8), uint16))
-        self.assertTrue(3.14 not in Union(Option(int8), uint16))
-        self.assertTrue(False not in Union(Option(int8), uint16))
-        self.assertTrue([] not in Union(Option(int8), uint16))
-        self.assertTrue(None in Union(Option(int8), uint16))
-        self.assertTrue(type0() not in Union(Option(int8), uint16))
+        self.assertTrue(0 in Union(List(int8), uint16))
+        self.assertTrue(300 in Union(List(int8), uint16))
+        self.assertTrue(-127 not in Union(List(int8), uint16))
+        self.assertTrue(-300 not in Union(List(int8), uint16))
+        self.assertTrue(3.14 not in Union(List(int8), uint16))
+        self.assertTrue(False not in Union(List(int8), uint16))
+        self.assertTrue([] in Union(List(int8), uint16))
+        self.assertTrue(None not in Union(List(int8), uint16))
 
         # R
-        self.assertTrue({"one": 1, "two": 2.2, "three": None} in Record(one=int32, two=float64, three=Option(uint8)))
-        self.assertTrue({"one": 1, "two": None, "three": None} not in Record(one=int32, two=float64, three=Option(uint8)))
-        self.assertTrue({"one": 1, "three": None} not in Record(one=int32, two=float64, three=Option(uint8)))
-        self.assertTrue({"one": 1, "two": None, "three": None} in Record(one=int32, three=Option(uint8)))
-        self.assertTrue({"one": 1, "three": None} in Record(one=int32, three=Option(uint8)))
-        self.assertTrue({"one": 1, "two": None, "three": None} in Record())
-        self.assertTrue({"one": 1, "three": None} in Record())
-        self.assertTrue({} in Record())
-        self.assertTrue({} not in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue({"one": 1, "two": 2.2, "three": []} in Record(one=int32, two=float64, three=List(uint8)))
+        self.assertTrue({"one": 1, "two": None, "three": []} not in Record(one=int32, two=float64, three=List(uint8)))
+        self.assertTrue({"one": 1, "three": []} not in Record(one=int32, two=float64, three=List(uint8)))
+        self.assertTrue({"one": 1, "two": None, "three": []} in Record(one=int32, three=List(uint8)))
+        self.assertTrue({"one": 1, "three": []} in Record(one=int32, three=List(uint8)))
+        self.assertTrue({"one": 1, "two": None, "three": []} in Record(one=int32))
+        self.assertTrue({"one": 1, "three": []} in Record(one=int32))
+        self.assertTrue({"one": 1} in Record(one=int32))
+        self.assertTrue({} not in Record(one=int32, two=float64, three=List(uint8)))
 
-        self.assertTrue(type123(1, 2.2, None) in Record(one=int32, two=float64, three=Option(uint8)))
-        self.assertTrue(type123(1, None, None) not in Record(one=int32, two=float64, three=Option(uint8)))
-        self.assertTrue(type13(1, None) not in Record(one=int32, two=float64, three=Option(uint8)))
-        self.assertTrue(type123(1, None, None) in Record(one=int32, three=Option(uint8)))
-        self.assertTrue(type13(1, None) in Record(one=int32, three=Option(uint8)))
-        self.assertTrue(type123(1, None, None) in Record())
-        self.assertTrue(type13(1, None) in Record())
-        self.assertTrue(type0() in Record())
-        self.assertTrue(type0() not in Record(one=int32, two=float64, three=Option(uint8)))
+        self.assertTrue(type123(1, 2.2, []) in Record(one=int32, two=float64, three=List(uint8)))
+        self.assertTrue(type123(1, None, []) not in Record(one=int32, two=float64, three=List(uint8)))
+        self.assertTrue(type13(1, []) not in Record(one=int32, two=float64, three=List(uint8)))
+        self.assertTrue(type123(1, None, []) in Record(one=int32, three=List(uint8)))
+        self.assertTrue(type13(1, []) in Record(one=int32, three=List(uint8)))
+        self.assertTrue(type123(1, None, []) in Record(one=int32))
+        self.assertTrue(type13(1, []) in Record(one=int32))
+        self.assertTrue(type0() not in Record(one=int32))
+        self.assertTrue(type0() not in Record(one=int32, two=float64, three=List(uint8)))
 
     def test_contain_set_primitives(self):
         # P
@@ -829,7 +801,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertTrue (List(uint8).issubtype(List(uint64)))
         self.assertFalse(List(uint64).issubtype(List(uint8)))
         self.assertFalse(uint64.issubtype(List(uint8)))
-        self.assertFalse(Option(uint64).issubtype(List(uint8)))
 
         # U
         self.assertTrue (Union(int8, uint16).issubtype(Union(int8, uint16)))
@@ -842,13 +813,13 @@ class TestTypesystem(unittest.TestCase):
         self.assertFalse(uint32.issubtype(Union(int8, uint16)))
 
         # R
-        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
-        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int64, two=float64, three=Option(uint8))))
-        self.assertFalse(Record(one=int64, two=float64, three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
-        self.assertFalse(Record(one=int32, two=Option(float64), three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
-        self.assertFalse(Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int32, two=Option(float64), three=Option(uint8))))
-        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record(one=int32, three=Option(uint8))))
-        self.assertFalse(Record(one=int32, three=Option(uint8)).issubtype(Record(one=int32, two=float64, three=Option(uint8))))
-        self.assertTrue (Record(one=int32, two=float64, three=Option(uint8)).issubtype(Record()))
-        self.assertFalse(Record().issubtype(Record(one=int32, two=float64, three=Option(uint8))))
-        self.assertTrue (Record().issubtype(Record()))
+        self.assertTrue (Record(one=int32, two=float64, three=List(uint8)).issubtype(Record(one=int32, two=float64, three=List(uint8))))
+        self.assertTrue (Record(one=int32, two=float64, three=List(uint8)).issubtype(Record(one=int64, two=float64, three=List(uint8))))
+        self.assertFalse(Record(one=int64, two=float64, three=List(uint8)).issubtype(Record(one=int32, two=float64, three=List(uint8))))
+        self.assertFalse(Record(one=int32, two=List(float64), three=List(uint8)).issubtype(Record(one=int32, two=float64, three=List(uint8))))
+        self.assertFalse(Record(one=int32, two=float64, three=List(uint8)).issubtype(Record(one=int32, two=List(float64), three=List(uint8))))
+        self.assertTrue (Record(one=int32, two=float64, three=List(uint8)).issubtype(Record(one=int32, three=List(uint8))))
+        self.assertFalse(Record(one=int32, three=List(uint8)).issubtype(Record(one=int32, two=float64, three=List(uint8))))
+        self.assertTrue (Record(one=int32, two=float64, three=List(uint8)).issubtype(Record(one=int32)))
+        self.assertFalse(Record(one=int32).issubtype(Record(one=int32, two=float64, three=List(uint8))))
+        self.assertTrue (Record(one=int32).issubtype(Record(one=int32)))

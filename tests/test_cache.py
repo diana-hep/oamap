@@ -24,4 +24,4 @@ class TestCache(unittest.TestCase):
         pass
 
     def test_something(self):
-        print "HERE"
+        print("HERE")

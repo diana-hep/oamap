@@ -84,7 +84,7 @@ class Type(object):
         return False
 
     def issubtype(self, supertype):
-        from rolup.typesystem.union import Union
+        from plur.types.union import Union
         if isinstance(supertype, Union):
             # supertype is a Union; we must fit into any of its possibilities
             return any(self.issubtype(x) for x in supertype.of)
@@ -109,11 +109,11 @@ class Type(object):
     @staticmethod
     def fromJson(obj):
         import numpy
-        from rolup.typesystem.primitive import withrepr
-        from rolup.typesystem.primitive import Primitive # P
-        from rolup.typesystem.list import List           # L
-        from rolup.typesystem.union import Union         # U
-        from rolup.typesystem.record import Record       # R
+        from plur.types.primitive import Primitive # P
+        from plur.types.list import List           # L
+        from plur.types.union import Union         # U
+        from plur.types.record import Record       # R
+        from plur.types.primitive import withrepr
 
         if isinstance(obj, dict):
             if "primitive" in obj:   # P
@@ -128,7 +128,7 @@ class Type(object):
 
             elif "record" in obj:    # R
                 assert isinstance(obj["record"], dict)
-                tpe = Record(**dict((fn, Type.fromJson(ft)) for fn, ft in obj["record"].items()))
+                tpe = Record.frompairs((fn, Type.fromJson(ft)) for fn, ft in obj["record"].items())
 
             else:
                 raise TypeDefinitionError("unrecognized type in JSON: {0}".format(obj))

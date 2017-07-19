@@ -16,11 +16,11 @@
 
 import numpy
 
-from plur.types.record import Record       # R
-from plur.types.option import Option       # O
+from plur.util import *
+from plur.types.primitive import Primitive # P
 from plur.types.list import List           # L
 from plur.types.union import Union         # U
-from plur.types.primitive import Primitive # P
+from plur.types.record import Record       # R
 from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 
@@ -29,26 +29,27 @@ def type2columns(tpe, prefix, delimiter="-", indextype=numpy.dtype(numpy.uint64)
         if tpe.rtname is not None:
             raise NotImplementedError
 
-        if isinstance(tpe, Record):
-            out = []
-            for fn, ft in tpe.of:
-                out.extend(recurse(name.toRecord(fn), ft))
-            return out
+        # P
+        if isinstance(tpe, Primitive):
+            return [(name.str(), tpe.of)]
 
-        elif isinstance(tpe, Option):
-            return [(name.toOptionSize().str(), indextype)] + recurse(name.toOptionData(), tpe.of)
-
+        # L
         elif isinstance(tpe, List):
-            return [(name.toListSize().str(), indextype)] + recurse(name.toListData(), tpe.of)
+            return [(name.toListOffset().str(), indextype)] + recurse(name.toListData(), tpe.of)
 
+        # U
         elif isinstance(tpe, Union):
             out = [(name.toUnionTag().str(), indextype), (name.toUnionOffset().str(), indextype)]
             for i, x in enumerate(tpe.of):
                 out.extend(recurse(name.toUnionData(i), x))
             return out
 
-        elif isinstance(tpe, Primitive):
-            return [(name.str(), tpe.of)]
+        # R
+        elif isinstance(tpe, Record):
+            out = []
+            for fn, ft in tpe.of:
+                out.extend(recurse(name.toRecord(fn), ft))
+            return out
             
         else:
             assert False, "unexpected type object: {0}".format(tpe)
@@ -63,10 +64,10 @@ def columns2type(cols, prefix, delimiter="-"):
             return withrepr(Primitive(d))
 
         # L
-        elif all(n.isListSize or n.isListData for n, d in cols):
-            assert sum(1 for n, d in cols if n.isListSize) == 1
+        elif all(n.isListOffset or n.isListData for n, d in cols):
+            assert sum(1 for n, d in cols if n.isListOffset) == 1
             return List(recurse([(n.drop(), d) for n, d in cols if n.isListData]))
-            
+
         # U
         elif all(n.isUnionTag or n.isUnionOffset or n.isUnionData for n, d in cols):
             assert sum(1 for n, d in cols if n.isUnionTag) == 1
@@ -97,7 +98,7 @@ def columns2type(cols, prefix, delimiter="-"):
             for fieldname, cols in fields.items():
                 fields[fieldname] = recurse(cols)
 
-            return Record(**fields)
+            return Record.frompairs(fields.items())
 
         else:
             raise TypeDefinitionError("unexpected set of columns: {0}".format(", ".join(n.str(prefix="") for n, d in cols)))

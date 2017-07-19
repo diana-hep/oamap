@@ -115,10 +115,6 @@ class ArrayName(object):
 
     # L
     @property
-    def isListSize(self):
-        return len(self.path) > 0 and self.path[0] == ("Ls",)
-
-    @property
     def isListOffset(self):
         return len(self.path) > 0 and self.path[0] == ("Lo",)
 

@@ -20,7 +20,21 @@ from plur.util import *
 from plur.types.type import Type
 
 class Record(Type):
+    _checkPositional = re.compile("^[1-9][0-9]*$")
+    _checkNamed = re.compile("^[a-zA-Z_][a-zA-Z_0-9]*$")
+
+    @staticmethod
+    def frompairs(pairs):
+        out = Record(None)
+        out.of = sorted(pairs)
+        return out
+
     def __init__(self, *positional, **named):
+        if len(positional) + len(named) == 0:
+            raise TypeDefinitionError("record must have at least one field")
+        if any(self._checkNamed.match(n) == None for n in named):
+            raise TypeDefinitionError("record names must be identifiers (/{0}/)".format(self._checkNamed.pattern))
+
         self.of = [(repr(i), x) for i, x in enumerate(positional)] + sorted(named.items())
         super(Record, self).__init__()
 
@@ -37,8 +51,6 @@ class Record(Type):
             if fn == field:
                 return ft
         raise KeyError("no field named \"{0}\"".format(field))
-
-    _checkPositional = re.compile("^[1-9][0-9]*$")
 
     @property
     def args(self):
