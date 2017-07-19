@@ -17,11 +17,11 @@
 import unittest
 
 import numpy
-from plur.types import *
+from plur.python import *
 
-class TestCache(unittest.TestCase):
+class TestPython(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_something(self):
+    def test_types(self):
         print("HERE")
