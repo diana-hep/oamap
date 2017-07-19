@@ -16,13 +16,13 @@
 
 import numpy
 
-class ArrayInMemoryPages(object):
+class FillableMemory(object):
     def __init__(self, dtype, chunksize=4096):
         self.pages = [numpy.empty(chunksize // dtype.itemsize, dtype=dtype)]
         self.length = 0
         self.lastindex = 0
 
-    def append(self, value):
+    def fill(self, value):
         arraylength = self.arrays[-1].shape[0]
         if self.lastindex >= arraylength:
             self.arrays.append(numpy.empty(arraylength, dtype=self.arrays[-1].dtype))
@@ -32,7 +32,7 @@ class ArrayInMemoryPages(object):
         self.lastindex += 1
         self.length += 1
 
-    def array(self):
+    def finalize(self):
         return numpy.concatenate(self.arrays)[:self.length]
 
     def __getitem__(self, index):
