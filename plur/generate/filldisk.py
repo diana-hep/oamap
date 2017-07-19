@@ -17,7 +17,7 @@
 import struct
 
 class FillableDisk(object):
-    def __init__(self, file, dtype, headersize=256):
+    def __init__(self, file, dtype, headersize=246):
         if hasattr(file, "write") and hasattr(file, "seek"):
             self.file = file
         else:
@@ -43,7 +43,7 @@ class FillableDisk(object):
         self.length += 1
 
     def finalize(self):
-        header = repr({"descr": self.dtype.str, "fortran_order": False, "shape": (self.length,)})
+        header = "{{'descr': '{0}', 'fortran_order': False, 'shape': ({1},), }}".format(self.dtype.str, self.length)
         assert len(header) < self.headersize
 
         if self.headersize < 2**16:

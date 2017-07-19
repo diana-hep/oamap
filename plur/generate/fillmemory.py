@@ -23,43 +23,43 @@ class FillableMemory(object):
         self.lastindex = 0
 
     def fill(self, value):
-        arraylength = self.arrays[-1].shape[0]
-        if self.lastindex >= arraylength:
-            self.arrays.append(numpy.empty(arraylength, dtype=self.arrays[-1].dtype))
+        pagelength = self.pages[-1].shape[0]
+        if self.lastindex >= pagelength:
+            self.pages.append(numpy.empty(pagelength, dtype=self.pages[-1].dtype))
             self.lastindex = 0
 
-        self.arrays[-1][self.lastindex] = value
+        self.pages[-1][self.lastindex] = value
         self.lastindex += 1
         self.length += 1
 
     def finalize(self):
-        return numpy.concatenate(self.arrays)[:self.length]
+        return numpy.concatenate(self.pages)[:self.length]
 
     def __getitem__(self, index):
         if index < 0 or index >= self.length:
-            raise IndexError("index {0} out of bounds for ArrayInMemoryPages".format(index))
-        for array in self.arrays:
-            if index >= array.shape[0]:
-                index -= array.shape[0]
+            raise IndexError("index {0} out of bounds for FillableMemory".format(index))
+        for page in self.pages:
+            if index >= page.shape[0]:
+                index -= page.shape[0]
             else:
-                return array[index]
-        assert False, "index reduced to {0} after {1} for length {2}".format(index, sum(x.shape[0] for x in self.arrays), self.length)
+                return page[index]
+        assert False, "index reduced to {0} after {1} for length {2}".format(index, sum(x.shape[0] for x in self.pages), self.length)
 
     def __setitem__(self, index, value):
         if index < 0 or index >= self.length:
-            raise IndexError("index {0} out of bounds for ArrayInMemoryPages".format(index))
-        for array in self.arrays:
-            if index >= array.shape[0]:
-                index -= array.shape[0]
+            raise IndexError("index {0} out of bounds for FillableMemory".format(index))
+        for page in self.pages:
+            if index >= page.shape[0]:
+                index -= page.shape[0]
             else:
-                array[index] = value
-        assert False, "index reduced to {0} after {1} for length {2}".format(index, sum(x.shape[0] for x in self.arrays), self.length)
+                page[index] = value
+        assert False, "index reduced to {0} after {1} for length {2}".format(index, sum(x.shape[0] for x in self.pages), self.length)
 
     class Iterator(object):
-        def __init__(self, arrays, length):
-            self.arrays = arrays
+        def __init__(self, pages, length):
+            self.pages = pages
             self.countdown = length
-            self.arrayindex = 0
+            self.pageindex = 0
             self.index = 0
 
         def __next__(self):
@@ -67,15 +67,17 @@ class FillableMemory(object):
                 raise StopIteration
             self.countdown -= 1
 
-            array = self.arrays[self.arrayindex]
-            if self.index >= array.shape[0]:
-                self.arrayindex += 1
+            page = self.pages[self.pageindex]
+            if self.index >= page.shape[0]:
+                self.pageindex += 1
                 self.index = 0
-                array = self.arrays[self.arrayindex]
+                page = self.pages[self.pageindex]
 
-            out = array[self.index]
+            out = page[self.index]
             self.index += 1
             return out
 
+        next = __next__
+
     def __iter__(self):
-        return self.Iterator(self.arrays, self.length)
+        return self.Iterator(self.pages, self.length)
