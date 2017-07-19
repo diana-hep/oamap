@@ -18,7 +18,7 @@ import os.path
 import struct
 import tempfile
 
-class FillableColumnOnDisk(object):
+class FillableOnDisk(object):
     def __init__(self, name, dtype, directory=None, headersize=246):
         if directory is None:
             directory = tempfile.gettempdir()

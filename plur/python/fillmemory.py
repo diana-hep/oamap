@@ -16,7 +16,7 @@
 
 import numpy
 
-class FillableColumnInMemory(object):
+class FillableInMemory(object):
     def __init__(self, name, dtype, chunksize=4096):
         self.pages = [numpy.empty(chunksize // dtype.itemsize, dtype=dtype)]
         self.length = 0
