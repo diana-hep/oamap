@@ -53,12 +53,12 @@ class Type(object):
     @property
     def kwds(self):
         return {}
-        
+
+    def __hash__(self):
+        return hash((self.__class__, self.rtname, self.rtargs, self.args, tuple(sorted(self.kwds.items()))))
+
     def __eq__(self, other):
         return (isinstance(other, self.__class__) or isinstance(self, other.__class__)) and self.rtname == other.rtname and self.rtargs == other.rtargs and self.args == other.args and self.kwds == other.kwds
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
     def __lt__(self, other):
         if isinstance(other, Type):
@@ -77,8 +77,10 @@ class Type(object):
         else:
             return False
 
-    def __hash__(self):
-        return hash((self.__class__, self.rtname, self.rtargs, self.args, tuple(sorted(self.kwds.items()))))
+    def __ne__(self, other): return not self.__eq__(other)
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other): return other.__lt__(self)
+    def __ge__(self, other): return other.__lt__(self) or self.__eq__(other)
 
     def __contains__(self, element):
         return False

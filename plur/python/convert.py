@@ -15,6 +15,8 @@
 # limitations under the License.
 
 import math
+import json
+from collections import namedtuple
 
 import numpy
 
@@ -107,10 +109,11 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", of
     return dict((n.str(), f.finalize()) for n, f in fillables.items())
 
 
+class Lazy(object):
+    def toJsonString(self):
+        return json.dumps(self.toJson())
 
-
-
-class LazyList(list):
+class LazyList(list, Lazy):
     __slots__ = ["array", "at", "sub"]
 
     def __init__(self, array, at, sub):
@@ -257,16 +260,23 @@ class LazyList(list):
     def __hash__(self):
         return hash(tuple(self))
 
-    def __eq__(self, other): return len(self) == len(other) and all(x == y for x, y in zip(self, other))
+    def __eq__(self, other): return isinstance(other, list) and len(self) == len(other) and all(x == y for x, y in zip(self, other))
     def __ne__(self, other): return not self.__eq__(other)
     def __lt__(self, other):
         if isinstance(other, LazyList):
             return list(self) < list(other)
         else:
             return list(self) < other
-        
-    # __reduce__
-    # __reduce_ex__
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other):
+        if isinstance(other, LazyList):
+            return list(self) > list(other)
+        else:
+            return list(self) > other
+    def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
+
+    def toJson(self):
+        return [x.toJson() if isinstance(x, Lazy) else detach(x) for x in self]
 
 class LazyListSlice(LazyList):
     __slots__ = ["lazylist", "start", "stop", "step"]
@@ -288,6 +298,22 @@ class LazyListSlice(LazyList):
             return self._handleslice(i)
         else:
             return self.lazylist[self.start + self.step*self._normalize(i, False, 1)]
+
+def detach(obj):
+    if isinstance(obj, numpy.bool_):
+        return True if obj else False
+    elif isinstance(obj, numpy.integer):
+        return int(obj)
+    elif isinstance(obj, numpy.floating):
+        return float(obj)
+    elif isinstance(obj, numpy.complexfloating):
+        return complex(obj)
+    elif isinstance(obj, LazyList):
+        return [detach(x) for x in obj]
+    elif isinstance(obj, LazyRecord):
+        return obj._namedtuple(*[getattr(obj, fn) for fn in obj._fields])
+    else:
+        return obj
 
 def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
     if tpe is None:

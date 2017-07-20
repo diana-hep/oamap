@@ -42,14 +42,11 @@ class ArrayName(object):
     def __str__(self):
         return self.str()
 
-    def __eq__(self, other):
-        return isinstance(other, ArrayName) and self.prefix == other.prefix and self.path == other.path and self.delimiter == other.delimiter
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
     def __hash__(self):
         return hash((self.__class__, self.prefix, self.path, self.delimiter))
+
+    def __eq__(self, other):
+        return isinstance(other, ArrayName) and self.prefix == other.prefix and self.path == other.path and self.delimiter == other.delimiter
 
     def __lt__(self, other):
         if isinstance(other, ArrayName):
@@ -62,6 +59,11 @@ class ArrayName(object):
                 return self.prefix < other.prefix
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__.__name__, other.__class__.__name__))
+
+    def __ne__(self, other): return not self.__eq__(other)
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other): return other.__lt__(self)
+    def __ge__(self, other): return other.__lt__(self) or self.__eq__(other)
 
     # P
 
