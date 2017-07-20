@@ -20,6 +20,7 @@ from plur.util import *
 from plur.types import *
 from plur.types.columns import type2columns
 from plur.types.arrayname import ArrayName
+from plur.python.types import infertype
 from plur.python.fillmemory import FillableInMemory
 
 def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", indextype=numpy.dtype(numpy.uint64), **fillableOptions):
@@ -34,9 +35,18 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", in
 
     def recurse(obj, tpe, name):
         if isinstance(tpe, Primitive):
+            if not obj in tpe:
+                raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
             fillables[name].fill(obj)
 
         elif isinstance(tpe, List):
+            try:
+                iter(obj)
+                if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
+                    raise TypeError
+            except TypeError:
+                raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
+
             nameoffset = name.toListOffset()
             namedata = name.toListData()
 
@@ -56,7 +66,8 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", in
                 if t.issubtype(possibility):
                     tag = i
                     break
-            assert tag is not None
+            if tag is None:
+                raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
 
             nametag = name.toUnionTag()
             nameoffset = name.toUnionOffset()
@@ -74,10 +85,14 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", in
         elif isinstance(tpe, Record):
             if isinstance(obj, dict):
                 for fn, ft in tpe.of:
+                    if fn not in obj:
+                        raise TypeError("cannot fill {0} (missing field \"{1}\") where an object of type {2} is expected".format(obj, fn, tpe))
                     recurse(obj[fn], ft, name.toRecord(fn))
 
             else:
                 for fn, ft in tpe.of:
+                    if not hasattr(obj, fn):
+                        raise TypeError("cannot fill {0} (missing field \"{1}\") where an object of type {2} is expected".format(obj, fn, tpe))
                     recurse(getattr(obj, fn), ft, name.toRecord(fn))
 
         else:

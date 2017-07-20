@@ -17,6 +17,7 @@
 import unittest
 
 import numpy
+
 from plur.util import TypeDefinitionError
 from plur.types import *
 from plur.python import *
@@ -25,7 +26,7 @@ class TestPython(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_types(self):
+    def test_infertype(self):
         # P
         self.assertEqual(infertype(False), boolean)
         self.assertEqual(infertype(True), boolean)
@@ -185,3 +186,29 @@ class TestPython(unittest.TestCase):
 
         # R
         self.assertEqual(infertype({"one": 1, "two": 3.14}), Record(one=uint8, two=float64))
+
+    def test_toarrays(self):
+        def same(x, y):
+            if set(x.keys()) != set(y.keys()):
+                raise AssertionError("different keys:\n    {0}\n    {1}".format(sorted(x.keys()), sorted(y.keys())))
+
+            if not all(x[n].dtype == y[n].dtype and numpy.array_equal(x[n], y[n]) for n in x.keys()):
+                out = []
+                for n in sorted(x.keys()):
+                    out.append("    {0}".format(n))
+                    if not (x[n].dtype == y[n].dtype and numpy.array_equal(x[n], y[n])):
+                        out.append("        {0}\t{1}".format(x[n].dtype.str, x[n].tolist()))
+                        out.append("        {0}\t{1}".format(y[n].dtype.str, y[n].tolist()))
+                raise AssertionError("different values:\n{0}".format("\n".join(out)))
+
+        # P
+        same(toarrays("prefix", False, boolean), {"prefix": numpy.array([False])})
+        same(toarrays("prefix", 3.14, float64), {"prefix": numpy.array([3.14])})
+
+        # L
+        same(toarrays("prefix", [False, True], List(boolean)), {"prefix-Lo": numpy.array([2], dtype=numpy.uint64), "prefix-Ld": numpy.array([False, True])})
+        same(toarrays("prefix", [1, 2, 3], List(int64)), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld": numpy.array([1, 2, 3])})
+        same(toarrays("prefix", [1, 2, 3], List(float64)), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld": numpy.array([1.0, 2.0, 3.0])})
+
+        same(toarrays("prefix", [[1], [2, 3], []], List(List(int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Lo": numpy.array([1, 3, 3], dtype=numpy.uint64), "prefix-Ld-Ld": numpy.array([1, 2, 3])})
+        same(toarrays("prefix", [[], [1], [2, 3]], List(List(int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Lo": numpy.array([0, 1, 3], dtype=numpy.uint64), "prefix-Ld-Ld": numpy.array([1, 2, 3])})
