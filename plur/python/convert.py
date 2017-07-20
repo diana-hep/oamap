@@ -19,11 +19,98 @@ import numpy
 from plur.util import *
 from plur.types import *
 from plur.types.columns import type2columns
+from plur.types.columns import columns2type
 from plur.types.arrayname import ArrayName
 from plur.python.types import infertype
 from plur.python.fillmemory import FillableInMemory
 
-def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", offsettype=numpy.dtype(numpy.uint64), **fillableOptions):
+
+class LazyList(object):
+    def __init__(self, array, index, sublazy):
+        self.array = array
+        self.index = index
+        self.sublazy = sublazy
+
+    def __len__(self):
+        if self.index == 0:
+            return self.array[0]
+        else:
+            return self.array[self.index] - self.array[self.index - 1]
+
+    def __normalize(self, i):
+        if i < 0:
+            j = len(self) + i
+            if j < 0:
+                raise IndexError("LazyList index out of range: {0} for length {1}".format(i, len(self)))
+            else:
+                return j
+
+        elif i < len(self):
+            return i
+
+        else:
+            raise IndexError("LazyList index out of range: {0} for length {1}".format(i, len(self)))
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            if i.start is None: start = 0
+            else: start = self.__normalize(i.start)
+
+            if i.stop is None: stop = len(self)
+            else: stop = self.__normalize(i.stop)
+
+            if i.step is None: step = 1
+            else: step = i.step
+
+            if self.index == 0:
+                return [self.sublazy(i) for i in range(start, stop, step)]
+            else:
+                return [self.sublazy(self.array[self.index - 1] + i) for i in xrange(start, stop, step)]
+
+        else:
+            i = self.__normalize(i)
+
+            if self.index == 0:
+                return self.sublazy(i)
+            else:
+                return self.sublazy(self.array[self.index - 1] + i)
+
+    class Iterator(object):
+        def __init__(self, lazylist):
+            self.lazylist = lazylist
+            self.i = 0
+            self.length = len(lazylist)
+
+        def __next__(self):
+            if self.i >= self.length:
+                raise StopIteration
+            out = self.lazylist[self.i]
+            self.i += 1
+            return out
+
+        next = __next__
+
+    def __iter__(self):
+        return self.Iterator(self)
+
+def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
+    if tpe is None:
+        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), prefix, delimiter=delimiter)
+
+    arrays = dict((ArrayName.parse(n, prefix, delimiter=delimiter), a) for n, a in arrays.items())
+
+    def recurse(tpe, name):
+        if isinstance(tpe, Primitive):
+            return lambda index: arrays[name][index]
+
+        elif isinstance(tpe, List):
+            sublazy = recurse(tpe.of, name.toListData())
+            return lambda index: LazyList(arrays[name.toListOffset()], index, sublazy)
+
+    return recurse(tpe, ArrayName(prefix, delimiter=delimiter))(0)
+
+
+def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):
     if tpe is None:
         tpe = infertype(obj)
 

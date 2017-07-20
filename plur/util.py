@@ -17,6 +17,7 @@
 import sys
 
 if sys.version_info[0] > 2:
+    xrange = range
     long = int
 
 class TypeDefinitionError(Exception): pass

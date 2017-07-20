@@ -21,7 +21,7 @@ from plur.types import *
 from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 
-def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.uint64)):
+def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)):
     def recurse(name, tpe):
         if tpe.rtname is not None:
             raise NotImplementedError
