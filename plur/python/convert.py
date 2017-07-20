@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import new
 import math
 import json
 from collections import namedtuple
@@ -27,6 +28,8 @@ from plur.types.columns import columns2type
 from plur.types.arrayname import ArrayName
 from plur.python.types import infertype
 from plur.python.fillmemory import FillableInMemory
+
+##################################################################### toarrays
 
 def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):
     if tpe is None:
@@ -108,6 +111,7 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", of
 
     return dict((n.str(), f.finalize()) for n, f in fillables.items())
 
+##################################################################### lazy objects
 
 class Lazy(object):
     def toJsonString(self):
@@ -299,6 +303,29 @@ class LazyListSlice(LazyList):
         else:
             return self.lazylist[self.start + self.step*self._normalize(i, False, 1)]
 
+
+
+
+##################################################################### detach lazy -> persistent
+
+def detach(obj):
+    if isinstance(obj, numpy.bool_):
+        return True if obj else False
+    elif isinstance(obj, numpy.integer):
+        return int(obj)
+    elif isinstance(obj, numpy.floating):
+        return float(obj)
+    elif isinstance(obj, numpy.complexfloating):
+        return complex(obj)
+    elif isinstance(obj, LazyList):
+        return [detach(x) for x in obj]
+    elif isinstance(obj, LazyRecord):
+        return obj._namedtuple(*[getattr(obj, fn) for fn in obj._fields])
+    else:
+        return obj
+
+##################################################################### fromarrays
+
 def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
     if tpe is None:
         tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), prefix, delimiter=delimiter)
@@ -324,24 +351,26 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
             return lambda at: subs[tagarray[at]](offsetarray[at])
             
         # R
+        elif isinstance(tpe, Record):
+            fieldnames = [fn for fn in tpe.of]
 
+            class SpecificLazyRecord(LazyRecord):
+                __slots__ = fieldnames
+                _namedtuple = namedtuple("R", fieldnames)
+
+            __init__ = define("__init__", """
+def __init__(self, {0}):
+    {1}
+""".format(", ".join(fieldnames),
+           "\n    ".join("{0} = {0}".format(fn) for fn in fieldnames)))
+
+            SpecificLazyRecord.__init__ = new.instancemethod(__init__, None, SpecificLazyRecord)
+
+            subs = [recurse(ft, name.toRecord(fn)) for fn, ft in tpe.of]
+
+            return lambda at: SpecificLazyRecord(*(x(at) for x in subs))
+                
         else:
             assert False, "unexpected type object: {0}".format(tpe)
             
     return recurse(tpe, ArrayName(prefix, delimiter=delimiter))(0)
-
-def detach(obj):
-    if isinstance(obj, numpy.bool_):
-        return True if obj else False
-    elif isinstance(obj, numpy.integer):
-        return int(obj)
-    elif isinstance(obj, numpy.floating):
-        return float(obj)
-    elif isinstance(obj, numpy.complexfloating):
-        return complex(obj)
-    elif isinstance(obj, LazyList):
-        return [detach(x) for x in obj]
-    elif isinstance(obj, LazyRecord):
-        return obj._namedtuple(*[getattr(obj, fn) for fn in obj._fields])
-    else:
-        return obj
