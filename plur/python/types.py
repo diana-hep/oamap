@@ -15,7 +15,7 @@
 # limitations under the License.
 
 import numbers
-from functools import reduce
+# from functools import reduce
 
 import numpy
 
@@ -24,6 +24,8 @@ from plur.types import *
 
 def infertype(obj):
     class Intermediate(Type):
+        _sortorder = 0
+
         def resolve(self):
             raise NotImplementedError
 
@@ -54,6 +56,8 @@ def infertype(obj):
                         return uint32
                     elif self.max <= numpy.iinfo(numpy.uint64).max:
                         return uint64
+                    else:
+                        return float64
 
                 else:
                     if numpy.iinfo(numpy.int8).min <= self.min and self.max <= numpy.iinfo(numpy.int8).max:
@@ -79,40 +83,92 @@ def infertype(obj):
             Intermediate.__init__(self)
 
         def resolve(self):
-            return List(self.of)
+            return List(self.of.resolve())
 
     class IntermediateRecord(Record, Intermediate):
-        def __init__(self, named):
-            Record.__init__(self, **named)
+        def __init__(self, of):
+            self.of = of  # avoid Record's sorting and just maintain a dictionary
             Intermediate.__init__(self)
 
         def resolve(self):
-            return Record.frompairs(self.of)
+            return Record(**dict((fn, ft.resolve()) for fn, ft in self.of.items()))
 
-    def unify(types):
-        if len(types) == 0 or all(isinstance(x, Unknown) for x in types):
-            return Unknown()
+    class IntermediateUnion(Union, Intermediate):
+        def __init__(self, of):
+            self.of = of  # avoid Union's flattening, which would be premature here
+            Intermediate.__init__(self)
 
-        elif all(isinstance(x, (Unknown, Boolean)) for x in types):
+        def resolve(self):
+            return Union(*(x.resolve() for x in self.of))
+
+    def unify2(x, y):
+        # eliminate placeholders
+        if isinstance(x, Unknown):
+            return y
+
+        elif isinstance(y, Unknown):
+            return x
+
+        # P
+        elif isinstance(x, Boolean) and isinstance(y, Boolean):
             return Boolean()
 
-        elif all(isinstance(x, (Unknown, Number)) for x in types):
-            return Number(min(x.min for x in types if isinstance(x, Number)),
-                          max(x.max for x in types if isinstance(x, Number)),
-                          all(x.whole for x in types if isinstance(x, Number)),
-                          all(x.real for x in types if isinstance(x, Number)))
+        elif isinstance(x, Number) and isinstance(y, Number):
+            return Number(min(x.min, y.min), max(x.max, y.max), x.whole and y.whole, x.real and y.real)
 
-        elif all(isinstance(x, (Unknown, IntermediateList)) for x in types):
-            return IntermediateList(unify([x.of for x in types if isinstance(x, IntermediateList)]))
+        # L
+        elif isinstance(x, IntermediateList) and isinstance(y, IntermediateList):
+            return IntermediateList(unify2(x.of, y.of))
 
-        elif all(isinstance(x, (Unknown, IntermediateRecord)) for x in types):
-            fields = {}
-            for n in reduce(lambda x, y: x.union(y), (set(x.of) for x in types if isinstance(x, IntermediateRecord)), set()):
-                fields[n] = unify([x.of.get(n, Unknown()) for x in types if isinstance(x, IntermediateRecord)])
-            return IntermediateRecord(fields)
+        # U
+        elif isinstance(x, IntermediateUnion) and isinstance(y, IntermediateUnion):
+            return unify(x.of + y.of)
+
+        elif isinstance(x, IntermediateUnion):
+            return unify(x.of + [y])
+
+        elif isinstance(y, IntermediateUnion):
+            return unify([x] + y)
+
+        # R
+        elif isinstance(x, IntermediateRecord) and isinstance(y, IntermediateRecord) and set(x.of.keys()) == set(y.of.keys()):
+            return IntermediateRecord(dict((n, unify2(x.of[n], y.of[n])) for n in x.of.keys()))
+
+        # can't be unified
+        else:
+            return IntermediateUnion([x, y])
+
+    def unify(types):
+        if len(types) == 0:
+            return Unknown()
+
+        elif len(types) == 1:
+            return types[0]
+
+        elif len(types) == 2:
+            return unify2(types[0], types[1])
 
         else:
-            raise TypeDefinitionError("unable to find a common type among the following:\n    {0}".format("\n    ".join(map(repr, types))))
+            flattened = [y for x in types if isinstance(x, IntermediateUnion) for y in x.of] + [x for x in types if not isinstance(x, IntermediateUnion)]
+
+            distinct = []
+            for x in flattened:
+                found = False
+
+                for i, y in enumerate(distinct):
+                    merged = unify2(x, y)
+                    if not isinstance(merged, IntermediateUnion):
+                        distinct[i] = merged
+                        found = True
+                        break
+
+                if not found:
+                    distinct.append(x)
+
+            if len(distinct) == 1:
+                return distinct[0]
+            else:
+                return IntermediateUnion(distinct)
 
     def buildintermediate(obj):
         if obj is False or obj is True:

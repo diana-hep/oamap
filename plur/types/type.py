@@ -93,7 +93,7 @@ class Type(object):
 
     def __repr__(self):
         args = [repr(v) for v in self.args]
-        kwds = [n + " = " + repr(v) for n, v in sorted(self.kwds)]
+        kwds = [n + " = " + repr(v) for n, v in sorted(self.kwds.items())]
         return "{0}({1})".format(self.__class__.__name__, ", ".join(args + kwds))
 
     def toJsonString(self):
