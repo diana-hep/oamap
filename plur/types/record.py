@@ -64,8 +64,13 @@ class Record(Type):
     def __lt__(self, other):
         if isinstance(self, Record) and isinstance(other, Record) and self.rtname == other.rtname and self.rtargs == other.rtargs:
             # ensure that records with more fields go first (so they are checked for union membership first)
+
             if len(self.of) > len(other.of):
                 return True
+
+            elif len(self.of) < len(other.of):
+                return False
+
             else:
                 return self.of < other.of
 

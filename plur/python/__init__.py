@@ -16,9 +16,9 @@
 
 from plur.python.types import infertype
 from plur.python.convert import toarrays
-# from plur.python.convert import fromarrays
+from plur.python.convert import fromarrays
 
 from plur.python.fillmemory import FillableInMemory
 from plur.python.filldisk import FillableOnDisk
 
-__all__ = ["infertype", "toarrays", "FillableInMemory", "FillableOnDisk"]
+__all__ = ["infertype", "toarrays", "fromarrays", "FillableInMemory", "FillableOnDisk"]

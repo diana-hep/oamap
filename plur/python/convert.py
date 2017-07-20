@@ -116,6 +116,9 @@ class Lazy(object):
     def toJsonString(self):
         return json.dumps(self.toJson())
 
+    def toJson(self):
+        raise NotImplementedError
+
 class LazyList(list, Lazy):
     __slots__ = ["array", "at", "sub"]
 
@@ -237,7 +240,6 @@ class LazyList(list, Lazy):
     def __rmul__(self, reps): return reps * list(self)
     def __reversed__(self): return self[::-1]
     def count(self, value): return sum(1 for x in self if x == value)
-
     def index(self, value, *args):
         if len(args) == 0:
             start = 0
@@ -263,13 +265,18 @@ class LazyList(list, Lazy):
     def __hash__(self):
         return hash(tuple(self))
 
-    def __eq__(self, other): return isinstance(other, list) and len(self) == len(other) and all(x == y for x, y in zip(self, other))
-    def __ne__(self, other): return not self.__eq__(other)
+    def __eq__(self, other):
+        return isinstance(other, list) and len(self) == len(other) and all(x == y for x, y in zip(self, other))
+
     def __lt__(self, other):
         if isinstance(other, LazyList):
             return list(self) < list(other)
-        else:
+        elif isinstance(other, list):
             return list(self) < other
+        else:
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+
+    def __ne__(self, other): return not self.__eq__(other)
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
     def __gt__(self, other):
         if isinstance(other, LazyList):
@@ -279,7 +286,7 @@ class LazyList(list, Lazy):
     def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
 
     def toJson(self):
-        return [x.toJson() if isinstance(x, Lazy) else detach(x) for x in self]
+        return [toJson(x) for x in self]
 
 class LazyListSlice(LazyList):
     __slots__ = ["lazylist", "start", "stop", "step"]
@@ -306,6 +313,34 @@ class LazyRecord(Lazy):
     def __repr__(self):
         return repr(detach(self))
 
+    def __eq__(self, other):
+        return isinstance(other, LazyRecord) and self._fields == other._fields and all(getattr(self, fn) == getattr(other, fn) for fn in self._fields)
+
+    def __lt__(self, other):
+        if isinstance(other, LazyRecord):
+            if self._fields == other._fields:
+                return tuple(getattr(self, n) for n in self._fields) < tuple(getattr(other, n) for n in self._fields)
+
+            elif len(self._fields) > len(other._fields):
+                return True
+
+            else:
+                return self._fields < other._fields
+        else:
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+
+    def __ne__(self, other): return not self.__eq__(other)
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other):
+        if isinstance(other, LazyRecord):
+            return list(self) > list(other)
+        else:
+            return list(self) > other
+    def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
+
+    def toJson(self):
+        return dict((fn, toJson(getattr(self, fn))) for fn in self._fields)
+
 ##################################################################### detach lazy -> persistent
 
 def detach(obj):
@@ -323,6 +358,12 @@ def detach(obj):
         return obj._namedtuple(*[getattr(obj, fn) for fn in obj._fields])
     else:
         return obj
+
+def toJson(obj):
+    if isinstance(obj, Lazy):
+        return obj.toJson()
+    else:
+        return detach(obj)
 
 ##################################################################### fromarrays
 

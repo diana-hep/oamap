@@ -75,7 +75,7 @@ class Type(object):
             else:
                 return ("" if self.rtname is None else self.rtname) < ("" if other.rtname is None else other.rtname)
         else:
-            return False
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
     def __ne__(self, other): return not self.__eq__(other)
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)

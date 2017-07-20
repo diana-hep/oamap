@@ -21,6 +21,7 @@ import numpy
 from plur.util import TypeDefinitionError
 from plur.types import *
 from plur.python import *
+from plur.python.convert import toJson
 
 class TestPython(unittest.TestCase):
     def runTest(self):
@@ -243,3 +244,55 @@ class TestPython(unittest.TestCase):
         same(toarrays("prefix", [{"one": 98}, {"two": 3.14}, {"one": 99}], List(Union(Record(one=int64), Record(two=float64)))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Ut": numpy.array([0, 1, 0], dtype=numpy.uint8), "prefix-Ld-Uo": numpy.array([0, 0, 1], dtype=numpy.uint64), "prefix-Ld-Ud0-R_one": numpy.array([98, 99]), "prefix-Ld-Ud1-R_two": numpy.array([3.14])})
 
         same(toarrays("prefix", [{"one": 98}, {"one": 99, "two": 3.14}], List(Union(Record(one=int64), Record(one=int64, two=float64)))), {"prefix-Lo": numpy.array([2], dtype=numpy.uint64), "prefix-Ld-Ut": numpy.array([1, 0], dtype=numpy.uint8), "prefix-Ld-Uo": numpy.array([0, 0], dtype=numpy.uint64), "prefix-Ld-Ud0-R_one": numpy.array([99]), "prefix-Ld-Ud0-R_two": numpy.array([3.14]), "prefix-Ld-Ud1-R_one": numpy.array([98])})
+
+    def test_fromarrays(self):
+        def same(obj, tpe):
+            mid = toarrays("prefix", obj, tpe)
+            after = toJson(fromarrays("prefix", mid, tpe))
+            if after != obj:
+                raise AssertionError("fails round-trip\n    before: {0}\n    after: {1}\n{2}\n    type: {3}".format(obj, after, "\n        ".join("{0}\t{1}".format(n, a) for n, a in sorted(mid.items())), tpe))
+            if after != after:
+                raise AssertionError("fails reflexivity:\n    before: {0}\n    after: {1}".format(obj, after))
+
+        # P
+        same(False, boolean)
+        same(3.14, float64)
+
+        # L
+        same([False, True], List(boolean))
+        same([1, 2, 3], List(int64))
+        same([1, 2, 3], List(float64))
+
+        same([[1], [2, 3], []], List(List(int64)))
+        same([[], [1], [2, 3]], List(List(int64)))
+
+        # U
+        same(False, Union(boolean, int64))
+        same(1, Union(boolean, int64))
+
+        same([False, 1], List(Union(boolean, int64)))
+        same([1, False], List(Union(boolean, int64)))
+        same([1, False, 2], List(Union(boolean, int64)))
+
+        same([1, [3.14], 2], List(Union(List(float64), int64)))
+
+        same([1, [3.14, False], 2], List(Union(List(Union(boolean, float64)), int64)))
+
+        # R
+        same({"one": 1, "two": 3.14}, Record(one=int64, two=float64))
+
+        same([{"one": 1, "two": 1.1}, {"one": 2, "two": 2.2}], List(Record(one=int64, two=float64)))
+
+        same({"one": [1, 2, 3], "two": 3.14}, Record(one=List(int64), two=float64))
+
+        same([{"one": [1, 2], "two": 1.1}, {"one": [], "two": 2.2}, {"one": [3], "two": 3.3}], List(Record(one=List(int64), two=float64)))
+
+        same({"one": 99, "two": 3.14}, Record(one=int64, two=Union(boolean, float64)))
+        same({"one": 99, "two": False}, Record(one=int64, two=Union(boolean, float64)))
+
+        same([{"one": 98, "two": 3.14}, {"one": 99, "two": False}], List(Record(one=int64, two=Union(boolean, float64))))
+
+        same([{"one": 99}, {"two": 3.14}], List(Union(Record(one=int64), Record(two=float64))))
+        same([{"one": 98}, {"two": 3.14}, {"one": 99}], List(Union(Record(one=int64), Record(two=float64))))
+
+        same([{"one": 98}, {"one": 99, "two": 3.14}], List(Union(Record(one=int64), Record(one=int64, two=float64))))
