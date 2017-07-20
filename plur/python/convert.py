@@ -75,10 +75,11 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", in
 
             if namedata not in last_union_offset:
                 last_union_offset[namedata] = 0
-            last_union_offset[namedata] += 1
 
             fillables[nametag].fill(tag)
             fillables[nameoffset].fill(last_union_offset[namedata])
+
+            last_union_offset[namedata] += 1
 
             recurse(obj, tpe.of[tag], namedata)
 

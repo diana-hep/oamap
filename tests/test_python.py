@@ -214,7 +214,14 @@ class TestPython(unittest.TestCase):
         same(toarrays("prefix", [[], [1], [2, 3]], List(List(int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Lo": numpy.array([0, 1, 3], dtype=numpy.uint64), "prefix-Ld-Ld": numpy.array([1, 2, 3])})
 
         # U
+        same(toarrays("prefix", False, Union(boolean, int64)), {"prefix-Ut": numpy.array([0], dtype=numpy.uint64), "prefix-Uo": numpy.array([0], dtype=numpy.uint64), "prefix-Ud0": numpy.array([False], dtype=numpy.bool), "prefix-Ud1": numpy.array([], dtype=numpy.int64)})
+        same(toarrays("prefix", 1, Union(boolean, int64)), {"prefix-Ut": numpy.array([1], dtype=numpy.uint64), "prefix-Uo": numpy.array([0], dtype=numpy.uint64), "prefix-Ud0": numpy.array([], dtype=numpy.bool), "prefix-Ud1": numpy.array([1], dtype=numpy.int64)})
 
+        same(toarrays("prefix", [False, 1], List(Union(boolean, int64))), {"prefix-Lo": numpy.array([2], dtype=numpy.uint64), "prefix-Ld-Ut": numpy.array([0, 1], dtype=numpy.uint64), "prefix-Ld-Uo": numpy.array([0, 0], dtype=numpy.uint64), "prefix-Ld-Ud0": numpy.array([False], dtype=numpy.bool), "prefix-Ld-Ud1": numpy.array([1])})
+        same(toarrays("prefix", [1, False], List(Union(boolean, int64))), {"prefix-Lo": numpy.array([2], dtype=numpy.uint64), "prefix-Ld-Ut": numpy.array([1, 0], dtype=numpy.uint64), "prefix-Ld-Uo": numpy.array([0, 0], dtype=numpy.uint64), "prefix-Ld-Ud0": numpy.array([False], dtype=numpy.bool), "prefix-Ld-Ud1": numpy.array([1])})
+        same(toarrays("prefix", [1, False, 2], List(Union(boolean, int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Ut": numpy.array([1, 0, 1], dtype=numpy.uint64), "prefix-Ld-Uo": numpy.array([0, 0, 1], dtype=numpy.uint64), "prefix-Ld-Ud0": numpy.array([False], dtype=numpy.bool), "prefix-Ld-Ud1": numpy.array([1, 2])})
+
+        same(toarrays("prefix", [1, [3.14], 2], List(Union(List(float64), int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Ut": numpy.array([0, 1, 0], dtype=numpy.uint64), "prefix-Ld-Uo": numpy.array([0, 0, 1], dtype=numpy.uint64), "prefix-Ld-Ud0": numpy.array([1, 2]), "prefix-Ld-Ud1-Lo": numpy.array([1], dtype=numpy.uint64), "prefix-Ld-Ud1-Ld": numpy.array([ 3.14])})
 
         # R
         same(toarrays("prefix", {"one": 1, "two": 3.14}, Record(one=int64, two=float64)), {"prefix-R_one": numpy.array([1]), "prefix-R_two": numpy.array([3.14])})
@@ -224,3 +231,5 @@ class TestPython(unittest.TestCase):
         same(toarrays("prefix", {"one": [1, 2, 3], "two": 3.14}, Record(one=List(int64), two=float64)), {"prefix-R_one-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-R_one-Ld": numpy.array([1, 2, 3]), "prefix-R_two": numpy.array([3.14])})
 
         same(toarrays("prefix", [{"one": [1, 2], "two": 1.1}, {"one": [], "two": 2.2}, {"one": [3], "two": 3.3}], List(Record(one=List(int64), two=float64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-R_one-Lo": numpy.array([2, 2, 3], dtype=numpy.uint64), "prefix-Ld-R_one-Ld": numpy.array([1, 2, 3]), "prefix-Ld-R_two": numpy.array([1.1, 2.2, 3.3])})
+
+
