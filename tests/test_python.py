@@ -188,17 +188,17 @@ class TestPython(unittest.TestCase):
         self.assertEqual(infertype({"one": 1, "two": 3.14}), Record(one=uint8, two=float64))
 
     def test_toarrays(self):
-        def same(x, y):
-            if set(x.keys()) != set(y.keys()):
-                raise AssertionError("different keys:\n    {0}\n    {1}".format(sorted(x.keys()), sorted(y.keys())))
+        def same(observed, expected):
+            if set(observed.keys()) != set(expected.keys()):
+                raise AssertionError("different keys:\n    observed: {0}\n    expected: {1}".format(sorted(observed.keys()), sorted(expected.keys())))
 
-            if not all(x[n].dtype == y[n].dtype and numpy.array_equal(x[n], y[n]) for n in x.keys()):
+            if not all(observed[n].dtype == expected[n].dtype and numpy.array_equal(observed[n], expected[n]) for n in observed.keys()):
                 out = []
-                for n in sorted(x.keys()):
+                for n in sorted(observed.keys()):
                     out.append("    {0}".format(n))
-                    if not (x[n].dtype == y[n].dtype and numpy.array_equal(x[n], y[n])):
-                        out.append("        {0}\t{1}".format(x[n].dtype.str, x[n].tolist()))
-                        out.append("        {0}\t{1}".format(y[n].dtype.str, y[n].tolist()))
+                    if not (observed[n].dtype == expected[n].dtype and numpy.array_equal(observed[n], expected[n])):
+                        out.append("        {0}\t{1}".format(observed[n].dtype.str, observed[n].tolist()))
+                        out.append("        {0}\t{1}".format(expected[n].dtype.str, expected[n].tolist()))
                 raise AssertionError("different values:\n{0}".format("\n".join(out)))
 
         # P
@@ -212,3 +212,15 @@ class TestPython(unittest.TestCase):
 
         same(toarrays("prefix", [[1], [2, 3], []], List(List(int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Lo": numpy.array([1, 3, 3], dtype=numpy.uint64), "prefix-Ld-Ld": numpy.array([1, 2, 3])})
         same(toarrays("prefix", [[], [1], [2, 3]], List(List(int64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-Lo": numpy.array([0, 1, 3], dtype=numpy.uint64), "prefix-Ld-Ld": numpy.array([1, 2, 3])})
+
+        # U
+
+
+        # R
+        same(toarrays("prefix", {"one": 1, "two": 3.14}, Record(one=int64, two=float64)), {"prefix-R_one": numpy.array([1]), "prefix-R_two": numpy.array([3.14])})
+
+        same(toarrays("prefix", [{"one": 1, "two": 1.1}, {"one": 2, "two": 2.2}], List(Record(one=int64, two=float64))), {"prefix-Lo": numpy.array([2], dtype=numpy.uint64), "prefix-Ld-R_one": numpy.array([1, 2]), "prefix-Ld-R_two": numpy.array([1.1, 2.2])})
+
+        same(toarrays("prefix", {"one": [1, 2, 3], "two": 3.14}, Record(one=List(int64), two=float64)), {"prefix-R_one-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-R_one-Ld": numpy.array([1, 2, 3]), "prefix-R_two": numpy.array([3.14])})
+
+        same(toarrays("prefix", [{"one": [1, 2], "two": 1.1}, {"one": [], "two": 2.2}, {"one": [3], "two": 3.3}], List(Record(one=List(int64), two=float64))), {"prefix-Lo": numpy.array([3], dtype=numpy.uint64), "prefix-Ld-R_one-Lo": numpy.array([2, 2, 3], dtype=numpy.uint64), "prefix-Ld-R_one-Ld": numpy.array([1, 2, 3]), "prefix-Ld-R_two": numpy.array([1.1, 2.2, 3.3])})
