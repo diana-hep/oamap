@@ -128,7 +128,7 @@ def infertype(obj):
             return unify(x.of + [y])
 
         elif isinstance(y, IntermediateUnion):
-            return unify([x] + y)
+            return unify([x] + y.of)
 
         # R
         elif isinstance(x, IntermediateRecord) and isinstance(y, IntermediateRecord) and set(x.of.keys()) == set(y.of.keys()):

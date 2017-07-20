@@ -58,7 +58,7 @@ class TestPython(unittest.TestCase):
 
         self.assertEqual(infertype(1+1j), complex128)
 
-        # L
+        # L, U
         self.assertEqual(infertype([False]), List(boolean))
         self.assertEqual(infertype([True]), List(boolean))
 
@@ -150,6 +150,24 @@ class TestPython(unittest.TestCase):
         self.assertEqual(infertype([0, [0], float("inf")]), List(Union(float64, List(uint8))))
         self.assertEqual(infertype([0, [0], float("nan")]), List(Union(float64, List(uint8))))
 
+        self.assertEqual(infertype([0, [0], [], 255]), List(Union(uint8, List(uint8))))
+        self.assertEqual(infertype([255, [0], [], 256]), List(Union(uint16, List(uint8))))
+        self.assertEqual(infertype([65535, [0], [], 65536]), List(Union(uint32, List(uint8))))
+        self.assertEqual(infertype([4294967295, [0], [], 4294967296]), List(Union(uint64, List(uint8))))
+        self.assertEqual(infertype([18446744073709551615, [0], [], 18446744073709551616]), List(Union(float64, List(uint8))))
+        self.assertEqual(infertype([-1, [0], [], -128]), List(Union(int8, List(uint8))))
+        self.assertEqual(infertype([-128, [0], [], -129]), List(Union(int16, List(uint8))))
+        self.assertEqual(infertype([-32768, [0], [], -32769]), List(Union(int32, List(uint8))))
+        self.assertEqual(infertype([-2147483648, [0], [], -2147483649]), List(Union(int64, List(uint8))))
+        self.assertEqual(infertype([-9223372036854775808, [0], [], -9223372036854775809]), List(Union(float64, List(uint8))))
+        self.assertEqual(infertype([0, [0], [], 3.14]), List(Union(float64, List(uint8))))
+        self.assertEqual(infertype([0, [0], [], float("-inf")]), List(Union(float64, List(uint8))))
+        self.assertEqual(infertype([0, [0], [], float("inf")]), List(Union(float64, List(uint8))))
+        self.assertEqual(infertype([0, [0], [], float("nan")]), List(Union(float64, List(uint8))))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([[], []]))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([0, [], []]))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([0, [], [], 255]))
+
         self.assertEqual(infertype([{"one": 1, "two": 3.14}]), List(Record(one=uint8, two=float64)))
         self.assertEqual(infertype([{"one": 1, "two": 3.14}, {"one": 2, "two": 99.9}]), List(Record(one=uint8, two=float64)))
         self.assertEqual(infertype([{"one": 1, "two": 3.14}, {"one": 2.71, "two": 99.9}]), List(Record(one=float64, two=float64)))
@@ -158,3 +176,12 @@ class TestPython(unittest.TestCase):
         self.assertEqual(infertype([{"one": 1}, {"two": 3.14}, {"one": 2}]), List(Union(Record(one=uint8), Record(two=float64))))
         self.assertEqual(infertype([{"one": 1}, {"two": 3.14}, {"one": 2.71}]), List(Union(Record(one=float64), Record(two=float64))))
         self.assertEqual(infertype([{"one": 1}, {"two": 3.14}, {"one": False}]), List(Union(Record(one=Union(uint8, boolean)), Record(two=float64))))
+        self.assertEqual(infertype([{"one": 1}, {"two": 3.14}, {"one": [0]}]), List(Union(Record(one=Union(uint8, List(uint8))), Record(two=float64))))
+        self.assertEqual(infertype([{"one": 1}, {"two": 3.14}, {"one": [0]}, {"one": []}]), List(Union(Record(one=Union(uint8, List(uint8))), Record(two=float64))))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([{"one": []}, {"one": []}]))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([{"one": 1}, {"one": []}, {"one": []}]))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([{"two": 3.14}, {"one": []}, {"one": []}]))
+        self.assertRaises(TypeDefinitionError, lambda: infertype([{"one": 1}, {"two": 3.14}, {"one": []}, {"one": []}]))
+
+        # R
+        self.assertEqual(infertype({"one": 1, "two": 3.14}), Record(one=uint8, two=float64))
