@@ -50,7 +50,7 @@ class Primitive(Type):
                 }
 
     def __lt__(self, other):
-        if isinstance(self, Primitive) and isinstance(other, Primitive):
+        if isinstance(self, Primitive) and isinstance(other, Primitive) and self.rtname == other.rtname and self.rtargs == other.rtargs:
             selfi = self._ltorder.get(self.of)
             otheri = self._ltorder.get(other.of)
 

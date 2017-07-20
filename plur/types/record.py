@@ -61,6 +61,17 @@ class Record(Type):
     def kwds(self):
         return dict((fn, ft) for fn, ft in self.of if self._checkPositional.match(fn) is None)
 
+    def __lt__(self, other):
+        if isinstance(self, Record) and isinstance(other, Record) and self.rtname == other.rtname and self.rtargs == other.rtargs:
+            # ensure that records with more fields go first (so they are checked for union membership first)
+            if len(self.of) > len(other.of):
+                return True
+            else:
+                return self.of < other.of
+
+        else:
+            return super(Record, self).__lt__(other)
+
     def __contains__(self, element):
         if isinstance(element, dict):
             for fn, ft in self.of:
