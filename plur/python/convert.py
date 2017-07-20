@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import new
 import math
 import json
 from collections import namedtuple
@@ -303,8 +302,22 @@ class LazyListSlice(LazyList):
         else:
             return self.lazylist[self.start + self.step*self._normalize(i, False, 1)]
 
+class LazyRecord(Lazy): pass
 
+class LazyRecordAttribute(object):
+    __slots__ = ["f"]
 
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, instance, owner):
+        self.f(instance._at)
+
+    def __set__(self, instance, owner):
+        raise TypeError("LazyRecord object is immutable (cannot be changed in-place)")
+
+    def __delete__(self, instance):
+        raise TypeError("LazyRecord object is immutable (cannot be changed in-place)")
 
 ##################################################################### detach lazy -> persistent
 
@@ -352,23 +365,24 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
             
         # R
         elif isinstance(tpe, Record):
-            fieldnames = [fn for fn in tpe.of]
+            fieldnames = [fn for fn, ft in tpe.of]
 
             class SpecificLazyRecord(LazyRecord):
-                __slots__ = fieldnames
+                __slots__ = ["__at"]
                 _namedtuple = namedtuple("R", fieldnames)
 
-            __init__ = define("__init__", """
-def __init__(self, {0}):
-    {1}
-""".format(", ".join(fieldnames),
-           "\n    ".join("{0} = {0}".format(fn) for fn in fieldnames)))
+                def __init__(self, at):
+                    self._at = at
 
-            SpecificLazyRecord.__init__ = new.instancemethod(__init__, None, SpecificLazyRecord)
+            for fn, ft in tpe.of:
+                setattr(SpecificLazyRecord, fn, LazyRecordAttribute(recurse(ft, name.toRecord(fn))))
 
-            subs = [recurse(ft, name.toRecord(fn)) for fn, ft in tpe.of]
+            print "XHERE", SpecificLazyRecord.one, SpecificLazyRecord.two
+            print "XHERE", id(SpecificLazyRecord.one), id(SpecificLazyRecord.two)
+            print "XHERE", SpecificLazyRecord(0).one, SpecificLazyRecord(0).two
+            print "XHERE", id(SpecificLazyRecord(0).one), id(SpecificLazyRecord(0).two)
 
-            return lambda at: SpecificLazyRecord(*(x(at) for x in subs))
+            return SpecificLazyRecord
                 
         else:
             assert False, "unexpected type object: {0}".format(tpe)
