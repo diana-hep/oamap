@@ -21,7 +21,7 @@ from plur.types import *
 from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 
-def type2columns(tpe, prefix, delimiter="-", indextype=numpy.dtype(numpy.uint64)):
+def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.uint64)):
     def recurse(name, tpe):
         if tpe.rtname is not None:
             raise NotImplementedError
@@ -32,11 +32,22 @@ def type2columns(tpe, prefix, delimiter="-", indextype=numpy.dtype(numpy.uint64)
 
         # L
         elif isinstance(tpe, List):
-            return [(name.toListOffset().str(), indextype)] + recurse(name.toListData(), tpe.of)
+            return [(name.toListOffset().str(), offsettype)] + recurse(name.toListData(), tpe.of)
 
         # U
         elif isinstance(tpe, Union):
-            out = [(name.toUnionTag().str(), indextype), (name.toUnionOffset().str(), indextype)]
+            if len(tpe.of) < 2**8:
+                uniontype = numpy.dtype(numpy.uint8)
+            elif len(tpe.of) < 2**16:
+                uniontype = numpy.dtype(numpy.uint16)
+            elif len(tpe.of) < 2**32:
+                uniontype = numpy.dtype(numpy.uint32)
+            elif len(tpe.of) < 2**64:
+                uniontype = numpy.dtype(numpy.uint64)
+            else:
+                assert False, "union has way too many type possibilities ({0})".format(len(tpe.of))
+
+            out = [(name.toUnionTag().str(), uniontype), (name.toUnionOffset().str(), offsettype)]
             for i, x in enumerate(tpe.of):
                 out.extend(recurse(name.toUnionData(i), x))
             return out

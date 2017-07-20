@@ -23,11 +23,11 @@ from plur.types.arrayname import ArrayName
 from plur.python.types import infertype
 from plur.python.fillmemory import FillableInMemory
 
-def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", indextype=numpy.dtype(numpy.uint64), **fillableOptions):
+def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", offsettype=numpy.dtype(numpy.uint64), **fillableOptions):
     if tpe is None:
         tpe = infertype(obj)
 
-    dtypes = type2columns(tpe, prefix, delimiter=delimiter, indextype=indextype)
+    dtypes = type2columns(tpe, prefix, delimiter=delimiter, offsettype=offsettype)
     fillables = dict((ArrayName.parse(n, prefix, delimiter=delimiter), fillable(n, d, **fillableOptions)) for n, d in dtypes.items())
 
     last_list_offset = {}
