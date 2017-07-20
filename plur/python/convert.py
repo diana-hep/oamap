@@ -299,6 +299,37 @@ class LazyListSlice(LazyList):
         else:
             return self.lazylist[self.start + self.step*self._normalize(i, False, 1)]
 
+def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
+    if tpe is None:
+        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), prefix, delimiter=delimiter)
+
+    arrays = dict((ArrayName.parse(n, prefix, delimiter=delimiter), a) for n, a in arrays.items())
+
+    def recurse(tpe, name):
+        # P
+        if isinstance(tpe, Primitive):
+            array = arrays[name]
+            return lambda at: array[at]
+
+        # L
+        elif isinstance(tpe, List):
+            sub = recurse(tpe.of, name.toListData())
+            return lambda at: LazyList(arrays[name.toListOffset()], at, sub)
+
+        # U
+        elif isinstance(tpe, Union):
+            tagarray = arrays[name.toUnionTag()]
+            offsetarray = arrays[name.toUnionOffset()]
+            subs = [recurse(x, name.toUnionData(i)) for i, x in enumerate(tpe.of)]
+            return lambda at: subs[tagarray[at]](offsetarray[at])
+            
+        # R
+
+        else:
+            assert False, "unexpected type object: {0}".format(tpe)
+            
+    return recurse(tpe, ArrayName(prefix, delimiter=delimiter))(0)
+
 def detach(obj):
     if isinstance(obj, numpy.bool_):
         return True if obj else False
@@ -314,20 +345,3 @@ def detach(obj):
         return obj._namedtuple(*[getattr(obj, fn) for fn in obj._fields])
     else:
         return obj
-
-def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
-    if tpe is None:
-        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), prefix, delimiter=delimiter)
-
-    arrays = dict((ArrayName.parse(n, prefix, delimiter=delimiter), a) for n, a in arrays.items())
-
-    def recurse(tpe, name):
-        if isinstance(tpe, Primitive):
-            return lambda at: arrays[name][at]
-
-        elif isinstance(tpe, List):
-            sub = recurse(tpe.of, name.toListData())
-            return lambda at: LazyList(arrays[name.toListOffset()], at, sub)
-
-    return recurse(tpe, ArrayName(prefix, delimiter=delimiter))(0)
-
