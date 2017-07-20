@@ -302,22 +302,9 @@ class LazyListSlice(LazyList):
         else:
             return self.lazylist[self.start + self.step*self._normalize(i, False, 1)]
 
-class LazyRecord(Lazy): pass
-
-class LazyRecordAttribute(object):
-    __slots__ = ["f"]
-
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, instance, owner):
-        self.f(instance._at)
-
-    def __set__(self, instance, owner):
-        raise TypeError("LazyRecord object is immutable (cannot be changed in-place)")
-
-    def __delete__(self, instance):
-        raise TypeError("LazyRecord object is immutable (cannot be changed in-place)")
+class LazyRecord(Lazy):
+    def __repr__(self):
+        return repr(detach(self))
 
 ##################################################################### detach lazy -> persistent
 
@@ -366,21 +353,23 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
         # R
         elif isinstance(tpe, Record):
             fieldnames = [fn for fn, ft in tpe.of]
+            subs = dict((fn, recurse(ft, name.toRecord(fn))) for fn, ft in tpe.of)
 
             class SpecificLazyRecord(LazyRecord):
                 __slots__ = ["__at"]
+                _fields = fieldnames
                 _namedtuple = namedtuple("R", fieldnames)
 
                 def __init__(self, at):
-                    self._at = at
+                    self.__at = at
 
-            for fn, ft in tpe.of:
-                setattr(SpecificLazyRecord, fn, LazyRecordAttribute(recurse(ft, name.toRecord(fn))))
-
-            print "XHERE", SpecificLazyRecord.one, SpecificLazyRecord.two
-            print "XHERE", id(SpecificLazyRecord.one), id(SpecificLazyRecord.two)
-            print "XHERE", SpecificLazyRecord(0).one, SpecificLazyRecord(0).two
-            print "XHERE", id(SpecificLazyRecord(0).one), id(SpecificLazyRecord(0).two)
+                def __getattr__(self, name):
+                    try:
+                        f = subs[name]
+                    except KeyError:
+                        raise AttributeError("LazyRecord has no attribute \"{0}\"".format(name))
+                    else:
+                        return f(self.__at)
 
             return SpecificLazyRecord
                 
