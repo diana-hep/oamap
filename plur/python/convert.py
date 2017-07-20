@@ -318,14 +318,18 @@ class LazyRecord(Lazy):
 
     def __lt__(self, other):
         if isinstance(other, LazyRecord):
-            if self._fields == other._fields:
-                return tuple(getattr(self, n) for n in self._fields) < tuple(getattr(other, n) for n in self._fields)
-
-            elif len(self._fields) > len(other._fields):
+            if len(self._fields) > len(other._fields):
                 return True
+
+            elif len(self._fields) < len(other._fields):
+                return False
+
+            elif self._fields == other._fields:
+                return tuple(getattr(self, n) for n in self._fields) < tuple(getattr(other, n) for n in self._fields)
 
             else:
                 return self._fields < other._fields
+
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
