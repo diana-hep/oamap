@@ -123,19 +123,19 @@ class LazyList(list, Lazy):
     __slots__ = ["array", "at", "sub"]
 
     def __init__(self, array, at, sub):
-        self.array = array
-        self.at = at
-        self.sub = sub
+        self._array = array
+        self._at = at
+        self._sub = sub
 
     def __repr__(self):
         dots = ", ..." if len(self) > 4 else ""
         return "[{0}{1}]".format(", ".join(map(repr, self[:4])), dots)
 
     def __len__(self):
-        if self.at == 0:
-            return self.array[0]
+        if self._at == 0:
+            return self._array[0]
         else:
-            return self.array[self.at] - self.array[self.at - 1]
+            return self._array[self._at] - self._array[self._at - 1]
 
     def _normalize(self, i, clip, step):
         lenself = len(self)
@@ -194,10 +194,10 @@ class LazyList(list, Lazy):
             return self._handleslice(i)
         else:
             i = self._normalize(i, False, 1)
-            if self.at == 0:
-                return self.sub(i)
+            if self._at == 0:
+                return self._sub(i)
             else:
-                return self.sub(self.array[self.at - 1] + i)
+                return self._sub(self._array[self._at - 1] + i)
 
     def __getslice__(self, i, j):
         # for old-Python compatibility
@@ -205,15 +205,15 @@ class LazyList(list, Lazy):
 
     class Iterator(object):
         def __init__(self, lazylist):
-            self.lazylist = lazylist
-            self.i = 0
-            self.length = len(lazylist)
+            self._lazylist = lazylist
+            self._i = 0
+            self._length = len(lazylist)
 
         def __next__(self):
-            if self.i >= self.length:
+            if self._i >= self._length:
                 raise StopIteration
-            out = self.lazylist[self.i]
-            self.i += 1
+            out = self._lazylist[self._i]
+            self._i += 1
             return out
 
         next = __next__
@@ -292,22 +292,22 @@ class LazyListSlice(LazyList):
     __slots__ = ["lazylist", "start", "stop", "step"]
 
     def __init__(self, lazylist, start, stop, step):
-        self.lazylist = lazylist
-        self.start = start
-        self.stop = stop
-        self.step = step
+        self._lazylist = lazylist
+        self._start = start
+        self._stop = stop
+        self._step = step
 
     def __len__(self):
-        if self.step == 1:
-            return self.stop - self.start
+        if self._step == 1:
+            return self._stop - self._start
         else:
-            return int(math.ceil(float(self.stop - self.start) / self.step))
+            return int(math.ceil(float(self._stop - self._start) / self._step))
 
     def __getitem__(self, i):
         if isinstance(i, slice):
             return self._handleslice(i)
         else:
-            return self.lazylist[self.start + self.step*self._normalize(i, False, 1)]
+            return self._lazylist[self._start + self._step*self._normalize(i, False, 1)]
 
 class LazyRecord(Lazy):
     def __repr__(self):
