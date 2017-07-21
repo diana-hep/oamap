@@ -21,7 +21,7 @@ import numpy
 from plur.util import TypeDefinitionError
 from plur.types import *
 from plur.python import *
-from plur.python.convert import toJson
+from plur.python.data import toJson
 
 class TestPython(unittest.TestCase):
     def runTest(self):
