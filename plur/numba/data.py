@@ -25,14 +25,17 @@ arrays = toarrays("prefix", [1.1, 2.2, 3.3], List(float64))
 
 class Lazy(object): pass
 
-LazyPrimitive_array = arrays["prefix-Ld"]
-
 class LazyPrimitive(Lazy):
+    array = None
+
     def __init__(self, at):
         self.at = at
+        self.array = None
 
     def get(self):
-        return LazyPrimitive_array[self.at]
+        if LazyPrimitive.array is None:
+            LazyPrimitive.array = arrays["prefix-Ld"]
+        return LazyPrimitive.array[self.at]
 
 class LazyPrimitiveType(numba.types.Type):
     def __init__(self):
@@ -67,10 +70,15 @@ def lazyPrimitiveType_init(context, builder, sig, args):
     lazyPrimitive.at = at
     return lazyPrimitive._getvalue()
 
-@numba.extending.overload_method(LazyPrimitiveType, "get")
-def lazyPrimitiveType_get(lazyPrimitive):
-    def get_impl(lazyPrimitive):
-        return LazyPrimitive_array[lazyPrimitive.at]
+@numba.extending.overload_method(LazyPrimitiveType, "getitem")
+def lazyPrimitiveType_get(lazyPrimitive, ind):
+    if LazyPrimitive.array is None:
+        LazyPrimitive.array = arrays["prefix-Ld"]
+    array = LazyPrimitive.array
+
+    def get_impl(lazyPrimitive, ind):
+        return array[lazyPrimitive.at]
+
     return get_impl
 
 @numba.extending.unbox(LazyPrimitiveType)
@@ -92,13 +100,19 @@ def box_lazyPrimitive(typ, val, c):
     c.pyapi.decref(class_obj)
     return res
 
-@numba.njit
-def test1(lazyPrimitive):
-    return lazyPrimitive.get()
+print "ONE", LazyPrimitive.array
 
-print test1(LazyPrimitive(0))
-print test1(LazyPrimitive(1))
-print test1(LazyPrimitive(2))
+@numba.njit
+def test1():
+    lazyPrimitive = LazyPrimitive(1)
+    return lazyPrimitive[1]
+
+print "TWO", LazyPrimitive.array
+
+print test1()
+
+print "THREE", LazyPrimitive.array
+
 
 
 
