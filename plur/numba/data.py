@@ -14,9 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-os.chdir("../..")
-
 import numba
 
 from plur.types import *
@@ -28,14 +25,14 @@ arrays = toarrays("prefix", [1.1, 2.2, 3.3], List(float64))
 
 class Lazy(object): pass
 
-class LazyPrimitive(Lazy):
-    _array = arrays["prefix-Ld"]
+LazyPrimitive_array = arrays["prefix-Ld"]
 
+class LazyPrimitive(Lazy):
     def __init__(self, at):
-        self._at = at
+        self.at = at
 
     def get(self):
-        return self._array[self._at]
+        return LazyPrimitive_array[self.at]
 
 class LazyPrimitiveType(numba.types.Type):
     def __init__(self):
@@ -57,15 +54,51 @@ def type_lazyPrimitive(context):
 @numba.extending.register_model(LazyPrimitiveType)
 class LazyPrimitiveModel(numba.extending.models.StructModel):
     def __init__(self, dmm, fe_type):
-        members = [("_at", numba.types.int64)]
+        members = [("at", numba.types.int64)]
         super(LazyPrimitiveModel, self).__init__(dmm, fe_type, members)
 
-numba.extending.make_attribute_wrapper(LazyPrimitiveType, "_at", "_at")
+numba.extending.make_attribute_wrapper(LazyPrimitiveType, "at", "at")
+
+@numba.extending.lower_builtin(LazyPrimitive, numba.types.Integer)
+def lazyPrimitiveType_init(context, builder, sig, args):
+    typ = sig.return_type
+    at, = args
+    lazyPrimitive = numba.cgutils.create_struct_proxy(typ)(context, builder)
+    lazyPrimitive.at = at
+    return lazyPrimitive._getvalue()
 
 @numba.extending.overload_method(LazyPrimitiveType, "get")
 def lazyPrimitiveType_get(lazyPrimitive):
     def get_impl(lazyPrimitive):
-        LazyPrimitive.array[lazyPrimitive._at]
+        return LazyPrimitive_array[lazyPrimitive.at]
+    return get_impl
+
+@numba.extending.unbox(LazyPrimitiveType)
+def unbox_lazyPrimitive(typ, obj, c):
+    at_obj = c.pyapi.object_getattr_string(obj, "at")
+    lazyPrimitive = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+    lazyPrimitive.at = c.pyapi.long_as_longlong(at_obj)
+    c.pyapi.decref(at_obj)
+    is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+    return numba.extending.NativeValue(lazyPrimitive._getvalue(), is_error=is_error)
+
+@numba.extending.box(LazyPrimitiveType)
+def box_lazyPrimitive(typ, val, c):
+    lazyPrimitive = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+    at_obj = c.pyapi.long_fromlong(lazyPrimitive.at)
+    class_obj = c.pyapi.unserialize(c.pyapi.serialize_object(LazyPrimitive))
+    res = c.pyapi.call_function_objargs(class_obj, (at_obj,))
+    c.pyapi.decref(at_obj)
+    c.pyapi.decref(class_obj)
+    return res
+
+@numba.njit
+def test1(lazyPrimitive):
+    return lazyPrimitive.get()
+
+print test1(LazyPrimitive(0))
+print test1(LazyPrimitive(1))
+print test1(LazyPrimitive(2))
 
 
 
@@ -76,37 +109,33 @@ def lazyPrimitiveType_get(lazyPrimitive):
 
 
 
+# class LazyList(Lazy):
+#     array = arrays["prefix-Lo"]
+#     sub = LazyPrimitive
 
+#     def __init__(self, at):
+#         self.at = at
 
+#     def len(self):
+#         if self.at == 0:
+#             return self.array[0]
+#         else:
+#             return self.array[self.at] - self.array[self.at - 1]
 
+#     def get(self, i):
+#         if self.at == 0:
+#             return self.sub(i)
+#         else:
+#             return self.sub(self.array[self.at - 1] + i)
 
-class LazyList(Lazy):
-    array = arrays["prefix-Lo"]
-    sub = LazyPrimitive
+# class LazyListType(numba.types.Type):
+#     def __init__(self):
+#         super(LazyListType, self).__init__(name="LazyList")
 
-    def __init__(self, at):
-        self.at = at
-
-    def len(self):
-        if self.at == 0:
-            return self.array[0]
-        else:
-            return self.array[self.at] - self.array[self.at - 1]
-
-    def get(self, i):
-        if self.at == 0:
-            return self.sub(i)
-        else:
-            return self.sub(self.array[self.at - 1] + i)
-
-class LazyListType(numba.types.Type):
-    def __init__(self):
-        super(LazyListType, self).__init__(name="LazyList")
-
-lazyListType = LazyListType()
-@numba.extending.typeof_impl.register(LazyList)
-def typeof_index(val, c):
-    return lazyListType
+# lazyListType = LazyListType()
+# @numba.extending.typeof_impl.register(LazyList)
+# def typeof_index(val, c):
+#     return lazyListType
 
 
 
