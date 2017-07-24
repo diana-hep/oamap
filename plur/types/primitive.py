@@ -179,26 +179,32 @@ complex256 = PrimitiveWithRepr(numpy.dtype("complex256"), repr="complex256")
 
 primitivetypes = ["boolean", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64", "float128", "complex64", "complex128", "complex256"]
 
-def withrepr(obj):
+def withrepr(obj, copy=False):
+    def wrap(x):
+        if copy:
+            return PrimitiveWithRepr(x.of, repr=x._repr)
+        else:
+            return x
+
     if isinstance(obj, Primitive):
-        if obj.of == boolean.of: return boolean
+        if obj.of == boolean.of: return wrap(boolean)
 
-        elif obj.of == int8.of: return int8
-        elif obj.of == int16.of: return int16
-        elif obj.of == int32.of: return int32
-        elif obj.of == int64.of: return int64
+        elif obj.of == int8.of: return wrap(int8)
+        elif obj.of == int16.of: return wrap(int16)
+        elif obj.of == int32.of: return wrap(int32)
+        elif obj.of == int64.of: return wrap(int64)
 
-        elif obj.of == uint8.of: return uint8
-        elif obj.of == uint16.of: return uint16
-        elif obj.of == uint32.of: return uint32
-        elif obj.of == uint64.of: return uint64
+        elif obj.of == uint8.of: return wrap(uint8)
+        elif obj.of == uint16.of: return wrap(uint16)
+        elif obj.of == uint32.of: return wrap(uint32)
+        elif obj.of == uint64.of: return wrap(uint64)
 
-        elif obj.of == float32.of: return float32
-        elif obj.of == float64.of: return float64
-        elif obj.of == float128.of: return float128
+        elif obj.of == float32.of: return wrap(float32)
+        elif obj.of == float64.of: return wrap(float64)
+        elif obj.of == float128.of: return wrap(float128)
 
-        elif obj.of == complex64.of: return complex64
-        elif obj.of == complex128.of: return complex128
-        elif obj.of == complex256.of: return complex256
+        elif obj.of == complex64.of: return wrap(complex64)
+        elif obj.of == complex128.of: return wrap(complex128)
+        elif obj.of == complex256.of: return wrap(complex256)
 
     return obj

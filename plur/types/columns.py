@@ -65,16 +65,20 @@ def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)
     return dict(recurse(ArrayName(prefix, delimiter=delimiter), tpe))
 
 def columns2type(cols, prefix, delimiter="-"):
-    def recurse(cols):
+    def recurse(cols, name):
         # P
         if all(n.isPrimitive for n, d in cols) and len(cols) == 1:
             (n, d), = cols
-            return withrepr(Primitive(d))
+            out = withrepr(Primitive(d), copy=True)
+            out.data = name.str()
+            return out
 
         # L
         elif all(n.isListOffset or n.isListData for n, d in cols):
             assert sum(1 for n, d in cols if n.isListOffset) == 1
-            return List(recurse([(n.drop(), d) for n, d in cols if n.isListData]))
+            out = List(recurse([(n.drop(), d) for n, d in cols if n.isListData], name.toListData()))
+            out.offset = name.toListOffset().str()
+            return out
 
         # U
         elif all(n.isUnionTag or n.isUnionOffset or n.isUnionData for n, d in cols):
@@ -91,9 +95,12 @@ def columns2type(cols, prefix, delimiter="-"):
             assert list(possibilities.keys()) == list(range(len(possibilities)))
 
             for tagnum, cols in possibilities.items():
-                possibilities[tagnum] = recurse(cols)
+                possibilities[tagnum] = recurse(cols, name.toUnionData(tagnum))
 
-            return Union(*(tpe for tagnum, tpe in sorted(possibilities.items())))
+            out = Union(*(tpe for tagnum, tpe in sorted(possibilities.items())))
+            out.tag = name.toUnionTag().str()
+            out.offset = name.toUnionOffset().str()
+            return out
 
         # R
         elif all(n.isRecord for n, d in cols):
@@ -104,7 +111,7 @@ def columns2type(cols, prefix, delimiter="-"):
                 fields[n.fieldname].append((n.drop(), d))
 
             for fieldname, cols in fields.items():
-                fields[fieldname] = recurse(cols)
+                fields[fieldname] = recurse(cols, name.toRecord(fieldname))
 
             return Record.frompairs(fields.items())
 
@@ -112,4 +119,4 @@ def columns2type(cols, prefix, delimiter="-"):
             raise TypeDefinitionError("unexpected set of columns: {0}".format(", ".join(n.str(prefix="") for n, d in cols)))
         
     parsed = [(ArrayName.parse(n, prefix, delimiter=delimiter), d) for n, d in cols.items()]
-    return recurse([(n, d) for n, d in parsed if n is not None])
+    return recurse([(n, d) for n, d in parsed if n is not None], ArrayName(prefix, delimiter=delimiter))
