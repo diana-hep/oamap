@@ -17,6 +17,7 @@
 import ast
 from types import MethodType
 
+from plur.util import *
 from plur.types import *
 from plur.thirdparty.meta.decompiler.instructions import make_function
 
@@ -67,10 +68,21 @@ def generate(plurtype, format, **subs):
                 setattr(x, fieldname, recurse(getattr(x, fieldname)))
             return x
 
+        elif isinstance(x, list):
+            return map(recurse, x)
+
         else:
             return x
 
-    out = recurse(ast.parse(format).body[0].value)
+    parsed = ast.parse(format)
+    if len(parsed.body) == 1:
+        if isinstance(parsed.body[0], ast.Expr):
+            out = recurse(parsed.body[0].value)
+        else:
+            out = recurse(parsed.body[0])
+    else:
+        out = recurse(parsed.body)
+
     out.plurtype = plurtype
     return out
 
@@ -96,6 +108,26 @@ def rewrite(fcn, paramtypes, environment={}):
         for n, t in fcn.__annotations__:
             if n != "return" and n not in symbols:
                 symbols[n] = t
+
+    parameters = [n.id if isinstance(n, ast.Name) else n.arg for n in syntaxtree.args.args]
+    toreplace = list(symbols.keys())
+
+    if not all(x in parameters for x in toreplace):
+        raise TypeError("all paramtypes ({0}) must be arguments of the function ({1})".format(", ".join(toreplace), ", ".join(parameters)))
+
+    defaults = fcn.func_defaults if hasattr(fcn, "func_defaults") else fcn.__defaults__
+    if defaults is None:
+        defaults = ()
+
+    newargs = []
+    for i, (n, arg) in enumerate(zip(parameters, syntaxtree.args.args)):
+        if n in toreplace and i + len(defaults) >= len(parameters):
+            raise TypeError("paramtypes ({0}) must not have default values".format(", ".join(toreplace)))
+
+        if n not in toreplace:
+            newargs.append(arg)
+
+    syntaxtree.args.args = newargs
 
     if not isinstance(environment, dict):
         raise TypeError("propagate takes a Python dict (e.g. vars()) as its third argument")
@@ -128,19 +160,23 @@ def rewrite(fcn, paramtypes, environment={}):
 
     ####### actually transform the code
 
+    columns = {}
     veto = set()
     number = [0]
-    def rename():
-        name = "array_{0}".format(number[0])
-        number[0] += 1
-        if name in veto:
-            return rename()
+    def colname(column):
+        if column in columns:
+            return columns[column]
         else:
-            return name
+            name = "array_{0}".format(number[0])
+            number[0] += 1
+            if name in veto:
+                return colname(column)
+            else:
+                columns[column] = name
+                return name
 
     enclosedfcns = {}
     encloseddata = {}
-    columns = {}
 
     def recurse(node, symboltypes=symbols):
         if isinstance(node, ast.Name):
@@ -148,7 +184,7 @@ def rewrite(fcn, paramtypes, environment={}):
 
         handlername = "do_" + node.__class__.__name__
         if handlername in globals():
-            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, rename)
+            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname)
 
         else:
             for fieldname in node._fields:
@@ -160,7 +196,13 @@ def rewrite(fcn, paramtypes, environment={}):
 
             return node
 
-    return recurse(syntaxtree), enclosedfcns, encloseddata, columns
+    out = recurse(syntaxtree)
+
+    out.args.args = [ast.Name(numbered, ast.Param()) if py2 else ast.arg(numbered, None) for named, numbered in columns.items()] + out.args.args
+
+    out.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + out.body
+
+    return out, enclosedfcns, encloseddata, dict((y, x) for x, y in columns.items())
 
 ##################################################################### specialized rules for each Python AST type
 
@@ -296,7 +338,7 @@ def rewrite(fcn, paramtypes, environment={}):
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
-def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, rename):
+def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname):
     if isinstance(node.ctx, ast.Load):
         if node.id in symboltypes:
             node.plurtype = symboltypes[node.id]
@@ -350,7 +392,7 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, columns,
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, rename):
+def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname):
     node.value = recurse(node.value)
     node.slice = recurse(node.slice)
 
@@ -362,18 +404,12 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, col
             raise NotImplementedError("list dereference in {0} context".format(node.ctx))
 
         if isinstance(node.value.plurtype.of, Primitive):
-            data = rename()
-            columns[data] = node.value.plurtype.of.data
-
-            offset = rename()
-            columns[offset] = node.value.plurtype.offset
-
             return generate(node.value.plurtype.of,
                             "data[i] if at == 0 else data[offset[at - 1] + i]",
                             at = recurse(node.value),
                             i = recurse(node.slice),
-                            data = ast.Name(data, ast.Load()),
-                            offset = ast.Name(offset, ast.Load()))
+                            data = ast.Name(colname(node.value.plurtype.of.data), ast.Load()),
+                            offset = ast.Name(colname(node.value.plurtype.offset), ast.Load()))
 
         else:
             raise NotImplementedError

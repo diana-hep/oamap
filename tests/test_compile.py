@@ -34,8 +34,8 @@ class TestCompile(unittest.TestCase):
         arrays = toarrays("prefix", [1, 2, 3, 4, 5])
         tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
 
-        def f(xs):
-            return xs[2]
+        def f(xs, y):
+            return xs[2] + y
 
         code, enclosedfcns, encloseddata, columns = rewrite(f, {"xs": tpe})
         print dump_python_source(code)

@@ -19,5 +19,8 @@ import sys
 if sys.version_info[0] > 2:
     xrange = range
     long = int
+    py2 = False
+else:
+    py2 = True
 
 class TypeDefinitionError(Exception): pass
