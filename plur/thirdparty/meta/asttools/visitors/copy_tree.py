@@ -3,7 +3,7 @@ Created on Dec 12, 2011
 
 @author: sean
 '''
-from meta.asttools import Visitor
+from . import Visitor
 import ast
 
 #FIXME: add tests

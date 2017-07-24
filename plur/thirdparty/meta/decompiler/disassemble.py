@@ -8,7 +8,7 @@ from __future__ import print_function
 from dis import findlabels, findlinestarts
 import types
 import sys
-from meta.bytecodetools.disassembler_ import disassembler
+from ..bytecodetools.disassembler_ import disassembler
 import opcode
 
 py3 = sys.version_info.major >= 3

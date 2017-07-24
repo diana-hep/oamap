@@ -5,7 +5,7 @@ Created on Aug 3, 2011
 '''
 
 import _ast
-from meta.asttools.visitors import Visitor
+from ..visitors import Visitor
 
 class Replacer(Visitor):
     '''

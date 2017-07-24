@@ -9,7 +9,7 @@ from __future__ import print_function
 import opcode
 from dis import findlabels, findlinestarts
 import sys
-from meta.bytecodetools.instruction import Instruction
+from ..bytecodetools.instruction import Instruction
 
 py3 = sys.version_info.major >= 3
 co_ord = (lambda c:c) if py3 else ord

@@ -4,7 +4,7 @@ Created on Jul 18, 2011
 @author: sean
 '''
 import _ast
-from meta.asttools import Visitor, visit_children
+from .. import Visitor, visit_children
 
 def removeable(self, node):
     '''

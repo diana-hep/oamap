@@ -5,12 +5,12 @@ Created on Jul 14, 2011
 '''
 from __future__ import print_function
 
-from meta.decompiler.simple_instructions import SimpleInstructions
-from meta.decompiler.control_flow_instructions import CtrlFlowInstructions
+from ..decompiler.simple_instructions import SimpleInstructions
+from ..decompiler.control_flow_instructions import CtrlFlowInstructions
 import _ast
-from meta.asttools import print_ast
-from meta.utils import py3, py3op, py2op
-from meta.decompiler.expression_mutator import ExpressionMutator
+from ..asttools import print_ast
+from ..utils import py3, py3op, py2op
+from ..decompiler.expression_mutator import ExpressionMutator
 from ast import copy_location as cpy_loc
 
 function_ops = ['CALL_FUNCTION', 'CALL_FUNCTION_KW', 'CALL_FUNCTION_VAR', 'CALL_FUNCTION_VAR_KW']
@@ -61,7 +61,7 @@ def pop_return(stmnts):
 
 
 def make_module(code):
-        from meta.decompiler.disassemble import disassemble
+        from ..decompiler.disassemble import disassemble
         instructions = Instructions(disassemble(code))
         stmnts = instructions.stmnt()
 
@@ -79,7 +79,7 @@ def make_module(code):
 
 @py2op
 def make_function(code, defaults=None, lineno=0):
-        from meta.decompiler.disassemble import disassemble
+        from ..decompiler.disassemble import disassemble
 
         instructions = Instructions(disassemble(code))
 
@@ -130,7 +130,7 @@ def make_function(code, defaults=None, lineno=0):
 
 @make_function.py3op
 def make_function(code, defaults=None, annotations=(), kw_defaults=(), lineno=0):
-        from meta.decompiler.disassemble import disassemble
+        from ..decompiler.disassemble import disassemble
 
         instructions = Instructions(disassemble(code))
 

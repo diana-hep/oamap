@@ -5,10 +5,10 @@ Created on Jul 15, 2011
 '''
 from __future__ import print_function
 import _ast
-from meta.asttools import Visitor
+from . import Visitor
 from string import Formatter
 import sys
-from meta.utils import py3op, py2op
+from ...utils import py3op, py2op
 from contextlib import contextmanager
 
 if sys.version_info.major < 3:

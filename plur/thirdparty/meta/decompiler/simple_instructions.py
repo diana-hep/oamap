@@ -9,10 +9,10 @@ from opcode import *
 import _ast
 import sys
 
-from meta.utils import py3, py3op, py2op
-from meta.asttools.visitors.print_visitor import print_ast, dump_ast
-from meta.asttools import cmp_ast
-from meta.decompiler.expression_mutator import ExpressionMutator
+from ..utils import py3, py3op, py2op
+from ..asttools.visitors.print_visitor import print_ast, dump_ast
+from ..asttools import cmp_ast
+from ..decompiler.expression_mutator import ExpressionMutator
 
 if py3:
     class _ast_Print: pass

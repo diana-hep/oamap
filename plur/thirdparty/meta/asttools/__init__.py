@@ -7,7 +7,7 @@ This module uses the python `ast` moduel exclusivly not the depricated `compiler
 import _ast
 import ast
 
-from meta.asttools.visitors import dont_visit, visit_children, Visitor
+from ..asttools.visitors import dont_visit, visit_children, Visitor
 
 
 class Undedined: pass
@@ -47,9 +47,9 @@ def cmp_ast(node1, node2):
 # 
 #===============================================================================
 
-from meta.asttools.visitors.print_visitor import print_ast, dump_ast as str_ast
-from meta.asttools.visitors.pysourcegen import python_source, dump_python_source
-from meta.asttools.visitors.cond_symbol_visitor import lhs, rhs
-from meta.asttools.visitors.cond_symbol_visitor import conditional_lhs, conditional_symbols
-from meta.asttools.visitors.symbol_visitor import get_symbols
-from meta.asttools.visitors.graph_visitor import make_graph
+from ..asttools.visitors.print_visitor import print_ast, dump_ast as str_ast
+from ..asttools.visitors.pysourcegen import python_source, dump_python_source
+from ..asttools.visitors.cond_symbol_visitor import lhs, rhs
+from ..asttools.visitors.cond_symbol_visitor import conditional_lhs, conditional_symbols
+from ..asttools.visitors.symbol_visitor import get_symbols
+from ..asttools.visitors.graph_visitor import make_graph

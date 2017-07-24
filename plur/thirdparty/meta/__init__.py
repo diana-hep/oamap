@@ -1,6 +1,6 @@
 
-from meta.decompiler.instructions import make_module
-from meta.asttools.visitors.pysourcegen import dump_python_source
+from plur.thirdparty.meta.decompiler.instructions import make_module
+from plur.thirdparty.meta.asttools.visitors.pysourcegen import dump_python_source
 import sys
 def decompile(code, mode='exec'):
     '''

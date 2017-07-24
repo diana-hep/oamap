@@ -6,9 +6,9 @@ Created on Jul 14, 2011
 from __future__ import print_function
 import opcode
 import _ast
-from meta.bytecodetools.instruction import Instruction
-from meta.asttools.visitors.print_visitor import print_ast
-from meta.utils import py3op, py2op, py3
+from ..bytecodetools.instruction import Instruction
+from ..asttools.visitors.print_visitor import print_ast
+from ..utils import py3op, py2op, py3
 AND_JUMPS = ['JUMP_IF_FALSE_OR_POP', 'POP_JUMP_IF_FALSE']
 OR_JUMPS = ['JUMP_IF_TRUE_OR_POP', 'POP_JUMP_IF_TRUE']
 JUMPS = AND_JUMPS + OR_JUMPS

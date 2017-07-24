@@ -3,10 +3,10 @@ Created on Jul 18, 2011
 
 @author: sean
 '''
-from meta.asttools import Visitor, visit_children
+from . import Visitor, visit_children
 
 import _ast
-from meta.asttools.visitors.symbol_visitor import get_symbols
+from .symbol_visitor import get_symbols
 try:
     from networkx import DiGraph
 except ImportError:

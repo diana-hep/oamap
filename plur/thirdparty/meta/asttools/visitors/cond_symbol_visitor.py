@@ -5,10 +5,10 @@ Created on Aug 4, 2011
 '''
 from __future__ import print_function
 
-from meta.asttools.visitors import Visitor, visit_children
-from meta.asttools.visitors.symbol_visitor import get_symbols
+from . import Visitor, visit_children
+from ..visitors.symbol_visitor import get_symbols
 import ast
-from meta.utils import py2op
+from ...utils import py2op
 
 class ConditionalSymbolVisitor(Visitor):
 
