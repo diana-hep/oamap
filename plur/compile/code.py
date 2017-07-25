@@ -97,25 +97,25 @@ def generate(plurtype, format, **subs):
 def node2array(node, tpe, colname):
     # P
     if isinstance(tpe, Primitive):
-        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(tpe, "array[at]", array=ast.Name(colname(tpe), ast.Load()), at=node)
     # L
     elif isinstance(tpe, List):
-        return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe), ast.Load()), at=node)
     # U
     elif isinstance(tpe, Union):
         def recurse(i):
             if i == len(tpe.of) - 1:
                 return generate(None,
                                 "array[offset[at]]",
-                                offset=ast.Name(colname(tpe.column2), ast.Load()),
-                                array=ast.Name(colname(tpe.of[i].column), ast.Load()),
+                                offset=ast.Name(colname(tpe, "column2"), ast.Load()),
+                                array=ast.Name(colname(tpe.of[i]), ast.Load()),
                                 at=node)
             else:
                 return generate(tpe if i == 0 else None,
                                 "array[offset[at]] if tag[at] == i else alternative",
-                                tag=ast.Name(colname(tpe.column), ast.Load()),
-                                offset=ast.Name(colname(tpe.column2), ast.Load()),
-                                array=ast.Name(colname(tpe.of[i].column), ast.Load()),
+                                tag=ast.Name(colname(tpe), ast.Load()),
+                                offset=ast.Name(colname(tpe, "column2"), ast.Load()),
+                                array=ast.Name(colname(tpe.of[i]), ast.Load()),
                                 at=node,
                                 i=ast.Num(i),
                                 alternative=recurse(i + 1))
@@ -195,22 +195,32 @@ def rewrite(fcn, paramtypes, environment={}):
     columns = {}
     veto = set()
     number = [0]
-    def colname(column):
-        if column in columns:
-            return columns[column]
+    def colname(tpe, attr="column", field=None):
+        if isinstance(tpe, Record):
+            for fn, ft in tpe.of:
+                if fn == field:
+                    tpe = ft
+                    break
+
+        c = getattr(tpe, attr)
+        assert c is not None
+                
+        if c in columns:
+            return columns[c]
+
         else:
             name = "array_{0}".format(number[0])
             number[0] += 1
             if name in veto:
-                return colname(column)
+                return colname(c)
             else:
-                columns[column] = name
+                columns[c] = name
                 return name
 
     enclosedfcns = {}
     encloseddata = {}
 
-    def recurse(node, symboltypes=symbols):
+    def recurse(node, symboltypes=symbols, colname=colname):
         if isinstance(node, ast.Name):
             veto.add(node.id)
 
@@ -259,18 +269,25 @@ def rewrite(fcn, paramtypes, environment={}):
 
 # Attribute ("value", "attr", "ctx")
 def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
-    node.value = recurse(node.value)
+    node.value = recurse(node.value,
+                         # propagate attribute through a union (duck typing!)
+                         colname=lambda tpe, attr="column": colname(tpe, attr, node.attr))
 
     if isinstance(node.value.plurtype, Record):
-        tpe = None
+        i = 0
         for fn, ft in node.value.plurtype.of:
             if fn == node.attr:
-                tpe = ft
                 break
-        if tpe is None:
+            i += 1
+        if i == len(node.value.plurtype.of):
             raise TypeError("record has no field named \"{0}\"".format(node.attr))
 
-        return node2array(node.value, tpe, colname)
+        return node2array(node.value, ft, colname)
+
+    elif isinstance(node.value.plurtype, Union):
+        if not all(isinstance(x, Record) and x.has(node.attr) for x in node.value.plurtype.of):
+            raise TypeError("some possible values of this Union are not a Record or do not have a field named \"{0}\"".format(node.attr))
+        return node.value
 
     else:
         return node

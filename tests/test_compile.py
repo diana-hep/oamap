@@ -36,6 +36,7 @@ class TestCompile(unittest.TestCase):
             arrays = toarrays("prefix", data)
             tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
             if debug:
+                print("\n\nDATA: {0}".format(data))
                 print("\nTYPE: {0}".format(tpe))
 
             code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
@@ -97,3 +98,33 @@ class TestCompile(unittest.TestCase):
         same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, j, k: x[j].two[k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
 
         same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, i, j, k: x[j].one if i == 0 else x[j].two[k], [(0, 1, 0), (0, 1, 1), (0, 2, 0), (0, 2, 1), (0, 2, 2), (1, 1, 0), (1, 1, 1), (1, 2, 0), (1, 2, 1), (1, 2, 2)])
+
+        same([T(False, 1.1), T(True, False), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
+
+        T2 = namedtuple("T2", ["three", "one"])
+
+        def f(x, i):
+            if i == 0:
+                return x.one.three
+            elif i == 1:
+                return x.one.one
+            elif i == 2:
+                return x.two.three
+            else:
+                return x.two.one
+
+        same(T(T2(False, 3.14), T2(True, 99.9)), f, [0, 1, 2, 3])
+
+        def f(x, i, j):
+            if i == 0:
+                return x.one[j].three
+            elif i == 1:
+                return x.one[j].one
+            elif i == 2:
+                return x.two.three
+            else:
+                return x.two.one
+
+        same(T([T2(False, 3.14), T2(True, -3.14)], T2(True, 99.9)), f, [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0)])
+
+        same([T(False, False), T2(99.9, 99.2), T(True, True)], lambda x, i: x[i].one, [0, 1, 2])
