@@ -54,14 +54,17 @@ def fcn2syntaxtree(fcn):
 
     return addmethods(make_function(fcn.__code__))
 
+def ln(x):
+    if not hasattr(x, "lineno"):
+        x.lineno = 1
+    if not hasattr(x, "col_offset"):
+        x.col_offset = 0
+    return x
+
 def generate(plurtype, format, **subs):
     def recurse(x):
         if isinstance(x, ast.Name) and x.id in subs:
-            if not hasattr(subs[x.id], "lineno"):
-                subs[x.id].lineno = 1
-            if not hasattr(subs[x.id], "col_offset"):
-                subs[x.id].col_offset = 0
-            return subs[x.id]
+            return ln(subs[x.id])
 
         elif isinstance(x, ast.AST):
             for fieldname in x._fields:
@@ -87,6 +90,25 @@ def generate(plurtype, format, **subs):
     return out
 
 ##################################################################### entry point
+
+def compilefcn(code, environment={}):
+    # def check(x, indent):
+    #     if isinstance(x, ast.AST):
+    #         print x, getattr(x, "lineno", None), getattr(x, "col_offset", None)
+    #         for fn in x._fields:
+    #             check(getattr(x, fn), indent + "    ")
+    #     elif isinstance(x, list):
+    #         for y in x:
+    #             check(y, indent)
+    # check(module, "")
+
+    compiled = compile(ln(ast.Module([code])), "plur", "exec")
+    out = dict(environment)
+    exec(compiled, out)    # exec can't be called in the same function with nested functions
+    return out[code.name]
+
+def callfcn(arrays, rewrittenfcn, arrayargs, *otherargs):
+    return rewrittenfcn(*(tuple(arrays[x] for x in arrayargs) + otherargs))
 
 def rewrite(fcn, paramtypes, environment={}):
     if callable(fcn) and hasattr(fcn, "__code__"):
@@ -198,11 +220,13 @@ def rewrite(fcn, paramtypes, environment={}):
 
     out = recurse(syntaxtree)
 
-    out.args.args = [ast.Name(numbered, ast.Param()) if py2 else ast.arg(numbered, None) for named, numbered in columns.items()] + out.args.args
+    newparams = [numbered for named, numbered in columns.items()]
+    out.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + out.args.args
 
     out.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + out.body
 
-    return out, enclosedfcns, encloseddata, dict((y, x) for x, y in columns.items())
+    arrayparams = [[named for named, numbered in columns.items() if numbered == x][0] for x in newparams]
+    return out, arrayparams, enclosedfcns, encloseddata
 
 ##################################################################### specialized rules for each Python AST type
 
@@ -400,16 +424,20 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, col
         if isinstance(node.slice, ast.Slice):
             raise NotImplementedError("slice of a list")
 
-        if not isinstance(node.ctx, ast.Load):
-            raise NotImplementedError("list dereference in {0} context".format(node.ctx))
+        elif isinstance(node.slice, ast.Index):
+            if not isinstance(node.ctx, ast.Load):
+                raise NotImplementedError("list dereference in {0} context".format(node.ctx))
 
-        if isinstance(node.value.plurtype.of, Primitive):
-            return generate(node.value.plurtype.of,
-                            "data[i] if at == 0 else data[offset[at - 1] + i]",
-                            at = recurse(node.value),
-                            i = recurse(node.slice),
-                            data = ast.Name(colname(node.value.plurtype.of.data), ast.Load()),
-                            offset = ast.Name(colname(node.value.plurtype.offset), ast.Load()))
+            if isinstance(node.value.plurtype.of, Primitive):
+                return generate(node.value.plurtype.of,
+                                "data[i] if at == 0 else data[offset[at - 1] + i]",
+                                at = recurse(node.value),
+                                i = recurse(node.slice.value),
+                                data = ast.Name(colname(node.value.plurtype.of.data), ast.Load()),
+                                offset = ast.Name(colname(node.value.plurtype.offset), ast.Load()))
+
+            else:
+                raise NotImplementedError
 
         else:
             raise NotImplementedError

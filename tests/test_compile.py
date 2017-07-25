@@ -22,7 +22,7 @@ import numpy
 from plur.types import *
 from plur.types.columns import columns2type
 from plur.python import *
-from plur.compile.code import rewrite
+from plur.compile.code import rewrite, compilefcn, callfcn
 
 from plur.thirdparty.meta import dump_python_source
 
@@ -37,6 +37,7 @@ class TestCompile(unittest.TestCase):
         def f(xs, y):
             return xs[2] + y
 
-        code, enclosedfcns, encloseddata, columns = rewrite(f, {"xs": tpe})
+        code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"xs": tpe})
         print dump_python_source(code)
-        print columns
+        print arrayargs
+        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f([1, 2, 3, 4, 5], 3.14)
