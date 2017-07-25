@@ -34,6 +34,8 @@ class TestCompile(unittest.TestCase):
         def same(data, fcn, testsets, debug=False):
             arrays = toarrays("prefix", data)
             tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+            if debug:
+                print("\nTYPE: {0}".format(tpe))
 
             code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
             if debug:
@@ -56,7 +58,27 @@ class TestCompile(unittest.TestCase):
                         otherargs, out1, out2, dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
 
         same(3, (lambda x, y: x + y), [1.1, 2.2, 3.3])
-
         same([3, 2, 1], (lambda x, i, y: x[i] + y), [(i, y) for i in range(3) for y in [1.1, 2.2, 3.3]])
-
         same([[], [1, 2], [3, 4, 5]], (lambda x, i, j, y: x[i][j] + y), [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]])
+
+        def check_only_union(data):
+            arrays = toarrays("prefix", data, Union(boolean, float64))
+            tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+            fcn = lambda x: x
+            code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
+            # print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
+            #     dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
+            # for x in arrayparams:
+            #     print("{0}\t{1}".format(x, arrays[x]))
+            # print("")
+            # print(tpe)
+            # print("")
+            self.assertEqual(callfcn(arrays, compilefcn(code), arrayparams), data)
+
+        check_only_union(False)
+        check_only_union(3.14)
+        check_only_union(True)
+        check_only_union(99.9)
+
+        same([False, 3.14, True, 99.9], lambda x, i: x[i], [0, 1, 2, 3])
+        same([[False, True], [1.1, 2.2]], lambda x, i, j: x[i][j], [(0, 0), (0, 1), (1, 0), (1, 1)])

@@ -102,9 +102,27 @@ def node2array(node, tpe, colname):
     elif isinstance(tpe, List):
         return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
     # U
+    elif isinstance(tpe, Union):
+        def recurse(i):
+            if i == len(tpe.of) - 1:
+                return generate(tpe, "array[offset[at]]",
+                                offset=ast.Name(colname(tpe.column2), ast.Load()),
+                                array=ast.Name(colname(tpe.of[i].column), ast.Load()),
+                                at=node)
+            else:
+                return generate(tpe, "array[offset[at]] if tag[at] == i else alternative",
+                                tag=ast.Name(colname(tpe.column), ast.Load()),
+                                offset=ast.Name(colname(tpe.column2), ast.Load()),
+                                array=ast.Name(colname(tpe.of[i].column), ast.Load()),
+                                at=node,
+                                i=ast.Num(i),
+                                alternative=recurse(i + 1))
+        return recurse(0)
     # R
-    else:
+    elif isinstance(tpe, Record):
         raise NotImplementedError
+    else:
+        assert False, "unexpected type object {0}".format(tpe)
 
 ##################################################################### entry point
 
@@ -195,7 +213,7 @@ def rewrite(fcn, paramtypes, environment={}):
 
         handlername = "do_" + node.__class__.__name__
         if handlername in globals():
-            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname)
+            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname)
 
         else:
             for fieldname in node._fields:
@@ -353,7 +371,7 @@ def rewrite(fcn, paramtypes, environment={}):
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
-def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname):
+def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
     if isinstance(node.ctx, ast.Load):
         if node.id in symboltypes:
             return node2array(node, symboltypes[node.id], colname)
@@ -407,7 +425,7 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, columns,
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname):
+def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
     node.value = recurse(node.value)
     node.slice = recurse(node.slice)
 

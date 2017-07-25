@@ -99,6 +99,7 @@ def columns2type(cols, prefix, delimiter="-"):
 
             out = Union(*(tpe for tagnum, tpe in sorted(possibilities.items())))
             out.column = name.toUnionTag().str()
+            out.column2 = name.toUnionOffset().str()
             return out
 
         # R
