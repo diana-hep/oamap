@@ -23,6 +23,13 @@ from plur.thirdparty.meta.decompiler.instructions import make_function
 
 ##################################################################### utility functions
 
+def ln(x):
+    if not hasattr(x, "lineno"):
+        x.lineno = 1
+    if not hasattr(x, "col_offset"):
+        x.col_offset = 0
+    return x
+
 def fcn2syntaxtree(fcn):
     def __eq__(self, other):
         if self.__class__ == other.__class__:
@@ -41,6 +48,7 @@ def fcn2syntaxtree(fcn):
 
     def addmethods(x):
         if isinstance(x, ast.AST):
+            ln(x)
             x.plurtype = None
             x.__eq__ = MethodType(__eq__, x)
             x.__hash__ = MethodType(__hash__, x)
@@ -52,14 +60,11 @@ def fcn2syntaxtree(fcn):
 
         return x
 
-    return addmethods(make_function(fcn.__code__))
+    out = make_function(fcn.__code__)
+    if isinstance(out, ast.Lambda):
+        out = ast.FunctionDef("lambda", out.args, [out.body], [])
 
-def ln(x):
-    if not hasattr(x, "lineno"):
-        x.lineno = 1
-    if not hasattr(x, "col_offset"):
-        x.col_offset = 0
-    return x
+    return addmethods(out)
 
 def generate(plurtype, format, **subs):
     def recurse(x):
@@ -202,17 +207,17 @@ def rewrite(fcn, paramtypes, environment={}):
 
             return node
 
-    out = recurse(syntaxtree)
+    code = recurse(syntaxtree)
 
     newparams = [numbered for named, numbered in columns.items()]
     newparams.sort(key=lambda x: int(x[6:]))
 
-    out.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + out.args.args
+    code.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + code.args.args
 
-    out.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + out.body
+    code.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + code.body
 
     arrayparams = [[named for named, numbered in columns.items() if numbered == x][0] for x in newparams]
-    return out, arrayparams, enclosedfcns, encloseddata
+    return code, arrayparams, enclosedfcns, encloseddata
 
 ##################################################################### specialized rules for each Python AST type
 

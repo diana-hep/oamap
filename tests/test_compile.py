@@ -22,7 +22,7 @@ import numpy
 from plur.types import *
 from plur.types.columns import columns2type
 from plur.python import *
-from plur.compile.code import rewrite, compilefcn, callfcn
+from plur.compile.code import fcn2syntaxtree, rewrite, compilefcn, callfcn
 
 from plur.thirdparty.meta import dump_python_source
 
@@ -31,45 +31,32 @@ class TestCompile(unittest.TestCase):
         pass
 
     def test_rewrite(self):
-        data = 3
-        arrays = toarrays("prefix", data)
-        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+        def same(data, fcn, testsets, debug=False):
+            arrays = toarrays("prefix", data)
+            tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
 
-        def f(x, y):
-            return x + y
+            code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
+            if debug:
+                print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
+                    dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
 
-        code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"x": tpe})
-        print dump_python_source(code)
-        print arrayargs
-        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f(data, 3.14)
+            newfcn = compilefcn(code)
 
+            for otherargs in testsets:
+                if not isinstance(otherargs, (list, tuple)):
+                    otherargs = (otherargs,)
 
+                out1 = callfcn(arrays, newfcn, arrayparams, *otherargs)
+                out2 = fcn(data, *otherargs)
+                if debug:
+                    print("otherargs == {0} --> {1} vs {2}".format(otherargs, out1, out2))
 
+                if not out1 == out2:
+                    raise AssertionError("failed for otherargs == {0}: {1} vs {2}\n{3}\n{4}".format(
+                        otherargs, out1, out2, dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
 
+        same(3, (lambda x, y: x + y), [1.1, 2.2, 3.3])
 
-        data = [1, 2, 3, 4, 5]
-        arrays = toarrays("prefix", data)
-        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+        same([3, 2, 1], (lambda x, i, y: x[i] + y), [(i, y) for i in range(3) for y in [1.1, 2.2, 3.3]])
 
-        def f(xs, y):
-            return xs[2] + y
-
-        code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"xs": tpe})
-        print dump_python_source(code)
-        print arrayargs
-        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f(data, 3.14)
-
-
-
-
-        data = [[], [1, 2], [3, 4, 5]]
-        arrays = toarrays("prefix", data)
-        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
-
-        def f(xss, y):
-            return xss[2][0] + y
-
-        code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"xss": tpe})
-        print dump_python_source(code)
-        print arrayargs
-        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f(data, 3.14)
+        same([[], [1, 2], [3, 4, 5]], (lambda x, i, j, y: x[i][j] + y), [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]])
