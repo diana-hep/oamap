@@ -105,12 +105,14 @@ def node2array(node, tpe, colname):
     elif isinstance(tpe, Union):
         def recurse(i):
             if i == len(tpe.of) - 1:
-                return generate(tpe, "array[offset[at]]",
+                return generate(None,
+                                "array[offset[at]]",
                                 offset=ast.Name(colname(tpe.column2), ast.Load()),
                                 array=ast.Name(colname(tpe.of[i].column), ast.Load()),
                                 at=node)
             else:
-                return generate(tpe, "array[offset[at]] if tag[at] == i else alternative",
+                return generate(tpe if i == 0 else None,
+                                "array[offset[at]] if tag[at] == i else alternative",
                                 tag=ast.Name(colname(tpe.column), ast.Load()),
                                 offset=ast.Name(colname(tpe.column2), ast.Load()),
                                 array=ast.Name(colname(tpe.of[i].column), ast.Load()),
@@ -120,7 +122,8 @@ def node2array(node, tpe, colname):
         return recurse(0)
     # R
     elif isinstance(tpe, Record):
-        raise NotImplementedError
+        node.plurtype = tpe
+        return node
     else:
         assert False, "unexpected type object {0}".format(tpe)
 
@@ -255,6 +258,22 @@ def rewrite(fcn, paramtypes, environment={}):
 # Assign ("targets", "value")
 
 # Attribute ("value", "attr", "ctx")
+def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
+    node.value = recurse(node.value)
+
+    if isinstance(node.value.plurtype, Record):
+        tpe = None
+        for fn, ft in node.value.plurtype.of:
+            if fn == node.attr:
+                tpe = ft
+                break
+        if tpe is None:
+            raise TypeError("record has no field named \"{0}\"".format(node.attr))
+
+        return node2array(node.value, tpe, colname)
+
+    else:
+        return node
 
 # AugAssign ("target", "op", "value")
 
