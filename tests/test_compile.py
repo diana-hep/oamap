@@ -61,18 +61,19 @@ class TestCompile(unittest.TestCase):
         same([3, 2, 1], (lambda x, i, y: x[i] + y), [(i, y) for i in range(3) for y in [1.1, 2.2, 3.3]])
         same([[], [1, 2], [3, 4, 5]], (lambda x, i, j, y: x[i][j] + y), [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]])
 
-        def check_only_union(data):
+        def check_only_union(data, debug=False):
             arrays = toarrays("prefix", data, Union(boolean, float64))
             tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
             fcn = lambda x: x
             code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
-            # print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
-            #     dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
-            # for x in arrayparams:
-            #     print("{0}\t{1}".format(x, arrays[x]))
-            # print("")
-            # print(tpe)
-            # print("")
+            if debug:
+                print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
+                    dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
+                for x in arrayparams:
+                    print("{0}\t{1}".format(x, arrays[x]))
+                print("")
+                print(tpe)
+                print("")
             self.assertEqual(callfcn(arrays, compilefcn(code), arrayparams), data)
 
         check_only_union(False)
