@@ -284,19 +284,17 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
     fieldname = node.attr
 
     def subunionop(tpe, node):
-        if isinstance(tpe, Record):
-            i = 0
-            for fn, ft in tpe.of:
-                if fn == fieldname:
-                    break
-                i += 1
-            if i == len(tpe.of):
-                raise TypeError("record has no field named \"{0}\"".format(fieldname))
+        assert isinstance(tpe, Record)
 
-            return generate(tpe, "array[at]", array=ast.Name(colname(ft.column), ast.Load()), at=node)
+        i = 0
+        for fn, ft in tpe.of:
+            if fn == fieldname:
+                break
+            i += 1
+        if i == len(tpe.of):
+            raise TypeError("record has no field named \"{0}\"".format(fieldname))
 
-        else:
-            return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(tpe, "array[at]", array=ast.Name(colname(ft.column), ast.Load()), at=node)
 
     node.value = recurse(node.value, unionop=subunionop)
 
