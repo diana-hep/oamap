@@ -54,6 +54,10 @@ class Type(object):
     def kwds(self):
         return {}
 
+    @property
+    def children(self):
+        return ()
+
     def __hash__(self):
         return hash((self.__class__, self.rtname, self.rtargs, self.args, tuple(sorted(self.kwds.items()))))
 

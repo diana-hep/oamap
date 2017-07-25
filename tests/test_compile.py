@@ -31,7 +31,24 @@ class TestCompile(unittest.TestCase):
         pass
 
     def test_rewrite(self):
-        arrays = toarrays("prefix", [1, 2, 3, 4, 5])
+        data = 3
+        arrays = toarrays("prefix", data)
+        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+
+        def f(x, y):
+            return x + y
+
+        code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"x": tpe})
+        print dump_python_source(code)
+        print arrayargs
+        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f(data, 3.14)
+
+
+
+
+
+        data = [1, 2, 3, 4, 5]
+        arrays = toarrays("prefix", data)
         tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
 
         def f(xs, y):
@@ -40,4 +57,19 @@ class TestCompile(unittest.TestCase):
         code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"xs": tpe})
         print dump_python_source(code)
         print arrayargs
-        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f([1, 2, 3, 4, 5], 3.14)
+        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f(data, 3.14)
+
+
+
+
+        data = [[], [1, 2], [3, 4, 5]]
+        arrays = toarrays("prefix", data)
+        tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+
+        def f(xss, y):
+            return xss[2][0] + y
+
+        code, arrayargs, enclosedfcns, encloseddata = rewrite(f, {"xss": tpe})
+        print dump_python_source(code)
+        print arrayargs
+        print callfcn(arrays, compilefcn(code), arrayargs, 3.14), f(data, 3.14)

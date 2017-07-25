@@ -70,14 +70,14 @@ def columns2type(cols, prefix, delimiter="-"):
         if all(n.isPrimitive for n, d in cols) and len(cols) == 1:
             (n, d), = cols
             out = withrepr(Primitive(d), copy=True)
-            out.data = name.str()
+            out.column = name.str()
             return out
 
         # L
         elif all(n.isListOffset or n.isListData for n, d in cols):
             assert sum(1 for n, d in cols if n.isListOffset) == 1
             out = List(recurse([(n.drop(), d) for n, d in cols if n.isListData], name.toListData()))
-            out.offset = name.toListOffset().str()
+            out.column = name.toListOffset().str()
             return out
 
         # U
@@ -98,8 +98,7 @@ def columns2type(cols, prefix, delimiter="-"):
                 possibilities[tagnum] = recurse(cols, name.toUnionData(tagnum))
 
             out = Union(*(tpe for tagnum, tpe in sorted(possibilities.items())))
-            out.tag = name.toUnionTag().str()
-            out.offset = name.toUnionOffset().str()
+            out.column = name.toUnionTag().str()
             return out
 
         # R
@@ -113,7 +112,9 @@ def columns2type(cols, prefix, delimiter="-"):
             for fieldname, cols in fields.items():
                 fields[fieldname] = recurse(cols, name.toRecord(fieldname))
 
-            return Record.frompairs(fields.items())
+            out = Record.frompairs(fields.items())
+            out.column = None
+            return out
 
         else:
             raise TypeDefinitionError("unexpected set of columns: {0}".format(", ".join(n.str(prefix="") for n, d in cols)))

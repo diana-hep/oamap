@@ -43,6 +43,10 @@ class Union(Type):
     def args(self):
         return self.of
 
+    @property
+    def children(self):
+        return self.of
+
     def __contains__(self, element):
         return any(element in x for x in self.of)
 

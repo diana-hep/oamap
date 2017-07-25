@@ -89,20 +89,22 @@ def generate(plurtype, format, **subs):
     out.plurtype = plurtype
     return out
 
+def node2array(node, tpe, colname):
+    # P
+    if isinstance(tpe, Primitive):
+        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+    # L
+    elif isinstance(tpe, List):
+        return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+    # U
+    # R
+    else:
+        raise NotImplementedError
+
 ##################################################################### entry point
 
 def compilefcn(code, environment={}):
-    # def check(x, indent):
-    #     if isinstance(x, ast.AST):
-    #         print x, getattr(x, "lineno", None), getattr(x, "col_offset", None)
-    #         for fn in x._fields:
-    #             check(getattr(x, fn), indent + "    ")
-    #     elif isinstance(x, list):
-    #         for y in x:
-    #             check(y, indent)
-    # check(module, "")
-
-    compiled = compile(ln(ast.Module([code])), "plur", "exec")
+    compiled = compile(ln(ast.Module([code])), "rewritten by plur", "exec")
     out = dict(environment)
     exec(compiled, out)    # exec can't be called in the same function with nested functions
     return out[code.name]
@@ -154,29 +156,11 @@ def rewrite(fcn, paramtypes, environment={}):
     if not isinstance(environment, dict):
         raise TypeError("propagate takes a Python dict (e.g. vars()) as its third argument")
 
-    ####### ensure that the types have the column information we're going to propagate
-
     def checktype(tpe):
-        # P
-        if isinstance(tpe, Primitive):
-            if not hasattr(tpe, "data"):
-                raise TypeError("type is missing column information (hint: create with columns2type)")
-        # L
-        elif isinstance(tpe, List):
-            if not hasattr(tpe, "offset"):
-                raise TypeError("type is missing column information (hint: create with columns2type)")
-            checktype(tpe.of)
-        # U
-        elif isinstance(tpe, Union):
-            if not hasattr(tpe, "tag") or not hasattr(tpe, "offset"):
-                raise TypeError("type is missing column information (hint: create with columns2type)")
-            for t in tpe.of:
-                checktype(t)
-        # R
-        elif isinstance(tpe, Record):
-            for fn, ft in tpe.of:
-                checktype(ft)
-
+        if not hasattr(tpe, "column"):
+            raise TypeError("type is missing column information (hint: create the type with columns2type)")
+        for t in tpe.children:
+            checktype(t)
     for t in symbols.values():
         checktype(t)
 
@@ -221,6 +205,8 @@ def rewrite(fcn, paramtypes, environment={}):
     out = recurse(syntaxtree)
 
     newparams = [numbered for named, numbered in columns.items()]
+    newparams.sort(key=lambda x: int(x[6:]))
+
     out.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + out.args.args
 
     out.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + out.body
@@ -365,7 +351,7 @@ def rewrite(fcn, paramtypes, environment={}):
 def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, columns, recurse, colname):
     if isinstance(node.ctx, ast.Load):
         if node.id in symboltypes:
-            node.plurtype = symboltypes[node.id]
+            return node2array(node, symboltypes[node.id], colname)
 
     elif isinstance(node.ctx, ast.Store):
         raise NotImplementedError
@@ -428,16 +414,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, col
             if not isinstance(node.ctx, ast.Load):
                 raise NotImplementedError("list dereference in {0} context".format(node.ctx))
 
-            if isinstance(node.value.plurtype.of, Primitive):
-                return generate(node.value.plurtype.of,
-                                "data[i] if at == 0 else data[offset[at - 1] + i]",
-                                at = recurse(node.value),
-                                i = recurse(node.slice.value),
-                                data = ast.Name(colname(node.value.plurtype.of.data), ast.Load()),
-                                offset = ast.Name(colname(node.value.plurtype.offset), ast.Load()))
-
-            else:
-                raise NotImplementedError
+            return node2array(generate(None, "at + i", at=node.value, i=node.slice.value),
+                              node.value.plurtype.of,
+                              colname)
 
         else:
             raise NotImplementedError

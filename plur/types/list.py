@@ -28,6 +28,10 @@ class List(Type):
     def args(self):
         return (self.of,)
 
+    @property
+    def children(self):
+        return (self.of,)
+
     def __contains__(self, element):
         if isinstance(element, dict):
             return False   # a dict is iterable but it's a record
