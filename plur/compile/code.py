@@ -94,49 +94,43 @@ def generate(plurtype, format, **subs):
     out.plurtype = plurtype
     return out
 
-def node2array(node, tpe, colname):
+def node2array(node, tpe, colname, unionop):
     # P
     if isinstance(tpe, Primitive):
-        return generate(tpe, "array[at]", array=ast.Name(colname(tpe), ast.Load()), at=node)
+        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     # L
     elif isinstance(tpe, List):
-        # return generate(tpe, "0 if at == 0 else result", at=node, result=operation(generate(None, "at - 1", at=node), tpe))
-        return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe), ast.Load()), at=node)
+        return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     # U
     elif isinstance(tpe, Union):
-        # def recurse(i):
-        #     thisone = operation(generate(tpe.of[i],
-        #                                  "offset[at]",
-        #                                  offset=ast.Name(colname(tpe, "column2"), ast.Load()),
-        #                                  at=node), tpe.of[i])
-
-        #     if i == len(tpe.of) - 1:
-        #         return thisone
-        #     else:
-        #         return generate(tpe,
-        #                         "thisone if tag[at] == i else alternative",
-        #                         thisone=thisone,
-        #                         tag=ast.Name(colname(tpe), ast.Load()),
-        #                         i=ast.Num(i),
-        #                         at=node,
-        #                         alternative=recurse(i + 1))
+        offsetat = generate(None, "offset[at]",
+                            offset=ast.Name(colname(tpe.column2), ast.Load()),
+                            at=node)
 
         def recurse(i):
             if i == len(tpe.of) - 1:
-                return generate(None, "array[offset[at]]",
-                                offset=ast.Name(colname(tpe, "column2"), ast.Load()),
-                                array=ast.Name(colname(tpe.of[i]), ast.Load()),
-                                at=node)
+                return unionop(tpe.of[i], offsetat)
+                # return generate(None, "array[offset[at]]",
+                #                 offset=ast.Name(colname(tpe.column2), ast.Load()),
+                #                 array=ast.Name(colname(tpe.of[i].column), ast.Load()),
+                #                 at=node)
+
             else:
-                return generate(None, "array[offset[at]] if tag[at] == i else alternative",
-                                tag=ast.Name(colname(tpe), ast.Load()),
-                                offset=ast.Name(colname(tpe, "column2"), ast.Load()),
-                                array=ast.Name(colname(tpe.of[i]), ast.Load()),
+                return generate(None, "consequent if tag[at] == i else alternate",
+                                consequent=unionop(tpe.of[i], offsetat),
+                                tag=ast.Name(colname(tpe.column), ast.Load()),
                                 at=node,
                                 i=ast.Num(i),
-                                alternative=recurse(i + 1))
+                                alternate=recurse(i + 1))
+                # return generate(None, "array[offset[at]] if tag[at] == i else alternative",
+                #                 tag=ast.Name(colname(tpe.column), ast.Load()),
+                #                 offset=ast.Name(colname(tpe.column2), ast.Load()),
+                #                 array=ast.Name(colname(tpe.of[i].column), ast.Load()),
+                #                 at=node,
+                #                 i=ast.Num(i),
+                #                 alternative=recurse(i + 1))
 
         out = recurse(0)
         out.plurtype = tpe
@@ -217,14 +211,7 @@ def rewrite(fcn, paramtypes, environment={}):
     columns = {}
     veto = set()
     number = [0]
-    def colname(tpe, attr="column", field=None):
-        if isinstance(tpe, Record):
-            for fn, ft in tpe.of:
-                if fn == field:
-                    tpe = ft
-                    break
-
-        c = getattr(tpe, attr)
+    def colname(c):
         assert c is not None
                 
         if c in columns:
@@ -242,13 +229,16 @@ def rewrite(fcn, paramtypes, environment={}):
     enclosedfcns = {}
     encloseddata = {}
 
-    def recurse(node, symboltypes=symbols, colname=colname):
+    def unionop(tpe, node):
+        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+
+    def recurse(node, symboltypes=symbols, unionop=unionop):
         if isinstance(node, ast.Name):
             veto.add(node.id)
 
         handlername = "do_" + node.__class__.__name__
         if handlername in globals():
-            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname)
+            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop)
 
         else:
             for fieldname in node._fields:
@@ -290,8 +280,25 @@ def rewrite(fcn, paramtypes, environment={}):
 # Assign ("targets", "value")
 
 # Attribute ("value", "attr", "ctx")
-def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
-    node.value = recurse(node.value)
+def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
+    fieldname = node.attr
+
+    def subunionop(tpe, node):
+        if isinstance(tpe, Record):
+            i = 0
+            for fn, ft in tpe.of:
+                if fn == fieldname:
+                    break
+                i += 1
+            if i == len(tpe.of):
+                raise TypeError("record has no field named \"{0}\"".format(fieldname))
+
+            return generate(tpe, "array[at]", array=ast.Name(colname(ft.column), ast.Load()), at=node)
+
+        else:
+            return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+
+    node.value = recurse(node.value, unionop=subunionop)
 
     if isinstance(node.value.plurtype, Record):
         i = 0
@@ -302,34 +309,13 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
         if i == len(node.value.plurtype.of):
             raise TypeError("record has no field named \"{0}\"".format(node.attr))
 
-        return node2array(node.value, ft, colname)
+        return node2array(node.value, ft, colname, unionop)
+
+    elif isinstance(node.value.plurtype, Union):
+        return node.value
+
     else:
         return node
-    
-    # # node.value = recurse(node.value,
-    # #                      # propagate attribute through a union (duck typing!)
-    # #                      colname=lambda tpe, attr="column": colname(tpe, attr, node.attr))
-
-    # node.value = recurse(node.value)
-
-    # if isinstance(node.value.plurtype, Record):
-    #     i = 0
-    #     for fn, ft in node.value.plurtype.of:
-    #         if fn == node.attr:
-    #             break
-    #         i += 1
-    #     if i == len(node.value.plurtype.of):
-    #         raise TypeError("record has no field named \"{0}\"".format(node.attr))
-
-    #     return node2array(node.value, ft, colname)
-
-    # # elif isinstance(node.value.plurtype, Union):
-    # #     if not all(isinstance(x, Record) and x.has(node.attr) for x in node.value.plurtype.of):
-    # #         raise TypeError("some possible values of this Union are not a Record or do not have a field named \"{0}\"".format(node.attr))
-    # #     return node.value
-
-    # else:
-    #     return node
 
 # AugAssign ("target", "op", "value")
 
@@ -446,10 +432,10 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
-def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
+def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
     if isinstance(node.ctx, ast.Load):
         if node.id in symboltypes:
-            return node2array(node, symboltypes[node.id], colname)
+            return node2array(node, symboltypes[node.id], colname, unionop)
 
     elif isinstance(node.ctx, ast.Store):
         if node.id in symboltypes:
@@ -501,7 +487,7 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname):
+def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
     node.value = recurse(node.value)
     node.slice = recurse(node.slice)
 
@@ -515,7 +501,8 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
             return node2array(generate(None, "at + i", at=node.value, i=node.slice.value),
                               node.value.plurtype.of,
-                              colname)
+                              colname,
+                              unionop)
 
         else:
             raise NotImplementedError
