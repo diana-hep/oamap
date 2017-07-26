@@ -41,13 +41,13 @@ Alternatively, it could be exploded into
 |      1 |        0 |  55.3 |   78.3 |   -17.5 |   -12.9 |    87.5 |
 |      2 |        2 |  97.6 |   45.8 |   -22.9 |   -31.6 |   130.5 |
 
-at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded: we can't do this for two or more particle types.
+at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded this way: we can't do it for two or more particle types.
 
 Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing SQL `JOIN` operations on the event id. But not only does this complicate the analysis, it also discards the close association between particles in the same event, which must be rediscovered by the potentially expensive join.
 
-Often an analyzer starts optimistically with flat tables, hoping to benefit from the efficiency of lazy, columnar data access, but must rewrite the analysis once nested types become necessary.
+Often an analyzer starts optimistically with flat tables, hoping to benefit from fast processing due to lazy, columnar data access and term rewriting, but then must rewrite the analysis once nested types become necessary.
 
-Ideally, we'd want fast access with any kind of data.
+Ideally, we want fast access to any kind of data.
 
 ## PLUR: fast access to Primitives, Lists, Unions, and Records
 
