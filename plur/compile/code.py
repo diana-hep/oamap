@@ -281,33 +281,20 @@ def rewrite(fcn, paramtypes, environment={}):
 
 # Attribute ("value", "attr", "ctx")
 def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
-    fieldname = node.attr
-
+    def fieldtype(tpe):
+        for fn, ft in tpe.of:
+            if fn == node.attr:
+                return ft
+        raise TypeError("record has no field named \"{0}\"".format(node.attr))
+    
     def subunionop(tpe, node):
         assert isinstance(tpe, Record)
-
-        i = 0
-        for fn, ft in tpe.of:
-            if fn == fieldname:
-                break
-            i += 1
-        if i == len(tpe.of):
-            raise TypeError("record has no field named \"{0}\"".format(fieldname))
-
-        return generate(tpe, "array[at]", array=ast.Name(colname(ft.column), ast.Load()), at=node)
+        return unionop(fieldtype(tpe), node)
 
     node.value = recurse(node.value, unionop=subunionop)
 
     if isinstance(node.value.plurtype, Record):
-        i = 0
-        for fn, ft in node.value.plurtype.of:
-            if fn == node.attr:
-                break
-            i += 1
-        if i == len(node.value.plurtype.of):
-            raise TypeError("record has no field named \"{0}\"".format(node.attr))
-
-        return node2array(node.value, ft, colname, unionop)
+        return node2array(node.value, fieldtype(node.value.plurtype), colname, unionop)
 
     elif isinstance(node.value.plurtype, Union):
         return node.value
@@ -486,8 +473,35 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 
 # Subscript ("value", "slice", "ctx")
 def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
-    node.value = recurse(node.value)
+    def subunionop(tpe, node):
+        assert isinstance(tpe, List)
+        from plur.thirdparty.meta import dump_python_source
+        print "HELLO", dump_python_source(node).strip()
+        # return unionop(tpe, node)
+
+        if isinstance(node.slice, ast.Slice):
+            raise NotImplementedError("slice of a list")
+
+        elif isinstance(node.slice, ast.Index):
+            if not isinstance(node.ctx, ast.Load):
+                raise NotImplementedError("list dereference in {0} context".format(node.ctx))
+            
+            # return unionop(tpe, generate(None, "at + i", at=node.value, i=node.slice.value))
+
+            # return generate(tpe, "array[at + i]", array=ast.Name(colname(tpe.column), ast.Load()), at=node, i=node.slice.value)
+
+            return node2array(generate(None, "at + i", at=unionop(tpe, node), i=node.slice.value),
+                              tpe.of,
+                              colname,
+                              unionop)
+
+        else:
+            raise NotImplementedError
+        
+    node.value = recurse(node.value, unionop=subunionop)
     node.slice = recurse(node.slice)
+
+    print "WA WA WA", node.value.plurtype
 
     if isinstance(node.value.plurtype, List):
         if isinstance(node.slice, ast.Slice):
@@ -504,6 +518,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
         else:
             raise NotImplementedError
+
+    elif isinstance(node.value.plurtype, Union):
+        return node.value
 
     else:
         return node

@@ -62,71 +62,75 @@ class TestCompile(unittest.TestCase):
                     raise AssertionError("failed for otherargs == {0}: {1} vs {2}\n{3}\n{4}".format(
                         otherargs, out1, out2, dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
 
-        same(3, lambda x, y: x + y, [1.1, 2.2, 3.3])
-        same([3, 2, 1], lambda x, i, y: x[i] + y, [(i, y) for i in range(3) for y in [1.1, 2.2, 3.3]])
-        same([[], [1, 2], [3, 4, 5]], lambda x, i, j, y: x[i][j] + y, [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]])
+        # same(3, lambda x, y: x + y, [1.1, 2.2, 3.3])
+        # same([3, 2, 1], lambda x, i, y: x[i] + y, [(i, y) for i in range(3) for y in [1.1, 2.2, 3.3]])
+        # same([[], [1, 2], [3, 4, 5]], lambda x, i, j, y: x[i][j] + y, [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]], True)
 
-        def check_only_union(data, debug=False):
-            arrays = toarrays("prefix", data, Union(boolean, float64))
-            tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
-            fcn = lambda x: x
-            code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
-            if debug:
-                print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
-                    dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
-                for x in arrayparams:
-                    print("{0}\t{1}".format(x, arrays[x]))
-                print("")
-                print(tpe)
-                print("")
-            self.assertEqual(callfcn(arrays, compilefcn(code), arrayparams), data)
+        # def check_only_union(data, debug=False):
+        #     arrays = toarrays("prefix", data, Union(boolean, float64))
+        #     tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+        #     fcn = lambda x: x
+        #     code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
+        #     if debug:
+        #         print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
+        #             dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
+        #         for x in arrayparams:
+        #             print("{0}\t{1}".format(x, arrays[x]))
+        #         print("")
+        #         print(tpe)
+        #         print("")
+        #     self.assertEqual(callfcn(arrays, compilefcn(code), arrayparams), data)
 
-        check_only_union(False)
-        check_only_union(3.14)
-        check_only_union(True)
-        check_only_union(99.9)
+        # check_only_union(False)
+        # check_only_union(3.14)
+        # check_only_union(True)
+        # check_only_union(99.9)
 
-        same([False, 3.14, True, 99.9], lambda x, i: x[i], [0, 1, 2, 3])
-        same([[False, True], [1.1, 2.2]], lambda x, i, j: x[i][j], [(0, 0), (0, 1), (1, 0), (1, 1)])
+        # same([False, 3.14, True, 99.9], lambda x, i: x[i], [0, 1, 2, 3])
+        # same([[False, True], [1.1, 2.2]], lambda x, i, j: x[i][j], [(0, 0), (0, 1), (1, 0), (1, 1)])
 
         T = namedtuple("T", ["one", "two"])
 
-        same(T(False, 3.14), lambda x, i: x.one if i == 0 else x.two, [0, 1])
+        # same(T(False, 3.14), lambda x, i: x.one if i == 0 else x.two, [0, 1])
 
-        same([T(False, 1.1), T(True, 2.2), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
+        # same([T(False, 1.1), T(True, 2.2), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
 
-        same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, j, k: x[j].two[k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
+        # same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, j, k: x[j].two[k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
 
-        same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, i, j, k: x[j].one if i == 0 else x[j].two[k], [(0, 1, 0), (0, 1, 1), (0, 2, 0), (0, 2, 1), (0, 2, 2), (1, 1, 0), (1, 1, 1), (1, 2, 0), (1, 2, 1), (1, 2, 2)])
+        # same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, i, j, k: x[j].one if i == 0 else x[j].two[k], [(0, 1, 0), (0, 1, 1), (0, 2, 0), (0, 2, 1), (0, 2, 2), (1, 1, 0), (1, 1, 1), (1, 2, 0), (1, 2, 1), (1, 2, 2)])
 
-        same([T(False, 1.1), T(True, False), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
+        # same([T(False, 1.1), T(True, False), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
 
         T2 = namedtuple("T2", ["three", "one"])
 
-        def f(x, i):
-            if i == 0:
-                return x.one.three
-            elif i == 1:
-                return x.one.one
-            elif i == 2:
-                return x.two.three
-            else:
-                return x.two.one
+        # def f(x, i):
+        #     if i == 0:
+        #         return x.one.three
+        #     elif i == 1:
+        #         return x.one.one
+        #     elif i == 2:
+        #         return x.two.three
+        #     else:
+        #         return x.two.one
 
-        same(T(T2(False, 3.14), T2(True, 99.9)), f, [0, 1, 2, 3])
+        # same(T(T2(False, 3.14), T2(True, 99.9)), f, [0, 1, 2, 3])
 
-        def f(x, i, j):
-            if i == 0:
-                return x.one[j].three
-            elif i == 1:
-                return x.one[j].one
-            elif i == 2:
-                return x.two.three
-            else:
-                return x.two.one
+        # def f(x, i, j):
+        #     if i == 0:
+        #         return x.one[j].three
+        #     elif i == 1:
+        #         return x.one[j].one
+        #     elif i == 2:
+        #         return x.two.three
+        #     else:
+        #         return x.two.one
 
-        same(T([T2(False, 3.14), T2(True, -3.14)], T2(True, 99.9)), f, [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0)])
+        # same(T([T2(False, 3.14), T2(True, -3.14)], T2(True, 99.9)), f, [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0)])
 
-        same([T(False, False), T2(99.9, 99.2), T(True, True)], lambda x, i: x[i].one, [0, 1, 2], debug=True)
+        # same([T(False, False), T2(99.9, 99.2), T(True, True)], lambda x, i: x[i].one, [0, 1, 2])
 
-        # same([T([False], False), T2(99.9, [99.2]), T([True], True)], lambda x, i: x[i].one[0], [0, 1, 2], True)
+        # same([T(T(False, True), False), T2(1.1, T2(2.2, 3.3)), T(T(True, False), True)], lambda x, i: x[i].one.one, [0, 1, 2])
+
+        # same([T(T(False, True), False), T2(1.1, T(2.2, 3.3)), T(T(True, False), True)], lambda x, i: x[i].one.two, [0, 1, 2])
+
+        same([T([False], False), T2(99.9, [99.2]), T([True], True)], lambda x, i: x[i].one[0], [0, 1, 2], debug=True)
