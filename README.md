@@ -1,6 +1,42 @@
 ## PLUR: efficient iterators for Primitives, Lists, Unions, and Records
 
-Motivation for this project will go here.
+### Motivation
+
+Many data analyses, particularly in high energy physics, can't work exclusively with rectangular data. Sometimes you need an arbitrary-length list of particles or even nested lists. For instance, a dataset naturally expressed as
+
+```
+[Event(met=MET(x=55.3, y=78.3),
+       muons=[Muon(px=25.6, py=-7.9, pz=100.6), Muon(px=-17.5, py=-12.9, pz=87.5)]),
+ Event(met=MET(x=52.8, y=-109.2),
+       muons=[]),
+ Event(met=MET(x=97.6, y=45.8),
+       muons=[Muon(px=-22.9, py=-31.6, pz=130.5)])]
+```
+
+can be forced into
+
+| Event # | MET x |  MET y | Muon1 px | Muon1 py | Muon1 pz |
+|--------:|------:|-------:|---------:|---------:|---------:|
+|       0 |  55.3 |   78.3 |     25.6 |     -7.9 |    100.6 |
+|       1 |  52.8 | -109.2 |      ??? |      ??? |      ??? |
+|       2 |  97.6 |   45.8 |    -22.9 |    -31.6 |    130.5 |
+
+at the expense of truncating or padding the list of muons. Alternatively, it could be exploded into
+
+| Muon # | Event id | MET x |  MET y | Muon px | Muon py | Muon pz |
+|-------:|---------:|------:|-------:|--------:|--------:|--------:|
+|      0 |        0 |  55.3 |   78.3 |    25.6 |    -7.9 |   100.6 |
+|      1 |        0 |  55.3 |   78.3 |   -17.5 |   -12.9 |    87.5 |
+|      2 |        2 |  97.6 |   45.8 |   -22.9 |   -31.6 |   130.5 |
+
+at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded: we couldn't do this for two particle types.
+
+Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing `SQL JOIN` operations on the event id.
+
+
+
+
+
 
 ```python
 from plur.types import *
