@@ -1,6 +1,4 @@
-## PLUR: efficient iterators for Primitives, Lists, Unions, and Records
-
-### Motivation
+## What's wrong with data frames?
 
 Many data analysis procedures, particularly in high energy physics, can't work exclusively with a table of rectangular data (i.e. a "data frame" or "flat ntuple"). Sometimes you need an arbitrary-length list of particles or even nested lists, not just numbers.
 
@@ -35,7 +33,18 @@ Alternatively, it could be exploded into
 
 at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded: we can't do this for two or more particle types.
 
-Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing `SQL JOIN` operations on the event id. But not only does this complicate analysis, it discards the close association between particles in the same event, which must be rediscovered by a potentially expensive join. There is a reason physicists don't work this way.
+Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing SQL `JOIN` operations on the event id. But not only does this complicate the analysis, it also discards the close association between particles in the same event, which must be rediscovered by the potentially expensive join.
+
+There is a reason physicists don't work this way.
+
+## PLUR: efficient iterators for Primitives, Lists, Unions, and Records
+
+```
+
+
+
+
+```
 
 
 
@@ -43,7 +52,7 @@ Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Databas
 
 
 
-
+# Other stuff
 
 ```python
 from plur.types import *
