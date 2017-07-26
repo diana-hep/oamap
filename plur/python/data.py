@@ -56,15 +56,17 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", of
 
             nameoffset = name.toListOffset()
             namedata = name.toListData()
+            
+            length = 0
+            for x in obj:
+                recurse(x, tpe.of, namedata)
+                length += 1
 
             if nameoffset not in last_list_offset:
                 last_list_offset[nameoffset] = 0
-            last_list_offset[nameoffset] += len(obj)
+            last_list_offset[nameoffset] += length
 
             fillables[nameoffset].fill(last_list_offset[nameoffset])
-            
-            for x in obj:
-                recurse(x, tpe.of, namedata)
 
         elif isinstance(tpe, Union):
             t = infertype(obj)   # can be expensive!
@@ -377,7 +379,7 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
 
     arrays = dict((ArrayName.parse(n, prefix, delimiter=delimiter), a) for n, a in arrays.items())
 
-    def recurse(tpe, name):
+    def recurse(tpe, name, lastgoodname):
         # P
         if isinstance(tpe, Primitive):
             array = arrays[name]
@@ -385,25 +387,25 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
 
         # L
         elif isinstance(tpe, List):
-            sub = recurse(tpe.of, name.toListData())
+            sub = recurse(tpe.of, name.toListData(), lastgoodname)
             return lambda at: LazyList(arrays[name.toListOffset()], at, sub)
 
         # U
         elif isinstance(tpe, Union):
             tagarray = arrays[name.toUnionTag()]
             offsetarray = arrays[name.toUnionOffset()]
-            subs = [recurse(x, name.toUnionData(i)) for i, x in enumerate(tpe.of)]
+            subs = [recurse(x, name.toUnionData(i), lastgoodname) for i, x in enumerate(tpe.of)]
             return lambda at: subs[tagarray[at]](offsetarray[at])
             
         # R
         elif isinstance(tpe, Record):
             fieldnames = [fn for fn, ft in tpe.of]
-            subs = dict((fn, recurse(ft, name.toRecord(fn))) for fn, ft in tpe.of)
+            subs = dict((fn, recurse(ft, name.toRecord(fn), fn)) for fn, ft in tpe.of)
 
             class SpecificLazyRecord(LazyRecord):
                 __slots__ = ["__at"]
                 _fields = fieldnames
-                _namedtuple = namedtuple("R", fieldnames)
+                _namedtuple = namedtuple(lastgoodname, fieldnames)
 
                 def __init__(self, at):
                     self.__at = at
@@ -421,4 +423,4 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
         else:
             assert False, "unexpected type object: {0}".format(tpe)
             
-    return recurse(tpe, ArrayName(prefix, delimiter=delimiter))(0)
+    return recurse(tpe, ArrayName(prefix, delimiter=delimiter), prefix)(0)

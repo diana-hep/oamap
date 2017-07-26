@@ -28,34 +28,25 @@ try:
 except ImportError:
     import urllib.request as urllib2
 
-class JsonEvents(object):
-    URL = "http://histogrammar.org/docs/data/triggerIsoMu24_50fb-1.json.gz"
-
-    def __init__(self):
-        compressed = urllib2.urlopen(self.URL).read()
-        decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
-        self.astext = decompressor.decompress(compressed).split("\n")
-
-    def __len__(self):
-        return len(self.astext)
-
-    def __iter__(self):
-        def generate():
-            for line in self.astext:
-                if line != "":
-                    yield json.loads(line)
-        return generate()
+URL = "http://histogrammar.org/docs/data/triggerIsoMu24_50fb-1.json.gz"
 
 # about 20 seconds to download and decompress
-jsonEvents = JsonEvents()
-```
+jsonlines = zlib.decompressobj(16 + zlib.MAX_WBITS) \
+                .decompress(urllib2.urlopen(URL).read()) \
+                .split("\n")
 
+# have to generate dicts on the fly to avoid running out of memory!
+def generate():
+    for line in jsonlines:
+        if line != "":
+            yield json.loads(line)
+```
 
 ```python
 from plur.python import toarrays
 
 # about 3 minutes to parse the JSON, make Python dictionaries, and fill
-arrays = toarrays("events", jsonEvents, List(Event))
+arrays = toarrays("events", generate(), List(Event))
 ```
 
 ```python
@@ -80,5 +71,11 @@ arrays = numpy.load(open("triggerIsoMu24_50fb-1.npz"))
 
 from plur.python import fromarrays
 events = fromarrays("events", arrays)
+
+# random access to any event, loads (lazily) in a fraction of a second
+print(events[-1])
+print(events[-100].muons[0].iso)
 ```
+
+
 
