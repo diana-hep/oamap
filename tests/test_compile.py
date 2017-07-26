@@ -148,9 +148,14 @@ class TestCompile(unittest.TestCase):
         same([T([[False]], False), T2(99.9, [[99.2]]), T([[True]], True)], lambda x, i: x[i].one[0][0], [0, 1, 2])
         same([T([[False, True]], False), T2(99.9, [[99.2, 3.14]]), T([[True, False]], True)], lambda x, i: x[i].one[0][1], [0, 1, 2])
 
-        # len
+        ####### len
+
         same([1, 2, 3, 4, 5], lambda x, dummy: len(x), [0])
-        same([[], [1, 2], [3, 4, 5]], lambda x, i: len(x[i]), [0, 1, 2], True)
+        same([[], [1, 2], [3, 4, 5]], lambda x, i: len(x[i]), [0, 1, 2])
+
+        same([[], [T(1, 1), T(2, 2)], [T(3, 3), T(4, 4), T(5, 5)]], lambda x, i: len(x[i]), [0, 1, 2])
+        same([T([], []), T([1, 2], [1, 2]), T([3, 4, 5], [3, 4, 5])], lambda x, i: len(x[i].one), [0, 1, 2])
+        same([T([1], [1]), T2([1, 2], [1, 2]), T([3, 4, 5], [3, 4, 5])], lambda x, i: len(x[i].one), [0, 1, 2], True)
 
     def test_local(self):
         data = [[], [1, 2], [3, 4, 5]]

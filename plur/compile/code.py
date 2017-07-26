@@ -330,30 +330,62 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 # Call ("func", "args", "keywords", "starargs", "kwargs")
 def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
     node.func = recurse(node.func)
-    node.args = recurse(node.args)
-    node.keywords = recurse(node.keywords)
-    node.starargs = recurse(node.starargs)
-    node.kwargs = recurse(node.kwargs)
 
-    if isinstance(node.func, ast.Name) and \
-           node.func.id in environment and \
-           environment[node.func.id] == len and \
-           len(node.args) == 1 and \
-           isinstance(node.args[0].plurtype, List):
-
-        assert isinstance(node.args[0], ast.IfExp)
-        assert isinstance(node.args[0].test, ast.Compare)
-        assert asteq(node.args[0].test.ops, [ast.Eq()])
-        assert asteq(node.args[0].test.comparators, [ast.Num(0)])
-
-        tpe = node.args[0].plurtype
-        return generate(tpe,
-                        "offset[0] if at == 0 else (offset[at] - offset[at - 1])",
-                        offset=ast.Name(colname(tpe.column), ast.Load()),
-                        at=node.args[0].test.left)
-
-    else:
+    def descend(node, unionop):
+        node.args = recurse(node.args, unionop=unionop)
+        node.keywords = recurse(node.keywords)
+        node.starargs = recurse(node.starargs)
+        node.kwargs = recurse(node.kwargs)
         return node
+
+    # if this is a function we know
+    if isinstance(node.func, ast.Name) and node.func.id in environment:
+        # len
+        if environment[node.func.id] == len:
+            if len(node.args) != 1:
+                raise TypeError("len() takes exactly one argument ({0} given)".format(len(node.args)))
+
+            def subunionop(tpe, node):
+                if isinstance(tpe, List):
+                    return generate(tpe,
+                                    "offset[0] if at == 0 else (offset[at] - offset[at - 1])",
+                                    offset=ast.Name(colname(tpe.column), ast.Load()),
+                                    at=node)
+                else:
+                    return unionop(tpe, node)
+
+            descend(node, subunionop)
+
+            tpe = node.args[0].plurtype
+            if isinstance(tpe, List):
+                assert isinstance(node.args[0], ast.IfExp)
+                assert isinstance(node.args[0].test, ast.Compare)
+                assert asteq(node.args[0].test.ops, [ast.Eq()])
+                assert asteq(node.args[0].test.comparators, [ast.Num(0)])
+                return generate(tpe,
+                                "offset[0] if at == 0 else (offset[at] - offset[at - 1])",
+                                offset=ast.Name(colname(tpe.column), ast.Load()),
+                                at=node.args[0].test.left)
+
+            elif isinstance(tpe, Union):
+                return node.args[0]
+
+            else:
+                node
+
+        # ...others?
+        else:
+            if any(isinstance(x.plurtype, Type) for x in node.args):
+                raise TypeError("can't call {0} on plur types".format(dump_python_source(node.func).strip()))
+            else:
+                return descend(node, unionop)
+
+    # not a function that we know
+    else:
+        if any(isinstance(x.plurtype, Type) for x in node.args):
+            raise TypeError("can't call {0} on plur types".format(dump_python_source(node.func).strip()))
+        else:
+            return descend(node, unionop)
 
 # ClassDef ("name", "bases", "body", "decorator_list")                                   # Py2
 # ClassDef ("name", "bases", "keywords", "starargs", "kwargs", "body", "decorator_list") # Py3
