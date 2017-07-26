@@ -64,11 +64,15 @@ As an example, a list of lists of objects that can be integers or x-y pairs woul
 List(List(Union(int32, Record(x=float64, y=float64))))
 ```
 
+All objects of interest to most data analyses can be represented as some combination of the above. For instance,
 
+   * Unicode strings are `List(uint8)` where combinations of `uint8` bytes are interpreted as characters.
+   * Limited-scope pointers are integers representing indexes in some other list.
+   * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
+In general, there are three levels of abstraction: the data types generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
 
-
-
+To move a large dataset, one only needs to move a subset of the Numpy arrays— everything else can be reconstructed.
 
 # Other stuff
 
