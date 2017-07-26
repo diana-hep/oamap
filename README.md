@@ -4,9 +4,9 @@
 
 PLUR is a way to encode complex objects made out of **Primitives**, **Lists**, **Unions**, and **Records** as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce the runtime costs of Python and to allow for further [acceleration with Numba](http://numba.pydata.org/).
 
-In the example described below, a nested structure takes 3 minutes to process as JSON and Python dicts, 25 seconds to process as PLUR proxies, 3.8 seconds to process as rewritten code (still pure Python), and 0.03 seconds to process when compiled with Numba (all single-threaded). That's a factor of 6000, analyzing nested data at a rate of 320 MB/sec (16 MHz in this case).
+In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba. That's a speedup of six thousand: a final single-threaded rate of 320 MB/sec (16 MHz in this case).
 
-In each case, the user writes the same idiomatic Python code, as though these PLUR objects really were the Python lists and objects they resemble. The purpose is to minimize the total time to solution— human and computer.
+In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were Python lists and objects. The purpose is to minimize the total time to solution— human and computer.
 
 ## What's wrong with data frames?
 
