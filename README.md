@@ -2,11 +2,11 @@
 
 ## TL;DR
 
-PLUR is a way to encode complex objects made out of Primitives, Lists, Unions, and Records as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce runtime costs of pure Python code and allow for [acceleration with Numba](http://numba.pydata.org/) for even more speed.
+PLUR is a way to encode complex objects made out of **Primitives**, **Lists**, **Unions**, and **Records** as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce runtime costs of pure Python code and allow for [acceleration with Numba](http://numba.pydata.org/) for even more speed.
 
-In the example described below, a nested structure takes 3 minutes to process as JSON and Python dictionaries, 25 seconds to process as PLUR proxies, 3.8 seconds to process as rewritten code (still pure Python), and 0.03 seconds to process when compiled with Numba. That's a factor of 6000.
+In the example described below, a nested structure takes 3 minutes to process as JSON and Python dicts, 25 seconds to process as PLUR proxies, 3.8 seconds to process as rewritten code (still pure Python), and 0.03 seconds to process when compiled with Numba. That's a factor of 6000 from JSON/dicts to Numba.
 
-In all cases, the user writes idiomatic Python code, as though these PLUR objects were Python lists and objects.
+In each case, the user writes the same idiomatic Python code, as though these PLUR objects really are the Python lists and objects they resemble. The purpose is to minimize the total time to solution— human and computer.
 
 ## What's wrong with data frames?
 
@@ -53,7 +53,12 @@ Ideally, we'd want fast access with any kind of data.
 
 PLUR is a way to encode complex, hierarchical data in plain Numpy arrays. The acronym stands for the four basic generators of the typesystem:
 
-   * **Primitive:** fixed-width types such as 
+   * **Primitive:** fixed-width types: the booleans, numbers, and ASCII characters of Numpy.
+   * **List:** arbitrary-length lists of any other types, including nested lists.
+   * **Union:** represents objects that can be one of several types ("sum types" in type theory).
+   * **Record:** represents objects that contain several types ("product types" in type theory).
+
+
 
 
 
