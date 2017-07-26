@@ -46,8 +46,9 @@ def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
         environment["__numba_args"] = numba
         code = [generate(None, "import numba"),
                 code,
-                generate(None, "name = numba.njit(**__numba_args)(name)",
-                         name=ast.Name(fcnname, ast.Load()))]
+                generate(None, "toname = numba.njit(**__numba_args)(fromname)",
+                         fromname=ast.Name(fcnname, ast.Load()),
+                         toname=ast.Name(fcnname, ast.Store()))]
 
     rewrittenfcn = compilefcn(code, fcnname, filename, environment=environment)
     return rewrittenfcn, arrayparams
@@ -55,7 +56,6 @@ def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
 def compilefcn(code, fcnname, filename, environment={}):
     if not isinstance(code, list):
         code = [code]
-    print dump_python_source(ast.Module(code))
     compiled = compile(ln(ast.Module(code)), filename, "exec")
     out = dict(environment)
     exec(compiled, out)    # exec can't be called in the same function with nested functions

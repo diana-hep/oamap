@@ -122,7 +122,7 @@ for event in events:
 print(psum)
 ```
 
-On my machine, it took 25 seconds to walk through all the muons and compute momenta. Despite appearances, no lists or muon objects were created, only proxies to them. Unnecessary arrays aren't even loaded from the file.
+On my machine, it took 25 seconds to walk through all the muons and compute momenta. Despite appearances, no lists or muon objects were created, only proxies to them. Only arrays necessary for the compuation (9.5 MB in this example) are actually loaded, not all of them (38 MB).
 
 ```python
 from plur.types import *
@@ -148,31 +148,4 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-0.98 seconds the first time (compilation), followed by 0.05 seconds each subsequent time (execution only).
-
-
-
-
-
-
-import time
-import math
-import numpy
-from plur.types import *
-from plur.python import fromarrays
-from plur.compile import local
-
-arrays = numpy.load(open("triggerIsoMu24_50fb-1.npz"))
-events = fromarrays("events", arrays)
-
-def doit(events):
-    psum = 0.0
-    for i in range(len(events)):
-        for j in range(len(events[i].muons)):
-            psum += math.sqrt(events[i].muons[j].px**2 +
-                              events[i].muons[j].py**2 +
-                              events[i].muons[j].pz**2)
-    return psum
-
-fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math}, numba=True)
-fcn(*[arrays[x] for x in arrayparams])
+0.98 seconds the first time (compilation), followed by 0.03 seconds each subsequent time (execution only).
