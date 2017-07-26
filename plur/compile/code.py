@@ -26,6 +26,9 @@ from plur.thirdparty.meta import dump_python_source
 ##################################################################### entry point
 
 def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
+    if isinstance(paramtypes, Type):
+        paramtypes = [paramtypes]
+
     code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, paramtypes, environment)
     fcnname = code.name
     filename = fcn.__code__.co_filename
@@ -33,28 +36,26 @@ def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
     if debug:
         print("BEFORE:\n{0}\nAFTER:\n{1}".format(
             dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
-        for x in arrayparams:
-            print("{0}\t{1}".format(x, arrays[x]))
-            print("")
+        for x, y in zip(code.args.args, arrayparams):
+            print("{0} -->\t{1}".format(x.id if isinstance(x, ast.Name) else x.arg, y))
 
-    if numba is not None:
+    if numba is not None and numba is not False:
+        if numba is True:
+            numba = {}
         environment = dict(environment)
-        environment["numbaparams"] = numba
+        environment["__numba_args"] = numba
         code = [generate(None, "import numba"),
                 code,
-                generate(None, "out = numba.njit(**numbaparams)(name)",
+                generate(None, "name = numba.njit(**__numba_args)(name)",
                          name=ast.Name(fcnname, ast.Load()))]
 
     rewrittenfcn = compilefcn(code, fcnname, filename, environment=environment)
-
-    out = lambda arrayargs, *otherargs: rewrittenfcn(*(tuple(arrayargs) + otherargs))
-    out.__name__ = fcnname
-
-    return out, arrayparams
+    return rewrittenfcn, arrayparams
 
 def compilefcn(code, fcnname, filename, environment={}):
     if not isinstance(code, list):
         code = [code]
+    print dump_python_source(ast.Module(code))
     compiled = compile(ln(ast.Module(code)), filename, "exec")
     out = dict(environment)
     exec(compiled, out)    # exec can't be called in the same function with nested functions
@@ -298,10 +299,10 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
     node.value = recurse(node.value, unionop=subunionop)
 
-    if isinstance(node.value.plurtype, Record):
+    if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, Record):
         return node2array(node.value, fieldtype(node.value.plurtype), colname, unionop)
 
-    elif isinstance(node.value.plurtype, Union):
+    elif hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, Union):
         return node.value
 
     else:
@@ -355,9 +356,9 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
                     return unionop(tpe, node)
 
             descend(node, subunionop)
-
-            tpe = node.args[0].plurtype
-            if isinstance(tpe, List):
+            
+            if hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, List):
+                tpe = node.args[0].plurtype
                 assert isinstance(node.args[0], ast.IfExp)
                 assert isinstance(node.args[0].test, ast.Compare)
                 assert asteq(node.args[0].test.ops, [ast.Eq()])
@@ -367,7 +368,7 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
                                 offset=ast.Name(colname(tpe.column), ast.Load()),
                                 at=node.args[0].test.left)
 
-            elif isinstance(tpe, Union):
+            elif hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, Union):
                 return node.args[0]
 
             else:
@@ -375,14 +376,14 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 
         # ...others?
         else:
-            if any(isinstance(x.plurtype, Type) for x in node.args):
+            if any(hasattr(x, "plurtype") and isinstance(x.plurtype, Type) for x in node.args):
                 raise TypeError("can't call {0} on plur types".format(dump_python_source(node.func).strip()))
             else:
                 return descend(node, unionop)
 
     # not a function that we know
     else:
-        if any(isinstance(x.plurtype, Type) for x in node.args):
+        if any(hasattr(x, "plurtype") and isinstance(x.plurtype, Type) for x in node.args):
             raise TypeError("can't call {0} on plur types".format(dump_python_source(node.func).strip()))
         else:
             return descend(node, unionop)
@@ -558,13 +559,13 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
     node.value = recurse(node.value, unionop=subunionop)
 
-    if isinstance(node.value.plurtype, List):
+    if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, List):
         return node2array(generate(None, "at + i", at=node.value, i=index),
                           node.value.plurtype.of,
                           colname,
                           unionop)
 
-    elif isinstance(node.value.plurtype, Union):
+    elif hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, Union):
         return node.value
 
     else:

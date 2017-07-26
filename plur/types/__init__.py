@@ -23,4 +23,8 @@ from plur.types.record import Record       # R
 
 from plur.types.primitive import *
 
-__all__ = ["Type", "Primitive", "List", "Union", "Record"] + primitivetypes
+from plur.types.columns import type2columns
+from plur.types.columns import columns2type
+from plur.types.columns import arrays2type
+
+__all__ = ["Type", "Primitive", "List", "Union", "Record"] + primitivetypes + ["type2columns", "columns2type", "arrays2type"]

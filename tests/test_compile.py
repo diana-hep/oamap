@@ -165,11 +165,11 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(arrayparams, ["prefix-Lo", "prefix-Ld-Lo", "prefix-Ld-Ld"])
 
         arrayargs = [arrays[x] for x in arrayparams]
-        self.assertEqual(fcn(arrayargs, 1, 0), 1)
-        self.assertEqual(fcn(arrayargs, 1, 1), 2)
-        self.assertEqual(fcn(arrayargs, 2, 0), 3)
-        self.assertEqual(fcn(arrayargs, 2, 1), 4)
-        self.assertEqual(fcn(arrayargs, 2, 2), 5)
+        self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)
+        self.assertEqual(fcn(*(arrayargs + [1, 1])), 2)
+        self.assertEqual(fcn(*(arrayargs + [2, 0])), 3)
+        self.assertEqual(fcn(*(arrayargs + [2, 1])), 4)
+        self.assertEqual(fcn(*(arrayargs + [2, 2])), 5)
 
     def test_numba(self):
         try:
@@ -185,8 +185,8 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(arrayparams, ["prefix-Lo", "prefix-Ld-Lo", "prefix-Ld-Ld"])
 
         arrayargs = [arrays[x] for x in arrayparams]
-        self.assertEqual(fcn(arrayargs, 1, 0), 1)
-        self.assertEqual(fcn(arrayargs, 1, 1), 2)
-        self.assertEqual(fcn(arrayargs, 2, 0), 3)
-        self.assertEqual(fcn(arrayargs, 2, 1), 4)
-        self.assertEqual(fcn(arrayargs, 2, 2), 5)
+        self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)
+        self.assertEqual(fcn(*(arrayargs + [1, 1])), 2)
+        self.assertEqual(fcn(*(arrayargs + [2, 0])), 3)
+        self.assertEqual(fcn(*(arrayargs + [2, 1])), 4)
+        self.assertEqual(fcn(*(arrayargs + [2, 2])), 5)
