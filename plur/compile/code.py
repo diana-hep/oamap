@@ -19,26 +19,57 @@ from types import MethodType
 
 from plur.util import *
 from plur.types import *
+from plur.types.columns import withcolumns, hascolumns
 from plur.thirdparty.meta.decompiler.instructions import make_function
+from plur.thirdparty.meta import dump_python_source
 
 ##################################################################### entry point
 
-def compilefcn(code, filename, environment={}):
-    compiled = compile(ln(ast.Module([code])), filename, "exec")
+def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
+    code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, paramtypes, environment)
+    fcnname = code.name
+    filename = fcn.__code__.co_filename
+
+    if debug:
+        print("BEFORE:\n{0}\nAFTER:\n{1}".format(
+            dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
+        for x in arrayparams:
+            print("{0}\t{1}".format(x, arrays[x]))
+            print("")
+
+    if numba is not None:
+        environment = dict(environment)
+        environment["numbaparams"] = numba
+        code = [generate(None, "import numba"),
+                code,
+                generate(None, "out = numba.njit(**numbaparams)(name)",
+                         name=ast.Name(fcnname, ast.Load()))]
+
+    rewrittenfcn = compilefcn(code, fcnname, filename, environment=environment)
+
+    out = lambda arrayargs, *otherargs: rewrittenfcn(*(tuple(arrayargs) + otherargs))
+    out.__name__ = fcnname
+
+    return out, arrayparams
+
+def compilefcn(code, fcnname, filename, environment={}):
+    if not isinstance(code, list):
+        code = [code]
+    compiled = compile(ln(ast.Module(code)), filename, "exec")
     out = dict(environment)
     exec(compiled, out)    # exec can't be called in the same function with nested functions
-    return out[code.name]
+    return out[fcnname]
 
 def callfcn(arrays, rewrittenfcn, arrayargs, *otherargs):
     return rewrittenfcn(*(tuple(arrays[x] for x in arrayargs) + otherargs))
 
-def rewrite(fcn, paramtypes, environment={}):
+def rewrite(fcn, paramtypes={}, environment={}):
     ####### normalize and check inputs
 
     if callable(fcn) and hasattr(fcn, "__code__"):
         syntaxtree = fcn2syntaxtree(fcn)
     else:
-        raise TypeError("propagate takes a Python function as its first argument")
+        raise TypeError("fcn must be a Python function")
 
     if isinstance(paramtypes, dict):
         symbols = dict(paramtypes)
@@ -46,7 +77,7 @@ def rewrite(fcn, paramtypes, environment={}):
         try:
             iter(paramtypes)
         except TypeError:
-            raise TypeError("propagate takes a dict of name -> type or iterable of parameter types as its second argument")
+            raise TypeError("paramtypes must be a dict of name -> type or an iterable of types for each fcn parameter")
         else:
             symbols = dict((n.id if isinstance(n, ast.Name) else n.arg, t) for n, t in zip(syntaxtree.args.args, paramtypes))
 
@@ -59,7 +90,7 @@ def rewrite(fcn, paramtypes, environment={}):
     toreplace = list(symbols.keys())
 
     if not all(x in parameters for x in toreplace):
-        raise TypeError("all paramtypes ({0}) must be arguments of the function ({1})".format(", ".join(toreplace), ", ".join(parameters)))
+        raise TypeError("all paramtypes ({0}) must be arguments of fcn ({1})".format(", ".join(toreplace), ", ".join(parameters)))
 
     len_defaults = len(() if fcn.__defaults__ is None else fcn.__defaults__)
     newargs = []
@@ -73,15 +104,11 @@ def rewrite(fcn, paramtypes, environment={}):
     syntaxtree.args.args = newargs
 
     if not isinstance(environment, dict):
-        raise TypeError("propagate takes a Python dict (e.g. vars()) as its third argument")
+        raise TypeError("environment must be a Python dict (e.g. vars())")
 
-    def checktype(tpe):
-        if not hasattr(tpe, "column"):
-            raise TypeError("type is missing column information (hint: create the type with columns2type)")
-        for t in tpe.children:
-            checktype(t)
     for t in symbols.values():
-        checktype(t)
+        if not hascolumns(t):
+            raise TypeError("type is missing column information (e.g. create with plur.types.columns.columns2type or pass through plur.types.columns.withcolumns)")
 
     ####### actually do the rewriting
 
@@ -209,10 +236,10 @@ def generate(plurtype, format, **subs):
             out = recurse(parsed.body[0].value)
         else:
             out = recurse(parsed.body[0])
+        out.plurtype = plurtype
     else:
         out = recurse(parsed.body)
-
-    out.plurtype = plurtype
+    
     return out
 
 def node2array(node, tpe, colname, unionop):

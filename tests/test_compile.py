@@ -21,8 +21,9 @@ from collections import namedtuple
 import numpy
 
 from plur.types import *
-from plur.types.columns import columns2type
+from plur.types.columns import arrays2type
 from plur.python import *
+from plur.compile import *
 from plur.compile.code import fcn2syntaxtree, rewrite, compilefcn, callfcn
 
 from plur.thirdparty.meta import dump_python_source
@@ -34,7 +35,7 @@ class TestCompile(unittest.TestCase):
     def test_rewrite(self):
         def same(data, fcn, testsets, debug=False):
             arrays = toarrays("prefix", data)
-            tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+            tpe = arrays2type(arrays, "prefix")
             if debug:
                 print("\n\nDATA: {0}".format(data))
                 print("\nTYPE: {0}".format(tpe))
@@ -47,7 +48,7 @@ class TestCompile(unittest.TestCase):
                     print("{0}\t{1}".format(x, arrays[x]))
                 print("")
 
-            newfcn = compilefcn(code, fcn.__code__.co_filename)
+            newfcn = compilefcn(code, code.name, fcn.__code__.co_filename)
 
             for otherargs in testsets:
                 if not isinstance(otherargs, (list, tuple)):
@@ -69,7 +70,7 @@ class TestCompile(unittest.TestCase):
 
         def check_only_union(data, debug=False):
             arrays = toarrays("prefix", data, Union(boolean, float64))
-            tpe = columns2type(dict((n, a.dtype) for n, a in arrays.items()), "prefix")
+            tpe = arrays2type(arrays, "prefix")
             fcn = lambda x: x
             code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
             if debug:
@@ -80,7 +81,7 @@ class TestCompile(unittest.TestCase):
                 print("")
                 print(tpe)
                 print("")
-            self.assertEqual(callfcn(arrays, compilefcn(code, fcn.__code__.co_filename), arrayparams), data)
+            self.assertEqual(callfcn(arrays, compilefcn(code, code.name, fcn.__code__.co_filename), arrayparams), data)
 
         check_only_union(False)
         check_only_union(3.14)
@@ -146,3 +147,37 @@ class TestCompile(unittest.TestCase):
 
         same([T([[False]], False), T2(99.9, [[99.2]]), T([[True]], True)], lambda x, i: x[i].one[0][0], [0, 1, 2])
         same([T([[False, True]], False), T2(99.9, [[99.2, 3.14]]), T([[True, False]], True)], lambda x, i: x[i].one[0][1], [0, 1, 2])
+
+    def test_local(self):
+        data = [[], [1, 2], [3, 4, 5]]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        fcn, arrayparams = local(lambda x, i, j: x[i][j], {"x": tpe})
+        self.assertEqual(arrayparams, ["prefix-Lo", "prefix-Ld-Lo", "prefix-Ld-Ld"])
+
+        arrayargs = [arrays[x] for x in arrayparams]
+        self.assertEqual(fcn(arrayargs, 1, 0), 1)
+        self.assertEqual(fcn(arrayargs, 1, 1), 2)
+        self.assertEqual(fcn(arrayargs, 2, 0), 3)
+        self.assertEqual(fcn(arrayargs, 2, 1), 4)
+        self.assertEqual(fcn(arrayargs, 2, 2), 5)
+
+    def test_numba(self):
+        try:
+            import numba
+        except ImportError:
+            sys.stderr.write("skipping (Numba is not installed)\n")
+            return
+
+        data = [[], [1, 2], [3, 4, 5]]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        fcn, arrayparams = local(lambda x, i, j: x[i][j], {"x": tpe}, numba={})
+        self.assertEqual(arrayparams, ["prefix-Lo", "prefix-Ld-Lo", "prefix-Ld-Ld"])
+
+        arrayargs = [arrays[x] for x in arrayparams]
+        self.assertEqual(fcn(arrayargs, 1, 0), 1)
+        self.assertEqual(fcn(arrayargs, 1, 1), 2)
+        self.assertEqual(fcn(arrayargs, 2, 0), 3)
+        self.assertEqual(fcn(arrayargs, 2, 1), 4)
+        self.assertEqual(fcn(arrayargs, 2, 2), 5)

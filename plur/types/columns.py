@@ -21,6 +21,12 @@ from plur.types import *
 from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 
+def withcolumns(tpe, prefix, delimiter="-"):
+    return columns2type(type2columns(tpe, prefix, delimiter=delimiter), prefix, delimiter="-")
+
+def hascolumns(tpe):
+    return hasattr(tpe, "column") and all(hascolumns(t) for t in tpe.children)
+
 def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)):
     def recurse(name, tpe):
         if tpe.rtname is not None:
@@ -63,6 +69,9 @@ def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)
             assert False, "unexpected type object: {0}".format(tpe)
 
     return dict(recurse(ArrayName(prefix, delimiter=delimiter), tpe))
+
+def arrays2type(arrays, prefix, delimiter="-"):
+    return columns2type(dict((n, a.dtype) for n, a in arrays.items()), prefix)
 
 def columns2type(cols, prefix, delimiter="-"):
     def recurse(cols, name):
