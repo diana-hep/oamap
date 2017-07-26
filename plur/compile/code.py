@@ -105,6 +105,7 @@ def rewrite(fcn, paramtypes={}, environment={}):
 
     if not isinstance(environment, dict):
         raise TypeError("environment must be a Python dict (e.g. vars())")
+    environment = dict([("len", len)] + list(environment.items()))
 
     for t in symbols.values():
         if not hascolumns(t):
@@ -137,21 +138,28 @@ def rewrite(fcn, paramtypes={}, environment={}):
         return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     def recurse(node, symboltypes=symbols, unionop=unionop):
-        if isinstance(node, ast.Name):
-            veto.add(node.id)
+        if isinstance(node, ast.AST):
+            if isinstance(node, ast.Name):
+                veto.add(node.id)
 
-        handlername = "do_" + node.__class__.__name__
-        if handlername in globals():
-            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop)
+            handlername = "do_" + node.__class__.__name__
+            if handlername in globals():
+                return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop)
+
+            else:
+                for fieldname in node._fields:
+                    if isinstance(getattr(node, fieldname), ast.AST):
+                        setattr(node, fieldname, recurse(getattr(node, fieldname)))
+
+                    elif isinstance(getattr(node, fieldname), list):
+                        setattr(node, fieldname, [recurse(x) for x in getattr(node, fieldname)])
+
+                return node
+
+        elif isinstance(node, list):
+            return [recurse(x, symboltypes=symbols, unionop=unionop) for x in node]
 
         else:
-            for fieldname in node._fields:
-                if isinstance(getattr(node, fieldname), ast.AST):
-                    setattr(node, fieldname, recurse(getattr(node, fieldname)))
-
-                elif isinstance(getattr(node, fieldname), list):
-                    setattr(node, fieldname, [recurse(x) for x in getattr(node, fieldname)])
-
             return node
 
     code = recurse(syntaxtree)
@@ -175,44 +183,25 @@ def ln(x):
         x.col_offset = -1
     return x
 
+def asteq(x, y):
+    if isinstance(x, list) and isinstance(y, list) and len(x) == len(y):
+        return all(asteq(xi, yi) for xi, yi in zip(x, y))
+
+    elif isinstance(x, ast.AST) and isinstance(y, ast.AST):
+        return x.__class__ == y.__class__ and all(asteq(getattr(x, n), getattr(y, n)) for n in x._fields)
+
+    else:
+        return x == y
+    
 def fcn2syntaxtree(fcn):
-    def __eq__(self, other):
-        if self.__class__ == other.__class__:
-            return all(getattr(self, n) == getattr(other, n) for n in self._fields)
-        else:
-            return False
-
-    def totuple(x):
-        if isinstance(x, list):
-            return tuple(x)
-        else:
-            return x
-
-    def __hash__(self):
-        return hash((self.__class__,) + tuple(totuple(getattr(self, n)) for n in self._fields))
-
-    def addmethods(x):
-        if isinstance(x, ast.AST):
-            ln(x)
-            x.plurtype = None
-            x.__eq__ = MethodType(__eq__, x)
-            x.__hash__ = MethodType(__hash__, x)
-            for fieldname in x._fields:
-                addmethods(getattr(x, fieldname))
-
-        elif isinstance(x, list):
-            return [addmethods(y) for y in x]
-
-        return x
-
     out = make_function(fcn.__code__)
     if isinstance(out, ast.Lambda):
         if py2:
-            out = ast.FunctionDef("lambda", out.args, [out.body], [])
+            return ln(ast.FunctionDef("lambda", out.args, [out.body], []))
         else:
-            out = ast.FunctionDef("lambda", out.args, [out.body], [], None)
-
-    return addmethods(out)
+            return ln(ast.FunctionDef("lambda", out.args, [out.body], [], None))
+    else:
+        return out
 
 def generate(plurtype, format, **subs):
     def recurse(x):
@@ -339,6 +328,32 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 # Bytes ("s",)  # Py3 only
 
 # Call ("func", "args", "keywords", "starargs", "kwargs")
+def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
+    node.func = recurse(node.func)
+    node.args = recurse(node.args)
+    node.keywords = recurse(node.keywords)
+    node.starargs = recurse(node.starargs)
+    node.kwargs = recurse(node.kwargs)
+
+    if isinstance(node.func, ast.Name) and \
+           node.func.id in environment and \
+           environment[node.func.id] == len and \
+           len(node.args) == 1 and \
+           isinstance(node.args[0].plurtype, List):
+
+        assert isinstance(node.args[0], ast.IfExp)
+        assert isinstance(node.args[0].test, ast.Compare)
+        assert asteq(node.args[0].test.ops, [ast.Eq()])
+        assert asteq(node.args[0].test.comparators, [ast.Num(0)])
+
+        tpe = node.args[0].plurtype
+        return generate(tpe,
+                        "offset[0] if at == 0 else (offset[at] - offset[at - 1])",
+                        offset=ast.Name(colname(tpe.column), ast.Load()),
+                        at=node.args[0].test.left)
+
+    else:
+        return node
 
 # ClassDef ("name", "bases", "body", "decorator_list")                                   # Py2
 # ClassDef ("name", "bases", "keywords", "starargs", "kwargs", "body", "decorator_list") # Py3
