@@ -461,46 +461,43 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 
 # Subscript ("value", "slice", "ctx")
 def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
-    def subunionop(tpe, node):
-        assert isinstance(tpe, List)
-        from plur.thirdparty.meta import dump_python_source  # FIXME
-
-        print "WTF", tpe, dump_python_source(node).strip()
-
-        if isinstance(node.slice, ast.Slice):
-            raise NotImplementedError("slice of a list")
-
-        elif isinstance(node.slice, ast.Index):
-            if not isinstance(node.ctx, ast.Load):
-                raise NotImplementedError("list dereference in {0} context".format(node.ctx))
-
-            inner = generate(None, "0 if at == 0 else offset",
-                             at=node,
-                             offset=unionop(tpe, generate(None, "x - 1", x=node)))
-
-            return node2array(inner, tpe.of, colname, unionop)
-
-        else:
-            raise NotImplementedError
-        
-    node.value = recurse(node.value, unionop=subunionop)
     node.slice = recurse(node.slice)
 
-    if isinstance(node.value.plurtype, List):
-        if isinstance(node.slice, ast.Slice):
-            raise NotImplementedError("slice of a list")
-
-        elif isinstance(node.slice, ast.Index):
-            if not isinstance(node.ctx, ast.Load):
-                raise NotImplementedError("list dereference in {0} context".format(node.ctx))
-
-            return node2array(generate(None, "at + i", at=node.value, i=node.slice.value),
-                              node.value.plurtype.of,
-                              colname,
-                              unionop)
-
+    if isinstance(node.slice, ast.Slice):
+        raise NotImplementedError
+    elif isinstance(node.slice, ast.Index):
+        if isinstance(node.ctx, ast.Load):
+            index = node.slice.value
         else:
             raise NotImplementedError
+    else:
+        raise NotImplementedError
+
+    def subunionop(tpe, node):
+        assert isinstance(tpe, List)
+
+        # from plur.thirdparty.meta import dump_python_source  # FIXME
+        # print "\nWTF", dump_python_source(index), tpe, dump_python_source(node).strip()
+
+        # inner = generate(None, "0 if at == 0 else offset",
+        #                  at=node,
+        #                  offset=unionop(tpe, generate(None, "x - 1", x=node)))
+        # return node2array(inner, tpe.of, colname, unionop)
+
+        inner = generate(None, "(0 if at == 0 else offset[at - 1]) + i",
+                         at=node,
+                         offset=ast.Name(colname(tpe.column), ast.Load()),
+                         i=index)
+
+        return unionop(tpe.of, inner)
+
+    node.value = recurse(node.value, unionop=subunionop)
+
+    if isinstance(node.value.plurtype, List):
+        return node2array(generate(None, "at + i", at=node.value, i=index),
+                          node.value.plurtype.of,
+                          colname,
+                          unionop)
 
     elif isinstance(node.value.plurtype, Union):
         return node.value
