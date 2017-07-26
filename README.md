@@ -16,11 +16,11 @@ For instance, a dataset naturally expressed as
 
 ```
 [Event(met=MET(x=55.3, y=78.3),
-       muons=[Muon(px=25.6, py=-7.9, pz=100.6), Muon(px=-17.5, py=-12.9, pz=87.5)]),
+       muons=[Muon(px=25.6, py=-7.9, pz=100.6), Muon(px=-17.5, py=-12.9, pz=87.5)]),   # two muons
  Event(met=MET(x=52.8, y=-109.2),
-       muons=[]),
+       muons=[]),                                                                      # no muons
  Event(met=MET(x=97.6, y=45.8),
-       muons=[Muon(px=-22.9, py=-31.6, pz=130.5)])]
+       muons=[Muon(px=-22.9, py=-31.6, pz=130.5)])]                                    # one muon
 ```
 
 can be forced into
