@@ -47,7 +47,7 @@ class TestCompile(unittest.TestCase):
                     print("{0}\t{1}".format(x, arrays[x]))
                 print("")
 
-            newfcn = compilefcn(code)
+            newfcn = compilefcn(code, fcn.__code__.co_filename)
 
             for otherargs in testsets:
                 if not isinstance(otherargs, (list, tuple)):
@@ -79,7 +79,7 @@ class TestCompile(unittest.TestCase):
                 print("")
                 print(tpe)
                 print("")
-            self.assertEqual(callfcn(arrays, compilefcn(code), arrayparams), data)
+            self.assertEqual(callfcn(arrays, compilefcn(code, fcn.__code__.co_filename), arrayparams), data)
 
         check_only_union(False)
         check_only_union(3.14)

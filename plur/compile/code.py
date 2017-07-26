@@ -21,13 +21,131 @@ from plur.util import *
 from plur.types import *
 from plur.thirdparty.meta.decompiler.instructions import make_function
 
+##################################################################### entry point
+
+def compilefcn(code, filename, environment={}):
+    compiled = compile(ln(ast.Module([code])), filename, "exec")
+    out = dict(environment)
+    exec(compiled, out)    # exec can't be called in the same function with nested functions
+    return out[code.name]
+
+def callfcn(arrays, rewrittenfcn, arrayargs, *otherargs):
+    return rewrittenfcn(*(tuple(arrays[x] for x in arrayargs) + otherargs))
+
+def rewrite(fcn, paramtypes, environment={}):
+    ####### normalize and check inputs
+
+    if callable(fcn) and hasattr(fcn, "__code__"):
+        syntaxtree = fcn2syntaxtree(fcn)
+    else:
+        raise TypeError("propagate takes a Python function as its first argument")
+
+    if isinstance(paramtypes, dict):
+        symbols = dict(paramtypes)
+    else:
+        try:
+            iter(paramtypes)
+        except TypeError:
+            raise TypeError("propagate takes a dict of name -> type or iterable of parameter types as its second argument")
+        else:
+            symbols = dict((n.id if isinstance(n, ast.Name) else n.arg, t) for n, t in zip(syntaxtree.args.args, paramtypes))
+
+    if hasattr(fcn, "__annotations__"):
+        for n, t in fcn.__annotations__:
+            if n != "return" and n not in symbols:
+                symbols[n] = t
+
+    parameters = [n.id if isinstance(n, ast.Name) else n.arg for n in syntaxtree.args.args]
+    toreplace = list(symbols.keys())
+
+    if not all(x in parameters for x in toreplace):
+        raise TypeError("all paramtypes ({0}) must be arguments of the function ({1})".format(", ".join(toreplace), ", ".join(parameters)))
+
+    len_defaults = len(() if fcn.__defaults__ is None else fcn.__defaults__)
+    newargs = []
+    for i, (n, arg) in enumerate(zip(parameters, syntaxtree.args.args)):
+        if n in toreplace and i + len_defaults >= len(parameters):
+            raise TypeError("paramtypes ({0}) must not have default values".format(", ".join(toreplace)))
+
+        if n not in toreplace:
+            newargs.append(arg)
+
+    syntaxtree.args.args = newargs
+
+    if not isinstance(environment, dict):
+        raise TypeError("propagate takes a Python dict (e.g. vars()) as its third argument")
+
+    def checktype(tpe):
+        if not hasattr(tpe, "column"):
+            raise TypeError("type is missing column information (hint: create the type with columns2type)")
+        for t in tpe.children:
+            checktype(t)
+    for t in symbols.values():
+        checktype(t)
+
+    ####### actually do the rewriting
+
+    columns = {}
+    veto = set()
+    number = [0]
+    def colname(c):
+        assert c is not None
+                
+        if c in columns:
+            return columns[c]
+
+        else:
+            name = "array_{0}".format(number[0])
+            number[0] += 1
+            if name in veto:
+                return colname(c)
+            else:
+                columns[c] = name
+                return name
+
+    enclosedfcns = {}
+    encloseddata = {}
+
+    def unionop(tpe, node):
+        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+
+    def recurse(node, symboltypes=symbols, unionop=unionop):
+        if isinstance(node, ast.Name):
+            veto.add(node.id)
+
+        handlername = "do_" + node.__class__.__name__
+        if handlername in globals():
+            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop)
+
+        else:
+            for fieldname in node._fields:
+                if isinstance(getattr(node, fieldname), ast.AST):
+                    setattr(node, fieldname, recurse(getattr(node, fieldname)))
+
+                elif isinstance(getattr(node, fieldname), list):
+                    setattr(node, fieldname, [recurse(x) for x in getattr(node, fieldname)])
+
+            return node
+
+    code = recurse(syntaxtree)
+
+    newparams = [numbered for named, numbered in columns.items()]
+    newparams.sort(key=lambda x: int(x[6:]))
+
+    code.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + code.args.args
+
+    code.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + code.body
+
+    arrayparams = [[named for named, numbered in columns.items() if numbered == x][0] for x in newparams]
+    return code, arrayparams, enclosedfcns, encloseddata
+
 ##################################################################### utility functions
 
 def ln(x):
     if not hasattr(x, "lineno"):
-        x.lineno = 1
+        x.lineno = -1
     if not hasattr(x, "col_offset"):
-        x.col_offset = 0
+        x.col_offset = -1
     return x
 
 def fcn2syntaxtree(fcn):
@@ -108,15 +226,9 @@ def node2array(node, tpe, colname, unionop):
         offsetat = generate(None, "offset[at]",
                             offset=ast.Name(colname(tpe.column2), ast.Load()),
                             at=node)
-
         def recurse(i):
             if i == len(tpe.of) - 1:
                 return unionop(tpe.of[i], offsetat)
-                # return generate(None, "array[offset[at]]",
-                #                 offset=ast.Name(colname(tpe.column2), ast.Load()),
-                #                 array=ast.Name(colname(tpe.of[i].column), ast.Load()),
-                #                 at=node)
-
             else:
                 return generate(None, "consequent if tag[at] == i else alternate",
                                 consequent=unionop(tpe.of[i], offsetat),
@@ -124,14 +236,6 @@ def node2array(node, tpe, colname, unionop):
                                 at=node,
                                 i=ast.Num(i),
                                 alternate=recurse(i + 1))
-                # return generate(None, "array[offset[at]] if tag[at] == i else alternative",
-                #                 tag=ast.Name(colname(tpe.column), ast.Load()),
-                #                 offset=ast.Name(colname(tpe.column2), ast.Load()),
-                #                 array=ast.Name(colname(tpe.of[i].column), ast.Load()),
-                #                 at=node,
-                #                 i=ast.Num(i),
-                #                 alternative=recurse(i + 1))
-
         out = recurse(0)
         out.plurtype = tpe
         return out
@@ -142,125 +246,6 @@ def node2array(node, tpe, colname, unionop):
         return node
     else:
         assert False, "unexpected type object {0}".format(tpe)
-
-##################################################################### entry point
-
-def compilefcn(code, environment={}):
-    compiled = compile(ln(ast.Module([code])), "<plur>", "exec")
-    out = dict(environment)
-    exec(compiled, out)    # exec can't be called in the same function with nested functions
-    return out[code.name]
-
-def callfcn(arrays, rewrittenfcn, arrayargs, *otherargs):
-    return rewrittenfcn(*(tuple(arrays[x] for x in arrayargs) + otherargs))
-
-def rewrite(fcn, paramtypes, environment={}):
-    if callable(fcn) and hasattr(fcn, "__code__"):
-        syntaxtree = fcn2syntaxtree(fcn)
-    else:
-        raise TypeError("propagate takes a Python function as its first argument")
-
-    if isinstance(paramtypes, dict):
-        symbols = dict(paramtypes)
-    else:
-        try:
-            iter(paramtypes)
-        except TypeError:
-            raise TypeError("propagate takes a dict of name -> type or iterable of parameter types as its second argument")
-        else:
-            symbols = dict((n.id if isinstance(n, ast.Name) else n.arg, t) for n, t in zip(syntaxtree.args.args, paramtypes))
-
-    if hasattr(fcn, "__annotations__"):
-        for n, t in fcn.__annotations__:
-            if n != "return" and n not in symbols:
-                symbols[n] = t
-
-    parameters = [n.id if isinstance(n, ast.Name) else n.arg for n in syntaxtree.args.args]
-    toreplace = list(symbols.keys())
-
-    if not all(x in parameters for x in toreplace):
-        raise TypeError("all paramtypes ({0}) must be arguments of the function ({1})".format(", ".join(toreplace), ", ".join(parameters)))
-
-    defaults = fcn.func_defaults if hasattr(fcn, "func_defaults") else fcn.__defaults__
-    if defaults is None:
-        defaults = ()
-
-    newargs = []
-    for i, (n, arg) in enumerate(zip(parameters, syntaxtree.args.args)):
-        if n in toreplace and i + len(defaults) >= len(parameters):
-            raise TypeError("paramtypes ({0}) must not have default values".format(", ".join(toreplace)))
-
-        if n not in toreplace:
-            newargs.append(arg)
-
-    syntaxtree.args.args = newargs
-
-    if not isinstance(environment, dict):
-        raise TypeError("propagate takes a Python dict (e.g. vars()) as its third argument")
-
-    def checktype(tpe):
-        if not hasattr(tpe, "column"):
-            raise TypeError("type is missing column information (hint: create the type with columns2type)")
-        for t in tpe.children:
-            checktype(t)
-    for t in symbols.values():
-        checktype(t)
-
-    ####### actually transform the code
-
-    columns = {}
-    veto = set()
-    number = [0]
-    def colname(c):
-        assert c is not None
-                
-        if c in columns:
-            return columns[c]
-
-        else:
-            name = "array_{0}".format(number[0])
-            number[0] += 1
-            if name in veto:
-                return colname(c)
-            else:
-                columns[c] = name
-                return name
-
-    enclosedfcns = {}
-    encloseddata = {}
-
-    def unionop(tpe, node):
-        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
-
-    def recurse(node, symboltypes=symbols, unionop=unionop):
-        if isinstance(node, ast.Name):
-            veto.add(node.id)
-
-        handlername = "do_" + node.__class__.__name__
-        if handlername in globals():
-            return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop)
-
-        else:
-            for fieldname in node._fields:
-                if isinstance(getattr(node, fieldname), ast.AST):
-                    setattr(node, fieldname, recurse(getattr(node, fieldname)))
-
-                elif isinstance(getattr(node, fieldname), list):
-                    setattr(node, fieldname, [recurse(x) for x in getattr(node, fieldname)])
-
-            return node
-
-    code = recurse(syntaxtree)
-
-    newparams = [numbered for named, numbered in columns.items()]
-    newparams.sort(key=lambda x: int(x[6:]))
-
-    code.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + code.args.args
-
-    code.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + code.body
-
-    arrayparams = [[named for named, numbered in columns.items() if numbered == x][0] for x in newparams]
-    return code, arrayparams, enclosedfcns, encloseddata
 
 ##################################################################### specialized rules for each Python AST type
 
@@ -483,17 +468,12 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
         elif isinstance(node.slice, ast.Index):
             if not isinstance(node.ctx, ast.Load):
                 raise NotImplementedError("list dereference in {0} context".format(node.ctx))
-            
-            # return unionop(tpe, generate(None, "at + i", at=node.value, i=node.slice.value))
 
-            # return generate(tpe, "array[at + i]", array=ast.Name(colname(tpe.column), ast.Load()), at=node, i=node.slice.value)
+            inner = generate(None, "0 if at == 0 else offset",
+                             at=node,
+                             offset=unionop(tpe, generate(None, "x - 1", x=node)))
 
-            return node2array(generate(None, "0 if at == 0 else offset",
-                                       at=node,
-                                       offset=unionop(tpe, generate(None, "x - 1", x=node))),
-                              tpe.of,
-                              colname,
-                              unionop)
+            return node2array(inner, tpe.of, colname, unionop)
 
         else:
             raise NotImplementedError

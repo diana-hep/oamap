@@ -17,9 +17,11 @@
 import sys
 
 if sys.version_info[0] > 2:
+    py2 = False
+
     xrange = range
     long = int
-    py2 = False
+
 else:
     py2 = True
 
