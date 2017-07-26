@@ -4,9 +4,9 @@
 
 PLUR is a way to encode complex objects made out of **Primitives**, **Lists**, **Unions**, and **Records** as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce the runtime costs of Python and to allow for further [acceleration with Numba](http://numba.pydata.org/).
 
-In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba. That's a speedup of six thousand: a final single-threaded rate of 320 MB/sec (16 MHz in this case).
+In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba. That's a speedup of six thousand: a final single-threaded rate of 320 MB/sec (16 MHz for these events).
 
-In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were Python lists and objects. The purpose is to minimize the total time to solution— human and computer.
+In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were the Python lists and objects they resemble. The purpose is to minimize the total time to solution— human and computer.
 
 ## What's wrong with data frames?
 
@@ -41,13 +41,13 @@ Alternatively, it could be exploded into
 |      1 |        0 |  55.3 |   78.3 |   -17.5 |   -12.9 |    87.5 |
 |      2 |        2 |  97.6 |   45.8 |   -22.9 |   -31.6 |   130.5 |
 
-at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded this way: we can't do it for two or more particle types.
+at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list can be exploded this way: we can't do it for two or more particle types in the same event.
 
-Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing SQL `JOIN` operations on the event id. But not only does this complicate the analysis, it also discards the close association between particles in the same event, which must be rediscovered by the potentially expensive join.
+Finally, we could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing SQL `JOIN` operations on the event id. But not only does this [vastly complicate the analysis](https://stackoverflow.com/q/38831961/1623645), it also discards the close association between particles in the same event, which must be rediscovered by the potentially expensive join.
 
-Often an analyzer starts optimistically with flat tables, hoping to benefit from fast processing due to lazy, columnar data access and term rewriting, but then must rewrite the analysis once nested types become necessary.
+Often a data analyst starts optimistically with flat tables, hoping to benefit from fast processing due to lazy, columnar data access and term rewriting, but then must re-express the analysis as code once nested types become necessary, and then again, converting from Python to C++ as the size of the dataset grows.
 
-Ideally, we want fast access to any kind of data.
+Ideally, we want fast access to any kind of data, analyzed as simple Python code.
 
 ## PLUR: fast access to Primitives, Lists, Unions, and Records
 
