@@ -1,3 +1,13 @@
+# PLUR
+
+## TL;DR
+
+PLUR is a way to encode complex objects made out of Primitives, Lists, Unions, and Records as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce runtime costs of pure Python code and allow for [acceleration with Numba](http://numba.pydata.org/) for even more speed.
+
+In the example described below, a nested structure takes 3 minutes to process as JSON and Python dictionaries, 25 seconds to process as PLUR proxies, 3.8 seconds to process as rewritten code (still pure Python), and 0.03 seconds to process when compiled with Numba. That's a factor of 6000.
+
+In all cases, the user writes idiomatic Python code, as though these PLUR objects were Python lists and objects.
+
 ## What's wrong with data frames?
 
 Many data analysis procedures, particularly in high energy physics, can't work exclusively with a table of rectangular data (i.e. a "data frame" or "flat ntuple"). Sometimes you need an arbitrary-length list of particles or even nested lists, not just numbers.
@@ -35,17 +45,15 @@ at the expense of duplicating MET data in events with multiple muons and losing 
 
 Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing SQL `JOIN` operations on the event id. But not only does this complicate the analysis, it also discards the close association between particles in the same event, which must be rediscovered by the potentially expensive join.
 
-There is a reason physicists don't work this way.
+Often an analyzer starts optimistically with flat tables, hoping to benefit from the efficiency of lazy, columnar data access, but must rewrite the analysis once nested types become necessary.
 
-## PLUR: efficient iterators for Primitives, Lists, Unions, and Records
+Ideally, we'd want fast access with any kind of data.
 
-```
+## PLUR: fast iterators for Primitives, Lists, Unions, and Records
 
+PLUR is a way to encode complex, hierarchical data in plain Numpy arrays. The acronym stands for the four basic generators of the typesystem:
 
-
-
-```
-
+   * **Primitive:** fixed-width types such as 
 
 
 
