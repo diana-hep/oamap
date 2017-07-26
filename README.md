@@ -49,7 +49,7 @@ Often an analyzer starts optimistically with flat tables, hoping to benefit from
 
 Ideally, we'd want fast access with any kind of data.
 
-## PLUR: fast iterators for Primitives, Lists, Unions, and Records
+## PLUR: fast access to Primitives, Lists, Unions, and Records
 
 PLUR is a way to encode complex, hierarchical data in plain Numpy arrays. The acronym stands for the four basic generators of the typesystem:
 
@@ -58,6 +58,11 @@ PLUR is a way to encode complex, hierarchical data in plain Numpy arrays. The ac
    * **Union:** represents objects that can be one of several types ("sum types" in type theory).
    * **Record:** represents objects that contain several types ("product types" in type theory).
 
+As an example, a list of lists of objects that can be integers or x-y pairs would be represented as
+
+```
+List(List(Union(int32, Record(x=float64, y=float64))))
+```
 
 
 
