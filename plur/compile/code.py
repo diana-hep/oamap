@@ -463,7 +463,9 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
-        from plur.thirdparty.meta import dump_python_source
+        from plur.thirdparty.meta import dump_python_source  # FIXME
+
+        print "WTF", tpe, dump_python_source(node).strip()
 
         if isinstance(node.slice, ast.Slice):
             raise NotImplementedError("slice of a list")
