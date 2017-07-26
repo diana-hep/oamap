@@ -145,4 +145,4 @@ class TestCompile(unittest.TestCase):
         same([T(T(False, [True]), False), T2(1.1, T(2.2, [3.3])), T(T(True, [False]), True)], lambda x, i: x[i].one.two[0], [0, 1, 2])
 
         same([T([[False]], False), T2(99.9, [[99.2]]), T([[True]], True)], lambda x, i: x[i].one[0][0], [0, 1, 2])
-
+        same([T([[False, True]], False), T2(99.9, [[99.2, 3.14]]), T([[True, False]], True)], lambda x, i: x[i].one[0][1], [0, 1, 2])

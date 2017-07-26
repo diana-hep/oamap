@@ -226,6 +226,7 @@ def node2array(node, tpe, colname, unionop):
 
     # U
     elif isinstance(tpe, Union):
+        tag = ast.Name(colname(tpe.column), ast.Load())
         offsetat = generate(None, "offset[at]",
                             offset=ast.Name(colname(tpe.column2), ast.Load()),
                             at=node)
@@ -234,8 +235,8 @@ def node2array(node, tpe, colname, unionop):
                 return unionop(tpe.of[i], offsetat)
             else:
                 return generate(None, "consequent if tag[at] == i else alternate",
+                                tag=tag,
                                 consequent=unionop(tpe.of[i], offsetat),
-                                tag=ast.Name(colname(tpe.column), ast.Load()),
                                 at=node,
                                 i=ast.Num(i),
                                 alternate=recurse(i + 1))
@@ -475,21 +476,11 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
-
-        # from plur.thirdparty.meta import dump_python_source  # FIXME
-        # print "\nWTF", dump_python_source(index), tpe, dump_python_source(node).strip()
-
-        # inner = generate(None, "0 if at == 0 else offset",
-        #                  at=node,
-        #                  offset=unionop(tpe, generate(None, "x - 1", x=node)))
-        # return node2array(inner, tpe.of, colname, unionop)
-
-        inner = generate(None, "(0 if at == 0 else offset[at - 1]) + i",
-                         at=node,
-                         offset=ast.Name(colname(tpe.column), ast.Load()),
-                         i=index)
-
-        return unionop(tpe.of, inner)
+        return unionop(tpe.of,
+                       generate(None, "(0 if at == 0 else offset[at - 1]) + i",
+                                at=node,
+                                offset=ast.Name(colname(tpe.column), ast.Load()),
+                                i=index))
 
     node.value = recurse(node.value, unionop=subunionop)
 
