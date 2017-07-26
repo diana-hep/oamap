@@ -476,8 +476,6 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
         from plur.thirdparty.meta import dump_python_source
-        print "HELLO", dump_python_source(node).strip()
-        # return unionop(tpe, node)
 
         if isinstance(node.slice, ast.Slice):
             raise NotImplementedError("slice of a list")
@@ -490,7 +488,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
             # return generate(tpe, "array[at + i]", array=ast.Name(colname(tpe.column), ast.Load()), at=node, i=node.slice.value)
 
-            return node2array(generate(None, "at + i", at=unionop(tpe, node), i=node.slice.value),
+            return node2array(generate(None, "0 if at == 0 else offset",
+                                       at=node,
+                                       offset=unionop(tpe, generate(None, "x - 1", x=node))),
                               tpe.of,
                               colname,
                               unionop)
@@ -500,8 +500,6 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
         
     node.value = recurse(node.value, unionop=subunionop)
     node.slice = recurse(node.slice)
-
-    print "WA WA WA", node.value.plurtype
 
     if isinstance(node.value.plurtype, List):
         if isinstance(node.slice, ast.Slice):
