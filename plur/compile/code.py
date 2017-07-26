@@ -174,13 +174,16 @@ def fcn2syntaxtree(fcn):
                 addmethods(getattr(x, fieldname))
 
         elif isinstance(x, list):
-            return map(addmethods, x)
+            return [addmethods(y) for y in x]
 
         return x
 
     out = make_function(fcn.__code__)
     if isinstance(out, ast.Lambda):
-        out = ast.FunctionDef("lambda", out.args, [out.body], [])
+        if py2:
+            out = ast.FunctionDef("lambda", out.args, [out.body], [])
+        else:
+            out = ast.FunctionDef("lambda", out.args, [out.body], [], None)
 
     return addmethods(out)
 
@@ -195,7 +198,7 @@ def generate(plurtype, format, **subs):
             return x
 
         elif isinstance(x, list):
-            return map(recurse, x)
+            return [recurse(y) for y in x]
 
         else:
             return x
