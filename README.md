@@ -2,7 +2,9 @@
 
 ### Motivation
 
-Many data analyses, particularly in high energy physics, can't work exclusively with rectangular data. Sometimes you need an arbitrary-length list of particles or even nested lists. For instance, a dataset naturally expressed as
+Many data analysis procedures, particularly in high energy physics, can't work exclusively with a table of rectangular data (i.e. a "data frame" or "flat ntuple"). Sometimes you need an arbitrary-length list of particles or even nested lists, not just numbers.
+
+For instance, a dataset naturally expressed as
 
 ```
 [Event(met=MET(x=55.3, y=78.3),
@@ -21,7 +23,9 @@ can be forced into
 |       1 |  52.8 | -109.2 |      ??? |      ??? |      ??? |
 |       2 |  97.6 |   45.8 |    -22.9 |    -31.6 |    130.5 |
 
-at the expense of truncating or padding the list of muons. Alternatively, it could be exploded into
+but only at the expense of truncating or padding the list of muons.
+
+Alternatively, it could be exploded into
 
 | Muon # | Event id | MET x |  MET y | Muon px | Muon py | Muon pz |
 |-------:|---------:|------:|-------:|--------:|--------:|--------:|
@@ -29,9 +33,12 @@ at the expense of truncating or padding the list of muons. Alternatively, it cou
 |      1 |        0 |  55.3 |   78.3 |   -17.5 |   -12.9 |    87.5 |
 |      2 |        2 |  97.6 |   45.8 |   -22.9 |   -31.6 |   130.5 |
 
-at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded: we couldn't do this for two particle types.
+at the expense of duplicating MET data in events with multiple muons and losing MET data in events without muons. Furthermore, only one list in the event can be exploded: we can't do this for two or more particle types.
 
-Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing `SQL JOIN` operations on the event id.
+Finally, one could resort to [normal form](https://en.wikipedia.org/wiki/Database_normalization), making a separate table for each type of particle and then performing `SQL JOIN` operations on the event id. But not only does this complicate analysis, it discards the close association between particles in the same event, which must be rediscovered by a potentially expensive join. There is a reason physicists don't work this way.
+
+
+
 
 
 
