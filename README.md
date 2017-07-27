@@ -4,7 +4,7 @@
 
 PLUR is a way to encode complex objects made out of **Primitives**, **Lists**, **Unions**, and **Records** as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce the runtime costs of Python and to allow for further [acceleration with Numba](http://numba.pydata.org/).
 
-In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba. That's a speedup of six thousand: a final single-threaded rate of 320 MB/sec (16 MHz for these events).
+In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba. That's a final single-threaded rate of 320 MB/sec (16 MHz for these events).
 
 In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were the Python lists and objects they resemble. The purpose is to minimize the total time to solution— human and computer.
 
@@ -47,7 +47,7 @@ Finally, we could resort to [normal form](https://en.wikipedia.org/wiki/Database
 
 Often a data analyst starts optimistically with flat tables, hoping to benefit from fast processing due to lazy, columnar data access and term rewriting, but then must re-express the analysis as code once nested types become necessary, and then again, converting from Python to C++ as the size of the dataset grows.
 
-Ideally, we want fast access to any kind of data, analyzed as simple Python code.
+Ideally, we'd want simple Python code to analyze any kind of data as fast as a database query.
 
 ## PLUR: fast access to Primitives, Lists, Unions, and Records
 
@@ -58,23 +58,33 @@ PLUR is a way to encode complex, hierarchical data in plain Numpy arrays. The ac
    * **Union:** represents objects that can be one of several types ("sum types" in type theory).
    * **Record:** represents objects that contain several types ("product types" in type theory).
 
-As an example, a list of lists of objects that can be integers or x-y pairs would be represented as
+As an example, a list of lists of integers or x-y pairs would be represented as
 
 ```
 List(List(Union(int32, Record(x=float64, y=float64))))
 ```
 
-All objects of interest to most data analyses can be represented as some combination of the above. For instance,
+Data of interest to most analyses can be represented as some combination of the above. For instance,
 
    * Unicode strings are `List(uint8)` where combinations of `uint8` bytes are interpreted as characters.
-   * Limited-scope pointers are integers representing indexes in some other list.
+   * Limited-scope pointers are integers representing indexes into some other list.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
-In general, there are three levels of abstraction: the data types generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
+There are three levels of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
 
-To move a large dataset, one only needs to move a subset of the Numpy arrays— everything else can be reconstructed.
+To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. ("Move" in this case might mean network transfers, loading data from disk, or paging it through the CPU cache.)
 
-# Other stuff
+## Particle physics example
+
+To follow along, check out [Revision XXX](FIXME) and
+
+```bash
+python setup.py install --user
+```
+
+The only explicit dependency is Numpy, though the last step requires Numba (installable with Conda).
+
+In a Python session, define some types:
 
 ```python
 from plur.types import *
@@ -93,42 +103,81 @@ Event = Record(jets               = List(Jet),
                numPrimaryVertices = int32)
 ```
 
+Now we will load half a million events of type `List(Event)` from a JSON file.
 
 ```python
 import json
 import zlib
 try:
-    import urllib2
+    import urllib2                       # Python 2
 except ImportError:
-    import urllib.request as urllib2
+    import urllib.request as urllib2     # Python 3
 
 URL = "http://histogrammar.org/docs/data/triggerIsoMu24_50fb-1.json.gz"
 
-# about 20 seconds to download and decompress
+# About 20 seconds to download and decompress.
 jsonlines = zlib.decompressobj(16 + zlib.MAX_WBITS) \
                 .decompress(urllib2.urlopen(URL).read()) \
                 .split("\n")
 
-# have to generate dicts on the fly to avoid running out of memory!
+# Must generate dicts on the fly to avoid running out of memory!
 def generate():
     for line in jsonlines:
         if line != "":
             yield json.loads(line)
 ```
 
+These events use so much memory as Python dictionaries that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files.)
+
 ```python
 from plur.python import toarrays
 
-# about 3 minutes to parse the JSON, make Python dictionaries, and fill
+# About 3 minutes to parse the JSON, make Python dictionaries, and fill.
 arrays = toarrays("events", generate(), List(Event))
 ```
+
+Now they're just Numpy arrays. Some arrays store data, some represent structure, even the names encode the type structure (losslessly).
+
+```python
+>>> list(arrays.keys())
+['events-Lo',
+ 'events-Ld-R_photons-Lo',
+ 'events-Ld-R_photons-Ld-R_pz',
+ 'events-Ld-R_photons-Ld-R_py',
+ 'events-Ld-R_photons-Ld-R_px',
+ 'events-Ld-R_photons-Ld-R_iso',
+ 'events-Ld-R_photons-Ld-R_E',
+ 'events-Ld-R_numPrimaryVertices',
+ 'events-Ld-R_muons-Lo',
+ 'events-Ld-R_muons-Ld-R_q',
+ 'events-Ld-R_muons-Ld-R_pz',
+ 'events-Ld-R_muons-Ld-R_py',
+ 'events-Ld-R_muons-Ld-R_px',
+ 'events-Ld-R_muons-Ld-R_iso',
+ 'events-Ld-R_muons-Ld-R_E',
+ 'events-Ld-R_MET-R_py',
+ 'events-Ld-R_MET-R_px',
+ 'events-Ld-R_jets-Lo',
+ 'events-Ld-R_jets-Ld-R_pz',
+ 'events-Ld-R_jets-Ld-R_py',
+ 'events-Ld-R_jets-Ld-R_px',
+ 'events-Ld-R_jets-Ld-R_E',
+ 'events-Ld-R_jets-Ld-R_btag',
+ 'events-Ld-R_electrons-Lo',
+ 'events-Ld-R_electrons-Ld-R_q',
+ 'events-Ld-R_electrons-Ld-R_pz',
+ 'events-Ld-R_electrons-Ld-R_py',
+ 'events-Ld-R_electrons-Ld-R_px',
+ 'events-Ld-R_electrons-Ld-R_iso',
+ 'events-Ld-R_electrons-Ld-R_E']
+```
+
+Use Numpy's `savez` to save them to an uncompressed zip file (or `savez_compressed` for compression).
 
 ```python
 import numpy
 numpy.savez(open("triggerIsoMu24_50fb-1.npz", "wb"), **arrays)
 ```
-
-or use the `numpy.savez_compressed` function for zlib compression.
 
 | Format           |   Size |
 |:-----------------|-------:|
@@ -137,19 +186,17 @@ or use the `numpy.savez_compressed` function for zlib compression.
 | Numpy            |  39 MB |
 | Numpy compressed |  13 MB |
 
-Close and reopen Python.
+Now exit Python and open a new Python shell. We can load data already in PLUR format in a fraction of a second.
 
 ```python
 import numpy
 arrays = numpy.load(open("triggerIsoMu24_50fb-1.npz"))
 
 from plur.python import fromarrays
-
-# loads (lazily) in a fraction of a second
 events = fromarrays("events", arrays)
 ```
 
-Random access to any event, any object in the event.
+We immediately have access to any event and any object in the event.
 
 ```python
 >>> print(events[0])
@@ -172,7 +219,7 @@ events(MET=MET(px=-15.61468505859375, py=22.061094284057617),
 3.68770575523
 ```
 
-Note that we were able to read these _typed_ objects from a pure Numpy file: the data types are encoded in the array names.
+We can even inspect the data _type,_ which was encoded in the array names. More than one data structure can be stored in a single namespace— name prefixes (`"events"` here) keep them separate.
 
 ```python
 >>> from plur.types import *
@@ -184,6 +231,8 @@ List(Record(MET                = Record(px=float64, py=float64),
             numPrimaryVertices = int32,
             photons            = List(Record(E=float64, iso=float64, px=float64, py=float64, pz=float64))))
 ```
+
+The data are loaded on demand by proxies. List proxies like `events` yield event records when requested by square brackets and event records yield their contents when requested by attributes. If the arrays are in a Numpy file or a memory-mapped file, they won't be loaded if not needed. In fact, a memory-mapped file can be many times larger than your computer's memory and still be accessible on demand.
 
 ```python
 import math
