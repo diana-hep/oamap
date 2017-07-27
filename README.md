@@ -77,7 +77,7 @@ To move a large dataset, we only need to move a subset of the Numpy arrays— ev
 
 ## Particle physics example
 
-To follow along, check out [Revision 165](https://github.com/diana-hep/plur/releases/tag/rev165) and
+To follow along, check out [Revision 166](https://github.com/diana-hep/plur/releases/tag/rev166) and
 
 ```bash
 python setup.py install --user
@@ -287,7 +287,7 @@ The first time the function is called, it takes 0.98 seconds to compile. Thereaf
 
 **Relationship to [Femtocode](https://github.com/diana-hep/femtocode):** Femtocode is a totally functional language with dependent types, intended for high-level data queries. The columnar representation described here is the central idea of the Femtocode execution engine: PLUR is a simpler project that focuses only on accessing data, which can be used in any procedural code. In fact, PLUR can be reimplemented in any language with JIT-compilation (such as [C++ Cling](https://root.cern.ch/cling): hint to ROOT developers).
 
-Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready.
+Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready, and Femtocode itself is likely to be written on top of PLUR.
 
 **Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough for term rewriting in a complex, procedural language like Python.
 
