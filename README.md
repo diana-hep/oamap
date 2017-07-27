@@ -86,6 +86,8 @@ There are three layers of abstraction here: types of objects generated at runtim
 
 To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. "Move" might mean network transfers, reading data from disk, or paging RAM through the CPU cache.
 
+PLUR is not a file format: a file format specifies how data are encoded as bytes on disk. PLUR specifies how one abstraction, hierarchical data, is encoded in another, a namespace of flat arrays. Numpy has a natural serialization of a namespace of flat arrays— the `.npz` file— though a server that responds to URL names with array data would work as well. The arrays could even be stored in ROOT files, HDF5 files, or a key-value object store.
+
 ## Particle physics example
 
 To follow along, check out [Revision 167](https://github.com/diana-hep/plur/releases/tag/rev167) and
