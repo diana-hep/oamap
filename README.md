@@ -14,6 +14,10 @@ In each case, the user writes the same idiomatic Python code, as though these PL
    2. [PLUR: fast access to Primitives, Lists, Unions, and Records](#plur-fast-access-to-primitives-lists-unions-and-records)
    3. [Particle physics example](#particle-physics-example)
    4. [Relationship to other projects](#relationship-to-other-projects)
+      1. [Femtocode](#relationship-to-femtocode)
+      2. [Apache Arrow](#relationship-to-apache-arrow)
+      3. [ROOT](#relationship-to-root)
+      4. [Databases](#relationship-to-databases)
    5. [Project roadmap](#project-roadmap)
 
 ## In the wiki
