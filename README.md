@@ -8,6 +8,17 @@ In the example described below, a nested data structure takes 3 minutes to proce
 
 In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were the Python lists and objects they mimic. The purpose is to minimize the total time to solution— human and computer.
 
+## Table of contents
+
+   1. [What's wrong with data frames?](#whats-wrong-with-data-frames)
+   2. [PLUR: fast access to Primitives, Lists, Unions, and Records](#plur-fast-access-to-primitives-lists-unions-and-records)
+   3. [Particle physics example](#particle-physics-example)
+   4. [Project roadmap](#project-roadmap)
+
+## In the wiki
+
+   1. [Encoding scheme](../../wiki/Encoding-scheme) (language independent specification)
+
 ## What's wrong with data frames?
 
 Many data analysis procedures, particularly in high energy physics, can't work exclusively with a rectangular table of data (i.e. a "data frame" or "flat ntuple"). Sometimes you need an arbitrary-length list of particles or even nested lists.
