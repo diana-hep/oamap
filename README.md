@@ -13,8 +13,8 @@ In each case, the user writes the same idiomatic Python code, as though these PL
    1. [What's wrong with data frames?](#whats-wrong-with-data-frames)
    2. [PLUR: fast access to Primitives, Lists, Unions, and Records](#plur-fast-access-to-primitives-lists-unions-and-records)
    3. [Particle physics example](#particle-physics-example)
-   4. [Project roadmap](#project-roadmap)
-   5. [Relationship to other projects](#relationship-to-other-projects)
+   4. [Relationship to other projects](#relationship-to-other-projects)
+   5. [Project roadmap](#project-roadmap)
 
 ## In the wiki
 
@@ -343,7 +343,7 @@ The differences between Arrow and PLUR are:
 **Relationship to [ROOT](https://root.cern/):** PLUR shares many concepts with the ROOT file format, but there are differences. First, PLUR is not a data format: one could use ROOT as a source and storage for PLUR data structures (converting Numpy arrays to and from ROOT TBranches). But more significantly,
 
    1. The goal of ROOT serialization is to store and retrieve arbitrary C++ objects, essentially like a C++ version of Python's pickle. PLUR encodes data adhering to a language-independent type system, which is intentionally kept small for simplicity.
-   2. ROOT materializes data as ordinary C++ objects so that C++ code can run on them. PLUR uses Python's dynamism or instruments compiled code to provide the illusion that the Python code is operating on objects, when in fact it is operating on array indexes that produce the required object attributes just in time.
+   2. ROOT materializes data as ordinary C++ objects so that C++ code can run on them. PLUR uses Python's dynamism or instruments compiled code to provide the illusion that the Python code is operating on objects, when in fact it is operating on array indexes that produce the required object attributes as needed.
    3. Data can be modified in-place with ROOT; PLUR objects are immutable. Modifying a PLUR dataset, such as updating attribute values, actually creates a new column to be used in conjunction with the old columns like a diff-patch.
    4. ROOT schema evolution is complicated by the fact that C++ is a nominally typed language: classes must have the same name; it's not enough to have the right attributes.
 
@@ -351,10 +351,15 @@ ROOT and PLUR can be used together: I am currently implementing fast, native Num
 
 Moreover, the [PLUR specification](../../wiki/Encoding-scheme) is language-neutral: it could be implemented in [Cling, a just-in-time C++ compiler](https://root.cern.ch/cling). The code transformations that provide the fastest access can be implemented more easily with C++ metaprogramming than the Python code transformation.
 
-**Relationship to databases**
+**Relationship to databases:** PLUR is being developed specifically for use in a service that aggregates particle physics data in response to user queries. This is why database-style columnar data and term rewriting are important. However, PLUR can be used by itself to analyze any data, as the example above shows.
 
+One important distinction between a real database and distributed PLUR is that databases maintain indexes over some fields for faster lookup than a sequential scan. PLUR is not just compatible with adding an index: the event list concept (described above) is a good way to interface the two.
 
+An event list is a usually sorted, always unique list of pointers into a collection like `List(Event)`. The "pointers" themselves are just indexes in that collection (not raw memory pointers!). Event lists are the result of skims, so that a skim can be represented by one new column, rather than a copy of a subset of rows for every column of the original dataset.
 
+Database indexes are a copy of the most relevant columns as sorted trees or other structures for particular kinds of access. These database tables could be maintained alongside a PLUR dataset with a column that represents the PLUR index. When the database selects a subset of rows, it can present them to PLUR as an event list for rapid iteration over the results.
+
+To a user, this would require a combined query: an SQL part (for the database) followed by a Python part (for PLUR) to be executed on the selected entries. Femtocode could simplify this into a single expression.
 
 ## Project roadmap
 
