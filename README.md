@@ -77,7 +77,7 @@ To move a large dataset, we only need to move a subset of the Numpy arrays— ev
 
 ## Particle physics example
 
-To follow along, check out [Revision 164](https://github.com/diana-hep/plur/releases/tag/rev164) and
+To follow along, check out [Revision 165](https://github.com/diana-hep/plur/releases/tag/rev165) and
 
 ```bash
 python setup.py install --user
@@ -252,7 +252,7 @@ On my laptop, this took 25 seconds. Only five of the thirty arrays were actually
 
 Each primitive, list, union, and record could be represented at runtime by a single number each, which has much less overhead than a proxy instance. Knowing the data type, we can propagate types through the code to replace proxies with simple numbers.
 
-The interface is currently rough, requiring us to use explicit brackets rather than iterators, but eventually no code changes will be required for faster access through term rewriting. The following is a kind of compilation, transforming Python to Python, using type inference and rigorous AST manipulation.
+The interface is currently rough, requiring us to use explicit brackets rather than iterators (and no error reporting!), but eventually no code changes will be required for faster access through term rewriting. The following is a kind of compilation, transforming Python to Python, using type inference and rigorous AST manipulation.
 
 ```python
 import math
