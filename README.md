@@ -289,17 +289,17 @@ The first time the function is called, it takes 0.98 seconds to compile. Thereaf
 
 Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready.
 
-**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough to allow for term rewriting in a complex, procedural language like Python.
+**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough for term rewriting in a complex, procedural language like Python.
 
 The differences are:
 
    1. PLUR has no dependencies other than Numpy and maybe Numba, so it's easy to install.
    2. Arrow defines the relative placemment of its columnar buffers; PLUR lets them be any Numpy arrays anywhere (including disk via memory-mapped files). Therefore, PLUR arrays can be copied into Arrow buffers with a bulk `memcpy` operation, while Arrow buffers can be zero-copy interpreted as PLUR arrays.
-   3. PLUR implements fast accessors for the data. In the future, PLUR could be used as a way of writing Python routines that run on Arrow data, which could be a Pandas/R/Spark DataFrame supporting Arrow.
+   3. PLUR implements fast accessors for the data. In the future, PLUR could be used as a way of writing Python routines that run on Arrow data, such as a Pandas/R/Spark DataFrame.
 
 ### Steps
 
-   * Define PLUR representation **(done)**.
+   * Define the PLUR representation **(done)**.
    * Conversion of Python objects into PLUR **(done)**.
    * Proxies to view PLUR data as lazily-loaded Python objects **(done)**.
    * Transform code to "compile away" the PLUR abstraction **(started)**.
@@ -308,11 +308,11 @@ The differences are:
       * `len` function for lists **(done)**.
       * `for` loop iteration.
       * `enumerate`, `zip`, etc.
-      * Assignment carries PLUR type.
-   * Good error messages, catching type errors at compile time.
-   * Require Femtocode-style constraints on list indexes and union members to eliminate this type of runtime error.
+      * Assignment carries PLUR type through type inference.
+   * Good error messages, catching PLUR type errors at compile time.
+   * Maybe require Femtocode-style constraints on list indexes and union members to eliminate this type of runtime error.
    * Simple extension types, such as strings (`List(uint8)`), nullable/optional (`List(X)`), and pointers (`int64` with a list reference).
-   * Use pointers as event lists or database-style indexes.
-   * Integrate with ROOT, zero-copy interpreting ROOT data as PLUR data (requires ROOT updates).
+   * Use pointers as event lists and database-style indexes: essential for query engine.
+   * Integrate with ROOT, zero-copy interpreting internal TBuffer data as PLUR data (requires ROOT updates).
 
-At the same time, ROOT is being updated to expose TBuffer data as Numpy arrays and a distributed query service is being developed, which will use PLUR as an execution engine.
+At the same time, ROOT is being updated to expose TBuffer data as Numpy arrays. Also, a distributed query service is being developed, which will use PLUR as an execution engine.
