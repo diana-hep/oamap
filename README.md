@@ -68,6 +68,7 @@ Data of interest to most analyses can be represented as some combination of the 
 
    * Unicode strings are `List(uint8)` where combinations of `uint8` bytes are interpreted as characters.
    * Limited-scope pointers are integers representing indexes into some other list.
+   * Nullable/optional types X are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
 There are three levels of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
@@ -281,3 +282,29 @@ fcn(*[arrays[x] for x in arrayparams])
 ```
 
 The first time it is called, the function takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python we'd write to explore a handful of events.
+
+## Project roadmap
+
+Relationship to [Femtocode](https://github.com/diana-hep/femtocode): Femtocode is a totally functional language with dependent types, intended for high-level data queries. This columnar representation is the central idea of the Femtocode execution engine: PLUR is a simpler project that focuses only on accessing data, which can be used in any procedural code. In fact, PLUR can be reimplemented in any language with JIT-compilation.
+
+Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready.
+
+### Steps
+
+   * Define PLUR representation (done).
+   * Conversion of Python objects into PLUR (done).
+   * Proxies to view PLUR data as lazily-loaded Python objects (done).
+   * Transform code to "compile away" the PLUR abstraction (started).
+      * Square brackets for lists and attribute access for records (done).
+      * Test all combinations of primitives, lists, unions, and records (done).
+      * `len` function for lists (done).
+      * `for` loop iteration.
+      * `enumerate`, `zip`, etc.
+      * Assignment carries PLUR type.
+   * Good error messages, catching type errors at compile time.
+   * Require Femtocode-style constraints on list indexes and union members to eliminate this type of runtime error.
+   * Simple extension types, such as strings (`List(uint8)`), nullable/optional (`List(X)`), and pointers (`int64` with a list reference).
+   * Use pointers as event lists or database-style indexes.
+   * Integrate with ROOT, zero-copy interpreting ROOT data as PLUR data (requires ROOT updates).
+
+At the same time, ROOT is being updated to expose TBuffer data as Numpy arrays and a distributed query service is being developed, which will use PLUR as an execution engine.
