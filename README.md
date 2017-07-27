@@ -283,11 +283,11 @@ for event in events:
 print(psum)
 ```
 
-On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Though convenient for taking a quick look at the data, the proxies are not the most efficient way to iterate over data because they create and destroy Python class instances at runtime.
+On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Most of this time is spent creating and destroying proxy objects, which are Python class instances pointing to relevant parts of the arrays. In principle, the only data we need to pass around is an index for each list, union, or record. Extracting items from lists, instances of a union, or attributes from a record simply requires special interpretation of that index.
 
-Each list, union, and record _could_ be represented at runtime by a single index each, since that is all that is needed to look up the actual data in the arrays. Creating and passing indexes has much less overhead than proxy instances. Since we know the types of our objects and can propagate that information through the code (rigorously with [abstract syntax tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) manipulation), we can translate the code so that list, union, and record references are replaced with integer indexes and array-lookup code is inserted in the right places.
+As an alternative to passing proxy objects in dynamic Python, we could translate the Python code to pass integer indexes and interpret them correctly. This involves something like a compiler pass, propagating PLUR data types through the code to insert index interpretations at the appropriate places, which can be performed rigorously at the level of [abstract syntax trees](https://en.wikipedia.org/wiki/Abstract_syntax_tree).
 
-The interface is currently rough, requiring us to use explicit brackets rather than iterators (and there's no error checking! use at your own risk!), but eventually the same loop written above can be wrapped in a function and passed to PLUR's code transformation tool.
+This PLUR implementation has experimental support for code transformation, though the interface is currently rough (no error checking!). We can't use foreach-style loops yet, but eventually we'll be able to put exactly the same code that works with proxies into the code transformation tool and get a large speedup for free.
 
 Here's an illustration:
 
@@ -311,14 +311,18 @@ fcn(*[arrays[x] for x in arrayparams])
 
 On the same laptop, this took 3.8 seconds: six times faster to do exactly the same work. Note that this is all still Python code, just rearranged for faster access (we "compiled the abstractions away").
 
-In this form, it is now also possible for Numba to compile the function to native bytecode (no Python at runtime). The code transformation was necessary because Numba understands integer indexes. If you have Numba installed, try adding a single parameter `numba=True` to the code transformation for another factor of a hundred in speedup:
+In this form, it is also possible for Numba to compile the function to native bytecode (no Python at runtime). The code transformation was necessary because Numba understands integer indexes better than dynamic Python objects. If you have Numba installed, try adding a single parameter `numba=True` to the code transformation for another factor of a hundred in speedup:
 
 ```python
 fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math}, numba=True)
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-The first time the function is called, it takes 0.98 seconds to compile, but afterward it takes 0.03 seconds. Without any Python objects or memory allocations in the loop, it could not be faster if it were written in C++. (Numba uses LLVM for full compiler optimizations.) And yet it was not any more arduous to write— it's the same Python analysis code we wrote to explore the first few events.
+The first time the function is called, it takes 0.98 seconds to compile, but afterward it takes 0.03 seconds: a single-threaded rate of 320 MB/sec (16 MHz for these events). Now imagine parallelizing it.
+
+With all the hierarchical data in PLUR objects that get compiled away, this function consists of nothing but numbers, for loops, and mathematical function calls, something that Numba's LLVM-based optimizer can optimize as well as C or C++. And yet it was not any more arduous to write— the same for loop you might use to explore the first few events scales up to huge datasets without assistance on your part.
+
+You just write analysis code on complex objects in Python and get database-style speeds.
 
 ## Project roadmap
 
