@@ -77,7 +77,7 @@ To move a large dataset, we only need to move a subset of the Numpy arrays— ev
 
 ## Particle physics example
 
-To follow along, check out [Revision XXX](FIXME) and
+To follow along, check out [Revision 162](https://github.com/diana-hep/plur/releases/tag/rev162) and
 
 ```bash
 python setup.py install --user
