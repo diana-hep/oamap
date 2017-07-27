@@ -89,7 +89,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Record(x=int32, y=Union(uint16, int8)))
 
         self.assertEqual(Record(int32, float64), Record.frompairs([("0", int32), ("1", float64)]))
-        self.assertEqual(Record(int32, x=float64), Record.frompairs([("0", int32), ("x", float64)]))
 
     def test_json(self):
         # P
@@ -179,7 +178,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), Type.fromJsonString(Record(x=int32, y=Union(uint16, int8)).toJsonString()))
 
         self.assertEqual(Record(int32, float64), Type.fromJsonString(Record.frompairs([("0", int32), ("1", float64)]).toJsonString()))
-        self.assertEqual(Record(int32, x=float64), Type.fromJsonString(Record.frompairs([("0", int32), ("x", float64)]).toJsonString()))
 
     def test_arrayname(self):
         self.assertEqual(ArrayName("prefix"), ArrayName.parse(str(ArrayName("prefix")), "prefix"))
@@ -296,7 +294,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertEqual(Record(x=int32, y=Union(int8, uint16)), columns2type(type2columns(Record(x=int32, y=Union(uint16, int8)), "prefix"), "prefix"))
 
         self.assertEqual(Record(int32, float64), columns2type(type2columns(Record.frompairs([("0", int32), ("1", float64)]), "prefix"), "prefix"))
-        self.assertEqual(Record(int32, x=float64), columns2type(type2columns(Record.frompairs([("0", int32), ("x", float64)]), "prefix"), "prefix"))
 
     def test_contain_element_primitives(self):
         inf = float("inf")

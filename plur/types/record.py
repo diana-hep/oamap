@@ -31,8 +31,10 @@ class Record(Type):
         return out
 
     def __init__(self, *positional, **named):
-        if len(positional) + len(named) == 0:
+        if len(positional) == 0 and len(named) == 0:
             raise TypeDefinitionError("record must have at least one field")
+        if len(positional) > 0 and len(named) > 0:
+            raise TypeDefinitionError("record fields must all be positional or all be named")
         if any(self._checkNamed.match(n) == None for n in named):
             raise TypeDefinitionError("record names must be identifiers (/{0}/)".format(self._checkNamed.pattern))
 
