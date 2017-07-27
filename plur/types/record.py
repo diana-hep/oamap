@@ -38,7 +38,7 @@ class Record(Type):
         if any(self._checkNamed.match(n) == None for n in named):
             raise TypeDefinitionError("record names must be identifiers (/{0}/)".format(self._checkNamed.pattern))
 
-        self.of = [(repr(i), x) for i, x in enumerate(positional)] + sorted(named.items())
+        self.of = [(repr(i + 1), x) for i, x in enumerate(positional)] + sorted(named.items())
         super(Record, self).__init__()
 
     def has(self, field):
