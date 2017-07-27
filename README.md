@@ -107,7 +107,7 @@ PLUR's data representation is columnar, meaning that all values of an attribute 
 
    1. Only the attributes actually used by the calculation need to be read. For objects with many attributes, limited by the reading rate of the physical medium (disk), this can be a huge speedup. The particle physics community has benefited from [this feature of ROOT](https://root.cern.ch/root/InputOutput.html) for many years, but PLUR goes further in not reconstructing objects even after reading. This solves a problem in which selective reading lets you read muons and not electrons if you're only interested in muons, but you still have to read all attributes of a muon to construct the object. With PLUR's proxies, unused attributes at any level may be left unread.
    2. Future analysis code with modified data types can read old data, as long as all the required attributes are there. This is known [in ROOT as schema evolution](https://root.cern.ch/root/SchemaEvolution.html), but in Python it's just [duck typing](https://en.wikipedia.org/wiki/Duck_typing). Even in a statically typed context, PLUR's Record types are [structurally typed](https://en.wikipedia.org/wiki/Structural_type_system): they have no names, so the only restriction on passing an object to a function is that it has the field names and types that the function expects. This is relevant for compiling PLUR accessors with Numba. A schema evolution that changes field names would only involve column name mapping in PLUR.
-   3. Contiguous data can be paged into RAM from disk (e.g. in memory-mapped Numpy files) or [paged into CPU cache from RAM](https://lwn.net/Articles/250967/) in a predictable way. If objects are constructed on the heap at runtime, even a sequential scan through events would require random memory access. A sequential scan through a PLUR List is sequential in the array source, whether that is disk or RAM.
+   3. Contiguous data can be paged into RAM from disk (e.g. in memory-mapped Numpy files) or [paged into CPU cache from RAM](https://lwn.net/Articles/250967/) in a predictable way. If objects are constructed on the heap at runtime, even a sequential scan through events would require random memory access. A sequential scan through a PLUR List is sequential in the array source, whether that is disk or RAM.
    4. Datasets can share arrays, particularly new versions of datasets that differ from old ones by only a few additional or removed fields. This is an extreme form of [ROOT's tree-friend concept](https://root.cern.ch/root/html534/guides/users-guide/Trees.html#example-3-adding-friends-to-trees): PLUR's datasets are such loosely bound collections of columns that they are completely formed out of friends. The technique is more generally known as [structural sharing](https://en.wikipedia.org/wiki/Persistent_data_structure). Event lists (described above) allow even skims to share data: the memory cost of skimming an entire dataset is just the cost of storing one new array.
 
 Let's illustrate the PLUR concept and its Python/Numpy implementation with an example.
@@ -165,7 +165,7 @@ def generate():
             yield json.loads(line)
 ```
 
-The Python dictionaries generated from the JSON use so much memory that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files to avoid any growth in memory use.)
+The Python dicts generated from the JSON use so much memory that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files to avoid any growth in memory use.)
 
 ```python
 from plur.python import toarrays
@@ -224,7 +224,7 @@ numpy.savez(open("triggerIsoMu24_50fb-1.npz", "wb"), **arrays)
 | Numpy            |  39 MB |
 | Numpy compressed |  13 MB |
 
-Now exit Python and open a new Python shell. The file opens in a fraction of a second.
+Now exit Python and open a new Python shell. The file opens in a fraction of a second regardless of how large it is.
 
 ```python
 import numpy
@@ -234,7 +234,7 @@ from plur.python import fromarrays
 events = fromarrays("events", arrays)
 ```
 
-We can immediately access any event and any object in the events.
+We can now access any event and any object in the events without any noticible lag. If the arrays were memory-mapped files, the operating system would seek to the appropriate parts of the file and page them into memory just in time. Our example uses a ZIP file, which reads and possibly decompresses the appropriate array from the file on demand.
 
 ```python
 >>> print(events[0])
@@ -257,7 +257,7 @@ events(MET=MET(px=-15.61468505859375, py=22.061094284057617),
 3.68770575523
 ```
 
-We can even inspect the data _type,_ which was encoded in the array names. More than one data structure can be stored in a single namespace— name prefixes (`"events"` here) keep them separate.
+We can even inspect the data type, which was encoded in the array names. More than one data structure can be stored in a single namespace— name prefixes (`"events"` in this example) keep them separate.
 
 ```python
 >>> from plur.types import *
@@ -270,9 +270,7 @@ List(Record(MET                = Record(px=float64, py=float64),
             photons            = List(Record(E=float64, iso=float64, px=float64, py=float64, pz=float64))))
 ```
 
-The data are loaded on demand by proxies. List proxies like `events` yield event records when requested by square brackets and event records yield their contents when requested by attributes. If the arrays are in a Numpy file or a memory-mapped file, they won't be loaded if not needed. In fact, a memory-mapped file can be many times larger than your computer's memory and still be accessible on demand.
-
-The following loop iterates over all muons in all events and adds up their momenta. Arbitrarily complex loops are possible, including cross-references between two structures, but non-sequential access is usually slower than sequential (for the normal disk-paging and CPU-caching reasons).
+We can use the same proxies to loop over the data: the following loop computes and adds up the momentum of all muons in all events. Arbitrarily complex loops are possible, including back-tracking and cross-referencing among structures, event data and non-event data. Although any order is possible, sequential access is generally faster than non-sequential access for the normal disk-paging and CPU-caching reasons.
 
 ```python
 import math
@@ -285,11 +283,13 @@ for event in events:
 print(psum)
 ```
 
-On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Though convenient for taking a quick look at the data, the proxies are not the most efficient way to iterate over data because they create and destroy objects at runtime.
+On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Though convenient for taking a quick look at the data, the proxies are not the most efficient way to iterate over data because they create and destroy Python class instances at runtime.
 
-Each primitive, list, union, and record could be represented at runtime by a single number each, which has much less overhead than a proxy instance. Knowing the data type, we can propagate types through the code to replace proxies with simple numbers.
+Each list, union, and record _could_ be represented at runtime by a single index each, since that is all that is needed to look up the actual data in the arrays. Creating and passing indexes has much less overhead than proxy instances. Since we know the types of our objects and can propagate that information through the code (rigorously with [abstract syntax tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) manipulation), we can translate the code so that list, union, and record references are replaced with integer indexes and array-lookup code is inserted in the right places.
 
-The interface is currently rough, requiring us to use explicit brackets rather than iterators (and no error reporting!), but eventually no code changes will be required for faster access through term rewriting. The following is a kind of compilation, transforming Python to Python, using type inference and rigorous AST manipulation.
+The interface is currently rough, requiring us to use explicit brackets rather than iterators (and there's no error checking! use at your own risk!), but eventually the same loop written above can be wrapped in a function and passed to PLUR's code transformation tool.
+
+Here's an illustration:
 
 ```python
 import math
@@ -309,16 +309,16 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-On the same laptop, this took 3.8 seconds: six times faster. Note that this is all still Python code, just rearranged for faster access (we "compiled the abstractions away").
+On the same laptop, this took 3.8 seconds: six times faster to do exactly the same work. Note that this is all still Python code, just rearranged for faster access (we "compiled the abstractions away").
 
-It's also in a form that can be compiled to native bytecode (no Python at runtime) by Numba. If you have Numba installed, the same two lines with `numba=True` speeds it up by another factor of a hundred:
+In this form, it is now also possible for Numba to compile the function to native bytecode (no Python at runtime). The code transformation was necessary because Numba understands integer indexes. If you have Numba installed, try adding a single parameter `numba=True` to the code transformation for another factor of a hundred in speedup:
 
 ```python
 fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math}, numba=True)
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-The first time the function is called, it takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python analysis code we'd write to explore a handful of events.
+The first time the function is called, it takes 0.98 seconds to compile, but afterward it takes 0.03 seconds. Without any Python objects or memory allocations in the loop, it could not be faster if it were written in C++. (Numba uses LLVM for full compiler optimizations.) And yet it was not any more arduous to write— it's the same Python analysis code we wrote to explore the first few events.
 
 ## Project roadmap
 
