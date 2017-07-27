@@ -77,13 +77,13 @@ List(List(Union(int32, Record(x=float64, y=float64))))
 
 Data of interest to just about any analysis can be represented as some combination of the above. For instance,
 
-   * Collections of physics events containing particles containing hits are lists of records of lists of records, etc.
+   * Collections of physics events containing particles containing raw measurements are lists of records of lists of records, etc.
    * Unicode strings are `List(uint8)` where subsequences of bytes are interpreted as characters.
-   * Limited-scope pointers are integers representing indexes into some other list. This includes what is known as an event list: a filtering of data that does not copy a subset of the original data, allowing for lightweight skims.
+   * Limited-scope pointers are integers representing indexes into some other list. This includes what is known as an event list: a representation of a filtered dataset that names the selected entries, rather than copying them, which is a very lightweight way to represent skims.
    * Nullable/optional types X (the "maybe monad") are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
-PLUR is a scheme to encode any hierarchical data that can be described in terms of the four generators as a set of flat arrays. An implementation of PLUR, such as the Python/Numpy implementation in this package, only needs to get these four generators right, as well as their interactions, so there are only on the order of sixteen tests to perform to verify correctness. That's why it pays to keep the fundamental set of generators small.
+PLUR is a scheme to encode any hierarchical data that can be described by those four generators as a set of flat arrays. An implementation of PLUR, such as the Python/Numpy implementation in this package, only needs to get the four generators right, as well as their interactions, so there's on the order of sixteen tests to verify correctness. That's why it pays to keep the fundamental set of generators small.
 
 A PLUR implementation should have
 
@@ -95,7 +95,20 @@ This package implements all three for Python and Numpy.
 
 It's worth emphasizing that PLUR is not a file format: a file format specifies how data are encoded as bytes on disk, while PLUR specifies how one abstraction, hierarchical data, is encoded in another, a namespace of flat arrays. Numpy has several natural serializations— `.npy` files, `.npz` files, `.pkl` files, HDF5 files through PyTables, or even ROOT files. However, these arrays could also be stored as a web server that responds to URL names with array data or in a key-value object store over a network.
 
-With proxy-like access to the data, only the arrays that are actually involved in a calculation need to be loaded. For objects with a lot of unused attributes, this alone provides a big speedup.
+There are three layers of abstraction:
+
+|   |
+|:-:|
+| runtime interpretation (e.g. Unicode string rather than `List(uint8)` |
+| hierarchical data: PLUR proxies or rewritten code |
+| namespace of flat arrays: Numpy, HDF5, object store, etc. |
+
+PLUR's data representation is columnar, meaning that all values of an attribute at a given level of hierarchy are stored contiguously in the same array. This improves data access in several ways:
+
+   1. Only the attributes actually used by the calculation need to be read. For objects with many attributes, limited by the reading rate of the physical medium (disk), this can be a huge speedup. The particle physics community has benefited from [this feature of ROOT](https://root.cern.ch/root/InputOutput.html) for many years, but PLUR goes further in not reconstructing objects even after reading. This solves a problem in which selective reading lets you read muons and not electrons if you're only interested in muons, but you still have to read all attributes of a muon to construct the object. With PLUR's proxies, unused attributes may be left unread.
+   2. Future analysis code with modified data types can read old data, as long as all the required attributes are there. This is known [in ROOT as schema evolution](https://root.cern.ch/root/SchemaEvolution.html), but in Python it's just duck typing. Even in a statically typed context, PLUR's Record types are structurally typed: they have no names, so the only restriction on passing an object to a function is that it has the field names and types that the function expects. This is relevant for compiling PLUR accessors with Numba. A schema evolution that changes field names would only require array renaming in PLUR.
+   3. Contiguous data can be paged into RAM from disk (e.g. in memory-mapped Numpy files) or paged into CPU cache from RAM in a predictable way. If objects containing pointers are constructed at runtime, even a sequential scan through events would require random memory access. A sequential scan through a PLUR List is sequential in the array source, whether that is disk or RAM.
+   4. Datasets can share arrays, particularly new versions of datasets that differ from old ones by only a few additional or removed fields. This is an extreme form of [ROOT's tree-friend concept](https://root.cern.ch/root/html534/guides/users-guide/Trees.html#example-3-adding-friends-to-trees): PLUR's datasets are such loosely bound collections of columns that they are completely formed out of friends. The technique is more generally known as structural sharing. Event lists (special cases of pointers, described above) allow even skims to share data: the memory cost of skimming an entire dataset is just the cost of storing one new array.
 
 ## Particle physics example
 
