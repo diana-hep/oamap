@@ -291,13 +291,13 @@ Femtocode is intended for a future HEP query engine, but Numba and PLUR would be
 
 ### Steps
 
-   * Define PLUR representation (done).
-   * Conversion of Python objects into PLUR (done).
-   * Proxies to view PLUR data as lazily-loaded Python objects (done).
-   * Transform code to "compile away" the PLUR abstraction (started).
-      * Square brackets for lists and attribute access for records (done).
-      * Test all combinations of primitives, lists, unions, and records (done).
-      * `len` function for lists (done).
+   * Define PLUR representation **(done)**.
+   * Conversion of Python objects into PLUR **(done)**.
+   * Proxies to view PLUR data as lazily-loaded Python objects **(done)**.
+   * Transform code to "compile away" the PLUR abstraction **(started)**.
+      * Square brackets for lists and attribute access for records **(done)**.
+      * Test all combinations of primitives, lists, unions, and records **(done)**.
+      * `len` function for lists **(done)**.
       * `for` loop iteration.
       * `enumerate`, `zip`, etc.
       * Assignment carries PLUR type.
