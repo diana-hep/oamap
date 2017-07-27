@@ -75,18 +75,27 @@ As an example, a list of lists of integers or x-y pairs would be represented as
 List(List(Union(int32, Record(x=float64, y=float64))))
 ```
 
-Data of interest to most analyses can be represented as some combination of the above. For instance,
+Data of interest to just about any analysis can be represented as some combination of the above. For instance,
 
+   * Collections of physics events containing particles containing hits are lists of records of lists of records, etc.
    * Unicode strings are `List(uint8)` where subsequences of bytes are interpreted as characters.
-   * Limited-scope pointers are integers representing indexes into some other list.
+   * Limited-scope pointers are integers representing indexes into some other list. This includes what is known as an event list: a filtering of data that does not copy a subset of the original data, allowing for lightweight skims.
    * Nullable/optional types X (the "maybe monad") are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
-There are three layers of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
+PLUR is a scheme to encode any hierarchical data that can be described in terms of the four generators as a set of flat arrays. An implementation of PLUR, such as the Python/Numpy implementation in this package, only needs to get these four generators right, as well as their interactions, so there are only on the order of sixteen tests to perform to verify correctness. That's why it pays to keep the fundamental set of generators small.
 
-To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. "Move" might mean network transfers, reading data from disk, or paging RAM through the CPU cache.
+A PLUR implementation should have
 
-PLUR is not a file format: a file format specifies how data are encoded as bytes on disk. PLUR specifies how one abstraction, hierarchical data, is encoded in another, a namespace of flat arrays. Numpy has a natural serialization of a namespace of flat arrays— the `.npz` file— though a server that responds to URL names with array data would work as well. The arrays could even be stored in ROOT files, HDF5 files, or a key-value object store.
+   * methods to convert data into and out of arrays,
+   * methods to view arrays as objects, lazily with proxies,
+   * possibly methods to "compile away" the abstraction, so that nothing is present at runtime but indexes into the arrays.
+
+This package implements all three for Python and Numpy.
+
+It's worth emphasizing that PLUR is not a file format: a file format specifies how data are encoded as bytes on disk, while PLUR specifies how one abstraction, hierarchical data, is encoded in another, a namespace of flat arrays. Numpy has several natural serializations— `.npy` files, `.npz` files, `.pkl` files, HDF5 files through PyTables, or even ROOT files. However, these arrays could also be stored as a web server that responds to URL names with array data or in a key-value object store over a network.
+
+With proxy-like access to the data, only the arrays that are actually involved in a calculation need to be loaded. For objects with a lot of unused attributes, this alone provides a big speedup.
 
 ## Particle physics example
 
