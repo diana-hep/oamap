@@ -2,11 +2,11 @@
 
 ## TL;DR
 
-PLUR is a way to encode complex objects made out of **Primitives**, **Lists**, **Unions**, and **Records** as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce the runtime costs of Python and to allow for further [acceleration with Numba](http://numba.pydata.org/).
+PLUR is a way to encode complex objects made out of **Primitives**, **Lists**, **Unions**, and **Records** as plain Numpy arrays that can be loaded lazily for efficient columnar access. It can also rewrite Python code to dramatically reduce the runtime costs of Python and allow for further [acceleration with Numba](http://numba.pydata.org/).
 
-In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba. That's a final single-threaded rate of 320 MB/sec (16 MHz for these events).
+In the example described below, a nested data structure takes 3 minutes to process as pre-loaded JSON, 25 seconds to process as PLUR proxies, 3.8 seconds to process by optimized Python code (still pure Python), and 0.03 seconds to process when that optimized code is compiled by Numba: a final single-threaded rate of 320 MB/sec (16 MHz for these events).
 
-In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were the Python lists and objects they resemble. The purpose is to minimize the total time to solution— human and computer.
+In each case, the user writes the same idiomatic Python code, as though these PLUR abstractions really were the Python lists and objects they mimic. The purpose is to minimize the total time to solution— human and computer.
 
 ## What's wrong with data frames?
 
@@ -53,7 +53,7 @@ Ideally, we'd want simple Python code to analyze any kind of data as fast as a d
 
 PLUR is a way to encode complex, hierarchical data in plain Numpy arrays. The acronym stands for the four basic generators of the typesystem:
 
-   * **Primitive:** fixed-width types: the booleans, numbers, and ASCII characters of Numpy.
+   * **Primitive:** fixed-width types: the booleans, ints, floats, and complex numbers of Numpy.
    * **List:** arbitrary-length lists of any other types, including nested lists.
    * **Union:** represents objects that can be one of several types ("sum types" in type theory).
    * **Record:** represents objects that contain several types ("product types" in type theory).
