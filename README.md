@@ -280,12 +280,4 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-The first time it is called, the function takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop.
-
-
-
-
-
-
-
-0.98 seconds the first time (compilation), followed by 0.03 seconds each subsequent time (execution only).
+The first time it is called, the function takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python we'd write to explore a handful of events.
