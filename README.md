@@ -85,7 +85,7 @@ Data of interest to just about any analysis can be represented as some combinati
 
    * Collections of physics events containing particles containing raw measurements are lists of records of lists of records of lists of records.
    * Unicode strings are `List(uint8)` where subsequences of bytes are interpreted as characters.
-   * Limited-scope pointers are integers representing indexes into some other list. This includes what is known as an event list: a representation of a filtered dataset that names the selected entries, rather than copying them, which makes these skims very lightweight for storage.
+   * Limited-scope pointers are integers representing indexes into some other list. This includes what is known as an event list: a representation of a filtered dataset that names the selected entries, rather than copying them, which makes these skims very lightweight for storage.
    * Nullable/optional types X (the "maybe monad") are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
