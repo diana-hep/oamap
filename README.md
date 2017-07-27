@@ -326,17 +326,22 @@ You just write analysis code on complex objects in Python and get database-style
 
 ## Project roadmap
 
-**Relationship to [Femtocode](https://github.com/diana-hep/femtocode):** Femtocode is a totally functional language with dependent types, intended for high-level data queries. The columnar representation described here is the central idea of the Femtocode execution engine: PLUR is a simpler project that focuses only on accessing data, which can be used in any procedural code. In fact, PLUR can be reimplemented in any language with JIT-compilation (such as [C++ Cling](https://root.cern.ch/cling): hint to ROOT developers).
+**Relationship to [Femtocode](https://github.com/diana-hep/femtocode):** PLUR could be seen as a (temporary!) de-scoping of Femtocode. Femtocode was intended as a query language for a HEP query service with an execution engine that optimizes code for columnar, hierarchical data. PLUR is just the columnar, hierarchical data, implementing fast data access and not a whole language.
 
-Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready, and Femtocode itself is likely to be rewritten on top of PLUR.
+The HEP query service we are developing is likely to use Python as a query language, accelerated by PLUR and Numba. Femtocode would be a later enhancement, and is likely to be rewritten on top of PLUR.
 
-**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough for term rewriting in a complex, procedural language like Python.
+**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four [fundamentally different data representations](../../wiki/Review-of-columnar-data-representations)), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough for term rewriting in a complex, procedural language like Python.
 
-The differences are:
+The differences between Arrow and PLUR are:
 
-   1. PLUR has no dependencies other than Numpy and maybe Numba, so it's easy to install.
-   2. Arrow defines the relative placemment of its columnar buffers; PLUR lets them be any Numpy arrays anywhere (including disk via memory-mapped files). Therefore, PLUR arrays can be copied into Arrow buffers with a bulk `memcpy` operation, while Arrow buffers can be zero-copy interpreted as PLUR arrays.
-   3. PLUR implements fast accessors for the data. In the future, PLUR could be used as a way of writing Python routines that run on Arrow data, such as a Pandas/R/Spark DataFrame.
+   1. Arrow defines the relative placemment of its columnar buffers; PLUR lets them be any Numpy arrays anywhere (including disk via memory-mapped files). Therefore, PLUR arrays can be copied into Arrow buffers with a bulk `memcpy` operation, while Arrow buffers can be zero-copy interpreted as PLUR arrays.
+   2. PLUR implements fast accessors over the data. In the future, PLUR could be used as a way of writing Python routines that run fast on Arrow data, such as a Pandas/R/Spark DataFrame.
+   3. PLUR has no dependencies other than Numpy and maybe Numba, so it's easy to install.
+
+**Relationship to ROOT**
+
+**Relationship to databases**
+
 
 ### Steps
 
