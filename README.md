@@ -328,11 +328,15 @@ You just write analysis code on complex objects in Python and get database-style
 
 ## Relationship to other projects
 
-**Relationship to [Femtocode](https://github.com/diana-hep/femtocode):** PLUR could be seen as a (temporary!) de-scoping of Femtocode. Femtocode was intended as a query language for a HEP query service with an execution engine that optimizes code for columnar, hierarchical data. PLUR is just the columnar, hierarchical data, implementing fast data access and not a whole language.
+### [Femtocode](https://github.com/diana-hep/femtocode)
+
+PLUR could be seen as a (temporary!) de-scoping of Femtocode. Femtocode was intended as a query language for a HEP query service with an execution engine that optimizes code for columnar, hierarchical data. PLUR is just the columnar, hierarchical data, implementing fast data access and not a whole language.
 
 The HEP query service we are developing is likely to use Python as a query language, accelerated by PLUR and Numba. Femtocode would be a later enhancement, and is likely to be rewritten on top of PLUR.
 
-**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four [fundamentally different data representations](../../wiki/Review-of-columnar-data-representations)), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough for term rewriting in a complex, procedural language like Python.
+### [Apache Arrow](https://arrow.apache.org/)
+
+After much exploration (four [fundamentally different data representations](../../wiki/Review-of-columnar-data-representations)), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough for term rewriting in a complex, procedural language like Python.
 
 The differences between Arrow and PLUR are:
 
@@ -340,7 +344,9 @@ The differences between Arrow and PLUR are:
    2. PLUR implements fast accessors over the data. In the future, PLUR could be used as a way of writing Python routines that run fast on Arrow data, such as a Pandas/R/Spark DataFrame.
    3. PLUR has no dependencies other than Numpy and maybe Numba, so it's easy to install.
 
-**Relationship to [ROOT](https://root.cern/):** PLUR shares many concepts with the ROOT file format, but there are differences. First, PLUR is not a data format: one could use ROOT as a source and storage for PLUR data structures (converting Numpy arrays to and from ROOT TBranches). But more significantly,
+### [ROOT](https://root.cern/)
+
+PLUR shares many concepts with the ROOT file format, but there are differences. First, PLUR is not a data format: one could use ROOT as a source and storage for PLUR data structures (converting Numpy arrays to and from ROOT TBranches). But more significantly,
 
    1. The goal of ROOT serialization is to store and retrieve arbitrary C++ objects, essentially like a C++ version of Python's pickle. PLUR encodes data adhering to a language-independent type system, which is intentionally kept small for simplicity.
    2. ROOT materializes data as ordinary C++ objects so that C++ code can run on them. PLUR uses Python's dynamism or instruments compiled code to provide the illusion that the Python code is operating on objects, when in fact it is operating on array indexes that produce the required object attributes as needed.
@@ -351,7 +357,9 @@ ROOT and PLUR can be used together: I am currently implementing fast, native Num
 
 Moreover, the [PLUR specification](../../wiki/Encoding-scheme) is language-neutral: it could be implemented in [Cling, a just-in-time C++ compiler](https://root.cern.ch/cling). The code transformations that provide the fastest access can be implemented more easily with C++ metaprogramming than the Python code transformation.
 
-**Relationship to databases:** PLUR is being developed specifically for use in a service that aggregates particle physics data in response to user queries. This is why database-style columnar data and term rewriting are important. However, PLUR can be used by itself to analyze any data, as the example above shows.
+### Databases
+
+PLUR is being developed specifically for use in a service that aggregates particle physics data in response to user queries. This is why database-style columnar data and term rewriting are important. However, PLUR can be used by itself to analyze any data, as the example above shows.
 
 One important distinction between a real database and distributed PLUR is that databases maintain indexes over some fields for faster lookup than a sequential scan. PLUR is not just compatible with adding an index: the event list concept (described above) is a good way to interface the two.
 
