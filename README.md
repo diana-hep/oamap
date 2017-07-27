@@ -73,11 +73,11 @@ Data of interest to most analyses can be represented as some combination of the 
 
 There are three layers of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
 
-To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. ("Move" might mean network transfers, loading data from disk, or paging RAM through the CPU cache.)
+To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. "Move" might mean network transfers, loading data from disk, or paging RAM through the CPU cache.
 
 ## Particle physics example
 
-To follow along, check out [Revision 162](https://github.com/diana-hep/plur/releases/tag/rev162) and
+To follow along, check out [Revision 163](https://github.com/diana-hep/plur/releases/tag/rev163) and
 
 ```bash
 python setup.py install --user
