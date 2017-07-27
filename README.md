@@ -94,13 +94,13 @@ Jet      = Record(px=float64, py=float64, pz=float64, E=float64, btag=float64)
 Muon     = Record(px=float64, py=float64, pz=float64, E=float64, q=int8, iso=float64)
 Electron = Record(px=float64, py=float64, pz=float64, E=float64, q=int8, iso=float64)
 Photon   = Record(px=float64, py=float64, pz=float64, E=float64, iso=float64)
-Met      = Record(px=float64, py=float64)
+MEt      = Record(px=float64, py=float64)
 
 Event = Record(jets               = List(Jet),
                muons              = List(Muon),
                electrons          = List(Electron),
                photons            = List(Photon),
-               MET                = Met,
+               MET                = MEt,
                numPrimaryVertices = int32)
 ```
 
