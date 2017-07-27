@@ -10,7 +10,7 @@ In each case, the user writes the same idiomatic Python code, as though these PL
 
 ## What's wrong with data frames?
 
-Many data analysis procedures, particularly in high energy physics, can't work exclusively with a table of rectangular data (i.e. a "data frame" or "flat ntuple"). Sometimes you need an arbitrary-length list of particles or even nested lists, not just numbers.
+Many data analysis procedures, particularly in high energy physics, can't work exclusively with a rectangular table of data (i.e. a "data frame" or "flat ntuple"). Sometimes you need an arbitrary-length list of particles or even nested lists.
 
 For instance, a dataset naturally expressed as
 
@@ -297,7 +297,7 @@ The differences are:
    2. Arrow defines the relative placemment of its columnar buffers; PLUR lets them be any Numpy arrays anywhere (including disk via memory-mapped files). Therefore, PLUR arrays can be copied into Arrow buffers with a bulk `memcpy` operation, while Arrow buffers can be zero-copy interpreted as PLUR arrays.
    3. PLUR implements fast accessors for the data. In the future, PLUR could be used as a way of writing Python routines that run on Arrow data, which could be a Pandas/R/Spark DataFrame supporting Arrow.
 
-## Steps
+### Steps
 
    * Define PLUR representation **(done)**.
    * Conversion of Python objects into PLUR **(done)**.
