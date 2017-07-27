@@ -289,7 +289,7 @@ The first time the function is called, it takes 0.98 seconds to compile. Thereaf
 
 Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready.
 
-**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data.
+**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data. It allows for random access, letting us access event data and non-event data in the same framework, and it's simple enough to allow for term rewriting in a complex, procedural language like Python.
 
 The differences are:
 
