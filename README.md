@@ -281,7 +281,7 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-The first time the function is called, it takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python we'd write to explore a handful of events.
+The first time the function is called, it takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python analysis code we'd write to explore a handful of events.
 
 ## Project roadmap
 
@@ -289,7 +289,7 @@ The first time the function is called, it takes 0.98 seconds to compile. Thereaf
 
 Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready.
 
-**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data.
+**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations: recursive counters, Parquet-style, Arrow-style, and normal form), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data.
 
 The differences are:
 
