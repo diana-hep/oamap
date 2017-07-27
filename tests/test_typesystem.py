@@ -72,8 +72,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(Union(int8, uint16), Union(int8, float64))
         self.assertNotEqual(Union(int8, uint16), Union(float64, int8))
         self.assertNotEqual(Union(int8, int16), int16)
-        self.assertNotEqual(Union(int8, int16), Union(int16))
-        self.assertEqual(Union(int16), Union(int16))
 
         # R
         self.assertEqual(Record(x=int32, y=float64), Record(x=int32, y=float64))
@@ -164,8 +162,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(Union(int8, uint16), Type.fromJsonString(Union(int8, float64).toJsonString()))
         self.assertNotEqual(Union(int8, uint16), Type.fromJsonString(Union(float64, int8).toJsonString()))
         self.assertNotEqual(Union(int8, int16), Type.fromJsonString(int16.toJsonString()))
-        self.assertNotEqual(Union(int8, int16), Type.fromJsonString(Union(int16).toJsonString()))
-        self.assertEqual(Union(int16), Type.fromJsonString(Union(int16).toJsonString()))
 
         # R
         self.assertEqual(Record(x=int32, y=float64), Type.fromJsonString(Record(x=int32, y=float64).toJsonString()))
@@ -283,8 +279,6 @@ class TestTypesystem(unittest.TestCase):
         self.assertNotEqual(Union(int8, uint16), columns2type(type2columns(Union(int8, float64), "prefix"), "prefix"))
         self.assertNotEqual(Union(int8, uint16), columns2type(type2columns(Union(float64, int8), "prefix"), "prefix"))
         self.assertNotEqual(Union(int8, int16), columns2type(type2columns(int16, "prefix"), "prefix"))
-        self.assertNotEqual(Union(int8, int16), columns2type(type2columns(Union(int16), "prefix"), "prefix"))
-        self.assertEqual(Union(int16), columns2type(type2columns(Union(int16), "prefix"), "prefix"))
 
         # R
         self.assertEqual(Record(x=int32, y=float64), columns2type(type2columns(Record(x=int32, y=float64), "prefix"), "prefix"))

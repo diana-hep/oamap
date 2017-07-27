@@ -21,9 +21,6 @@ class Union(Type):
     _sortorder = 2
 
     def __init__(self, *of):
-        if len(of) == 0:
-            raise TypeDefinitionError("union must have at least one possibility")
-
         def flatten(x):
             if isinstance(x, tuple):
                 for y in x:
@@ -37,6 +34,9 @@ class Union(Type):
                 yield x
 
         self.of = tuple(sorted(set(flatten(of))))
+        if len(of) < 2:
+            raise TypeDefinitionError("union must have at least two possibilities")
+
         super(Union, self).__init__()
 
     @property
