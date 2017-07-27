@@ -17,7 +17,8 @@ In each case, the user writes the same idiomatic Python code, as though these PL
 
 ## In the wiki
 
-   1. [Encoding scheme](../../wiki/Encoding-scheme) (language independent specification)
+   1. [Encoding scheme](../../wiki/Encoding-scheme), a language independent specification.
+   2. [Review of columnar data representations](../../wiki/Review-of-columnar-data-representations), an overview of at least four fundamentally different approaches to the problem and how we settled on PLUR.
 
 ## What's wrong with data frames?
 
@@ -338,9 +339,20 @@ The differences between Arrow and PLUR are:
    2. PLUR implements fast accessors over the data. In the future, PLUR could be used as a way of writing Python routines that run fast on Arrow data, such as a Pandas/R/Spark DataFrame.
    3. PLUR has no dependencies other than Numpy and maybe Numba, so it's easy to install.
 
-**Relationship to ROOT**
+**Relationship to [ROOT](https://root.cern/):** PLUR shares many concepts with the ROOT file format, but there are differences. First, PLUR is not a data format: one could use ROOT as a source and storage for PLUR data structures (converting Numpy arrays to and from ROOT TBranches). But more significantly,
+
+   1. The goal of ROOT serialization is to store and retrieve arbitrary C++ objects, essentially like a C++ version of Python's pickle. PLUR encodes data adhering to a language-independent type system, which is intentionally kept small for simplicity. Except for unrestricted pointers (which can point to any data anywhere, not just indexes into a list), any non-volatile C++ type could be expressed as a PLUR type (excluding volatile data representing ongoing processes, like open file handles and function pointers).
+   2. ROOT materializes data as ordinary C++ objects so that any C++ code can run on them. PLUR uses Python's dynamism or instruments compiled code to provide the illusion that the Python code is operating on objects, when in fact it is operating on array indexes that produce the required object attributes just in time.
+   3. Data can be modified in-place with ROOT; PLUR objects are immutable. Modifying a PLUR dataset, such as updating attribute values, actually creates a new column to be used in conjunction with the old columns like a diff-patch. This ability to share underlying data among slightly different versions of a dataset requires immutable data.
+   4. ROOT schema evolution is complicated by the fact that C++ is a nominally typed language: classes must have the same name; it's not enough to have the right attributes.
+
+ROOT and PLUR can be used together: I am currently implementing fast, native Numpy access to ROOT TTrees (directly accessing the TBuffers) so that ROOT data can be streamed through PLUR proxies.
+
+Moreover, the [PLUR specification](../../wiki/Encoding-scheme) is language-neutral: it could be implemented in [Cling, a just-in-time C++ compiler](https://root.cern.ch/cling). The code transformations that provide the fastest access can be implemented more easily with C++ metaprogramming than the Python code transformation. (There's already a compiler infrastructure in place to track data types and inject inline code.)
 
 **Relationship to databases**
+
+
 
 
 ### Steps
