@@ -141,35 +141,35 @@ Now they're just Numpy arrays. Some arrays store data, some represent structure,
 ```python
 >>> list(arrays.keys())
 ['events-Lo',
- 'events-Ld-R_photons-Lo',
- 'events-Ld-R_photons-Ld-R_pz',
- 'events-Ld-R_photons-Ld-R_py',
- 'events-Ld-R_photons-Ld-R_px',
- 'events-Ld-R_photons-Ld-R_iso',
- 'events-Ld-R_photons-Ld-R_E',
- 'events-Ld-R_numPrimaryVertices',
- 'events-Ld-R_muons-Lo',
- 'events-Ld-R_muons-Ld-R_q',
- 'events-Ld-R_muons-Ld-R_pz',
- 'events-Ld-R_muons-Ld-R_py',
- 'events-Ld-R_muons-Ld-R_px',
- 'events-Ld-R_muons-Ld-R_iso',
- 'events-Ld-R_muons-Ld-R_E',
- 'events-Ld-R_MET-R_py',
- 'events-Ld-R_MET-R_px',
- 'events-Ld-R_jets-Lo',
- 'events-Ld-R_jets-Ld-R_pz',
- 'events-Ld-R_jets-Ld-R_py',
- 'events-Ld-R_jets-Ld-R_px',
- 'events-Ld-R_jets-Ld-R_E',
- 'events-Ld-R_jets-Ld-R_btag',
- 'events-Ld-R_electrons-Lo',
- 'events-Ld-R_electrons-Ld-R_q',
- 'events-Ld-R_electrons-Ld-R_pz',
- 'events-Ld-R_electrons-Ld-R_py',
- 'events-Ld-R_electrons-Ld-R_px',
- 'events-Ld-R_electrons-Ld-R_iso',
- 'events-Ld-R_electrons-Ld-R_E']
+'events-Ld-R_photons-Lo',
+'events-Ld-R_photons-Ld-R_pz',
+'events-Ld-R_photons-Ld-R_py',
+'events-Ld-R_photons-Ld-R_px',
+'events-Ld-R_photons-Ld-R_iso',
+'events-Ld-R_photons-Ld-R_E',
+'events-Ld-R_numPrimaryVertices',
+'events-Ld-R_muons-Lo',
+'events-Ld-R_muons-Ld-R_q',
+'events-Ld-R_muons-Ld-R_pz',
+'events-Ld-R_muons-Ld-R_py',
+'events-Ld-R_muons-Ld-R_px',
+'events-Ld-R_muons-Ld-R_iso',
+'events-Ld-R_muons-Ld-R_E',
+'events-Ld-R_MET-R_py',
+'events-Ld-R_MET-R_px',
+'events-Ld-R_jets-Lo',
+'events-Ld-R_jets-Ld-R_pz',
+'events-Ld-R_jets-Ld-R_py',
+'events-Ld-R_jets-Ld-R_px',
+'events-Ld-R_jets-Ld-R_E',
+'events-Ld-R_jets-Ld-R_btag',
+'events-Ld-R_electrons-Lo',
+'events-Ld-R_electrons-Ld-R_q',
+'events-Ld-R_electrons-Ld-R_pz',
+'events-Ld-R_electrons-Ld-R_py',
+'events-Ld-R_electrons-Ld-R_px',
+'events-Ld-R_electrons-Ld-R_iso',
+'events-Ld-R_electrons-Ld-R_E']
 ```
 
 Use Numpy's `savez` to save them to an uncompressed zip file (or `savez_compressed` for compression).
@@ -234,6 +234,8 @@ List(Record(MET                = Record(px=float64, py=float64),
 
 The data are loaded on demand by proxies. List proxies like `events` yield event records when requested by square brackets and event records yield their contents when requested by attributes. If the arrays are in a Numpy file or a memory-mapped file, they won't be loaded if not needed. In fact, a memory-mapped file can be many times larger than your computer's memory and still be accessible on demand.
 
+This little loop iterates over all muons in all events and adds up their momenta. Arbitrarily complex loops are possible, including cross-references between two structures, but non-sequential access is usually slower than sequential (for the normal disk-paging and CPU-caching reasons).
+
 ```python
 import math
 
@@ -245,9 +247,14 @@ for event in events:
 print(psum)
 ```
 
-On my machine, it took 25 seconds to walk through all the muons and compute momenta. Despite appearances, no lists or muon objects were created, only proxies to them. Only arrays necessary for the compuation (9.5 MB in this example) are actually loaded, not all of them (38 MB).
+On my laptop, this loop took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Though convenient for taking a quick look at the data, the proxies are not the most efficient way to iterate over data because they create and destroy objects at runtime.
+
+Each primitive, list, union, and record could be represented at runtime by a single number each, which has much less overhead than a proxy instance. Knowing the data type, we can propagate types through the code to replace proxies with simple numbers.
+
+The interface is currently rough, requiring us to use explicit brackets rather than iterators, but eventually the same code will be usable by each.
 
 ```python
+import math
 from plur.types import *
 from plur.compile import local
 
@@ -264,11 +271,21 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-3.8 seconds
+On the same laptop, this took 3.8 seconds: six times faster. Note that it is still Python code, just rearranged for faster access ("compiled the proxies away").
+
+It's also in a form that can be compiled to native bytecode (no Python at runtime) by Numba. If you have Numba installed, the same two lines with `numba=True` speeds it up by another 125 times:
 
 ```python
-fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math}, debug=True)
+fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math}, numba=True)
 fcn(*[arrays[x] for x in arrayparams])
 ```
+
+The first time it is called, the function takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop.
+
+
+
+
+
+
 
 0.98 seconds the first time (compilation), followed by 0.03 seconds each subsequent time (execution only).
