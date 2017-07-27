@@ -68,12 +68,12 @@ Data of interest to most analyses can be represented as some combination of the 
 
    * Unicode strings are `List(uint8)` where combinations of `uint8` bytes are interpreted as characters.
    * Limited-scope pointers are integers representing indexes into some other list.
-   * Nullable/optional types X are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
+   * Nullable/optional types X (the "maybe monad") are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
 There are three levels of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
 
-To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. ("Move" in this case might mean network transfers, loading data from disk, or paging it through the CPU cache.)
+To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. ("Move" in this case might mean network transfers, loading data from disk, or paging RAM through the CPU cache.)
 
 ## Particle physics example
 
@@ -83,7 +83,7 @@ To follow along, check out [Revision XXX](FIXME) and
 python setup.py install --user
 ```
 
-The only explicit dependency is Numpy, though the last step requires Numba (installable with Conda).
+The only explicit dependency is Numpy, though the last step requires Numba (installable with [Conda](https://conda.io/miniconda.html)).
 
 In a Python session, define some types:
 
@@ -94,13 +94,13 @@ Jet      = Record(px=float64, py=float64, pz=float64, E=float64, btag=float64)
 Muon     = Record(px=float64, py=float64, pz=float64, E=float64, q=int8, iso=float64)
 Electron = Record(px=float64, py=float64, pz=float64, E=float64, q=int8, iso=float64)
 Photon   = Record(px=float64, py=float64, pz=float64, E=float64, iso=float64)
-MET      = Record(px=float64, py=float64)
+Met      = Record(px=float64, py=float64)
 
 Event = Record(jets               = List(Jet),
                muons              = List(Muon),
                electrons          = List(Electron),
                photons            = List(Photon),
-               MET                = MET,
+               MET                = Met,
                numPrimaryVertices = int32)
 ```
 
