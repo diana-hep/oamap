@@ -128,7 +128,7 @@ def generate():
             yield json.loads(line)
 ```
 
-These events use so much memory as Python dictionaries that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files.)
+The Python dictionaries generated from the JSON use so much memory that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files to avoid any growth in memory.)
 
 ```python
 from plur.python import toarrays
@@ -137,7 +137,7 @@ from plur.python import toarrays
 arrays = toarrays("events", generate(), List(Event))
 ```
 
-Now they're just Numpy arrays. Some arrays store data, some represent structure, even the names encode the type structure (losslessly).
+Now they're just Numpy arrays. Some arrays store data, some represent structure, and even the names encode the type structure (losslessly).
 
 ```python
 >>> list(arrays.keys())
@@ -187,7 +187,7 @@ numpy.savez(open("triggerIsoMu24_50fb-1.npz", "wb"), **arrays)
 | Numpy            |  39 MB |
 | Numpy compressed |  13 MB |
 
-Now exit Python and open a new Python shell. We can load data already in PLUR format in a fraction of a second.
+Now exit Python and open a new Python shell. The PLUR data becomes available in a fraction of a second.
 
 ```python
 import numpy
@@ -197,7 +197,7 @@ from plur.python import fromarrays
 events = fromarrays("events", arrays)
 ```
 
-We immediately have access to any event and any object in the event.
+We now have access to any event and any object in the event.
 
 ```python
 >>> print(events[0])
@@ -235,7 +235,7 @@ List(Record(MET                = Record(px=float64, py=float64),
 
 The data are loaded on demand by proxies. List proxies like `events` yield event records when requested by square brackets and event records yield their contents when requested by attributes. If the arrays are in a Numpy file or a memory-mapped file, they won't be loaded if not needed. In fact, a memory-mapped file can be many times larger than your computer's memory and still be accessible on demand.
 
-This little loop iterates over all muons in all events and adds up their momenta. Arbitrarily complex loops are possible, including cross-references between two structures, but non-sequential access is usually slower than sequential (for the normal disk-paging and CPU-caching reasons).
+The following loop iterates over all muons in all events and adds up their momenta. Arbitrarily complex loops are possible, including cross-references between two structures, but non-sequential access is usually slower than sequential (for the normal disk-paging and CPU-caching reasons).
 
 ```python
 import math
@@ -248,11 +248,11 @@ for event in events:
 print(psum)
 ```
 
-On my laptop, this loop took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Though convenient for taking a quick look at the data, the proxies are not the most efficient way to iterate over data because they create and destroy objects at runtime.
+On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Though convenient for taking a quick look at the data, the proxies are not the most efficient way to iterate over data because they create and destroy objects at runtime.
 
 Each primitive, list, union, and record could be represented at runtime by a single number each, which has much less overhead than a proxy instance. Knowing the data type, we can propagate types through the code to replace proxies with simple numbers.
 
-The interface is currently rough, requiring us to use explicit brackets rather than iterators, but eventually the same code will be usable by each.
+The interface is currently rough, requiring us to use explicit brackets rather than iterators, but eventually no code changes will be required for faster access through term rewriting.
 
 ```python
 import math
@@ -272,24 +272,32 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-On the same laptop, this took 3.8 seconds: six times faster. Note that it is still Python code, just rearranged for faster access ("compiled the proxies away").
+On the same laptop, this took 3.8 seconds: six times faster. Note that this is all still Python code, just rearranged for faster access (we "compiled the abstractions away").
 
-It's also in a form that can be compiled to native bytecode (no Python at runtime) by Numba. If you have Numba installed, the same two lines with `numba=True` speeds it up by another 125 times:
+It's also in a form that can be compiled to native bytecode (no Python at runtime) by Numba. If you have Numba installed, the same two lines with `numba=True` speeds it up by another factor of a hundred:
 
 ```python
 fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math}, numba=True)
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-The first time it is called, the function takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python we'd write to explore a handful of events.
+The first time the function is called, it takes 0.98 seconds to compile. Thereafter, it takes 0.03 seconds. There are no Python objects or memory allocations objects in the loop: it would not be any faster if it were written in C++. And yet, it's the same Python we'd write to explore a handful of events.
 
 ## Project roadmap
 
-Relationship to [Femtocode](https://github.com/diana-hep/femtocode): Femtocode is a totally functional language with dependent types, intended for high-level data queries. This columnar representation is the central idea of the Femtocode execution engine: PLUR is a simpler project that focuses only on accessing data, which can be used in any procedural code. In fact, PLUR can be reimplemented in any language with JIT-compilation.
+**Relationship to [Femtocode](https://github.com/diana-hep/femtocode):** Femtocode is a totally functional language with dependent types, intended for high-level data queries. The columnar representation described here is the central idea of the Femtocode execution engine: PLUR is a simpler project that focuses only on accessing data, which can be used in any procedural code. In fact, PLUR can be reimplemented in any language with JIT-compilation (such as [C++ Cling](https://root.cern.ch/cling): hint to ROOT developers).
 
 Femtocode is intended for a future HEP query engine, but Numba and PLUR would be easier to implement in the short term. The HEP query engine is likely to use Python as a query language before Femtocode is ready.
 
-### Steps
+**Relationship to [Apache Arrow](https://arrow.apache.org/):** after much exploration (four fundamentally different data representations), I've come to the conclusion that Arrow's chain of offset arrays is the best way to access hierarchical data.
+
+The differences are:
+
+   1. PLUR has no dependencies other than Numpy and maybe Numba, so it's easy to install.
+   2. Arrow defines the relative placemment of its columnar buffers; PLUR lets them be any Numpy arrays anywhere (including disk via memory-mapped files). Therefore, PLUR arrays can be copied into Arrow buffers with a bulk `memcpy` operation, while Arrow buffers can be zero-copy interpreted as PLUR arrays.
+   3. PLUR implements fast accessors for the data. In the future, PLUR could be used as a way of writing Python routines that run on Arrow data, which could be a Pandas/R/Spark DataFrame supporting Arrow.
+
+## Steps
 
    * Define PLUR representation **(done)**.
    * Conversion of Python objects into PLUR **(done)**.
