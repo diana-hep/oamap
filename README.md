@@ -224,7 +224,7 @@ numpy.savez(open("triggerIsoMu24_50fb-1.npz", "wb"), **arrays)
 | Numpy            |  39 MB |
 | Numpy compressed |  13 MB |
 
-Now exit Python and open a new Python shell. The file opens in a fraction of a second regardless of how large it is.
+Exit Python and open a new Python shell. The file opens in a fraction of a second regardless of how large it is.
 
 ```python
 import numpy
@@ -234,7 +234,7 @@ from plur.python import fromarrays
 events = fromarrays("events", arrays)
 ```
 
-We can now access any event and any object in the events without any noticible lag. If the arrays were memory-mapped files, the operating system would seek to the appropriate parts of the file and page them into memory just in time. Our example uses a ZIP file, which reads and possibly decompresses the appropriate array from the file on demand.
+We can now access any event and any object in the events without noticible lag. If the arrays were memory-mapped files, the operating system would seek to the appropriate parts of the file and page them into memory just in time. Our example uses a ZIP file, which reads and possibly decompresses the appropriate array from the file on demand.
 
 ```python
 >>> print(events[0])
@@ -283,7 +283,7 @@ for event in events:
 print(psum)
 ```
 
-On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Most of this time is spent creating and destroying proxy objects, which are Python class instances pointing to relevant parts of the arrays. In principle, the only data we need to pass around is an index for each list, union, or record. Extracting items from lists, instances of a union, or attributes from a record simply requires special interpretation of that index.
+On my laptop, this took 25 seconds. Only five of the thirty arrays were actually loaded (9.5 MB of the 38 MB). Most of this time is spent creating and destroying proxy objects, which are Python class instances pointing to relevant parts of the arrays. In principle, all we need to pass around is an index for each non-primitive object: extracting items from lists, instances of a union, or attributes from a record just requires a special interpretation of that index.
 
 As an alternative to passing proxy objects in dynamic Python, we could translate the Python code to pass integer indexes and interpret them correctly. This involves something like a compiler pass, propagating PLUR data types through the code to insert index interpretations at the appropriate places, which can be performed rigorously at the level of [abstract syntax trees](https://en.wikipedia.org/wiki/Abstract_syntax_tree).
 
@@ -309,7 +309,7 @@ fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math
 fcn(*[arrays[x] for x in arrayparams])
 ```
 
-On the same laptop, this took 3.8 seconds: six times faster to do exactly the same work. Note that this is all still Python code, just rearranged for faster access (we "compiled the abstractions away").
+On the same laptop, this took 3.8 seconds: six times faster to do exactly the same work. Note that this is all still Python code, rearranged for faster access (we "compiled the abstractions away").
 
 In this form, it is also possible for Numba to compile the function to native bytecode (no Python at runtime). The code transformation was necessary because Numba understands integer indexes better than dynamic Python objects. If you have Numba installed, try adding a single parameter `numba=True` to the code transformation for another factor of a hundred in speedup:
 
