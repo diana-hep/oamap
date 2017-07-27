@@ -14,6 +14,7 @@ In each case, the user writes the same idiomatic Python code, as though these PL
    2. [PLUR: fast access to Primitives, Lists, Unions, and Records](#plur-fast-access-to-primitives-lists-unions-and-records)
    3. [Particle physics example](#particle-physics-example)
    4. [Project roadmap](#project-roadmap)
+   5. [Relationship to other projects](#relationship-to-other-projects)
 
 ## In the wiki
 
@@ -325,7 +326,7 @@ With all the hierarchical data in PLUR objects that get compiled away, this func
 
 You just write analysis code on complex objects in Python and get database-style speeds.
 
-## Project roadmap
+## Relationship to other projects
 
 **Relationship to [Femtocode](https://github.com/diana-hep/femtocode):** PLUR could be seen as a (temporary!) de-scoping of Femtocode. Femtocode was intended as a query language for a HEP query service with an execution engine that optimizes code for columnar, hierarchical data. PLUR is just the columnar, hierarchical data, implementing fast data access and not a whole language.
 
@@ -341,21 +342,21 @@ The differences between Arrow and PLUR are:
 
 **Relationship to [ROOT](https://root.cern/):** PLUR shares many concepts with the ROOT file format, but there are differences. First, PLUR is not a data format: one could use ROOT as a source and storage for PLUR data structures (converting Numpy arrays to and from ROOT TBranches). But more significantly,
 
-   1. The goal of ROOT serialization is to store and retrieve arbitrary C++ objects, essentially like a C++ version of Python's pickle. PLUR encodes data adhering to a language-independent type system, which is intentionally kept small for simplicity. Except for unrestricted pointers (which can point to any data anywhere, not just indexes into a list), any non-volatile C++ type could be expressed as a PLUR type (excluding volatile data representing ongoing processes, like open file handles and function pointers).
-   2. ROOT materializes data as ordinary C++ objects so that any C++ code can run on them. PLUR uses Python's dynamism or instruments compiled code to provide the illusion that the Python code is operating on objects, when in fact it is operating on array indexes that produce the required object attributes just in time.
-   3. Data can be modified in-place with ROOT; PLUR objects are immutable. Modifying a PLUR dataset, such as updating attribute values, actually creates a new column to be used in conjunction with the old columns like a diff-patch. This ability to share underlying data among slightly different versions of a dataset requires immutable data.
-   4. ROOT schema evolution is complicated by the fact that C++ is a nominally typed language: classes must have the same name; it's not enough to have the right attributes.
+   1. The goal of ROOT serialization is to store and retrieve arbitrary C++ objects, essentially like a C++ version of Python's pickle. PLUR encodes data adhering to a language-independent type system, which is intentionally kept small for simplicity.
+   2. ROOT materializes data as ordinary C++ objects so that C++ code can run on them. PLUR uses Python's dynamism or instruments compiled code to provide the illusion that the Python code is operating on objects, when in fact it is operating on array indexes that produce the required object attributes just in time.
+   3. Data can be modified in-place with ROOT; PLUR objects are immutable. Modifying a PLUR dataset, such as updating attribute values, actually creates a new column to be used in conjunction with the old columns like a diff-patch.
+   4. ROOT schema evolution is complicated by the fact that C++ is a nominally typed language: classes must have the same name; it's not enough to have the right attributes.
 
-ROOT and PLUR can be used together: I am currently implementing fast, native Numpy access to ROOT TTrees (directly accessing the TBuffers) so that ROOT data can be streamed through PLUR proxies.
+ROOT and PLUR can be used together: I am currently implementing fast, native Numpy access to ROOT TTrees so that ROOT data can be streamed through PLUR proxies.
 
-Moreover, the [PLUR specification](../../wiki/Encoding-scheme) is language-neutral: it could be implemented in [Cling, a just-in-time C++ compiler](https://root.cern.ch/cling). The code transformations that provide the fastest access can be implemented more easily with C++ metaprogramming than the Python code transformation. (There's already a compiler infrastructure in place to track data types and inject inline code.)
+Moreover, the [PLUR specification](../../wiki/Encoding-scheme) is language-neutral: it could be implemented in [Cling, a just-in-time C++ compiler](https://root.cern.ch/cling). The code transformations that provide the fastest access can be implemented more easily with C++ metaprogramming than the Python code transformation.
 
 **Relationship to databases**
 
 
 
 
-### Steps
+## Project roadmap
 
    * Define the PLUR representation **(done)**.
    * Conversion of Python objects into PLUR **(done)**.
@@ -372,5 +373,3 @@ Moreover, the [PLUR specification](../../wiki/Encoding-scheme) is language-neutr
    * Simple extension types, such as strings (`List(uint8)`), nullable/optional (`List(X)`), and pointers (`int64` with a list reference).
    * Use pointers as event lists and database-style indexes: essential for query engine.
    * Integrate with ROOT, zero-copy interpreting internal TBuffer data as PLUR data (requires ROOT updates).
-
-At the same time, ROOT is being updated to expose TBuffer data as Numpy arrays. Also, a distributed query service is in development, which will use PLUR as an execution engine.
