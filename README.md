@@ -66,14 +66,14 @@ List(List(Union(int32, Record(x=float64, y=float64))))
 
 Data of interest to most analyses can be represented as some combination of the above. For instance,
 
-   * Unicode strings are `List(uint8)` where combinations of `uint8` bytes are interpreted as characters.
+   * Unicode strings are `List(uint8)` where subsequences of bytes are interpreted as characters.
    * Limited-scope pointers are integers representing indexes into some other list.
    * Nullable/optional types X (the "maybe monad") are `List(X)` with list lengths of 0 or 1, interpreting empty lists as `None`.
    * Lookup tables from X to Y are `List(Record(key=X, value=Y))`, read into a runtime structure optimized for lookup, such as a hashmap.
 
-There are three levels of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
+There are three layers of abstraction here: types of objects generated at runtime (such as `str` from `List(uint8)`), the PLUR types that are directly encoded in Numpy, and the Numpy arrays themselves.
 
-To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. ("Move" in this case might mean network transfers, loading data from disk, or paging RAM through the CPU cache.)
+To move a large dataset, we only need to move a subset of the Numpy arrays— everything else can be reconstructed. ("Move" might mean network transfers, loading data from disk, or paging RAM through the CPU cache.)
 
 ## Particle physics example
 
@@ -128,7 +128,7 @@ def generate():
             yield json.loads(line)
 ```
 
-The Python dictionaries generated from the JSON use so much memory that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files to avoid any growth in memory.)
+The Python dictionaries generated from the JSON use so much memory that I can't load them all on my laptop. Therefore, we pass `toarrays` a generator to fill the much more compact PLUR representation. (We could also stream directly to files to avoid any growth in memory use.)
 
 ```python
 from plur.python import toarrays
@@ -137,7 +137,7 @@ from plur.python import toarrays
 arrays = toarrays("events", generate(), List(Event))
 ```
 
-Now they're just Numpy arrays. Some arrays store data, some represent structure, and even the names encode the type structure (losslessly).
+Now the data structures are just a set of Numpy arrays. Some arrays store data, some represent structure, and even the names encode the type structure (losslessly). Each one-dimensional array may be thought of as a "column" in the database sense (i.e. "split mode" in ROOT).
 
 ```python
 >>> list(arrays.keys())
@@ -173,7 +173,7 @@ Now they're just Numpy arrays. Some arrays store data, some represent structure,
 'events-Ld-R_electrons-Ld-R_E']
 ```
 
-Use Numpy's `savez` to save them to an uncompressed zip file (or `savez_compressed` for compression).
+Use Numpy's `savez` to save them all to an uncompressed zip file (or `savez_compressed` for compression).
 
 ```python
 import numpy
@@ -187,7 +187,7 @@ numpy.savez(open("triggerIsoMu24_50fb-1.npz", "wb"), **arrays)
 | Numpy            |  39 MB |
 | Numpy compressed |  13 MB |
 
-Now exit Python and open a new Python shell. The PLUR data becomes available in a fraction of a second.
+Now exit Python and open a new Python shell. The file opens in a fraction of a second.
 
 ```python
 import numpy
@@ -197,7 +197,7 @@ from plur.python import fromarrays
 events = fromarrays("events", arrays)
 ```
 
-We now have access to any event and any object in the event.
+We can immediately access any event and any object in the events.
 
 ```python
 >>> print(events[0])
@@ -252,7 +252,7 @@ On my laptop, this took 25 seconds. Only five of the thirty arrays were actually
 
 Each primitive, list, union, and record could be represented at runtime by a single number each, which has much less overhead than a proxy instance. Knowing the data type, we can propagate types through the code to replace proxies with simple numbers.
 
-The interface is currently rough, requiring us to use explicit brackets rather than iterators, but eventually no code changes will be required for faster access through term rewriting.
+The interface is currently rough, requiring us to use explicit brackets rather than iterators, but eventually no code changes will be required for faster access through term rewriting. The following is a kind of compilation, transforming Python to Python, using type inference and rigorous AST manipulation.
 
 ```python
 import math
