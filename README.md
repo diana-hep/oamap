@@ -120,7 +120,7 @@ Let's illustrate the PLUR concept and its Python/Numpy implementation with an ex
 
 ## Particle physics example
 
-To follow along, check out [Revision 193](https://github.com/diana-hep/plur/releases/tag/rev193) and
+To follow along, check out [Revision 194](https://github.com/diana-hep/plur/releases/tag/rev194) and
 
 ```bash
 python setup.py install --user
@@ -380,7 +380,7 @@ To a user, this would require a combined query: an SQL part (for the database) f
       * Square brackets for lists and attribute access for records **(done)**.
       * Test all combinations of primitives, lists, unions, and records **(done)**.
       * `len` function for lists **(done)**.
-      * `for` loop iteration.
+      * `for` loop iteration **(done)**.
       * `enumerate`, `zip`, etc.
       * Assignment carries PLUR type through type inference.
    * Good error messages, catching PLUR type errors at compile time.
