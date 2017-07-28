@@ -369,10 +369,10 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
                     assert isinstance(node.args[0].slice, ast.Index)
                     assert isinstance(node.args[0].ctx, ast.Load)
 
-                    current = node.args[0]
-                    plusone = generate(None, "offset[i + 1]", offset=node.args[0].value, i=node.args[0].slice.value)
-
-                    return generate(tpe, "plusone - current", plusone=plusone, current=current)
+                    return generate(tpe, "offset[i + 1] - current",
+                                    offset=node.args[0].value,
+                                    i=node.args[0].slice.value,
+                                    current=node.args[0])
 
             elif hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, Union):
                 return node.args[0]
@@ -430,6 +430,34 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 # FloorDiv ()
 
 # For ("target", "iter", "body", "orelse")
+def do_For(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
+    node.iter = recurse(node.iter)
+    node.target = recurse(node.target)
+
+    if hasattr(node.iter, "plurtype") and isinstance(node.iter.plurtype, List) and isinstance(node.target, ast.Name) and isinstance(node.target.ctx, ast.Store):
+        tpe = node.iter.plurtype
+
+        if isinstance(node.iter, ast.Num):
+            assert node.iter.n == 0
+            node.iter = generate(tpe, "range(offset[1])", offset=ast.Name(colname(tpe.column), ast.Load()))
+
+        else:
+            assert isinstance(node.iter, ast.Subscript)
+            assert isinstance(node.iter.value, ast.Name)
+            assert isinstance(node.iter.slice, ast.Index)
+            assert isinstance(node.iter.ctx, ast.Load)
+
+            node.iter = generate(tpe, "range(current, offset[i + 1])",
+                                 offset=node.iter.value,
+                                 i=node.iter.slice.value,
+                                 current=node.iter)
+
+        symboltypes[node.target.id] = tpe.of
+
+    node.body = recurse(node.body)
+    node.orelse = recurse(node.orelse)
+
+    return node
 
 # FunctionDef ("name", "args", "body", "decorator_list")             # Py2
 # FunctionDef ("name", "args", "body", "decorator_list", "returns")  # Py3

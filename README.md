@@ -120,7 +120,7 @@ Let's illustrate the PLUR concept and its Python/Numpy implementation with an ex
 
 ## Particle physics example
 
-To follow along, check out [Revision 167](https://github.com/diana-hep/plur/releases/tag/rev167) and
+To follow along, check out [Revision 193](https://github.com/diana-hep/plur/releases/tag/rev193) and
 
 ```bash
 python setup.py install --user
@@ -293,7 +293,7 @@ On my laptop, this took 25 seconds. Only five of the thirty arrays were actually
 
 As an alternative to passing proxy objects in dynamic Python, we could translate the Python code to pass integer indexes and interpret them correctly. This involves something like a compiler pass, propagating PLUR data types through the code to insert index interpretations at the appropriate places, which can be performed rigorously at the level of [abstract syntax trees](https://en.wikipedia.org/wiki/Abstract_syntax_tree).
 
-This PLUR implementation has experimental support for code transformation, though the interface is currently rough (no error checking!). We can't use foreach-style loops yet, but eventually we'll be able to put exactly the same code that works with proxies into the code transformation tool and get a large speedup for free.
+This PLUR implementation has experimental support for code transformation, though the interface is currently rough (no error checking!). However, we can already put exactly the same code that works with proxies into the code transformation tool and get a large speedup for free.
 
 Here's an illustration:
 
@@ -304,11 +304,9 @@ from plur.compile import local
 
 def doit(events):
     psum = 0.0
-    for i in range(len(events)):
-        for j in range(len(events[i].muons)):
-            psum += math.sqrt(events[i].muons[j].px**2 +
-                              events[i].muons[j].py**2 +
-                              events[i].muons[j].pz**2)
+    for event in events:
+        for muon in event.muons:
+            psum += math.sqrt(muon.px**2 + muon.py**2 + muon.pz**2)
     return psum
 
 fcn, arrayparams = local(doit, arrays2type(arrays, "events"), environment={"math": math})
@@ -389,4 +387,5 @@ To a user, this would require a combined query: an SQL part (for the database) f
    * Maybe require Femtocode-style constraints on list indexes and union members to eliminate this type of runtime error.
    * Simple extension types, such as strings (`List(uint8)`), nullable/optional (`List(X)`), and pointers (`int64` with a list reference).
    * Use pointers as event lists and database-style indexes: essential for query engine.
+   * Streaming iteration over Lists using dynamically-generated partitions.
    * Integrate with ROOT, zero-copy interpreting internal TBuffer data as PLUR data (requires ROOT updates).

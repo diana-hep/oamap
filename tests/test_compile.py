@@ -157,6 +157,34 @@ class TestCompile(unittest.TestCase):
         same([T([], []), T([1, 2], [1, 2]), T([3, 4, 5], [3, 4, 5])], lambda x, i: len(x[i].one), [0, 1, 2])
         same([T([1], [1]), T2([1, 2], [1, 2]), T([3, 4, 5], [3, 4, 5])], lambda x, i: len(x[i].one), [0, 1, 2])
 
+        ####### iter
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                out += y
+            return out
+
+        same([1, 2, 3, 4, 5], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                for z in y:
+                    out += z
+            return out
+
+        same([[], [1, 2], [3, 4, 5]], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                for z in y.one:
+                    out += z
+            return out
+
+        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
+
     def test_local(self):
         data = [[], [1, 2], [3, 4, 5]]
         arrays = toarrays("prefix", data)
