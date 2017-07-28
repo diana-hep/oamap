@@ -136,10 +136,6 @@ class LazyList(list, Lazy):
         return "[{0}{1}]".format(", ".join(map(repr, self[:4])), dots)
 
     def __len__(self):
-        # if self._at == 0:
-        #     return self._array[0]
-        # else:
-        #     return self._array[self._at] - self._array[self._at - 1]
         return self._array[self._at + 1] - self._array[self._at]
 
     def _normalize(self, i, clip, step):
@@ -199,10 +195,6 @@ class LazyList(list, Lazy):
             return self._handleslice(i)
         else:
             i = self._normalize(i, False, 1)
-            # if self._at == 0:
-            #     return self._sub(i)
-            # else:
-            #     return self._sub(self._array[self._at - 1] + i)
             return self._sub(self._array[self._at] + i)
 
     def __getslice__(self, i, j):

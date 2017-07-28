@@ -171,8 +171,6 @@ def rewrite(fcn, paramtypes={}, environment={}):
 
     code.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + code.args.args
 
-    # code.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + code.body
-
     arrayparams = [[named for named, numbered in columns.items() if numbered == x][0] for x in newparams]
     return code, arrayparams, enclosedfcns, encloseddata
 
@@ -240,7 +238,6 @@ def node2array(node, tpe, colname, unionop):
 
     # L
     elif isinstance(tpe, List):
-        # return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
         if isinstance(node, ast.Num) and node.n == 0:
             return generate(tpe, "0")
         else:
@@ -353,11 +350,7 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
             def subunionop(tpe, node):
                 if isinstance(tpe, List):
-                    return generate(tpe,
-                                    # "offset[0] if at == 0 else (offset[at] - offset[at - 1])",
-                                    "offset[at + 1] - offset[at]",
-                                    offset=ast.Name(colname(tpe.column), ast.Load()),
-                                    at=node)
+                    return generate(tpe, "offset[at + 1] - offset[at]", offset=ast.Name(colname(tpe.column), ast.Load()), at=node)
                 else:
                     return unionop(tpe, node)
 
@@ -365,15 +358,6 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
             
             if hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, List):
                 tpe = node.args[0].plurtype
-                # assert isinstance(node.args[0], ast.IfExp)
-                # assert isinstance(node.args[0].test, ast.Compare)
-                # assert asteq(node.args[0].test.ops, [ast.Eq()])
-                # assert asteq(node.args[0].test.comparators, [ast.Num(0)])
-
-                # return generate(tpe,
-                #                 "offset[0] if at == 0 else (offset[at] - offset[at - 1])",
-                #                 offset=ast.Name(colname(tpe.column), ast.Load()),
-                #                 at=node.args[0].test.left)
 
                 if isinstance(node.args[0], ast.Num):
                     assert node.args[0].n == 0
@@ -386,7 +370,6 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
                     assert isinstance(node.args[0].ctx, ast.Load)
 
                     current = node.args[0]
-                    # plusone = ln(ast.Subscript(node.args[0].value, ast.Index(ln(ast.BinOp(node.args[0].slice.value, ast.Add(), ln(ast.Num(1))))), ast.Load()))
                     plusone = generate(None, "offset[i + 1]", offset=node.args[0].value, i=node.args[0].slice.value)
 
                     return generate(tpe, "plusone - current", plusone=plusone, current=current)
@@ -591,13 +574,6 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
             offsetatplusi = generate(None, "offsetat + i", offsetat=offsetat, i=index)
 
         return unionop(tpe.of, offsetatplusi)
-
-        # return unionop(tpe.of,
-        #                # generate(None, "(0 if at == 0 else offset[at - 1]) + i",
-        #                generate(None, "offset[at] + i",
-        #                         at=node,
-        #                         offset=ast.Name(colname(tpe.column), ast.Load()),
-        #                         i=index))
 
     node.value = recurse(node.value, unionop=subunionop)
 
