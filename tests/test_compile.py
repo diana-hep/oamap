@@ -162,7 +162,7 @@ class TestCompile(unittest.TestCase):
         arrays = toarrays("prefix", data)
         tpe = arrays2type(arrays, "prefix")
         fcn, arrayparams = local(lambda x, i, j: x[i][j], {"x": tpe})
-        self.assertEqual(arrayparams, ["prefix-Lo", "prefix-Ld-Lo", "prefix-Ld-Ld"])
+        self.assertEqual(arrayparams, ["prefix-Ld-Lo", "prefix-Ld-Ld"])
 
         arrayargs = [arrays[x] for x in arrayparams]
         self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)
@@ -182,7 +182,7 @@ class TestCompile(unittest.TestCase):
         arrays = toarrays("prefix", data)
         tpe = arrays2type(arrays, "prefix")
         fcn, arrayparams = local(lambda x, i, j: x[i][j], {"x": tpe}, numba={})
-        self.assertEqual(arrayparams, ["prefix-Lo", "prefix-Ld-Lo", "prefix-Ld-Ld"])
+        self.assertEqual(arrayparams, ["prefix-Ld-Lo", "prefix-Ld-Ld"])
 
         arrayargs = [arrays[x] for x in arrayparams]
         self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)

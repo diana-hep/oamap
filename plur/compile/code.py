@@ -138,6 +138,7 @@ def rewrite(fcn, paramtypes={}, environment={}):
     def unionop(tpe, node):
         return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
+    zeros = toreplace
     def recurse(node, symboltypes=symbols, unionop=unionop):
         if isinstance(node, ast.AST):
             if isinstance(node, ast.Name):
@@ -145,7 +146,7 @@ def rewrite(fcn, paramtypes={}, environment={}):
 
             handlername = "do_" + node.__class__.__name__
             if handlername in globals():
-                return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop)
+                return globals()[handlername](node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop)
 
             else:
                 for fieldname in node._fields:
@@ -170,7 +171,7 @@ def rewrite(fcn, paramtypes={}, environment={}):
 
     code.args.args = [ln(ast.Name(x, ast.Param())) if py2 else ln(ast.arg(x, None)) for x in newparams] + code.args.args
 
-    code.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + code.body
+    # code.body = [generate(None, "name = 0", name=ast.Name(x, ast.Store())) for x in toreplace] + code.body
 
     arrayparams = [[named for named, numbered in columns.items() if numbered == x][0] for x in newparams]
     return code, arrayparams, enclosedfcns, encloseddata
@@ -240,7 +241,10 @@ def node2array(node, tpe, colname, unionop):
     # L
     elif isinstance(tpe, List):
         # return generate(tpe, "0 if at == 0 else array[at - 1]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
-        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        if isinstance(node, ast.Num) and node.n == 0:
+            return generate(tpe, "0")
+        else:
+            return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     # U
     elif isinstance(tpe, Union):
@@ -287,7 +291,7 @@ def node2array(node, tpe, colname, unionop):
 # Assign ("targets", "value")
 
 # Attribute ("value", "attr", "ctx")
-def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
+def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
     def fieldtype(tpe):
         for fn, ft in tpe.of:
             if fn == node.attr:
@@ -330,7 +334,7 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 # Bytes ("s",)  # Py3 only
 
 # Call ("func", "args", "keywords", "starargs", "kwargs")
-def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
+def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
     node.func = recurse(node.func)
 
     def descend(node, unionop):
@@ -371,18 +375,21 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
                 #                 offset=ast.Name(colname(tpe.column), ast.Load()),
                 #                 at=node.args[0].test.left)
 
-                assert isinstance(node.args[0], ast.Subscript)
-                assert isinstance(node.args[0].value, ast.Name)
-                assert isinstance(node.args[0].slice, ast.Index)
-                assert isinstance(node.args[0].ctx, ast.Load)
+                if isinstance(node.args[0], ast.Num):
+                    assert node.args[0].n == 0
+                    return generate(tpe, "offset[1]", offset=ast.Name(colname(tpe.column), ast.Load()))
 
-                current = node.args[0]
-                plusone = ln(ast.Subscript(node.args[0].value, ast.Index(ln(ast.BinOp(node.args[0].slice.value, ast.Add(), ln(ast.Num(1))))), ast.Load()))
+                else:
+                    assert isinstance(node.args[0], ast.Subscript)
+                    assert isinstance(node.args[0].value, ast.Name)
+                    assert isinstance(node.args[0].slice, ast.Index)
+                    assert isinstance(node.args[0].ctx, ast.Load)
 
-                return generate(tpe,
-                                "plusone - current",
-                                plusone=plusone,
-                                current=current)
+                    current = node.args[0]
+                    # plusone = ln(ast.Subscript(node.args[0].value, ast.Index(ln(ast.BinOp(node.args[0].slice.value, ast.Add(), ln(ast.Num(1))))), ast.Load()))
+                    plusone = generate(None, "offset[i + 1]", offset=node.args[0].value, i=node.args[0].slice.value)
+
+                    return generate(tpe, "plusone - current", plusone=plusone, current=current)
 
             elif hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, Union):
                 return node.args[0]
@@ -497,10 +504,15 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
-def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
+def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
     if isinstance(node.ctx, ast.Load):
         if node.id in symboltypes:
-            return node2array(node, symboltypes[node.id], colname, unionop)
+            tpe = symboltypes[node.id]
+
+            if node.id in zeros:
+                node = generate(tpe, "0")
+
+            return node2array(node, tpe, colname, unionop)
 
     elif isinstance(node.ctx, ast.Store):
         if node.id in symboltypes:
@@ -552,7 +564,7 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, recurse,
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, recurse, colname, unionop):
+def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
     node.slice = recurse(node.slice)
 
     if isinstance(node.slice, ast.Slice):
@@ -567,17 +579,35 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, rec
 
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
-        return unionop(tpe.of,
-                       # generate(None, "(0 if at == 0 else offset[at - 1]) + i",
-                       generate(None, "offset[at] + i",
-                                at=node,
-                                offset=ast.Name(colname(tpe.column), ast.Load()),
-                                i=index))
+
+        if isinstance(node, ast.Num) and node.n == 0:
+            offsetat = ln(ast.Num(0))
+        else:
+            offsetat = generate(None, "offset[at]", at=node, offset=ast.Name(colname(tpe.column), ast.Load()))
+
+        if isinstance(offsetat, ast.Num) and offsetat.n == 0:
+            offsetatplusi = index
+        else:
+            offsetatplusi = generate(None, "offsetat + i", offsetat=offsetat, i=index)
+
+        return unionop(tpe.of, offsetatplusi)
+
+        # return unionop(tpe.of,
+        #                # generate(None, "(0 if at == 0 else offset[at - 1]) + i",
+        #                generate(None, "offset[at] + i",
+        #                         at=node,
+        #                         offset=ast.Name(colname(tpe.column), ast.Load()),
+        #                         i=index))
 
     node.value = recurse(node.value, unionop=subunionop)
 
     if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, List):
-        return node2array(generate(None, "at + i", at=node.value, i=index),
+        if isinstance(node.value, ast.Num) and node.value == 0:
+            atplusi = index
+        else:
+            atplusi = generate(None, "at + i", at=node.value, i=index)
+
+        return node2array(atplusi,
                           node.value.plurtype.of,
                           colname,
                           unionop)
