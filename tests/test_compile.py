@@ -185,6 +185,68 @@ class TestCompile(unittest.TestCase):
 
         same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
 
+        ####### assign
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                Y = y
+                for z in Y:
+                    out += z
+            return out
+
+        same([[], [1, 2], [3, 4, 5]], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                Y, Z = y, 3.14
+                for z in Y:
+                    out += z
+            return out
+
+        same([[], [1, 2], [3, 4, 5]], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                Y = Z = y
+                for z in Y:
+                    out += z
+            return out
+
+        same([[], [1, 2], [3, 4, 5]], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                Y = y
+                for z in Y.one:
+                    out += z
+            return out
+
+        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                Y, Z = y, 3.14
+                for z in Y.one:
+                    out += z
+            return out
+
+        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
+
+        def doit(x, dummy):
+            out = 0.0
+            for y in x:
+                Y = Z = y
+                for z in Y.one:
+                    out += z
+            return out
+
+        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
+
     def test_local(self):
         data = [[], [1, 2], [3, 4, 5]]
         arrays = toarrays("prefix", data)

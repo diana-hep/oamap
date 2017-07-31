@@ -286,6 +286,42 @@ def node2array(node, tpe, colname, unionop):
 # Assert ("test", "msg")
 
 # Assign ("targets", "value")
+def do_Assign(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
+    if isinstance(node.value, ast.Name) and isinstance(node.value.ctx, ast.Load) and node.value.id in symboltypes:
+        node.value.plurtype = symboltypes[node.value.id]
+    else:
+        node.value = recurse(node.value)
+
+    def unassign(lhs):
+        if isinstance(lhs, ast.Name):
+            assert isinstance(lhs.ctx, ast.Store)
+            if lhs.id in symboltypes:
+                del symboltypes[lhs.id]
+
+        elif isinstance(lhs, (ast.List, ast.Tuple)):
+            assert isinstance(lhs.ctx, ast.Store)
+            for target in lhs.elts:
+                unassign(target)
+
+    for x in node.targets:
+        unassign(x)
+
+    def assign(lhs, rhs):
+        if isinstance(lhs, ast.Name):
+            if hasattr(rhs, "plurtype"):
+                symboltypes[lhs.id] = rhs.plurtype
+
+        elif isinstance(lhs, (ast.List, ast.Tuple)):
+            if hasattr(rhs, "plurtype"):
+                raise TypeError("cannot unpack-and-assign a PLUR type")
+            elif isinstance(rhs, ast.Tuple):
+                for target, value in zip(lhs.elts, rhs.elts):
+                    assign(target, value)
+
+    for x in node.targets:
+        assign(x, node.value)
+
+    return node
 
 # Attribute ("value", "attr", "ctx")
 def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
@@ -629,6 +665,17 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
 # Try ("body", "handlers", "orelse", "finalbody")  # Py3 only
 
 # Tuple ("elts", "ctx")
+def do_Tuple(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
+    elts = []
+    for x in node.elts:
+        if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load) and x.id in symboltypes:
+            x.plurtype = symboltypes[x.id]
+            elts.append(x)
+        else:
+            elts.append(recurse(x))
+
+    node.elts = elts
+    return node
 
 # UAdd ()
 

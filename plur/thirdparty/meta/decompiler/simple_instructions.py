@@ -238,7 +238,20 @@ class SimpleInstructions(object):
         elif isinstance(value, _ast.Assign):
             _ = self.pop_ast_item()
             assname = _ast.Name(instr.arg, _ast.Store(), lineno=instr.lineno, col_offset=0)
-            value.targets.append(assname)
+            if _ is value.value or isinstance(_, _ast.Assign):
+                value.targets.append(assname)
+            else:
+                if not isinstance(value.targets, _ast.Tuple):
+                    value.targets = [_ast.Tuple(value.targets, _ast.Store())]
+                    value.value = _ast.Tuple([value.value], _ast.Load())
+                    value.targets[0].lineno = value.targets[0].elts[0].lineno
+                    value.targets[0].col_offset = value.targets[0].elts[0].col_offset
+                    value.value.lineno = value.value.elts[0].lineno
+                    value.value.col_offset = value.value.elts[0].col_offset
+
+                value.targets[0].elts.append(assname)
+                value.value.elts.append(_)
+
             self.push_ast_item(value)
         else:
 
@@ -246,7 +259,7 @@ class SimpleInstructions(object):
 
             assign = _ast.Assign(targets=[assname], value=value, lineno=instr.lineno, col_offset=0)
             self.push_ast_item(assign)
-    
+
     @py3op
     def STORE_LOCALS(self, instr):
         'remove Locals from class def'
