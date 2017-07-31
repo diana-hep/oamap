@@ -381,8 +381,10 @@ To a user, this would require a combined query: an SQL part (for the database) f
       * Test all combinations of primitives, lists, unions, and records **(done)**.
       * `len` function for lists **(done)**.
       * `for` loop iteration **(done)**.
+      * Assignment carries PLUR type through type inference **(done)**.
       * `enumerate`, `zip`, etc.
-      * Assignment carries PLUR type through type inference.
+      * Propagate through functions (compiling user defined and strictly evaluating into builtins).
+      * Closure over referenced data.
    * Good error messages, catching PLUR type errors at compile time.
    * Maybe require Femtocode-style constraints on list indexes and union members to eliminate this type of runtime error.
    * Simple extension types, such as strings (`List(uint8)`), nullable/optional (`List(X)`), and pointers (`int64` with a list reference).
