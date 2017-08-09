@@ -34,7 +34,7 @@ class Union(Type):
                 yield x
 
         self.of = tuple(sorted(set(flatten(of))))
-        if len(of) < 2:
+        if len(self.of) < 2:
             raise TypeDefinitionError("union must have at least two possibilities")
 
         super(Union, self).__init__()
@@ -72,3 +72,31 @@ class Union(Type):
 
     def toJson(self):
         return {"union": [x.toJson() for x in self.of]}
+
+    class Choices(object):
+        def __init__(self, parent):
+            self.__dict__["__parent"] = parent
+
+        def __repr__(self):
+            return "<Union.Choices of {0}>".format(" ".join(repr(t) for t in self.__dict__["__parent"].of))
+
+        def __getattr__(self, name):
+            for t in self.__dict__["__parent"].of:
+                if repr(t) == name:
+                    return t
+            raise KeyError(name)
+
+        def __setattr__(self, name, tpe):
+            possibilities = list(self.__dict__["__parent"].of)
+
+            for i, t in enumerate(possibilities):
+                if repr(t) == name:
+                    possibilities[i] = tpe
+                    replacement = Union(*possibilities)
+                    self.__dict__["__parent"].of = replacement.of
+                    return
+            raise KeyError(name)
+
+    @property
+    def choices(self):
+        return self.Choices(self)

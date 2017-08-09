@@ -27,4 +27,6 @@ from plur.types.columns import type2columns
 from plur.types.columns import columns2type
 from plur.types.columns import arrays2type
 
-__all__ = ["Type", "Primitive", "List", "Union", "Record"] + primitivetypes + ["type2columns", "columns2type", "arrays2type"]
+from plur.types.printing import formattype, formatdiff
+
+__all__ = ["Type", "Primitive", "List", "Union", "Record"] + primitivetypes + ["type2columns", "columns2type", "arrays2type", "formattype", "formatdiff"]

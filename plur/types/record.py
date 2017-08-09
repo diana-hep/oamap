@@ -110,3 +110,27 @@ class Record(Type):
 
     def toJson(self):
         return {"record": dict((fn, ft.toJson()) for fn, ft in self.of)}
+
+    class Fields(object):
+        def __init__(self, parent):
+            self.__dict__["__parent"] = parent
+
+        def __repr__(self):
+            return "<Record.Fields of {0}>".format(" ".join(n for n, t in self.__dict__["__parent"].of))
+
+        def __getattr__(self, name):
+            for n, t in self.__dict__["__parent"].of:
+                if n == name:
+                    return t
+            raise KeyError(name)
+
+        def __setattr__(self, name, tpe):
+            for i, (n, t) in enumerate(self.__dict__["__parent"].of):
+                if n == name:
+                    self.__dict__["__parent"].of[i] = (n, tpe)
+                    return
+            raise KeyError(name)
+
+    @property
+    def fields(self):
+        return self.Fields(self)
