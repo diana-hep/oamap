@@ -39,7 +39,7 @@ def __recurse(tpe, depth, comma):
         inner = []
         for i, (n, t) in enumerate(tpe.of):
             sub = __recurse(t, depth + 1, "," if i < len(tpe.of) - 1 else "")
-            inner.extend([(sub[0][0], n + " = " + sub[0][1], sub[0][2])] + sub[1:])
+            inner.extend([(sub[0][0], sub[0][1] if Record._checkPositional.match(n) is not None else n + " = " + sub[0][1], sub[0][2])] + sub[1:])
         return [(depth, "Record(", tpe)] + inner + [(depth + 1, ")" + comma, tpe)]
 
     # runtime types
