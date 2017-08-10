@@ -18,11 +18,12 @@ import sys
 
 if sys.version_info[0] > 2:
     py2 = False
-
+    string_types = (str, bytes)
     xrange = range
     long = int
 
 else:
     py2 = True
+    string_types = (unicode, str)
 
 class TypeDefinitionError(Exception): pass
