@@ -614,15 +614,10 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
     node.slice = recurse(node.slice)
 
-    if isinstance(node.slice, ast.Slice):
-        raise NotImplementedError
-    elif isinstance(node.slice, ast.Index):
-        if isinstance(node.ctx, ast.Load):
-            index = node.slice.value
-        else:
-            raise NotImplementedError
+    if isinstance(node.slice, ast.Index) and isinstance(node.ctx, ast.Load):
+        index = node.slice.value
     else:
-        raise NotImplementedError
+        index = None
 
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
@@ -631,6 +626,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
             offsetat = ln(ast.Num(0))
         else:
             offsetat = generate(None, "offset[at]", at=node, offset=ast.Name(colname(tpe.column), ast.Load()))
+
+        if index is None:
+            raise NotImplementedError
 
         if isinstance(offsetat, ast.Num) and offsetat.n == 0:
             offsetatplusi = index
@@ -642,6 +640,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
     node.value = recurse(node.value, unionop=subunionop)
 
     if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, List):
+        if not isinstance(node.slice, ast.Index) or not isinstance(node.ctx, ast.Load):
+            raise NotImplementedError
+
         if isinstance(node.value, ast.Num) and node.value == 0:
             atplusi = index
         else:
