@@ -25,7 +25,7 @@ from plur.thirdparty.meta import dump_python_source
 
 ##################################################################### entry point
 
-def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
+def local(fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap={}):
     if isinstance(paramtypes, Type):
         paramtypes = [paramtypes]
 
@@ -37,7 +37,7 @@ def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
         print("BEFORE:\n{0}\nAFTER:\n{1}".format(
             dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
         for x, y in zip(code.args.args, arrayparams):
-            print("{0} -->\t{1}".format(x.id if isinstance(x, ast.Name) else x.arg, y))
+            print("{0} -->\t{1}{2}".format(x.id if isinstance(x, ast.Name) else x.arg, y, "" if y not in debugmap else " ({0})".format(debugmap[y])))
 
     if numba is not None and numba is not False:
         if numba is True:
