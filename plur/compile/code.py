@@ -225,7 +225,10 @@ def generate(plurtype, format, **subs):
             out = recurse(parsed.body[0].value)
         else:
             out = recurse(parsed.body[0])
-        out.plurtype = plurtype
+
+        if plurtype is not None:
+            out.plurtype = plurtype
+
     else:
         out = recurse(parsed.body)
     
@@ -234,7 +237,7 @@ def generate(plurtype, format, **subs):
 def node2array(node, tpe, colname, unionop):
     # P
     if isinstance(tpe, Primitive):
-        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(None, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     # L
     elif isinstance(tpe, List):
@@ -267,6 +270,7 @@ def node2array(node, tpe, colname, unionop):
     elif isinstance(tpe, Record):
         node.plurtype = tpe
         return node
+
     else:
         assert False, "unexpected type object {0}".format(tpe)
 
