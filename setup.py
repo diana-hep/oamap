@@ -27,7 +27,7 @@ def get_version():
 setup(name = "plur",
       version = get_version(),
       packages = find_packages(exclude = ["tests"]),
-      scripts = [],
+      scripts = ["scripts/avro2plur"],
       description = "",
       long_description = """""",
       author = "Jim Pivarski (DIANA-HEP)",
