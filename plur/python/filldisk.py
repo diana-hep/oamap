@@ -53,4 +53,5 @@ class FillableOnDisk(object):
             self.file.seek(6 + 2 + 4)
 
         self.file.write(header)
+        self.file.close()
         return self.file.name
