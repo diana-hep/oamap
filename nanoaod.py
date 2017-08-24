@@ -178,7 +178,7 @@ class LazyArray(object):
 
 def tree2arrays(tree, tpe):
     if tpe.column is not None and tpe.branchname is not None:
-        out = {tpe.column: branch2array(tree.GetBranch(tpe.branchname), tpe, tpe.column.endswith("-Lo"))}
+        out = {tpe.column: LazyArray(tree.GetBranch(tpe.branchname), tpe, tpe.column.endswith("-Lo"))}
     elif tpe.column is not None and tpe.branchname is None:
         out = {tpe.column: numpy.array([0, tree.GetEntries()], dtype=numpy.int64)}
     else:
@@ -198,5 +198,6 @@ print "\n".join(n + "\t" + repr(v[:3]) for n, v in tree2arrays(tree, plurtype).i
 events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
 
 for event in events:
+    print "event", event.run, event.luminosityBlock, event.event
     for jet in event.jet:
-        print "jet", jet.pt, jet
+        print "jet", jet.pt, jet.eta, jet.phi
