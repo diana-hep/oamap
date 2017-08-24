@@ -17,6 +17,17 @@
 from plur.util import *
 
 class ArrayName(object):
+    LIST_OFFSET = "Lo"
+    LIST_DATA = "Ld"
+    UNION_TAG = "Ut"
+    UNION_OFFSET = "Uo"
+    UNION_DATA = "Ud"
+    RECORD_FIELD = "R_"
+    RUNTIME_TYPE = "T_"
+    RUNTIME_OPEN = "Td"
+    RUNTIME_SEP = "Tl"
+    RUNTIME_CLOSE = "Tb"
+
     def __init__(self, prefix, path=(), delimiter="-"):
         self.prefix = prefix
         self.path = path
@@ -69,40 +80,40 @@ class ArrayName(object):
 
     # L
     def toListOffset(self):
-        return ArrayName(self.prefix, self.path + (("Lo",),), self.delimiter)
+        return ArrayName(self.prefix, self.path + ((ArrayName.LIST_OFFSET,),), self.delimiter)
 
     def toListData(self):
-        return ArrayName(self.prefix, self.path + (("Ld",),), self.delimiter)
+        return ArrayName(self.prefix, self.path + ((ArrayName.LIST_DATA,),), self.delimiter)
 
     # U
     def toUnionTag(self):
-        return ArrayName(self.prefix, self.path + (("Ut",),), self.delimiter)
+        return ArrayName(self.prefix, self.path + ((ArrayName.UNION_TAG,),), self.delimiter)
 
     def toUnionOffset(self):
-        return ArrayName(self.prefix, self.path + (("Uo",),), self.delimiter)
+        return ArrayName(self.prefix, self.path + ((ArrayName.UNION_OFFSET,),), self.delimiter)
 
     def toUnionData(self, tagnum):
-        return ArrayName(self.prefix, self.path + (("Ud", repr(tagnum)),), self.delimiter)
+        return ArrayName(self.prefix, self.path + ((ArrayName.UNION_DATA, repr(tagnum)),), self.delimiter)
 
     # R
     def toRecord(self, fieldname):
-        return ArrayName(self.prefix, self.path + (("R_", fieldname),), self.delimiter)
+        return ArrayName(self.prefix, self.path + ((ArrayName.RECORD_FIELD, fieldname),), self.delimiter)
 
     # runtime
     def toRuntime(self, rtname, *rtargs):
         path = list(self.path)
-        path.append(("T_", rtname))
+        path.append((ArrayName.RUNTIME_TYPE, rtname))
 
         if len(rtargs) > 0:
-            path.append(("Td",))
+            path.append((ArrayName.RUNTIME_OPEN,))
 
         for i, arg in enumerate(rtargs):
             if i != 0:
-                path.append(("Tl",))
+                path.append((ArrayName.RUNTIME_SEP,))
             path.extend((token[:2], token[2:]) for token in arg.split(self.delimiter))
 
         if len(rtargs) > 0:
-            path.append(("Tb",))
+            path.append((ArrayName.RUNTIME_CLOSE,))
 
         return ArrayName(self.prefix, tuple(path), self.delimiter)
 
@@ -118,24 +129,24 @@ class ArrayName(object):
     # L
     @property
     def isListOffset(self):
-        return len(self.path) > 0 and self.path[0] == ("Lo",)
+        return len(self.path) > 0 and self.path[0] == (ArrayName.LIST_OFFSET,)
 
     @property
     def isListData(self):
-        return len(self.path) > 0 and self.path[0] == ("Ld",)
+        return len(self.path) > 0 and self.path[0] == (ArrayName.LIST_DATA,)
 
     # U
     @property
     def isUnionTag(self):
-        return len(self.path) > 0 and self.path[0] == ("Ut",)
+        return len(self.path) > 0 and self.path[0] == (ArrayName.UNION_TAG,)
 
     @property
     def isUnionOffset(self):
-        return len(self.path) > 0 and self.path[0] == ("Uo",)
+        return len(self.path) > 0 and self.path[0] == (ArrayName.UNION_OFFSET,)
 
     @property
     def isUnionData(self):
-        return len(self.path) > 0 and self.path[0][0] == "Ud"
+        return len(self.path) > 0 and self.path[0][0] == ArrayName.UNION_DATA
 
     @property
     def tagnum(self):
@@ -145,7 +156,7 @@ class ArrayName(object):
     # R
     @property
     def isRecord(self):
-        return len(self.path) > 0 and self.path[0][0] == "R_"
+        return len(self.path) > 0 and self.path[0][0] == ArrayName.RECORD_FIELD
 
     @property
     def fieldname(self):
@@ -155,7 +166,7 @@ class ArrayName(object):
     # runtime
     @property
     def isRuntime(self):
-        return len(self.path) > 0 and self.path[0][0] == "T_"
+        return len(self.path) > 0 and self.path[0][0] == ArrayName.RUNTIME_TYPE
 
     @property
     def rtname(self):
@@ -165,30 +176,30 @@ class ArrayName(object):
     @property
     def rtargs(self):
         assert self.isRuntime
-        if len(self.path) < 2 or self.path[1] != ("Td",):
+        if len(self.path) < 2 or self.path[1] != (ArrayName.RUNTIME_OPEN,):
             return ()
 
         else:
             stack = 0
             out = [[]]
             for pathitem in self.path[2:]:
-                if stack == 0 and pathitem == ("Tb",):
+                if stack == 0 and pathitem == (ArrayName.RUNTIME_CLOSE,):
                     return tuple(self.delimiter.join(item) for item in out if len(item) > 0)
-                elif stack == 0 and pathitem == ("Tl",):
+                elif stack == 0 and pathitem == (ArrayName.RUNTIME_SEP,):
                     out.append([])
-                elif pathitem == ("Td",):
+                elif pathitem == (ArrayName.RUNTIME_OPEN,):
                     stack += 1
-                elif pathitem == ("Tb",):
+                elif pathitem == (ArrayName.RUNTIME_CLOSE,):
                     stack -= 1
                     assert stack >= 0
                 else:
                     out[-1].append(pathitem[0] + pathitem[1])
 
-            assert False, "missing closing parenthesis in runtime arguments (-Tb)"
+            assert False, "missing closing parenthesis in runtime arguments (-{0})".format(ArrayName.RUNTIME_CLOSE)
 
     def dropRuntime(self):
         assert self.isRuntime
-        if len(self.path) < 2 or self.path[1] != ("Td",):
+        if len(self.path) < 2 or self.path[1] != (ArrayName.RUNTIME_OPEN,):
             return ArrayName(self.prefix, self.path[1:], self.delimiter)
 
         else:
@@ -198,12 +209,12 @@ class ArrayName(object):
                 pathitem = path[0]
                 path = path[1:]
 
-                if stack == 0 and pathitem == ("Tb",):
+                if stack == 0 and pathitem == (ArrayName.RUNTIME_CLOSE,):
                     return ArrayName(self.prefix, path, self.delimiter)
-                elif pathitem == ("Td",):
+                elif pathitem == (ArrayName.RUNTIME_OPEN,):
                     stack += 1
-                elif pathitem == ("Tb",):
+                elif pathitem == (ArrayName.RUNTIME_CLOSE,):
                     stack -= 1
                     assert stack >= 0
 
-            assert False, "missing closing parenthesis in runtime arguments (-Tb)"
+            assert False, "missing closing parenthesis in runtime arguments (-{0})".format(ArrayName.RUNTIME_CLOSE)

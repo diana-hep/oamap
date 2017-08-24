@@ -309,7 +309,7 @@ class LazyListSlice(LazyList):
 
 class LazyRecord(Lazy):
     def __repr__(self):
-        return repr(detach(self))
+        return "<{0} at 0x{1:x}>".format(self._namedtuple.__name__, self._at)
 
     def __eq__(self, other):
         return isinstance(other, LazyRecord) and self._fields == other._fields and all(getattr(self, fn) == getattr(other, fn) for fn in self._fields)
@@ -399,12 +399,12 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
             subs = dict((fn, recurse(ft, name.toRecord(fn), fn)) for fn, ft in tpe.of)
 
             class SpecificLazyRecord(LazyRecord):
-                __slots__ = ["__at"]
+                __slots__ = ["_at"]
                 _fields = fieldnames
                 _namedtuple = namedtuple(lastgoodname, fieldnames)
 
                 def __init__(self, at):
-                    self.__at = at
+                    self._at = at
 
                 def __getattr__(self, name):
                     try:
@@ -412,7 +412,7 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
                     except KeyError:
                         raise AttributeError("LazyRecord has no attribute \"{0}\"".format(name))
                     else:
-                        return f(self.__at)
+                        return f(self._at)
 
             return SpecificLazyRecord
                 

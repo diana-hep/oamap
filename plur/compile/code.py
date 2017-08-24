@@ -25,7 +25,7 @@ from plur.thirdparty.meta import dump_python_source
 
 ##################################################################### entry point
 
-def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
+def local(fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap={}):
     if isinstance(paramtypes, Type):
         paramtypes = [paramtypes]
 
@@ -37,7 +37,7 @@ def local(fcn, paramtypes={}, environment={}, numba=None, debug=False):
         print("BEFORE:\n{0}\nAFTER:\n{1}".format(
             dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
         for x, y in zip(code.args.args, arrayparams):
-            print("{0} -->\t{1}".format(x.id if isinstance(x, ast.Name) else x.arg, y))
+            print("{0} -->\t{1}{2}".format(x.id if isinstance(x, ast.Name) else x.arg, y, "" if y not in debugmap else " ({0})".format(debugmap[y])))
 
     if numba is not None and numba is not False:
         if numba is True:
@@ -225,7 +225,10 @@ def generate(plurtype, format, **subs):
             out = recurse(parsed.body[0].value)
         else:
             out = recurse(parsed.body[0])
-        out.plurtype = plurtype
+
+        if plurtype is not None:
+            out.plurtype = plurtype
+
     else:
         out = recurse(parsed.body)
     
@@ -234,7 +237,7 @@ def generate(plurtype, format, **subs):
 def node2array(node, tpe, colname, unionop):
     # P
     if isinstance(tpe, Primitive):
-        return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(None, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     # L
     elif isinstance(tpe, List):
@@ -267,6 +270,7 @@ def node2array(node, tpe, colname, unionop):
     elif isinstance(tpe, Record):
         node.plurtype = tpe
         return node
+
     else:
         assert False, "unexpected type object {0}".format(tpe)
 
@@ -614,15 +618,10 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
     node.slice = recurse(node.slice)
 
-    if isinstance(node.slice, ast.Slice):
-        raise NotImplementedError
-    elif isinstance(node.slice, ast.Index):
-        if isinstance(node.ctx, ast.Load):
-            index = node.slice.value
-        else:
-            raise NotImplementedError
+    if isinstance(node.slice, ast.Index) and isinstance(node.ctx, ast.Load):
+        index = node.slice.value
     else:
-        raise NotImplementedError
+        index = None
 
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
@@ -631,6 +630,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
             offsetat = ln(ast.Num(0))
         else:
             offsetat = generate(None, "offset[at]", at=node, offset=ast.Name(colname(tpe.column), ast.Load()))
+
+        if index is None:
+            raise NotImplementedError
 
         if isinstance(offsetat, ast.Num) and offsetat.n == 0:
             offsetatplusi = index
@@ -642,6 +644,9 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
     node.value = recurse(node.value, unionop=subunionop)
 
     if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, List):
+        if not isinstance(node.slice, ast.Index) or not isinstance(node.ctx, ast.Load):
+            raise NotImplementedError
+
         if isinstance(node.value, ast.Num) and node.value == 0:
             atplusi = index
         else:
