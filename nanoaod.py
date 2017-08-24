@@ -45,7 +45,7 @@ class ListDescr(object):
         out = List(Record(**dict((n, v.toplur(name.toRecord(self.fieldname).toListData())) for n, v in self.fields.items())))
         out.of.column = None
         out.of.branchname = None
-        out.column = name.toListOffset().str()
+        out.column = name.toRecord(self.fieldname).toListOffset().str()
         out.branchname = self.counterbranch.GetName()
         return out
 
@@ -109,15 +109,15 @@ print formattype(plurtype)
 
 def type2dtype(tpe):
     if isinstance(tpe, Primitive):
-        dtype = tpe.of.newbyteorder(">")
+        return tpe.of.newbyteorder(">")
     elif isinstance(tpe, List):
-        dtype = numpy.dtype(numpy.int32).newbyteorder(">")
+        return numpy.dtype(numpy.int32).newbyteorder(">")
     else:
         assert False, tpe
 
 def branch2array(branch, tpe, count2offset=False):
     dtype = type2dtype(tpe)
-    
+
     # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
     if count2offset:
         size = branch.GetTotalSize() + 1
@@ -178,7 +178,7 @@ class LazyArray(object):
 
 def tree2arrays(tree, tpe):
     if tpe.column is not None and tpe.branchname is not None:
-        out = {tpe.column: LazyArray(tree.GetBranch(tpe.branchname), tpe, tpe.column.endswith("-Lo"))}
+        out = {tpe.column: branch2array(tree.GetBranch(tpe.branchname), tpe, tpe.column.endswith("-Lo"))}
     elif tpe.column is not None and tpe.branchname is None:
         out = {tpe.column: numpy.array([0, tree.GetEntries()], dtype=numpy.int64)}
     else:
@@ -193,8 +193,10 @@ def tree2arrays(tree, tpe):
 
     return out
 
+print "\n".join(n + "\t" + repr(v[:3]) for n, v in tree2arrays(tree, plurtype).items())
+
 events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
 
 for event in events:
     for jet in event.jet:
-        print jet.pt
+        print "jet", jet.pt, jet
