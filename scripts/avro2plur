@@ -79,11 +79,22 @@ def convertschema(avroschema):
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("files", nargs="+")
-    argparser.add_argument("--schema", action="store_true", default=False)
-    argparser.add_argument("--start", type=int, default=0)
-    argparser.add_argument("--skip", type=int, default=1)
-    argparser.add_argument("--directory", default=".")
+    argparser.add_argument("--schema", action="store_true", default=False, help="Print out the converted PLUR schmea.")
+    argparser.add_argument("--index", type=int, default=0, help="Index of this avro2plur process when several are running in parallel.")
+    argparser.add_argument("--number", type=int, default=1, help="Number of avro2plur processes running in parallel.")
+    argparser.add_argument("--limit", default=None, help="Maximum number of entries to convert per file.")
+    argparser.add_argument("--prefix", default="", help="Prefix for column names.")
+    argparser.add_argument("--columns", default=None, help="Filter on columns to generate; a Python function on 'name'.")
+    argparser.add_argument("--directory", default=".", help="Directory for output directories.")
     args = argparser.parse_args()
+
+    if args.limit is not None:
+        args.limit = int(args.limit)
+
+    if args.columns is None:
+        args.columns = lambda name: True
+    else:
+        args.columns = eval("lambda name: " + args.columns)
 
     filenames = [y for x in args.files for y in sorted(glob.glob(os.path.expanduser(x)))]
 
@@ -96,7 +107,7 @@ if __name__ == "__main__":
 
     formatter = "{0:0" + str(int(math.ceil(math.log(len(filenames), 10)))) + "d}"
 
-    for index, filename in list(enumerate(filenames))[args.start::args.skip]:
+    for index, filename in list(enumerate(filenames))[args.index::args.number]:
         partitiondir = os.path.join(os.path.expanduser(args.directory), formatter.format(index))
 
         if not os.path.exists(partitiondir):
@@ -105,4 +116,12 @@ if __name__ == "__main__":
         if not os.path.isdir(partitiondir):
             raise IOError("{0} is not a directory".format(partitiondir))
 
-        toarrays("events", fastavro.reader(open(filename, "rb")), plurtype, FillableOnDisk, directory=partitiondir)
+        iterator = fastavro.reader(open(filename, "rb"))
+        if args.limit is not None:
+            def generator(iterator):
+                for i, x in enumerate(iterator):
+                    if i >= args.limit: break
+                    yield x
+            iterator = generator(iterator)
+
+        toarrays(args.prefix, iterator, plurtype, FillableOnDisk, lambda n: args.columns(str(n)), directory=partitiondir)

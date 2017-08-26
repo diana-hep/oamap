@@ -30,7 +30,7 @@ from plur.python.fillmemory import FillableInMemory
 
 ##################################################################### toarrays
 
-def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):
+def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: True, fillnan=False, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):  # , fillnone=False
     if tpe is None:
         tpe = infertype(obj)
 
@@ -40,37 +40,59 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", of
     last_list_offset = {}
     last_union_offset = {}
 
+    # if fillnone and not issubtype(offsettype, numpy.signedinteger):
+    #    raise TypeError("fillnone requires a signed integer offsettype")
+    if not issubtype(offsettype, numpy.integer):
+        raise TypeError("offsettype must be an integer")
+
     def recurse(obj, tpe, name):
-        if isinstance(tpe, Primitive):
+        if not filter(name):
+            pass
+
+        elif isinstance(tpe, Primitive):
             if not obj in tpe:
-                raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
+                if fillnan and issubclass(tpe.of.type, numpy.integer):
+                    obj = numpy.iinfo(tpe.of.type).max
+                elif fillnan and issubclass(tpe.of.type, numpy.floating):
+                    obj = numpy.nan
+                elif fillnan and issubclass(tpe.of.type, numpy.complexfloating):
+                    obj = numpy.nan + numpy.nan*1j
+                else:
+                    raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
             fillables[name].fill(obj)
 
         elif isinstance(tpe, List):
+            nameoffset = name.toListOffset()
+            namedata = name.toListData()
+            if nameoffset not in last_list_offset:
+                last_list_offset[nameoffset] = 0
+                fillables[nameoffset].fill(last_list_offset[nameoffset])
+
             try:
                 iter(obj)
                 if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
                     raise TypeError
             except TypeError:
+                # if fillnone:
+                #     fillables[nameoffset].fill(-1)
+                # else:
                 raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
 
-            nameoffset = name.toListOffset()
-            namedata = name.toListData()
-            
-            length = 0
-            for x in obj:
-                recurse(x, tpe.of, namedata)
-                length += 1
+            else:
+                length = 0
+                for x in obj:
+                    recurse(x, tpe.of, namedata)
+                    length += 1
 
-            if nameoffset not in last_list_offset:
-                last_list_offset[nameoffset] = 0
+                last_list_offset[nameoffset] += length
                 fillables[nameoffset].fill(last_list_offset[nameoffset])
 
-            last_list_offset[nameoffset] += length
-
-            fillables[nameoffset].fill(last_list_offset[nameoffset])
-
         elif isinstance(tpe, Union):
+            nametag = name.toUnionTag()
+            nameoffset = name.toUnionOffset()
+            if namedata not in last_union_offset:
+                last_union_offset[namedata] = 0
+
             t = infertype(obj)   # can be expensive!
             tag = None
             for i, possibility in enumerate(tpe.of):
@@ -78,21 +100,21 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, delimiter="-", of
                     tag = i
                     break
             if tag is None:
+                # if fillnone:
+                #     fillables[nametag].fill(-1)
+                #     fillables[nameoffset].fill(-1)
+                # else:
                 raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
 
-            nametag = name.toUnionTag()
-            nameoffset = name.toUnionOffset()
-            namedata = name.toUnionData(tag)
+            else:
+                namedata = name.toUnionData(tag)
 
-            if namedata not in last_union_offset:
-                last_union_offset[namedata] = 0
+                fillables[nametag].fill(tag)
+                fillables[nameoffset].fill(last_union_offset[namedata])
 
-            fillables[nametag].fill(tag)
-            fillables[nameoffset].fill(last_union_offset[namedata])
+                last_union_offset[namedata] += 1
 
-            last_union_offset[namedata] += 1
-
-            recurse(obj, tpe.of[tag], namedata)
+                recurse(obj, tpe.of[tag], namedata)
 
         elif isinstance(tpe, Record):
             if isinstance(obj, dict):
