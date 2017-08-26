@@ -77,14 +77,15 @@ def convertschema(avroschema):
     return recurse(avroschema)
 
 if __name__ == "__main__":
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("files", nargs="+")
+    argparser = argparse.ArgumentParser(epilog="To divide the work among N avro2plur processes, set --procn to N for all processes and --proci to an index from 0 up to N for each process. They will divide the input files roughly equally. (Be sure to give all processes exactly the same set of files!)")
+    argparser.add_argument("files", nargs="+", help="Avro files on the local filesystem to convert; may include wildcards.")
     argparser.add_argument("--schema", action="store_true", default=False, help="Print out the converted PLUR schmea.")
-    argparser.add_argument("--index", type=int, default=0, help="Index of this avro2plur process when several are running in parallel.")
-    argparser.add_argument("--number", type=int, default=1, help="Number of avro2plur processes running in parallel.")
+    argparser.add_argument("--proci", type=int, default=0, metavar="i", help="See below.")
+    argparser.add_argument("--procn", type=int, default=1, metavar="N", help="See below.")
     argparser.add_argument("--limit", default=None, help="Maximum number of entries to convert per file.")
-    argparser.add_argument("--prefix", default="", help="Prefix for column names.")
-    argparser.add_argument("--columns", default=None, help="Filter on columns to generate; a Python function on 'name'.")
+    argparser.add_argument("--prefix", default="data", help="Prefix for column names.")
+    argparser.add_argument("--columns", default=None, help="Filter on columns to generate; a Python function on 'name' (plur.types.arrayname.ArrayName).")
+    argparser.add_argument("--fillnan", action="store_true", default=False, help="Fill numeric quantities with NaN (floating point) or MAXINT (integer) if out of numerical range.")
     argparser.add_argument("--directory", default=".", help="Directory for output directories.")
     args = argparser.parse_args()
 
@@ -107,7 +108,7 @@ if __name__ == "__main__":
 
     formatter = "{0:0" + str(int(math.ceil(math.log(len(filenames), 10)))) + "d}"
 
-    for index, filename in list(enumerate(filenames))[args.index::args.number]:
+    for index, filename in list(enumerate(filenames))[args.proci::args.procn]:
         partitiondir = os.path.join(os.path.expanduser(args.directory), formatter.format(index))
 
         if not os.path.exists(partitiondir):
@@ -124,4 +125,4 @@ if __name__ == "__main__":
                     yield x
             iterator = generator(iterator)
 
-        toarrays(args.prefix, iterator, plurtype, FillableOnDisk, lambda n: args.columns(str(n)), directory=partitiondir)
+        toarrays(args.prefix, iterator, plurtype, FillableOnDisk, lambda n: args.columns(n), args.fillnan, directory=partitiondir)

@@ -14,8 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import math
 import json
+import glob
 from collections import namedtuple
 
 import numpy
@@ -30,7 +32,7 @@ from plur.python.fillmemory import FillableInMemory
 
 ##################################################################### toarrays
 
-def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: True, fillnan=False, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):  # , fillnone=False
+def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: True, fillnan=False, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):
     if tpe is None:
         tpe = infertype(obj)
 
@@ -40,9 +42,7 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
     last_list_offset = {}
     last_union_offset = {}
 
-    # if fillnone and not issubtype(offsettype, numpy.signedinteger):
-    #    raise TypeError("fillnone requires a signed integer offsettype")
-    if not issubtype(offsettype, numpy.integer):
+    if not issubclass(offsettype.type, numpy.integer):
         raise TypeError("offsettype must be an integer")
 
     def recurse(obj, tpe, name):
@@ -73,19 +73,17 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
                 if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
                     raise TypeError
             except TypeError:
-                # if fillnone:
-                #     fillables[nameoffset].fill(-1)
-                # else:
                 raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
 
             else:
                 length = 0
-                for x in obj:
-                    recurse(x, tpe.of, namedata)
-                    length += 1
-
-                last_list_offset[nameoffset] += length
-                fillables[nameoffset].fill(last_list_offset[nameoffset])
+                try:
+                    for x in obj:
+                        recurse(x, tpe.of, namedata)
+                        length += 1
+                finally:
+                    last_list_offset[nameoffset] += length
+                    fillables[nameoffset].fill(last_list_offset[nameoffset])
 
         elif isinstance(tpe, Union):
             nametag = name.toUnionTag()
@@ -100,21 +98,15 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
                     tag = i
                     break
             if tag is None:
-                # if fillnone:
-                #     fillables[nametag].fill(-1)
-                #     fillables[nameoffset].fill(-1)
-                # else:
                 raise TypeError("cannot fill {0} where an object of type {1} is expected".format(obj, tpe))
 
             else:
                 namedata = name.toUnionData(tag)
+                recurse(obj, tpe.of[tag], namedata)
 
                 fillables[nametag].fill(tag)
                 fillables[nameoffset].fill(last_union_offset[namedata])
-
                 last_union_offset[namedata] += 1
-
-                recurse(obj, tpe.of[tag], namedata)
 
         elif isinstance(tpe, Record):
             if isinstance(obj, dict):
@@ -132,7 +124,12 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
         else:
             assert False, "unexpected type object: {0}".format(tpe)
 
-    recurse(obj, tpe, ArrayName(prefix, delimiter=delimiter))
+    try:
+        recurse(obj, tpe, ArrayName(prefix, delimiter=delimiter))
+    except:
+        for n, f in fillables.items():
+            f.finalize()
+        raise
 
     return dict((n.str(), f.finalize()) for n, f in fillables.items())
 
@@ -365,6 +362,34 @@ class LazyRecord(Lazy):
     def toJson(self):
         return dict((fn, toJson(getattr(self, fn))) for fn in self._fields)
 
+class LazyArray(Lazy):
+    def __init__(self, loader, *args, **kwds):
+        self._loader = loader
+        self._args = args
+        self._kwds = kwds
+        self._array = None
+
+    def _load(self):
+        self._array = self._loader(*self._args, **self._kwds)
+
+    def __getitem__(self, i):
+        if self._array is None: self._load()
+        return self._array[i]
+
+    def __len__(self):
+        if self._array is None: self._load()
+        return len(self._array)
+
+    @property
+    def shape(self):
+        if self._array is None: self._load()
+        return self._array.shape
+
+    @property
+    def dtype(self):
+        if self._array is None: self._load()
+        return self._array.dtype
+
 ##################################################################### detach lazy -> persistent
 
 def detach(obj):
@@ -390,6 +415,25 @@ def toJson(obj):
         return detach(obj)
 
 ##################################################################### fromarrays
+
+def fromfiles(prefix, filepaths, tpe=None, delimiter="-"):
+    if isinstance(filepaths, string_types):
+        filepaths = [filepaths]
+
+    filepaths = [y for x in filepaths for y in sorted(glob.glob(os.path.expanduser(x)))]
+
+    for x in filepaths:
+        if not os.path.exists(x):
+            raise IOError("file does not exist: {0}".format(x))
+
+    def dropfile(x):
+        if x.endswith(".npy"):
+            x = x[:-4]
+        return os.path.split(x)[1]
+
+    arrays = dict((dropfile(x), LazyArray(numpy.load, x)) for x in filepaths)
+
+    return fromarrays(prefix, arrays, tpe=tpe, delimiter=delimiter)
 
 def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
     if tpe is None:
