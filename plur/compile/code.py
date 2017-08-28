@@ -464,7 +464,10 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
             def subunionop(tpe, node):
                 if isinstance(tpe, List):
-                    return generate(tpe, "end[at] - offset[at]", end=ast.Name(colname(tpe.column2), ast.Load()), at=node)
+                    return generate(tpe, "end[at] - begin[at]",
+                                    begin=ast.Name(colname(tpe.column), ast.Load()),
+                                    end=ast.Name(colname(tpe.column2), ast.Load()),
+                                    at=node)
                 else:
                     return unionop(tpe, node)
 
@@ -479,7 +482,7 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
                 else:
                     assert isinstance(node.args[0], ast.Subscript)
-                    assert isinstance(node.args[0].value, ast.Name) and node.args[0].value.id == tpe.column
+                    assert isinstance(node.args[0].value, ast.Name) and node.args[0].value.id == colname(tpe.column)
                     assert isinstance(node.args[0].slice, ast.Index)
                     assert isinstance(node.args[0].ctx, ast.Load)
 
@@ -558,7 +561,7 @@ def do_For(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, re
 
         else:
             assert isinstance(node.iter, ast.Subscript)
-            assert isinstance(node.iter.value, ast.Name) and node.iter.value.id == tpe.column
+            assert isinstance(node.iter.value, ast.Name) and node.iter.value.id == colname(tpe.column)
             assert isinstance(node.iter.slice, ast.Index)
             assert isinstance(node.iter.ctx, ast.Load)
 

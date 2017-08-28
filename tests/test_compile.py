@@ -24,7 +24,7 @@ from plur.types import *
 from plur.types.columns import arrays2type
 from plur.python import *
 from plur.compile import *
-from plur.compile.code import fcn2syntaxtree, rewrite, compilefcn, callfcn
+from plur.compile.code import fcn2syntaxtree, rewrite, compilefcn, callfcn, fillin
 
 from plur.thirdparty.meta import dump_python_source
 
@@ -41,6 +41,9 @@ class TestCompile(unittest.TestCase):
                 print("\nTYPE: {0}".format(tpe))
 
             code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
+
+            fillin(arrays, (tpe,), filter=arrayparams)
+
             if debug:
                 print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
                     dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
@@ -247,12 +250,14 @@ class TestCompile(unittest.TestCase):
 
         same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
 
-    def test_local(self):
+    def test_toplur(self):
         data = [[], [1, 2], [3, 4, 5]]
         arrays = toarrays("prefix", data)
         tpe = arrays2type(arrays, "prefix")
-        fcn, arrayparams = local(lambda x, i, j: x[i][j], {"x": tpe})
-        self.assertEqual(arrayparams, ["prefix-Ld-Lo", "prefix-Ld-Ld"])
+        fcn, arrayparams = toplur(lambda x, i, j: x[i][j], {"x": tpe})
+        self.assertEqual(arrayparams, ["prefix-Ld-Lb", "prefix-Ld-Ld"])
+
+        fillin(arrays, (tpe,), filter=arrayparams)
 
         arrayargs = [arrays[x] for x in arrayparams]
         self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)
@@ -271,8 +276,10 @@ class TestCompile(unittest.TestCase):
         data = [[], [1, 2], [3, 4, 5]]
         arrays = toarrays("prefix", data)
         tpe = arrays2type(arrays, "prefix")
-        fcn, arrayparams = local(lambda x, i, j: x[i][j], {"x": tpe}, numba={})
-        self.assertEqual(arrayparams, ["prefix-Ld-Lo", "prefix-Ld-Ld"])
+        fcn, arrayparams = toplur(lambda x, i, j: x[i][j], {"x": tpe}, numba={})
+        self.assertEqual(arrayparams, ["prefix-Ld-Lb", "prefix-Ld-Ld"])
+
+        fillin(arrays, (tpe,), filter=arrayparams, numba={})
 
         arrayargs = [arrays[x] for x in arrayparams]
         self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)

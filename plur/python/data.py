@@ -37,7 +37,13 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
         tpe = infertype(obj)
 
     dtypes = type2columns(tpe, prefix, delimiter=delimiter, offsettype=offsettype)
-    fillables = dict((ArrayName.parse(n, prefix, delimiter=delimiter), fillable(n, d, **fillableOptions)) for n, d in dtypes.items())
+    fillables = {}
+    for n, d in dtypes.items():
+        an = ArrayName.parse(n, prefix, delimiter=delimiter)
+        if len(an.path) > 0 and an.path[-1] == (ArrayName.LIST_BEGIN,):
+            an = ArrayName(prefix, an.path[:-1] + ((ArrayName.LIST_OFFSET,),), delimiter=delimiter)
+        if len(an.path) == 0 or an.path[-1] != (ArrayName.LIST_END,):
+            fillables[an] = fillable(n, d, **fillableOptions)
 
     last_list_offset = {}
     last_union_offset = {}
