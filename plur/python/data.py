@@ -403,7 +403,7 @@ def toJson(obj):
     else:
         return detach(obj)
 
-##################################################################### fromarrays
+##################################################################### fromfiles/fromarrays
 
 def fromfiles(prefix, filepaths, tpe=None, delimiter="-"):
     if isinstance(filepaths, string_types):
