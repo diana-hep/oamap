@@ -21,7 +21,7 @@ from plur.types.type import Type
 
 class Record(Type):
     _sortorder = 3
-    _checkPositional = re.compile("^[1-9][0-9]*$")
+    _checkPositional = re.compile("^(0|[1-9][0-9]*)$")
     _checkNamed = re.compile("^[a-zA-Z_][a-zA-Z_0-9]*$")
 
     @staticmethod
@@ -38,7 +38,7 @@ class Record(Type):
         if any(self._checkNamed.match(n) == None for n in named):
             raise TypeDefinitionError("record names must be identifiers (/{0}/)".format(self._checkNamed.pattern))
 
-        self.of = [(repr(i + 1), x) for i, x in enumerate(positional)] + sorted(named.items())
+        self.of = [(repr(i), x) for i, x in enumerate(positional)] + sorted(named.items())
         super(Record, self).__init__()
 
     def has(self, field):

@@ -19,13 +19,30 @@ from types import MethodType
 
 from plur.util import *
 from plur.types import *
+from plur.types.arrayname import ArrayName
 from plur.types.columns import withcolumns, hascolumns
 from plur.thirdparty.meta.decompiler.instructions import make_function
 from plur.thirdparty.meta import dump_python_source
 
 ##################################################################### entry point
 
-def local(fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap={}):
+def run(arrays, fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap={}, *otherargs):
+    if isinstance(paramtypes, Type):
+        types = [paramtypes]
+    elif isinstance(paramtypes, dict):
+        types = paramtypes.values()
+    else:
+        types = paramtypes
+
+    rewrittenfcn, arrayparams = toplur(fcn, paramtypes=paramtypes, environment=environment, numba=numba, debug=debug, debugmap=debugmap)
+
+    # add missing arrays to the set, if possible
+    fillin(arrays, types, filter=arrayparams, numba=numba)
+
+    args = tuple(arrays[n] for n in arrayparams) + otherargs
+    return rewrittenfcn(*args)
+
+def toplur(fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap={}):
     if isinstance(paramtypes, Type):
         paramtypes = [paramtypes]
 
@@ -52,6 +69,63 @@ def local(fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap=
 
     rewrittenfcn = compilefcn(code, fcnname, filename, environment=environment)
     return rewrittenfcn, arrayparams
+
+##################################################################### technical interface
+
+def fillin(arrays, types, filter=None, numba=None):
+    def recurse(tpe):
+        # P
+        if isinstance(tpe, Primitive):
+            if filter is None or tpe.column not in arrays:
+                raise ValueError("required array \"{0}\" not found in arrays".format(tpe.column))
+
+        # L
+        elif isinstance(tpe, List):
+            if filter is None or tpe.column in filter or tpe.column2 in filter:
+                beginname = tpe.column
+                endname = tpe.column2
+                if beginname not in arrays or endname not in arrays:
+                    offsetname = beginname[:-len(ArrayName.LIST_BEGIN)] + ArrayName.LIST_OFFSET
+                    if offsetname not in arrays:
+                        sizename = beginname[:-len(ArrayName.LIST_BEGIN)] + ArrayName.LIST_SIZE
+                        if sizename not in arrays:
+                            raise ValueError("required array \"{0}\"\n            or \"{1}\"\n            or \"{2}\" and \"{3}\" not found in arrays".format(offsetname, sizename, beginname, endname))
+
+                        # if you have a size array, make an offset array as a new copy (one element larger)
+                        sizearray = arrays[sizename]
+                        offsetarray = numpy.empty(len(sizearray) + 1, dtype=numpy.int64)
+                        offsetarray[0] = 0
+                        numpy.cumsum(sizearray, out=offsetarray[1:])
+                        arrays[offsetname] = offsetarray
+
+                # if you have an offset array, make begin and end with views (virtually no cost)
+                arrays[beginname] = arrays[offsetname][:-1]
+                arrays[endname] = arrays[offsetname][1:]
+
+            recurse(tpe.of)
+
+        # U
+        elif isinstance(tpe, Union):
+            if filter is None or tpe.column in filter or tpe.column2 in filter:
+                tagname = tpe.column
+                offsetname = tpe.column2
+                if tagname not in arrays:
+                    raise ValueError("required array \"{0}\" not found in arrays".format(tagname))
+                if offsetname not in arrays:
+                    raise NotImplementedError("FIXME!")
+                for t in tpe.of:
+                    recurse(t)
+
+        # R
+        elif isinstance(tpe, Record):
+            for fn, ft in tpe.of:
+                recurse(ft)
+
+        else:
+            assert False, "unexpected type object: {0}".format(tpe)
+                        
+    for tpe in types:
+        recurse(tpe)
 
 def compilefcn(code, fcnname, filename, environment={}):
     if not isinstance(code, list):
@@ -390,7 +464,7 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
             def subunionop(tpe, node):
                 if isinstance(tpe, List):
-                    return generate(tpe, "offset[at + 1] - offset[at]", offset=ast.Name(colname(tpe.column), ast.Load()), at=node)
+                    return generate(tpe, "end[at] - offset[at]", end=ast.Name(colname(tpe.column2), ast.Load()), at=node)
                 else:
                     return unionop(tpe, node)
 
@@ -401,16 +475,16 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
                 if isinstance(node.args[0], ast.Num):
                     assert node.args[0].n == 0
-                    return generate(tpe, "offset[1]", offset=ast.Name(colname(tpe.column), ast.Load()))
+                    return generate(tpe, "end[0]", end=ast.Name(colname(tpe.column2), ast.Load()))
 
                 else:
                     assert isinstance(node.args[0], ast.Subscript)
-                    assert isinstance(node.args[0].value, ast.Name)
+                    assert isinstance(node.args[0].value, ast.Name) and node.args[0].value.id == tpe.column
                     assert isinstance(node.args[0].slice, ast.Index)
                     assert isinstance(node.args[0].ctx, ast.Load)
 
-                    return generate(tpe, "offset[i + 1] - current",
-                                    offset=node.args[0].value,
+                    return generate(tpe, "end[i] - current",
+                                    end=ast.Name(colname(tpe.column2), ast.Load()),
                                     i=node.args[0].slice.value,
                                     current=node.args[0])
 
@@ -479,16 +553,17 @@ def do_For(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, re
 
         if isinstance(node.iter, ast.Num):
             assert node.iter.n == 0
-            node.iter = generate(tpe, "range(offset[1])", offset=ast.Name(colname(tpe.column), ast.Load()))
+            node.iter = generate(tpe, "range(end[0])",
+                                 end=ast.Name(colname(tpe.column2), ast.Load()))
 
         else:
             assert isinstance(node.iter, ast.Subscript)
-            assert isinstance(node.iter.value, ast.Name)
+            assert isinstance(node.iter.value, ast.Name) and node.iter.value.id == tpe.column
             assert isinstance(node.iter.slice, ast.Index)
             assert isinstance(node.iter.ctx, ast.Load)
 
-            node.iter = generate(tpe, "range(current, offset[i + 1])",
-                                 offset=node.iter.value,
+            node.iter = generate(tpe, "range(current, end[i])",
+                                 end=ast.Name(colname(tpe.column2), ast.Load()),
                                  i=node.iter.slice.value,
                                  current=node.iter)
 

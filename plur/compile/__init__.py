@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from plur.compile.code import local
+from plur.compile.code import toplur
+from plur.compile.code import run
 
-__all__ = ["local"]
+__all__ = ["toplur", "run"]

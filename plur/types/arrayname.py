@@ -17,15 +17,18 @@
 from plur.util import *
 
 class ArrayName(object):
-    LIST_OFFSET = "Lo"
-    LIST_DATA = "Ld"
-    UNION_TAG = "Ut"
-    UNION_OFFSET = "Uo"
-    UNION_DATA = "Ud"
-    RECORD_FIELD = "R_"
-    RUNTIME_TYPE = "T_"
-    RUNTIME_OPEN = "Td"
-    RUNTIME_SEP = "Tl"
+    LIST_BEGIN    = "Lb"
+    LIST_END      = "Le"
+    LIST_OFFSET   = "Lo"
+    LIST_SIZE     = "Ls"
+    LIST_DATA     = "Ld"
+    UNION_TAG     = "Ut"
+    UNION_OFFSET  = "Uo"
+    UNION_DATA    = "Ud"
+    RECORD_FIELD  = "R_"
+    RUNTIME_TYPE  = "T_"
+    RUNTIME_OPEN  = "Td"
+    RUNTIME_SEP   = "Tl"
     RUNTIME_CLOSE = "Tb"
 
     def __init__(self, prefix, path=(), delimiter="-"):
@@ -82,6 +85,15 @@ class ArrayName(object):
     def toListOffset(self):
         return ArrayName(self.prefix, self.path + ((ArrayName.LIST_OFFSET,),), self.delimiter)
 
+    def toListSize(self):
+        return ArrayName(self.prefix, self.path + ((ArrayName.LIST_SIZE,),), self.delimiter)
+
+    def toListBegin(self):
+        return ArrayName(self.prefix, self.path + ((ArrayName.LIST_BEGIN,),), self.delimiter)
+
+    def toListEnd(self):
+        return ArrayName(self.prefix, self.path + ((ArrayName.LIST_END,),), self.delimiter)
+
     def toListData(self):
         return ArrayName(self.prefix, self.path + ((ArrayName.LIST_DATA,),), self.delimiter)
 
@@ -130,6 +142,18 @@ class ArrayName(object):
     @property
     def isListOffset(self):
         return len(self.path) > 0 and self.path[0] == (ArrayName.LIST_OFFSET,)
+
+    @property
+    def isListSize(self):
+        return len(self.path) > 0 and self.path[0] == (ArrayName.LIST_SIZE,)
+
+    @property
+    def isListBegin(self):
+        return len(self.path) > 0 and self.path[0] == (ArrayName.LIST_BEGIN,)
+
+    @property
+    def isListEnd(self):
+        return len(self.path) > 0 and self.path[0] == (ArrayName.LIST_END,)
 
     @property
     def isListData(self):

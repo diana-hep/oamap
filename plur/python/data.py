@@ -88,8 +88,6 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
         elif isinstance(tpe, Union):
             nametag = name.toUnionTag()
             nameoffset = name.toUnionOffset()
-            if namedata not in last_union_offset:
-                last_union_offset[namedata] = 0
 
             t = infertype(obj)   # can be expensive!
             tag = None
@@ -102,6 +100,9 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
 
             else:
                 namedata = name.toUnionData(tag)
+                if namedata not in last_union_offset:
+                    last_union_offset[namedata] = 0
+
                 recurse(obj, tpe.of[tag], namedata)
 
                 fillables[nametag].fill(tag)
@@ -143,10 +144,11 @@ class Lazy(object):
         raise NotImplementedError
     
 class LazyList(list, Lazy):
-    __slots__ = ["array", "at", "sub"]
+    __slots__ = ["_begin", "_end", "_at", "_sub"]
 
-    def __init__(self, array, at, sub, tpe):
-        self._array = array
+    def __init__(self, begin, end, at, sub, tpe):
+        self._begin = begin
+        self._end = end
         self._at = at
         self._sub = sub
         self._tpe = tpe
@@ -160,7 +162,7 @@ class LazyList(list, Lazy):
         return "[{0}{1}]".format(", ".join(map(repr, self[:4])), dots)
 
     def __len__(self):
-        return self._array[self._at + 1] - self._array[self._at]
+        return self._end[self._at] - self._begin[self._at]
 
     def _normalize(self, i, clip, step):
         lenself = len(self)
@@ -219,7 +221,7 @@ class LazyList(list, Lazy):
             return self._handleslice(i)
         else:
             i = self._normalize(i, False, 1)
-            return self._sub(self._array[self._at] + i)
+            return self._sub(self._begin[self._at] + i)
 
     def __getslice__(self, i, j):
         # for old-Python compatibility
@@ -243,19 +245,19 @@ class LazyList(list, Lazy):
     def __iter__(self):
         return self.Iterator(self)
 
-    def append(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def __delitem__(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def append(self, *args, **kwds):       raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def __delitem__(self, *args, **kwds):  raise TypeError("LazyList object is immutable (cannot be changed in-place)")
     def __delslice__(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def extend(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def __iadd__(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def __imul__(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def insert(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def pop(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def remove(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def reverse(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def __setitem__(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def extend(self, *args, **kwds):       raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def __iadd__(self, *args, **kwds):     raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def __imul__(self, *args, **kwds):     raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def insert(self, *args, **kwds):       raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def pop(self, *args, **kwds):          raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def remove(self, *args, **kwds):       raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def reverse(self, *args, **kwds):      raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def __setitem__(self, *args, **kwds):  raise TypeError("LazyList object is immutable (cannot be changed in-place)")
     def __setslice__(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
-    def sort(self, *args, **kwds): raise TypeError("LazyList object is immutable (cannot be changed in-place)")
+    def sort(self, *args, **kwds):         raise TypeError("LazyList object is immutable (cannot be changed in-place)")
 
     def __add__(self, other): return list(self) + list(other)
     def __mul__(self, reps): return list(self) * reps
@@ -311,7 +313,7 @@ class LazyList(list, Lazy):
         return [toJson(x) for x in self]
 
 class LazyListSlice(LazyList):
-    __slots__ = ["lazylist", "start", "stop", "step"]
+    __slots__ = ["_lazylist", "_start", "_stop", "_step"]
 
     def __init__(self, lazylist, start, stop, step):
         self._lazylist = lazylist
@@ -371,34 +373,6 @@ class LazyRecord(Lazy):
     def toJson(self):
         return dict((fn, toJson(getattr(self, fn))) for fn in self._fields)
 
-class LazyArray(Lazy):
-    def __init__(self, loader, *args, **kwds):
-        self._loader = loader
-        self._args = args
-        self._kwds = kwds
-        self._array = None
-
-    def _load(self):
-        self._array = self._loader(*self._args, **self._kwds)
-
-    def __getitem__(self, i):
-        if self._array is None: self._load()
-        return self._array[i]
-
-    def __len__(self):
-        if self._array is None: self._load()
-        return len(self._array)
-
-    @property
-    def shape(self):
-        if self._array is None: self._load()
-        return self._array.shape
-
-    @property
-    def dtype(self):
-        if self._array is None: self._load()
-        return self._array.dtype
-
 ##################################################################### detach lazy -> persistent
 
 def detach(obj):
@@ -440,6 +414,34 @@ def fromfiles(prefix, filepaths, tpe=None, delimiter="-"):
             x = x[:-4]
         return os.path.split(x)[1]
 
+    class LazyArray(object):
+        def __init__(self, loader, *args, **kwds):
+            self._loader = loader
+            self._args = args
+            self._kwds = kwds
+            self._array = None
+
+        def _load(self):
+            self._array = self._loader(*self._args, **self._kwds)
+
+        def __getitem__(self, i):
+            if self._array is None: self._load()
+            return self._array[i]
+
+        def __len__(self):
+            if self._array is None: self._load()
+            return len(self._array)
+
+        @property
+        def shape(self):
+            if self._array is None: self._load()
+            return self._array.shape
+
+        @property
+        def dtype(self):
+            if self._array is None: self._load()
+            return self._array.dtype
+
     arrays = dict((dropfile(x), LazyArray(numpy.load, x)) for x in filepaths)
 
     return fromarrays(prefix, arrays, tpe=tpe, delimiter=delimiter)
@@ -458,12 +460,30 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
 
         # L
         elif isinstance(tpe, List):
+            # -Lb and -Le override -Lo or -Ls, but will be generated from it if not
+            if name.toListBegin() not in arrays or name.toListEnd() not in arrays:
+                if name.toListOffset() not in arrays:
+                    # if you have a size array, make an offset array as a new copy (one element larger)
+                    sizearray = arrays[name.toListSize()]
+                    offsetarray = numpy.empty(len(sizearray) + 1, dtype=numpy.int64)
+                    offsetarray[0] = 0
+                    numpy.cumsum(sizearray, out=offsetarray[1:])
+                    arrays[name.toListOffset()] = offsetarray
+
+                # if you have an offset array, make begin and end with views (virtually no cost)
+                arrays[name.toListBegin()] = arrays[name.toListOffset()][:-1]
+                arrays[name.toListEnd()] = arrays[name.toListOffset()][1:]
+
             sub = recurse(tpe.of, name.toListData(), lastgoodname)
-            return lambda at: LazyList(arrays[name.toListOffset()], at, sub, tpe)
+            return lambda at: LazyList(arrays[name.toListBegin()], arrays[name.toListEnd()], at, sub, tpe)
 
         # U
         elif isinstance(tpe, Union):
             tagarray = arrays[name.toUnionTag()]
+
+            if name.toUnionOffset() not in arrays:
+                raise NotImplementedError("FIXME!")
+
             offsetarray = arrays[name.toUnionOffset()]
             subs = [recurse(x, name.toUnionData(i), lastgoodname) for i, x in enumerate(tpe.of)]
             return lambda at: subs[tagarray[at]](offsetarray[at])
