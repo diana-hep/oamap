@@ -141,14 +141,19 @@ class Lazy(object):
 
     def toJson(self):
         raise NotImplementedError
-
+    
 class LazyList(list, Lazy):
     __slots__ = ["array", "at", "sub"]
 
-    def __init__(self, array, at, sub):
+    def __init__(self, array, at, sub, tpe):
         self._array = array
         self._at = at
         self._sub = sub
+        self._tpe = tpe
+
+    @property
+    def type(self):
+        return self._tpe
 
     def __repr__(self):
         dots = ", ..." if len(self) > 4 else ""
@@ -314,6 +319,10 @@ class LazyListSlice(LazyList):
         self._stop = stop
         self._step = step
 
+    @property
+    def type(self):
+        return self._lazylist.type
+
     def __len__(self):
         if self._step == 1:
             return self._stop - self._start
@@ -450,7 +459,7 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
         # L
         elif isinstance(tpe, List):
             sub = recurse(tpe.of, name.toListData(), lastgoodname)
-            return lambda at: LazyList(arrays[name.toListOffset()], at, sub)
+            return lambda at: LazyList(arrays[name.toListOffset()], at, sub, tpe)
 
         # U
         elif isinstance(tpe, Union):
@@ -471,12 +480,16 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
 
                 def __init__(self, at):
                     self._at = at
+                    self._tpe = tpe
 
                 def __getattr__(self, name):
                     try:
                         f = subs[name]
                     except KeyError:
-                        raise AttributeError("LazyRecord has no attribute \"{0}\"".format(name))
+                        if name == "type":
+                            return self._tpe
+                        else:
+                            raise AttributeError("LazyRecord has no attribute \"{0}\"".format(name))
                     else:
                         return f(self._at)
 
