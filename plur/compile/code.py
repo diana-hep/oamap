@@ -98,10 +98,11 @@ def fillin(arrays, types, filter=None, numba=None):
                         numpy.cumsum(sizearray, out=offsetarray[1:])
                         arrays[offsetname] = offsetarray
 
-                # if you have an offset array, make begin and end with views (virtually no cost)
-                arrays[beginname] = arrays[offsetname][:-1]
-                arrays[endname] = arrays[offsetname][1:]
+                    # if you have an offset array, make begin and end with views (virtually no cost)
+                    arrays[beginname] = arrays[offsetname][:-1]
+                    arrays[endname] = arrays[offsetname][1:]
 
+            # always recurse
             recurse(tpe.of)
 
         # U
@@ -113,11 +114,14 @@ def fillin(arrays, types, filter=None, numba=None):
                     raise ValueError("required array \"{0}\" not found in arrays".format(tagname))
                 if offsetname not in arrays:
                     raise NotImplementedError("FIXME!")
-                for t in tpe.of:
-                    recurse(t)
+
+            # always recurse
+            for t in tpe.of:
+                recurse(t)
 
         # R
         elif isinstance(tpe, Record):
+            # only recurse
             for fn, ft in tpe.of:
                 recurse(ft)
 

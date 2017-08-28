@@ -83,3 +83,33 @@ class TestIntegration(unittest.TestCase):
         self.same(three(1, 2.2, [3, 4, 5]), lambda x: x.one + x.two + x.three[0] + x.three[1] + x.three[2])
         self.same([three(1, 1.1, [1, 1, 1]), three(2, 2.2, [])], lambda x: x[0].one + x[0].two + x[0].three[0] + x[0].three[1] + x[0].three[2] + x[1].one + x[1].two)
         self.same([three(1, 1.1, [1, 1, 1]), three(2, 2.2, [99])], lambda x: x[0].one + x[0].two + x[0].three[0] + x[0].three[1] + x[0].three[2] + x[1].one + x[1].two + x[1].three[0])
+
+    def test_reordered(self):
+        data = [[3, 2, 1], [], [4, 5]]
+        fcn = lambda x: x[0][0]*10000 + x[0][1]*1000 + x[0][2]*100 + x[2][0]*10 + x[2][1]*1
+        self.same(data, fcn)
+
+        result = fcn(data)
+        arrays = toarrays("prefix", data)
+
+        arrays["prefix-Lb"] = arrays["prefix-Lo"][:-1]
+        arrays["prefix-Le"] = arrays["prefix-Lo"][1:]
+        del arrays["prefix-Lo"]
+
+        arrays["prefix-Ld-Lb"] = arrays["prefix-Ld-Lo"][:-1]
+        arrays["prefix-Ld-Le"] = arrays["prefix-Ld-Lo"][1:]
+        del arrays["prefix-Ld-Lo"]
+
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertEqual(fcn(proxies), result)
+        self.assertEqual(run(arrays, fcn, tpe), result)
+        
+        arrays["prefix-Ld-Lb"] = numpy.array([2, 2, 0], dtype=numpy.int64)
+        arrays["prefix-Ld-Le"] = numpy.array([5, 2, 2], dtype=numpy.int64)
+        arrays["prefix-Ld-Ld"] = numpy.array([4, 5, 3, 2, 1], dtype=numpy.int64)
+
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertEqual(fcn(proxies), result)
+        self.assertEqual(run(arrays, fcn, tpe), result)
