@@ -113,3 +113,78 @@ class TestIntegration(unittest.TestCase):
         proxies = fromarrays("prefix", arrays)
         self.assertEqual(fcn(proxies), result)
         self.assertEqual(run(arrays, fcn, tpe), result)
+
+    def test_rangeerror(self):
+        data = [[3, 2, 1], [], [4, 5]]
+        def fcn(x):
+            return x[3]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertRaises(IndexError, lambda: fcn(proxies))
+        self.assertRaises(IndexError, lambda: run(arrays, fcn, tpe))
+        try:
+            import numba
+        except ImportError:
+            pass
+        else:
+            self.assertRaises(IndexError, lambda: run(arrays, fcn, tpe, numba=True))
+
+        def fcn(x):
+            return x[2][2]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertRaises(IndexError, lambda: fcn(proxies))
+        self.assertRaises(IndexError, lambda: run(arrays, fcn, tpe))
+        try:
+            import numba
+        except ImportError:
+            pass
+        else:
+            self.assertRaises(IndexError, lambda: run(arrays, fcn, tpe, numba=True))
+
+        def fcn(x):
+            return x[1][1]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertRaises(IndexError, lambda: fcn(proxies))
+        self.assertRaises(IndexError, lambda: run(arrays, fcn, tpe))
+        try:
+            import numba
+        except ImportError:
+            pass
+        else:
+            self.assertRaises(IndexError, lambda: run(arrays, fcn, tpe, numba=True))
+
+    def test_negativeindex(self):
+        data = [[3, 2, 1], [], [4, 5]]
+        def fcn(x):
+            return x[-1][-1]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertEqual(fcn(proxies), 5)
+        self.assertEqual(run(arrays, fcn, tpe), 5)
+        try:
+            import numba
+        except ImportError:
+            pass
+        else:
+            self.assertEqual(run(arrays, fcn, tpe, numba=True), 5)
+
+        data = [[3, 2, 1], [], [4, 5]]
+        def fcn(x):
+            return x[-3][-2]
+        arrays = toarrays("prefix", data)
+        tpe = arrays2type(arrays, "prefix")
+        proxies = fromarrays("prefix", arrays)
+        self.assertEqual(fcn(proxies), 2)
+        self.assertEqual(run(arrays, fcn, tpe), 2)
+        try:
+            import numba
+        except ImportError:
+            pass
+        else:
+            self.assertEqual(run(arrays, fcn, tpe, numba=True), 2)

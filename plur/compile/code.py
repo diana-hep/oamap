@@ -28,7 +28,7 @@ from plur.thirdparty.meta import dump_python_source
 
 def __plur_check(i):
     if i is None:
-        raise TypeError("None used where PLUR object expected")
+        raise TypeError("None found where PLUR object expected")
     return i
 
 def __plur_list_get(begin, i):
@@ -189,22 +189,22 @@ def rewrite(fcn, paramtypes={}, environment={}):
         raise TypeError("fcn must be a Python function")
 
     if isinstance(paramtypes, dict):
-        symbols = dict(paramtypes)
+        symboltypes = dict(paramtypes)
     else:
         try:
             iter(paramtypes)
         except TypeError:
             raise TypeError("paramtypes must be a dict of name -> type or an iterable of types for each fcn parameter")
         else:
-            symbols = dict((n.id if isinstance(n, ast.Name) else n.arg, t) for n, t in zip(syntaxtree.args.args, paramtypes))
+            symboltypes = dict((n.id if isinstance(n, ast.Name) else n.arg, t) for n, t in zip(syntaxtree.args.args, paramtypes))
 
     if hasattr(fcn, "__annotations__"):
         for n, t in fcn.__annotations__:
-            if n != "return" and n not in symbols:
-                symbols[n] = t
+            if n != "return" and n not in symboltypes:
+                symboltypes[n] = t
 
     parameters = [n.id if isinstance(n, ast.Name) else n.arg for n in syntaxtree.args.args]
-    toreplace = list(symbols.keys())
+    toreplace = list(symboltypes.keys())
 
     if not all(x in parameters for x in toreplace):
         raise TypeError("all paramtypes ({0}) must be arguments of fcn ({1})".format(", ".join(toreplace), ", ".join(parameters)))
@@ -224,7 +224,7 @@ def rewrite(fcn, paramtypes={}, environment={}):
         raise TypeError("environment must be a Python dict (e.g. vars())")
     environment = dict([("len", len)] + list(environment.items()))
 
-    for t in symbols.values():
+    for t in symboltypes.values():
         if not hascolumns(t):
             raise TypeError("type is missing column information (e.g. create with plur.types.columns.columns2type or pass through plur.types.columns.withcolumns)")
 
@@ -255,7 +255,7 @@ def rewrite(fcn, paramtypes={}, environment={}):
         return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
 
     zeros = toreplace
-    def recurse(node, symboltypes=symbols, unionop=unionop):
+    def recurse(node, symboltypes, unionop):
         if isinstance(node, ast.AST):
             if isinstance(node, ast.Name):
                 veto.add(node.id)
@@ -267,20 +267,20 @@ def rewrite(fcn, paramtypes={}, environment={}):
             else:
                 for fieldname in node._fields:
                     if isinstance(getattr(node, fieldname), ast.AST):
-                        setattr(node, fieldname, recurse(getattr(node, fieldname)))
+                        setattr(node, fieldname, recurse(getattr(node, fieldname), symboltypes, unionop))
 
                     elif isinstance(getattr(node, fieldname), list):
-                        setattr(node, fieldname, [recurse(x) for x in getattr(node, fieldname)])
+                        setattr(node, fieldname, [recurse(x, symboltypes, unionop) for x in getattr(node, fieldname)])
 
                 return node
 
         elif isinstance(node, list):
-            return [recurse(x, symboltypes=symbols, unionop=unionop) for x in node]
+            return [recurse(x, symboltypes, unionop) for x in node]
 
         else:
             return node
 
-    code = recurse(syntaxtree)
+    code = recurse(syntaxtree, symboltypes, unionop)
 
     newparams = [numbered for named, numbered in columns.items()]
     newparams.sort(key=lambda x: int(x[6:]))
@@ -350,23 +350,31 @@ def generate(plurtype, format, **subs):
     
     return out
 
+def possiblycheck(x):
+    if isinstance(x, ast.Call) and isinstance(x.func, ast.Name) and x.func.id in ("__plur_list_get", "__plur_list_index"):
+        return x
+    elif isinstance(x, ast.Num):
+        return x
+    else:
+        return generate(None, "__plur_check(x)", x=x)
+
 def node2array(node, tpe, colname, unionop):
     # P
     if isinstance(tpe, Primitive):
-        return generate(None, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(None, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=possiblycheck(node))
 
     # L
     elif isinstance(tpe, List):
         return generate(tpe, "__plur_list_get(array, at)",
                         array=ast.Name(colname(tpe.column), ast.Load()),
-                        at=node)
+                        at=possiblycheck(node))
 
     # U
     elif isinstance(tpe, Union):
         tag = ast.Name(colname(tpe.column), ast.Load())
         offsetat = generate(None, "offset[at]",
                             offset=ast.Name(colname(tpe.column2), ast.Load()),
-                            at=node)
+                            at=possiblycheck(node))
         def recurse(i):
             if i == len(tpe.of) - 1:
                 return unionop(tpe.of[i], offsetat)
@@ -374,7 +382,7 @@ def node2array(node, tpe, colname, unionop):
                 return generate(None, "consequent if tag[at] == i else alternate",
                                 tag=tag,
                                 consequent=unionop(tpe.of[i], offsetat),
-                                at=node,
+                                at=possiblycheck(node),
                                 i=ast.Num(i),
                                 alternate=recurse(i + 1))
         out = recurse(0)
@@ -409,7 +417,7 @@ def do_Assign(node, symboltypes, environment, enclosedfcns, encloseddata, zeros,
     if isinstance(node.value, ast.Name) and isinstance(node.value.ctx, ast.Load) and node.value.id in symboltypes:
         node.value.plurtype = symboltypes[node.value.id]
     else:
-        node.value = recurse(node.value)
+        node.value = recurse(node.value, symboltypes, unionop)
 
     def unassign(lhs):
         if isinstance(lhs, ast.Name):
@@ -454,7 +462,7 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, zer
         assert isinstance(tpe, Record)
         return unionop(fieldtype(tpe), node)
 
-    node.value = recurse(node.value, unionop=subunionop)
+    node.value = recurse(node.value, symboltypes, subunionop)
 
     if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, Record):
         return node2array(node.value, fieldtype(node.value.plurtype), colname, unionop)
@@ -487,13 +495,13 @@ def do_Attribute(node, symboltypes, environment, enclosedfcns, encloseddata, zer
 
 # Call ("func", "args", "keywords", "starargs", "kwargs")
 def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
-    node.func = recurse(node.func)
+    node.func = recurse(node.func, symboltypes, unionop)
 
     def descend(node, unionop):
-        node.args = recurse(node.args, unionop=unionop)
-        node.keywords = recurse(node.keywords)
-        node.starargs = recurse(node.starargs)
-        node.kwargs = recurse(node.kwargs)
+        node.args = recurse(node.args, symboltypes, unionop)
+        node.keywords = recurse(node.keywords, symboltypes, unionop)
+        node.starargs = recurse(node.starargs, symboltypes, unionop)
+        node.kwargs = recurse(node.kwargs, symboltypes, unionop)
         return node
 
     # if this is a function we know
@@ -508,7 +516,7 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
                     return generate(None, "__plur_list_size(begin, end, at)",
                                     begin=ast.Name(colname(tpe.column), ast.Load()),
                                     end=ast.Name(colname(tpe.column2), ast.Load()),
-                                    at=node)
+                                    at=possiblycheck(node))
                 else:
                     return unionop(tpe, node)
 
@@ -586,8 +594,8 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
 # For ("target", "iter", "body", "orelse")
 def do_For(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
-    node.iter = recurse(node.iter)
-    node.target = recurse(node.target)
+    node.iter = recurse(node.iter, symboltypes, unionop)
+    node.target = recurse(node.target, symboltypes, unionop)
 
     if hasattr(node.iter, "plurtype") and isinstance(node.iter.plurtype, List) and isinstance(node.target, ast.Name) and isinstance(node.target.ctx, ast.Store):
         tpe = node.iter.plurtype
@@ -606,8 +614,8 @@ def do_For(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, re
 
         symboltypes[node.target.id] = tpe.of
 
-    node.body = recurse(node.body)
-    node.orelse = recurse(node.orelse)
+    node.body = recurse(node.body, symboltypes, unionop)
+    node.orelse = recurse(node.orelse, symboltypes, unionop)
 
     return node
 
@@ -728,7 +736,7 @@ def do_Name(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
 # Subscript ("value", "slice", "ctx")
 def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, recurse, colname, unionop):
-    node.slice = recurse(node.slice)
+    node.slice = recurse(node.slice, symboltypes, unionop)
 
     if isinstance(node.slice, ast.Index) and isinstance(node.ctx, ast.Load):
         index = node.slice.value
@@ -744,11 +752,11 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
                                  begin=ast.Name(colname(tpe.column), ast.Load()),
                                  end=ast.Name(colname(tpe.column2), ast.Load()),
                                  outer=node,
-                                 i=index)
+                                 i=possiblycheck(index))
 
         return unionop(tpe.of, offsetatplusi)
 
-    node.value = recurse(node.value, unionop=subunionop)
+    node.value = recurse(node.value, symboltypes, subunionop)
 
     if hasattr(node.value, "plurtype") and isinstance(node.value.plurtype, List):
         if not isinstance(node.slice, ast.Index) or not isinstance(node.ctx, ast.Load):
@@ -765,7 +773,7 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
                            begin=node.value.args[0],
                            end=ast.Name(colname(node.value.plurtype.column2), ast.Load()),
                            outer=node.value.args[1],
-                           i=index)
+                           i=possiblycheck(index))
 
         return node2array(atplusi,
                           node.value.plurtype.of,
@@ -792,7 +800,7 @@ def do_Tuple(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, 
             x.plurtype = symboltypes[x.id]
             elts.append(x)
         else:
-            elts.append(recurse(x))
+            elts.append(recurse(x, symboltypes, unionop))
 
     node.elts = elts
     return node
@@ -810,4 +818,3 @@ def do_Tuple(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, 
 # With ("items", "body")                          # Py3
 
 # Yield ("value",)
-
