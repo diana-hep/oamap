@@ -255,7 +255,7 @@ class TestCompile(unittest.TestCase):
         arrays = toarrays("prefix", data)
         tpe = arrays2type(arrays, "prefix")
         fcn, arrayparams = toplur(lambda x, i, j: x[i][j], {"x": tpe})
-        self.assertEqual(arrayparams, ["prefix-Ld-Lb", "prefix-Ld-Ld"])
+        self.assertEqual(arrayparams, ["prefix-Lb", "prefix-Le", "prefix-Ld-Lb", "prefix-Ld-Le", "prefix-Ld-Ld"])
 
         fillin(arrays, (tpe,), filter=arrayparams)
 
@@ -277,7 +277,7 @@ class TestCompile(unittest.TestCase):
         arrays = toarrays("prefix", data)
         tpe = arrays2type(arrays, "prefix")
         fcn, arrayparams = toplur(lambda x, i, j: x[i][j], {"x": tpe}, numba={})
-        self.assertEqual(arrayparams, ["prefix-Ld-Lb", "prefix-Ld-Ld"])
+        self.assertEqual(arrayparams, ["prefix-Lb", "prefix-Le", "prefix-Ld-Lb", "prefix-Ld-Le", "prefix-Ld-Ld"])
 
         fillin(arrays, (tpe,), filter=arrayparams, numba={})
 

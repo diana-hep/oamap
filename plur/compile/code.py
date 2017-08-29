@@ -24,6 +24,43 @@ from plur.types.columns import withcolumns, hascolumns
 from plur.thirdparty.meta.decompiler.instructions import make_function
 from plur.thirdparty.meta import dump_python_source
 
+##################################################################### builtins
+
+def __plur_check(i):
+    if i is None:
+        raise TypeError("None used where PLUR object expected")
+    return i
+
+def __plur_list_get(begin, i):
+    return begin[i]
+
+def __plur_list_size(begin, end, i):
+    return end[i] - begin[i]
+
+def __plur_list_index(begin, end, outer, i):
+    b = begin[outer]
+    size = end[outer] - b
+    if i < 0:
+        i = size + i    
+    if i < 0 or i >= size:
+        raise IndexError("index out of range")
+    return b + i
+
+try:
+    import numba
+except ImportError:
+    pass
+else:
+    __plur_check = numba.njit(numba.types.int64(numba.optional(numba.types.int64)))(__plur_check)
+    __plur_list_get = numba.njit(numba.types.int64(numba.types.int64[:], numba.types.int64))(__plur_list_get)
+    __plur_list_size = numba.njit(numba.types.int64(numba.types.int64[:], numba.types.int64[:], numba.types.int64))(__plur_list_size)
+    __plur_list_index = numba.njit(numba.types.int64(numba.types.int64[:], numba.types.int64[:], numba.types.int64, numba.types.int64))(__plur_list_index)
+
+builtins = {"__plur_check": __plur_check,
+            "__plur_list_get": __plur_list_get,
+            "__plur_list_size": __plur_list_size,
+            "__plur_list_index": __plur_list_index}
+
 ##################################################################### entry point
 
 def run(arrays, fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap={}, *otherargs):
@@ -60,10 +97,10 @@ def toplur(fcn, paramtypes={}, environment={}, numba=None, debug=False, debugmap
         if numba is True:
             numba = {}
         environment = dict(environment)
-        environment["__numba_args"] = numba
-        code = [generate(None, "import numba"),
+        environment["__plur_numba_args"] = numba
+        code = [generate(None, "import numba as __plur_numba"),
                 code,
-                generate(None, "toname = numba.njit(**__numba_args)(fromname)",
+                generate(None, "toname = __plur_numba.njit(**__plur_numba_args)(fromname)",
                          fromname=ast.Name(fcnname, ast.Load()),
                          toname=ast.Name(fcnname, ast.Store()))]
 
@@ -135,7 +172,8 @@ def compilefcn(code, fcnname, filename, environment={}):
     if not isinstance(code, list):
         code = [code]
     compiled = compile(ln(ast.Module(code)), filename, "exec")
-    out = dict(environment)
+    out = dict(builtins)
+    out.update(environment)
     exec(compiled, out)    # exec can't be called in the same function with nested functions
     return out[fcnname]
 
@@ -319,10 +357,9 @@ def node2array(node, tpe, colname, unionop):
 
     # L
     elif isinstance(tpe, List):
-        if isinstance(node, ast.Num) and node.n == 0:
-            return generate(tpe, "0")
-        else:
-            return generate(tpe, "array[at]", array=ast.Name(colname(tpe.column), ast.Load()), at=node)
+        return generate(tpe, "__plur_list_get(array, at)",
+                        array=ast.Name(colname(tpe.column), ast.Load()),
+                        at=node)
 
     # U
     elif isinstance(tpe, Union):
@@ -468,7 +505,7 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
 
             def subunionop(tpe, node):
                 if isinstance(tpe, List):
-                    return generate(tpe, "end[at] - begin[at]",
+                    return generate(None, "__plur_list_size(begin, end, at)",
                                     begin=ast.Name(colname(tpe.column), ast.Load()),
                                     end=ast.Name(colname(tpe.column2), ast.Load()),
                                     at=node)
@@ -480,20 +517,17 @@ def do_Call(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, r
             if hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, List):
                 tpe = node.args[0].plurtype
 
-                if isinstance(node.args[0], ast.Num):
-                    assert node.args[0].n == 0
-                    return generate(tpe, "end[0]", end=ast.Name(colname(tpe.column2), ast.Load()))
+                assert isinstance(node.args[0], ast.Call)
+                assert isinstance(node.args[0].func, ast.Name)
+                assert node.args[0].func.id == "__plur_list_get"
+                assert len(node.args[0].args) == 2
+                assert isinstance(node.args[0].args[0], ast.Name)
+                assert node.args[0].args[0].id == colname(tpe.column)
 
-                else:
-                    assert isinstance(node.args[0], ast.Subscript)
-                    assert isinstance(node.args[0].value, ast.Name) and node.args[0].value.id == colname(tpe.column)
-                    assert isinstance(node.args[0].slice, ast.Index)
-                    assert isinstance(node.args[0].ctx, ast.Load)
-
-                    return generate(tpe, "end[i] - current",
-                                    end=ast.Name(colname(tpe.column2), ast.Load()),
-                                    i=node.args[0].slice.value,
-                                    current=node.args[0])
+                return generate(None, "__plur_list_size(begin, end, i)",
+                                begin=node.args[0].args[0],
+                                end=ast.Name(colname(tpe.column2), ast.Load()),
+                                i=node.args[0].args[1])
 
             elif hasattr(node.args[0], "plurtype") and isinstance(node.args[0].plurtype, Union):
                 return node.args[0]
@@ -558,21 +592,17 @@ def do_For(node, symboltypes, environment, enclosedfcns, encloseddata, zeros, re
     if hasattr(node.iter, "plurtype") and isinstance(node.iter.plurtype, List) and isinstance(node.target, ast.Name) and isinstance(node.target.ctx, ast.Store):
         tpe = node.iter.plurtype
 
-        if isinstance(node.iter, ast.Num):
-            assert node.iter.n == 0
-            node.iter = generate(tpe, "range(end[0])",
-                                 end=ast.Name(colname(tpe.column2), ast.Load()))
+        assert isinstance(node.iter, ast.Call)
+        assert isinstance(node.iter.func, ast.Name)
+        assert node.iter.func.id == "__plur_list_get"
+        assert len(node.iter.args) == 2
+        assert isinstance(node.iter.args[0], ast.Name)
+        assert node.iter.args[0].id == colname(tpe.column)
 
-        else:
-            assert isinstance(node.iter, ast.Subscript)
-            assert isinstance(node.iter.value, ast.Name) and node.iter.value.id == colname(tpe.column)
-            assert isinstance(node.iter.slice, ast.Index)
-            assert isinstance(node.iter.ctx, ast.Load)
-
-            node.iter = generate(tpe, "range(current, end[i])",
-                                 end=ast.Name(colname(tpe.column2), ast.Load()),
-                                 i=node.iter.slice.value,
-                                 current=node.iter)
+        node.iter = generate(None, "range(current, end[i])",
+                             end=ast.Name(colname(tpe.column2), ast.Load()),
+                             i=node.iter.args[1],
+                             current=node.iter)
 
         symboltypes[node.target.id] = tpe.of
 
@@ -707,19 +737,14 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
 
     def subunionop(tpe, node):
         assert isinstance(tpe, List)
-
-        if isinstance(node, ast.Num) and node.n == 0:
-            offsetat = ln(ast.Num(0))
-        else:
-            offsetat = generate(None, "offset[at]", at=node, offset=ast.Name(colname(tpe.column), ast.Load()))
-
         if index is None:
             raise NotImplementedError
 
-        if isinstance(offsetat, ast.Num) and offsetat.n == 0:
-            offsetatplusi = index
-        else:
-            offsetatplusi = generate(None, "offsetat + i", offsetat=offsetat, i=index)
+        offsetatplusi = generate(None, "__plur_list_index(begin, end, outer, i)",
+                                 begin=ast.Name(colname(tpe.column), ast.Load()),
+                                 end=ast.Name(colname(tpe.column2), ast.Load()),
+                                 outer=node,
+                                 i=index)
 
         return unionop(tpe.of, offsetatplusi)
 
@@ -729,10 +754,18 @@ def do_Subscript(node, symboltypes, environment, enclosedfcns, encloseddata, zer
         if not isinstance(node.slice, ast.Index) or not isinstance(node.ctx, ast.Load):
             raise NotImplementedError
 
-        if isinstance(node.value, ast.Num) and node.value == 0:
-            atplusi = index
-        else:
-            atplusi = generate(None, "at + i", at=node.value, i=index)
+        assert isinstance(node.value, ast.Call)
+        assert isinstance(node.value.func, ast.Name)
+        assert node.value.func.id == "__plur_list_get"
+        assert len(node.value.args) == 2
+        assert isinstance(node.value.args[0], ast.Name)
+        assert node.value.args[0].id == colname(node.value.plurtype.column)
+
+        atplusi = generate(None, "__plur_list_index(begin, end, outer, i)",
+                           begin=node.value.args[0],
+                           end=ast.Name(colname(node.value.plurtype.column2), ast.Load()),
+                           outer=node.value.args[1],
+                           i=index)
 
         return node2array(atplusi,
                           node.value.plurtype.of,
