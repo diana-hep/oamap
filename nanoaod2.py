@@ -122,8 +122,108 @@ def toplurtype(pack, name, allowcounters):
             out.branchname = None
             return out
 
-tpe = List(toplurtype(packages, ArrayName("events").toListData(), True))
-tpe.column = ArrayName("events").toListOffset().str()
-tpe.branchname = None
+plurtype = List(toplurtype(packages, ArrayName("events").toListData(), True))
+plurtype.column = ArrayName("events").toListOffset().str()
+plurtype.branchname = None
 
-print formattype(tpe)
+print(formattype(plurtype))
+
+def type2dtype(tpe):
+    if isinstance(tpe, Primitive):
+        return tpe.of.newbyteorder(">")
+    elif isinstance(tpe, List):
+        return numpy.dtype(numpy.int32).newbyteorder(">")
+    else:
+        assert False, tpe
+
+def branch2array(branch, tpe, count2offset=False):
+    dtype = type2dtype(tpe)
+
+    # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
+    size = branch.GetTotalSize()
+
+    # allocate some memory
+    array = numpy.empty(size, dtype=dtype)
+
+    # fill it
+    entries, bytes = branch.FillNumpyArray(array)
+
+    # clip it to the actual length, which we know exactly after filling
+    array = array[: (bytes // array.dtype.itemsize)]
+
+    # swap the byte order: physical and interpreted
+    array = array.byteswap(True).view(array.dtype.newbyteorder("="))
+
+    # if this is to be an offset array, compute the cumulative sum of counts
+    if count2offset:
+        array2 = numpy.empty(array.shape[0] + 1, dtype=numpy.int64)
+        array2[0] = 0
+        numpy.cumsum(array, out=array2[1:])
+        array = array2
+
+    return array
+
+class LazyArray(object):
+    def __init__(self, branch, tpe, count2offset):
+        self.branch = branch
+        self.tpe = tpe
+        self.count2offset = count2offset
+        self.array = None
+
+    def _getarray(self):
+        self.array = branch2array(self.branch, self.tpe, self.count2offset)
+
+    def __getitem__(self, i):
+        if self.array is None: self._getarray()
+        return self.array[i]
+
+    def __len__(self):
+        if self.array is None: self._getarray()
+        return len(self.array)
+
+    @property
+    def shape(self):
+        if self.array is None: self._getarray()
+        return self.array.shape
+
+    @property
+    def dtype(self):
+        return type2dtype(self.tpe)
+
+def tree2arrays(tree, tpe):
+    if tpe.column is not None and tpe.branchname is not None:
+        out = {tpe.column: LazyArray(tree.GetBranch(tpe.branchname), tpe, tpe.column.endswith("-Lo"))}
+    elif tpe.column is not None and tpe.branchname is None:
+        out = {tpe.column: numpy.array([0, tree.GetEntries()], dtype=numpy.int64)}
+    else:
+        out = {}
+
+    if isinstance(tpe, List):
+        out.update(tree2arrays(tree, tpe.of))
+
+    elif isinstance(tpe, Record):
+        for n, t in tpe.of:
+            out.update(tree2arrays(tree, t).items())
+
+    return out
+
+print("")
+print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
+
+print("")
+print(len(tree.GetListOfLeaves()), len(tree2arrays(tree, plurtype)))
+
+events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
+
+for event in events:
+    print "event", event.run, event.luminosityBlock, event.event
+    print "MET", event.MET.pt, event.MET.phi
+
+    for jet in event.Jet:
+        print "jet", jet.pt, jet.eta, jet.phi
+
+    for electron in event.Electron:
+        print "electron", electron.pt, electron.eta, electron.phi
+
+    print "trigger", event.Flag.toJsonString()
+    print
