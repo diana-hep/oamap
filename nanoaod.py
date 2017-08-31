@@ -26,6 +26,20 @@ class ValueDescr(object):
         out.branchname = self.rootbranch.GetName()
         return out
 
+# class GroupDescr(object):
+#     def __init__(self, groupname):
+#         self.groupname = groupname
+#         self.fields = {}
+
+#     def __getitem__(self, name):
+#         return self.fields[name]
+
+#     def __setitem__(self, name, value):
+#         self.fields[name] = value
+
+#     def __repr__(self):
+#         return "GroupDescr({0}, {1})".format(self.groupname, self.fields)
+
 class ListDescr(object):
     def __init__(self, fieldname, counterbranch):
         self.fieldname = fieldname

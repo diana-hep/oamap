@@ -17,42 +17,62 @@
 from plur.types import *
 from plur.types.primitive import PrimitiveWithRepr
 
-def __recurse(tpe, depth, comma):
+def __recurse(tpe, depth, comma, help):
     # P
     if tpe.__class__ == Primitive or tpe.__class__ == PrimitiveWithRepr:
         return [(depth, repr(tpe) + comma, tpe)]
 
     # L
     elif tpe.__class__ == List:
-        return [(depth, "List(", tpe)] + __recurse(tpe.of, depth + 1, "") + [(depth + 1, ")" + comma, tpe)]
+        return [(depth, "List(", tpe)] + __recurse(tpe.of, depth + 1, "", help) + [(depth + 1, ")" + comma, tpe)]
 
     # U
     elif tpe.__class__ == Union:
         inner = []
         for i, t in enumerate(tpe.of):
-            sub = __recurse(t, depth + 1, "," if i < len(tpe.of) - 1 else "")
+            sub = __recurse(t, depth + 1, "," if i < len(tpe.of) - 1 else "", help)
             inner.extend(sub)
         return [(depth, "Union(", tpe)] + inner + [(depth + 1, ")" + comma, tpe)]
 
     # R
     elif tpe.__class__ == Record:
-        inner = []
+        content = []
+        widest = 0
         for i, (n, t) in enumerate(tpe.of):
-            sub = __recurse(t, depth + 1, "," if i < len(tpe.of) - 1 else "")
-            inner.extend([(sub[0][0], sub[0][1] if Record._checkPositional.match(n) is not None else n + " = " + sub[0][1], sub[0][2])] + sub[1:])
+            sub = __recurse(t, depth + 1, "," if i < len(tpe.of) - 1 else "", help)
+            first, rest = sub[0], sub[1:]
+            fdepth, ftxt, ftpe = first
+            if Record._checkPositional.match(n) is None:   # NOT positional, a named field
+                ftxt = n + " = " + ftxt
+
+            content.append((fdepth, ftxt, ftpe, rest))
+            widest = max(widest, len(ftxt))
+
+        inner = []
+        for c, (i, (n, t)) in zip(content, enumerate(tpe.of)):
+            fdepth, ftxt, ftpe, rest = c
+
+            if help:
+                h = getattr(t, "help", "")
+                if h != "":
+                    spaces = widest + 1 - len(ftxt)
+                    ftxt = ftxt + " " * spaces + "# " + h
+
+            inner.extend([(fdepth, ftxt, ftpe)] + rest)
+
         return [(depth, "Record(", tpe)] + inner + [(depth + 1, ")" + comma, tpe)]
 
     # runtime types
     else:
         return [(depth, repr(tpe), tpe)]
 
-def formattype(tpe, highlight=lambda t: "", indent="  ", prefix=""):
+def formattype(tpe, highlight=lambda t: "", indent="  ", prefix="", help=True):
     return "\n".join("{0}{1}{2}{3}".format(prefix, highlight(t), indent * depth, line)
-                     for depth, line, t in __recurse(tpe, 0, ""))
+                     for depth, line, t in __recurse(tpe, 0, "", help))
 
 def formatdiff(one, two, header=None, between=lambda t1, t2: " " if t1 == t2 or t1 is None or t2 is None else ">", indent="  ", prefix="", width=None):
-    one = __recurse(one, 0, "")
-    two = __recurse(two, 0, "")
+    one = __recurse(one, 0, "", False)
+    two = __recurse(two, 0, "", False)
     i1 = 0
     i2 = 0
     if width is None:
