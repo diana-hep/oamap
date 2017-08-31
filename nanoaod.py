@@ -8,7 +8,7 @@ from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 from plur.python import fromarrays
 
-file = ROOT.TFile("/uscms/home/pivarski/NOBACKUP/CMSSW_9_3_0_pre4/src/nano.root")
+file = ROOT.TFile("/home/pivarski/data/nano-2017-08-31.root")
 tree = file.Get("Events")
 
 class ValueDescr(object):
@@ -75,7 +75,11 @@ for branch in tree.GetListOfBranches():
             tofill = values
 
         typename = leaves[0].GetTypeName()
-        if typename == "Int_t":
+        if typename == "Char_t":
+            plurtype = int8
+        elif typename == "UChar_t":
+            plurtype = uint8
+        elif typename == "Int_t":
             plurtype = int32
         elif typename == "UInt_t":
             plurtype = uint32
@@ -193,11 +197,15 @@ def tree2arrays(tree, tpe):
 
     return out
 
-print "\n".join(n + "\t" + repr(v[:3]) for n, v in tree2arrays(tree, plurtype).items())
+print
+print "\n".join("{:50s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:50s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items()))
 
-events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
+print
+print len(tree.GetListOfLeaves()), len(tree2arrays(tree, plurtype))
 
-for event in events:
-    print "event", event.run, event.luminosityBlock, event.event
-    for jet in event.jet:
-        print "jet", jet.pt, jet.eta, jet.phi
+# events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
+
+# for event in events:
+#     print "event", event.run, event.luminosityBlock, event.event
+#     for jet in event.jet:
+#         print "jet", jet.pt, jet.eta, jet.phi
