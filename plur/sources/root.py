@@ -253,7 +253,7 @@ class ROOTDataset(object):
             if arrayname == toparrayname:
                 array = toparray
             else:
-                array = numpy.array([], dtype=self._column2dtype[column])   # FIXME: self._column2dtype isn't right yet!
+                array = numpy.array([], dtype=self._column2dtype[column])
             fcnargs.append(array)
 
         # first evaluation of the function with empty arguments
@@ -275,7 +275,7 @@ class ROOTDataset(object):
 
             # step to the next partition and actually open ROOT files *only if* some needed column can't be found in the cache
             partition = self._partition()
-            self._next(self.cache is None or any("{0}.{1}.{2}".format(column, partition, self._column2dtype[column]) not in self.cache for column, arrayname in zip(columns, arraynames)))   # FIXME: self._column2dtype isn't right yet!
+            self._next(self.cache is None or any("{0}.{1}".format(column, partition) not in self.cache for column, arrayname in zip(columns, arraynames)))
 
             if debug:
                 stopwatch4 = time.time()
@@ -289,7 +289,7 @@ class ROOTDataset(object):
 
                 # first check the cache for the column
                 if self.cache is not None:
-                    cachename = "{0}.{1}.{2}".format(column, partition, self._column2dtype[column])   # FIXME: self._column2dtype isn't right yet!
+                    cachename = "{0}.{1}".format(column, partition)
 
                     if cachename in self.cache:
                         cachetotouch.append(cachename)
@@ -325,7 +325,7 @@ class ROOTDataset(object):
             totalbytes += nbytes
 
             # touch all recently used columns at once
-            if self.cache is not None and hasattr(self.cache, "touche"):
+            if self.cache is not None and hasattr(self.cache, "touch"):
                 self.cache.touch(*cachetotouch)
 
             if debug:
@@ -490,7 +490,7 @@ class ROOTDatasetFromTree(ROOTDataset):
         self._rewind()
         self._next(True)
 
-        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)   # FIXME: self._column2dtype isn't right yet!
+        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
 
         if hasattr(cache, "newuser"):
             self.cache = cache.newuser({self.prefix: [{"file": tree.GetCurrentFile().GetName(), "tree": tree.GetName()}]})
@@ -552,7 +552,7 @@ class ROOTDatasetFromChain(ROOTDataset):
             raise IOError("empty TChain")
         self._next(True)
 
-        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)   # FIXME: self._column2dtype isn't right yet!
+        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
 
         if hasattr(cache, "newuser"):
             self.cache = cache.newuser({self.prefix: [{"file": x.GetTitle(), "tree": x.GetName()} for x in self.chain.GetListOfFiles()]})
@@ -615,7 +615,7 @@ class ROOTDatasetFromFiles(ROOTDataset):
             raise IOError("empty file list")
         self._next(True)
 
-        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)   # FIXME: self._column2dtype isn't right yet!
+        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
 
         if hasattr(cache, "newuser"):
             self.cache = cache.newuser({self.prefix: [{"file": x, "tree": self.treepath} for x in self.filepaths]})

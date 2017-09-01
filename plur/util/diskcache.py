@@ -36,8 +36,8 @@ class DiskCache(object):
             # link the array file out and copy it to RAM with atomic operations
             tmpfilename = os.path.join(self.user, "tmp")
             try:
-                self.parent.linkfile(name, tmpfilename)
-                array = numpy.fromfile(open(tmpfilename, "rb"), dtype=self._column2dtype[column])   # FIXME: self._column2dtype isn't right yet!
+                dtype = self.parent.linkfile(name, tmpfilename)
+                array = numpy.fromfile(open(tmpfilename, "rb"), dtype=dtype)
             finally:
                 # always deleting our extra link when done (or failed)
                 if os.path.exists(tmpfilename):
@@ -47,7 +47,7 @@ class DiskCache(object):
             try:
                 tmpfilename = os.path.join(self.user, "tmp")
                 array.tofile(open(tmpfilename, "wb"))
-                self.parent.newfile(name, tmpfilename)
+                self.parent.newfile(name, array.dtype, tmpfilename)
             finally:
                 if os.path.exists(tmpfilename):
                     os.remove(tmpfilename)
@@ -117,11 +117,12 @@ class DiskCache(object):
             elif all(not os.path.isdir(os.path.join(directory, path, fn)) for fn in items if fn != DiskCache.CONFIG_DIR):
                 for fn in items:
                     if fn != DiskCache.CONFIG_DIR:
-                        if delimiter not in fn:
-                            raise IOError("file names in {0} are missing delimiter \"{1}\"".format(os.path.join(directory, path), delimiter))
-                        i = fn.index(delimiter)
-                        name = fn[i + 1:]
-                        number = n + int(fn[:i])
+                        if fn.count(delimiter) != 2 or not digits.match(fn[:fn.index(delimiter)]):
+                            raise IOError("file name \"{0}\" in \"{1}\" is malformed; should be ##{2}NAME{2}DTYPE".format(fn, os.path.join(directory, path), delimiter))
+                        i1, i2 = fn.index(delimiter), fn.rindex(delimiter)
+                        number = n + int(fn[:i1])
+                        name = fn[i1 + 1:i2]
+                        dtype = fn[i2 + 1:]
 
                         out.lookup[name] = os.path.join(path, fn)
                         out.numbytes += os.path.getsize(os.path.join(directory, path, fn))
@@ -154,7 +155,7 @@ class DiskCache(object):
                 for subitem in os.listdir(fullpath):
                     recurse(fullpath, subitem)
             else:
-                name = item[item.index(self.delimiter) + 1:]
+                name = item[item.index(self.delimiter) + 1:item.rindex(self.delimiter)]
                 if name.startswith(prefix):
                     del self.lookup[name]
                     os.remove(fullpath)
@@ -180,7 +181,7 @@ class DiskCache(object):
         self.users += 1
         return self.User(dirname, self)
 
-    def newfile(self, name, oldfilename):
+    def newfile(self, name, dtype, oldfilename):
         newbytes = os.path.getsize(oldfilename)
 
         if self.limitbytes is not None:
@@ -188,11 +189,17 @@ class DiskCache(object):
             if bytestofree > 0:
                 self._evict(bytestofree, self.directory)
 
-        newfilename = self._newfilename(name)
+        newfilename = self._newfilename(name, dtype)
         os.rename(oldfilename, os.path.join(self.directory, newfilename))
 
         self.lookup[name] = newfilename
         self.numbytes += newbytes
+
+    def todtype(self, suffix):
+        return numpy.dtype(suffix)
+
+    def fromdtype(self, dtype):
+        return str(dtype)
 
     def get(self, name):
         return self.lookup[name]
@@ -209,11 +216,11 @@ class DiskCache(object):
         else:
             return None
 
-    def touch(self, *names):
+    def touch(self, **dtypes):
         cleanup = set()
-        for name in names:
-            newname = self._newfilename(name)   # _newfilename changes self.lookup
-            oldname = self.lookup[name]         # and therefore must be called first
+        for name, dtype in dtypes.items():
+            newname = self._newfilename(name, dtype)   # _newfilename changes self.lookup
+            oldname = self.lookup[name]                # and therefore must be called first
 
             os.rename(os.path.join(self.directory, oldname), os.path.join(self.directory, newname))
             self.lookup[name] = newname
@@ -230,7 +237,9 @@ class DiskCache(object):
                 path, fn = os.path.split(path)
 
     def linkfile(self, name, tofilename):
-        os.link(os.path.join(self.directory, self.get(name)), tofilename)
+        fromfilename = self.get(name)
+        os.link(os.path.join(self.directory, fromfilename), tofilename)
+        return self.todtype(fromfilename[fromfilename.rindex(self.delimiter) + 1:])
 
     def _evict(self, bytestofree, path):
         # eliminate in sort order
@@ -260,7 +269,7 @@ class DiskCache(object):
 
         return bytestofree
         
-    def _newfilename(self, name):
+    def _newfilename(self, name, dtype):
         # increase number
         number = self.number
         self.number += 1
@@ -297,4 +306,4 @@ class DiskCache(object):
 
         # return new filename
         fn = self._formatter.format(number)
-        return os.path.join(path, fn + self.delimiter + str(name))
+        return os.path.join(path, fn + self.delimiter + str(name) + self.fromdtype(dtype))
