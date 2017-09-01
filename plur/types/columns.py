@@ -29,7 +29,7 @@ from plur.types.arrayname import ArrayName
 def hascolumns(tpe):
     return hasattr(tpe, "column") and all(hascolumns(t) for t in tpe.children)
 
-def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)):
+def type2columns(tpe, prefix, delimiter="-"):
     def recurse(name, tpe):
         if tpe.rtname is not None:
             raise NotImplementedError
@@ -40,7 +40,7 @@ def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)
 
         # L
         elif isinstance(tpe, List):
-            return [(name.toListBegin().str(), offsettype), (name.toListEnd().str(), offsettype)] + recurse(name.toListData(), tpe.of)
+            return [(name.toListBegin().str(), numpy.dtype(numpy.int64)), (name.toListEnd().str(), numpy.dtype(numpy.int64))] + recurse(name.toListData(), tpe.of)
 
         # U
         elif isinstance(tpe, Union):
@@ -55,7 +55,7 @@ def type2columns(tpe, prefix, delimiter="-", offsettype=numpy.dtype(numpy.int64)
             else:
                 assert False, "union has way too many type possibilities ({0})".format(len(tpe.of))
 
-            out = [(name.toUnionTag().str(), uniontype), (name.toUnionOffset().str(), offsettype)]
+            out = [(name.toUnionTag().str(), uniontype), (name.toUnionOffset().str(), numpy.dtype(numpy.int64))]
             for i, x in enumerate(tpe.of):
                 out.extend(recurse(name.toUnionData(i), x))
             return out

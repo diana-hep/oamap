@@ -32,11 +32,11 @@ from plur.python.fillmemory import FillableInMemory
 
 ##################################################################### toarrays
 
-def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: True, fillnan=False, delimiter="-", offsettype=numpy.dtype(numpy.int64), **fillableOptions):
+def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: True, fillnan=False, delimiter="-", **fillableOptions):
     if tpe is None:
         tpe = infertype(obj)
 
-    dtypes = type2columns(tpe, prefix, delimiter=delimiter, offsettype=offsettype)
+    dtypes = type2columns(tpe, prefix, delimiter=delimiter)
     fillables = {}
     for n, d in dtypes.items():
         an = ArrayName.parse(n, prefix, delimiter=delimiter)
@@ -47,9 +47,6 @@ def toarrays(prefix, obj, tpe=None, fillable=FillableInMemory, filter=lambda n: 
 
     last_list_offset = {}
     last_union_offset = {}
-
-    if not issubclass(offsettype.type, numpy.integer):
-        raise TypeError("offsettype must be an integer")
 
     def recurse(obj, tpe, name):
         if not filter(name):
