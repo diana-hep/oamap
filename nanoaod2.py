@@ -10,7 +10,8 @@ from plur.types.primitive import withrepr
 from plur.types.arrayname import ArrayName
 from plur.python import fromarrays
 
-file = ROOT.TFile("/home/pivarski/data/nano-2017-08-31.root")
+# file = ROOT.TFile("/home/pivarski/data/nano-2017-09-01.root")
+file = ROOT.TFile("../compression-tests/nano-RelValTTbar-2017-09-01-uncompressed.root")
 tree = file.Get("Events")
 
 leaves = list(tree.GetListOfLeaves())
@@ -31,6 +32,8 @@ for leaf in leaves:
         raise TypeError("TLeaf \"{0}\" is not the only leaf in TBranch \"{1}\"".format(leaf.GetName(), leaf.GetBranch().GetName()))
 
     path = leaf.GetName().split("_")
+    if path[0] == "HLT":
+        path = [path[0]] + ["_".join(path[1:])]
 
     pack = packages
     for item in path[:-1]:
@@ -207,8 +210,8 @@ def tree2arrays(tree, tpe):
 
     return out
 
-print("")
-print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
+# print("")
+# print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
 
 print("")
 print(len(tree.GetListOfLeaves()), len(tree2arrays(tree, plurtype)))
