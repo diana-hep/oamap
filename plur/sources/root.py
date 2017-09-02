@@ -380,8 +380,7 @@ total time spent compiling: {0:.3f} sec
 
     # for random access: only load arrays from ROOT on demand (does not use cache)
     class LazyArray(object):
-        def __init__(self, start, tree, branchname, count2offset, castdtype):
-            self.start = start
+        def __init__(self, tree, branchname, count2offset, castdtype):
             self.tree = tree
             self.branchname = branchname
             self.count2offset = count2offset
@@ -393,7 +392,7 @@ total time spent compiling: {0:.3f} sec
             
         def __getitem__(self, i):
             if self.array is None: self._load()
-            return self.array[i - self.start]
+            return self.array[i]
 
     # interpret negative indexes as starting at the end of the dataset
     def _normalize(self, i, clip, step):
@@ -468,7 +467,7 @@ total time spent compiling: {0:.3f} sec
                         # create a LazyArray for this ROOT branch; maybe it will be read from ROOT, maybe not
                         count2offset = len(arrayname.path) > 0 and arrayname.path[-1] == (ArrayName.LIST_OFFSET,)
                         castdtype = numpy.dtype(numpy.int64) if count2offset else None
-                        array = self.LazyArray(0, tree, branchname, count2offset=count2offset, castdtype=castdtype)
+                        array = self.LazyArray(tree, branchname, count2offset=count2offset, castdtype=castdtype)
 
                     lazyarrays[column] = array
 
@@ -534,7 +533,7 @@ class ROOTDatasetFromTree(ROOTDataset):
                     # special case: the top array
                     array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
                 elif lazy:
-                    array = self.LazyArray(self.tree, branchname, 0, count2offset=count2offset, castdtype=castdtype)
+                    array = self.LazyArray(self.tree, branchname, count2offset=count2offset, castdtype=castdtype)
                 else:
                     array = self.branch2array(self.tree, branchname, count2offset=count2offset, castdtype=castdtype)
                 out[column] = array
