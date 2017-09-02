@@ -20,6 +20,10 @@ import os
 import re
 import shutil
 
+import numpy
+
+from plur.util import *
+
 class DiskCache(object):
     CONFIG_DIR = "config"
     USER_DIR = re.compile("^user-[0-9]+$")
@@ -117,7 +121,7 @@ class DiskCache(object):
             elif all(not os.path.isdir(os.path.join(directory, path, fn)) for fn in items if fn != DiskCache.CONFIG_DIR):
                 for fn in items:
                     if fn != DiskCache.CONFIG_DIR:
-                        if fn.count(delimiter) != 2 or not digits.match(fn[:fn.index(delimiter)]):
+                        if fn.count(delimiter) < 2 or not digits.match(fn[:fn.index(delimiter)]):
                             raise IOError("file name \"{0}\" in \"{1}\" is malformed; should be ##{2}NAME{2}DTYPE".format(fn, os.path.join(directory, path), delimiter))
                         i1, i2 = fn.index(delimiter), fn.rindex(delimiter)
                         number = n + int(fn[:i1])
@@ -196,10 +200,16 @@ class DiskCache(object):
         self.numbytes += newbytes
 
     def todtype(self, suffix):
-        return numpy.dtype(suffix)
+        if suffix == "None":
+            return None
+        else:
+            return numpy.dtype(suffix)
 
     def fromdtype(self, dtype):
-        return str(dtype)
+        if dtype is None:
+            return "None"
+        else:
+            return str(dtype)
 
     def get(self, name):
         return self.lookup[name]
@@ -216,11 +226,14 @@ class DiskCache(object):
         else:
             return None
 
-    def touch(self, **dtypes):
+    def touch(self, *names):
         cleanup = set()
-        for name, dtype in dtypes.items():
-            newname = self._newfilename(name, dtype)   # _newfilename changes self.lookup
-            oldname = self.lookup[name]                # and therefore must be called first
+        for name in names:
+            fn = self.lookup[name]
+            dtypestr = fn[fn.rindex(self.delimiter) + 1:]
+
+            newname = self._newfilename(name, dtypestr)   # _newfilename changes self.lookup
+            oldname = self.lookup[name]                   # and therefore must be called first
 
             os.rename(os.path.join(self.directory, oldname), os.path.join(self.directory, newname))
             self.lookup[name] = newname
@@ -306,4 +319,6 @@ class DiskCache(object):
 
         # return new filename
         fn = self._formatter.format(number)
-        return os.path.join(path, fn + self.delimiter + str(name) + self.fromdtype(dtype))
+        if not isinstance(dtype, string_types):
+            dtype = self.fromdtype(dtype)
+        return os.path.join(path, fn + self.delimiter + str(name) + self.delimiter + dtype)
