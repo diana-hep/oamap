@@ -493,6 +493,12 @@ total time spent compiling: {0:.3f} sec
             # return the PLUR object at the right index
             return self._plur[entry - start]
 
+    def dtypes(self, columns=lambda n: True, arraynames=lambda n: True, branchnames=lambda n: True):
+        for column, branchname in self._column2branch.items():
+            arrayname = ArrayName.parse(column, self.prefix)
+            if columns(column) and arraynames(arrayname) and branchnames(branchname):
+                yield column, branchname, self._column2dtype[column]
+
 ##################################################################### ROOTDataset given a single TTree
 
 class ROOTDatasetFromTree(ROOTDataset):
@@ -546,20 +552,25 @@ class ROOTDatasetFromTree(ROOTDataset):
         return self.tree.GetEntries()
 
     def arrays(self, columns=lambda n: True, arraynames=lambda n: True, branchnames=lambda n: True, lazy=False):
-        out = {}
         for column, branchname in self._column2branch.items():
             arrayname = ArrayName.parse(column, self.prefix)
             if columns(column) and arraynames(arrayname) and branchnames(branchname):
-                if arrayname == ArrayName(self.prefix).toListOffset():
-                    # special case: the top array
+                if arrayname == ArrayName(self.prefix).toListBegin():
+                    array = numpy.array([0], dtype=numpy.int64)
+
+                elif arrayname == ArrayName(self.prefix).toListEnd():
+                    array = numpy.array([self.tree.GetEntries()], dtype=numpy.int64)
+
+                elif arrayname == ArrayName(self.prefix).toListOffset():
                     array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
+
                 elif lazy:
                     array = self.ROOTLazyArray(self.tree, branchname)
+
                 else:
                     array = ROOTDataset.branch2array(self.tree, branchname)
-                out[column] = array
 
-        return out
+                yield column, branchname, array
 
 ##################################################################### ROOTDataset given a PyROOT TChain object
 
