@@ -82,10 +82,10 @@ def tree2type(tree, prefix=None, delimiter="-"):
 
                 out = withrepr(Primitive(dtype), copy=True)
                 out.column = name.str()
-                out.branch = branch.GetName()
+                out.branchname = branch.GetName()
                 out.dtype = out.of
 
-                column2branch[out.column] = out.branch
+                column2branch[out.column] = out.branchname
                 column2dtype[out.column] = out.dtype
 
                 return out
@@ -117,14 +117,14 @@ def tree2type(tree, prefix=None, delimiter="-"):
 
             out = List(Record(**fields))
             out.of.column = None
-            out.of.branch = None
+            out.of.branchname = None
             out.of.dtype = None
 
-            out.column = name.toListOffset().str()
-            out.branch = branch.GetName()
+            out.column = name.toListSize().str()
+            out.branchname = branch.GetName()
             out.dtype = branch2dtype(branch)
 
-            column2branch[out.column] = out.branch
+            column2branch[out.column] = out.branchname
             column2dtype[out.column] = out.dtype
 
             return out
@@ -136,7 +136,7 @@ def tree2type(tree, prefix=None, delimiter="-"):
 
             out = Record(**fields)
             out.column = None
-            out.branch = None
+            out.branchname = None
             out.dtype = None
             return out
 
@@ -152,16 +152,56 @@ def tree2type(tree, prefix=None, delimiter="-"):
 
     tpe = List(Record(**fields))
     tpe.of.column = None
-    tpe.of.branch = None
+    tpe.of.branchname = None
     tpe.of.dtype = None
     tpe.column = name.toListOffset().str()
-    tpe.branch = None
+    tpe.branchname = None
     tpe.dtype = int64.of
 
-    column2branch[tpe.column] = tpe.branch
+    column2branch[tpe.column] = tpe.branchname
     column2dtype[tpe.column] = tpe.dtype
 
     return tpe, prefix, column2branch, column2dtype
+
+# def branch2array(tree, branchname, count2offset=False, castdtype=None):
+#     branch = tree.GetBranch(branchname)
+
+#     # infer the Numpy dtype from the TLeaf type, but it starts as big-endian
+#     dtype = branch2dtype(branch).newbyteorder(">")
+
+#     # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
+#     if count2offset:
+#         size = branch.GetTotalSize() + 1
+#     else:
+#         size = branch.GetTotalSize()
+
+#     # allocate some memory
+#     array = numpy.empty(size, dtype=dtype)
+
+#     # fill it
+#     if count2offset:
+#         array[0] = 0
+#         entries, bytes = branch.FillNumpyArray(array[1:])
+#     else:
+#         entries, bytes = branch.FillNumpyArray(array)
+
+#     # if you need to cast, you need to copy the array; otherwise, byte-swap in place
+#     if castdtype is not None:
+#         array = numpy.cast[castdtype](array)
+#     else:
+#         array = array.byteswap(True).view(array.dtype.newbyteorder("="))
+
+#     # clip it to the actual length, which we know exactly after filling
+#     if count2offset:
+#         array = array[: (bytes // array.dtype.itemsize) + 1]
+#     else:
+#         array = array[: (bytes // array.dtype.itemsize)]
+
+#     # if this is to be an offset array, compute the cumulative sum of counts
+#     if count2offset:
+#         numpy.cumsum(array[1:], out=array[1:])
+
+#     return array
 
 def branch2array(tree, branchname, count2offset=False, castdtype=None):
     branch = tree.GetBranch(branchname)
@@ -170,36 +210,19 @@ def branch2array(tree, branchname, count2offset=False, castdtype=None):
     dtype = branch2dtype(branch).newbyteorder(">")
 
     # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
-    if count2offset:
-        size = branch.GetTotalSize() + 1
-    else:
-        size = branch.GetTotalSize()
+    size = branch.GetTotalSize()
 
     # allocate some memory
     array = numpy.empty(size, dtype=dtype)
 
     # fill it
-    if count2offset:
-        array[0] = 0
-        entries, bytes = branch.FillNumpyArray(array[1:])
-    else:
-        entries, bytes = branch.FillNumpyArray(array)
+    entries, bytes = branch.FillNumpyArray(array)
 
     # if you need to cast, you need to copy the array; otherwise, byte-swap in place
-    if castdtype is not None:
-        array = numpy.cast[castdtype](array)
-    else:
-        array = array.byteswap(True).view(array.dtype.newbyteorder("="))
+    array = array.byteswap(True).view(array.dtype.newbyteorder("="))
 
     # clip it to the actual length, which we know exactly after filling
-    if count2offset:
-        array = array[: (bytes // array.dtype.itemsize) + 1]
-    else:
-        array = array[: (bytes // array.dtype.itemsize)]
-
-    # if this is to be an offset array, compute the cumulative sum of counts
-    if count2offset:
-        numpy.cumsum(array[1:], out=array[1:])
+    array = array[: (bytes // array.dtype.itemsize)]
 
     return array
 
@@ -221,7 +244,7 @@ class ROOTDataset(object):
 
     def compile(self, fcn, paramtypes={}, environment={}, numba=None, debug=False):
         # compile and also identify the subset of columns that are actually used in the code
-        cfcn, columns = plur.compile.code.local(fcn, paramtypes, environment, numba, debug, self._column2branch)
+        cfcn, columns = plur.compile.code.toplur(fcn, paramtypes, environment, numba, debug, self._column2branch)
         return cfcn, columns
 
     # for sequential access: this is the primitive form out of which foreach, map, filter, etc. can be built
@@ -378,7 +401,7 @@ total time spent compiling: {0:.3f} sec
                 totalentries/(totalrun + totalio)/1e6,
                 time.time() - stopwatch1).lstrip())
 
-    # for random access: only load arrays from ROOT on demand (does not use cache)
+    # for random access: only load arrays from ROOT on demand (not cache)
     class LazyArray(object):
         def __init__(self, tree, branchname, count2offset, castdtype):
             self.tree = tree
@@ -393,6 +416,49 @@ total time spent compiling: {0:.3f} sec
         def __getitem__(self, i):
             if self.array is None: self._load()
             return self.array[i]
+            
+        def __len__(self):
+            if self.array is None: self._load()
+            return len(self.array)
+
+        def cumsum(self, axis=None, dtype=None, out=None):
+            if self.array is None: self._load()
+            return self.array.cumsum(axis=axis, dtype=dtype, out=out)
+
+        def size2offset(self):
+            return ROOTDataset.LazyOffsetArray(self)
+
+        def offset2begin(self):
+            return ROOTDataset.LazyBeginArray(self)
+
+        def offset2end(self):
+            return ROOTDataset.LazyEndArray(self)
+
+    class LazyOffsetArray(LazyArray):
+        def __init__(self, sizearray):
+            self.sizearray = sizearray
+            self.array = None
+
+        def _load(self):
+            self.array = numpy.empty(len(self.sizearray) + 1, dtype=numpy.int64)
+            self.array[0] = 0
+            self.sizearray.cumsum(out=self.array[1:])
+
+    class LazyBeginArray(LazyArray):
+        def __init__(self, offsetarray):
+            self.offsetarray = offsetarray
+            self.array = None
+
+        def _load(self):
+            self.array = self.offsetarray[:-1]
+
+    class LazyEndArray(LazyArray):
+        def __init__(self, offsetarray):
+            self.offsetarray = offsetarray
+            self.array = None
+
+        def _load(self):
+            self.array = self.offsetarray[1:]
 
     # interpret negative indexes as starting at the end of the dataset
     def _normalize(self, i, clip, step):

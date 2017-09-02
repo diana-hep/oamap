@@ -468,14 +468,22 @@ def fromarrays(prefix, arrays, tpe=None, delimiter="-"):
                 if name.toListOffset() not in arrays:
                     # if you have a size array, make an offset array as a new copy (one element larger)
                     sizearray = arrays[name.toListSize()]
-                    offsetarray = numpy.empty(len(sizearray) + 1, dtype=numpy.int64)
-                    offsetarray[0] = 0
-                    numpy.cumsum(sizearray, out=offsetarray[1:])
-                    arrays[name.toListOffset()] = offsetarray
+                    if hasattr(sizearray, "size2offset"):
+                        arrays[name.toListOffset()] = sizearray.size2offset()
+                    else:
+                        offsetarray = numpy.empty(len(sizearray) + 1, dtype=numpy.int64)
+                        offsetarray[0] = 0
+                        sizearray.cumsum(out=offsetarray[1:])
+                        arrays[name.toListOffset()] = offsetarray
 
                 # if you have an offset array, make begin and end with views (virtually no cost)
-                arrays[name.toListBegin()] = arrays[name.toListOffset()][:-1]
-                arrays[name.toListEnd()] = arrays[name.toListOffset()][1:]
+                offsetarray = arrays[name.toListOffset()]
+                if hasattr(offsetarray, "offset2begin") and hasattr(offsetarray, "offset2end"):
+                    arrays[name.toListBegin()] = offsetarray.offset2begin()
+                    arrays[name.toListEnd()] = offsetarray.offset2end()
+                else:
+                    arrays[name.toListBegin()] = offsetarray[:-1]
+                    arrays[name.toListEnd()] = offsetarray[1:]
 
             sub = recurse(tpe.of, name.toListData(), lastgoodname)
             return lambda at: LazyList(arrays[name.toListBegin()], arrays[name.toListEnd()], at, sub, tpe)
