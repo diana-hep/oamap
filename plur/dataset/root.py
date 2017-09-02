@@ -494,7 +494,7 @@ total time spent compiling: {0:.3f} sec
 ##################################################################### ROOTDataset given a single TTree
 
 class ROOTDatasetFromTree(ROOTDataset):
-    def __init__(self, tree, prefix=None, cache=None):
+    def __init__(self, tree, prefix=None, cache=None, startpartition=0):
         self.tree = tree
         if not self.tree:
             raise IOError("tree not valid")
@@ -503,11 +503,20 @@ class ROOTDatasetFromTree(ROOTDataset):
         self._next(True)
 
         self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
+        self._startpartition = startpartition
 
         if hasattr(cache, "newuser"):
-            self.cache = cache.newuser({self.prefix: [{"file": tree.GetCurrentFile().GetName(), "tree": tree.GetName()}]})
+            self.cache = cache.newuser({"{0}.{1}".format(self.prefix, self._startpartition): {"file": tree.GetCurrentFile().GetName(), "tree": tree.GetName()}})
         else:
             self.cache = cache
+
+    @property
+    def startpartition(self):
+        return self._startpartition
+
+    @property
+    def stoppartition(self):
+        return self._startpartition + 1
 
     def _rewind(self):
         self._dummyindex = 0
@@ -526,7 +535,7 @@ class ROOTDatasetFromTree(ROOTDataset):
         return self.tree.GetName()
 
     def _partition(self):
-        return self._dummyindex
+        return self._startpartition + self._dummyindex
 
     def _findentry(self, entry):
         return self.tree, 0
@@ -553,7 +562,7 @@ class ROOTDatasetFromTree(ROOTDataset):
 ##################################################################### ROOTDataset given a PyROOT TChain object
 
 class ROOTDatasetFromChain(ROOTDataset):
-    def __init__(self, chain, prefix=None, cache=None):
+    def __init__(self, chain, prefix=None, cache=None, startpartition=0):
         self.chain = chain
 
         self._rewind()
@@ -562,11 +571,20 @@ class ROOTDatasetFromChain(ROOTDataset):
         self._next(True)
 
         self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
+        self._startpartition = startpartition
 
         if hasattr(cache, "newuser"):
-            self.cache = cache.newuser({self.prefix: [{"file": x.GetTitle(), "tree": x.GetName()} for x in self.chain.GetListOfFiles()]})
+            self.cache = cache.newuser(dict(("{0}.{1}".format(self.prefix, self._startpartition + i), {"file": x.GetTitle(), "tree": x.GetName()}) for i, x in enumerate(self.chain.GetListOfFiles())))
         else:
             self.cache = cache
+
+    @property
+    def startpartition(self):
+        return self._startpartition
+
+    @property
+    def stoppartition(self):
+        return self._startpartition + self.cache.GetNtrees()
 
     def _rewind(self):
         self._filename = ""
@@ -600,7 +618,7 @@ class ROOTDatasetFromChain(ROOTDataset):
         return self._filename
 
     def _partition(self):
-        return self._treeindex
+        return self._startpartition + self._treeindex
 
     def _findentry(self, entry):
         subentry = self.chain.LoadTree(entry)
@@ -615,7 +633,7 @@ class ROOTDatasetFromChain(ROOTDataset):
 ##################################################################### ROOTDataset given a tree name and files
 
 class ROOTDatasetFromFiles(ROOTDataset):
-    def __init__(self, treepath, filepaths, prefix=None, cache=None):
+    def __init__(self, treepath, filepaths, prefix=None, cache=None, startpartition=0):
         self.treepath = treepath
         self.filepaths = [y for x in filepaths for y in sorted(glob.glob(os.path.expanduser(x)))]
 
@@ -625,11 +643,20 @@ class ROOTDatasetFromFiles(ROOTDataset):
         self._next(True)
 
         self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
+        self._startpartition = startpartition
 
         if hasattr(cache, "newuser"):
-            self.cache = cache.newuser({self.prefix: [{"file": x, "tree": self.treepath} for x in self.filepaths]})
+            self.cache = cache.newuser(dict(("{0}.{1}".format(self.prefix, self._startpartition + i), {"file": x, "tree": self.treepath}) for i, x in enumerate(self.filepaths)))
         else:
             self.cache = cache
+
+    @property
+    def startpartition(self):
+        return self._startpartition
+
+    @property
+    def stoppartition(self):
+        return self._startpartition + len(self.filepaths)
 
     def _gettree(self, filepath):
         file = ROOT.TFile(filepath)
@@ -664,7 +691,7 @@ class ROOTDatasetFromFiles(ROOTDataset):
         return self._filename
 
     def _partition(self):
-        return self._fileindex
+        return self._startpartition + self._fileindex
 
     def _findentry(self, entry):
         if not hasattr(self, "_numentries"):

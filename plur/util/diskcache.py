@@ -301,7 +301,7 @@ class DiskCache(object):
             tmp = os.path.join(self.directory, "tmp")
             os.mkdir(tmp)
             for fn in os.listdir(self.directory):
-                if fn != "tmp" and fn != DiskCache.CONFIG_DIR and DiskCache.USER_DIR.match(fn):
+                if fn != "tmp" and fn != DiskCache.CONFIG_DIR and not DiskCache.USER_DIR.match(fn):
                     os.rename(os.path.join(self.directory, fn), os.path.join(tmp, fn))
 
             prefix = self._formatter.format(0)
