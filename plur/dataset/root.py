@@ -29,6 +29,7 @@ from plur.types import *
 from plur.types import *
 from plur.types.primitive import withrepr
 from plur.util import *
+from plur.util.lazyarray import LazyArray
 import plur.compile.code
 
 def normalizename(name):
@@ -399,62 +400,14 @@ total time spent compiling: {0:.3f} sec
                 totalentries/(totalrun + totalio)/1e6,
                 time.time() - stopwatch1).lstrip())
 
-    # for random access: only load arrays from ROOT on demand (not cache)
-    class LazyArray(object):
+    class ROOTLazyArray(LazyArray):
         def __init__(self, tree, branchname):
+            super(ROOTDataset.ROOTLazyArray, self).__init__()
             self.tree = tree
             self.branchname = branchname
-            self.array = None
 
         def _load(self):
             self.array = branch2array(self.tree, self.branchname)
-            
-        def __getitem__(self, i):
-            if self.array is None: self._load()
-            return self.array[i]
-            
-        def __len__(self):
-            if self.array is None: self._load()
-            return len(self.array)
-
-        def cumsum(self, axis=None, dtype=None, out=None):
-            if self.array is None: self._load()
-            return self.array.cumsum(axis=axis, dtype=dtype, out=out)
-
-        def size2offset(self):
-            return ROOTDataset.LazyOffsetArray(self)
-
-        def offset2begin(self):
-            return ROOTDataset.LazyBeginArray(self)
-
-        def offset2end(self):
-            return ROOTDataset.LazyEndArray(self)
-
-    class LazyOffsetArray(LazyArray):
-        def __init__(self, sizearray):
-            self.sizearray = sizearray
-            self.array = None
-
-        def _load(self):
-            self.array = numpy.empty(len(self.sizearray) + 1, dtype=numpy.int64)
-            self.array[0] = 0
-            self.sizearray.cumsum(out=self.array[1:])
-
-    class LazyBeginArray(LazyArray):
-        def __init__(self, offsetarray):
-            self.offsetarray = offsetarray
-            self.array = None
-
-        def _load(self):
-            self.array = self.offsetarray[:-1]
-
-    class LazyEndArray(LazyArray):
-        def __init__(self, offsetarray):
-            self.offsetarray = offsetarray
-            self.array = None
-
-        def _load(self):
-            self.array = self.offsetarray[1:]
 
     # interpret negative indexes as starting at the end of the dataset
     def _normalize(self, i, clip, step):
@@ -526,8 +479,8 @@ total time spent compiling: {0:.3f} sec
                         # special case: the top array
                         array = numpy.array([0, tree.GetEntries()], dtype=numpy.int64)
                     else:
-                        # create a LazyArray for this ROOT branch; maybe it will be read from ROOT, maybe not
-                        array = self.LazyArray(tree, branchname)
+                        # create a ROOTLazyArray for this ROOT branch; maybe it will be read from ROOT, maybe not
+                        array = self.ROOTLazyArray(tree, branchname)
 
                     lazyarrays[column] = array
 
@@ -590,7 +543,7 @@ class ROOTDatasetFromTree(ROOTDataset):
                     # special case: the top array
                     array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
                 elif lazy:
-                    array = self.LazyArray(self.tree, branchname)
+                    array = self.ROOTLazyArray(self.tree, branchname)
                 else:
                     array = self.branch2array(self.tree, branchname)
                 out[column] = array
