@@ -32,163 +32,6 @@ from plur.util import *
 from plur.util.lazyarray import LazyArray
 import plur.compile.code
 
-def normalizename(name):
-    return normalizename.pattern.sub(lambda x: "_{0:02x}".format(ord(x.group(0))), name)
-
-normalizename.pattern = re.compile("[^a-zA-Z0-9]")   # no underscores because that's an escape character
-
-def branch2dtype(branch):
-    leaves = list(branch.GetListOfLeaves())
-    if len(leaves) != 1:
-        raise NotImplementedError("TBranch::GetListOfLeaves()->GetEntries() == {0}".format(len(leaves)))
-    leaf = leaves[0]
-
-    leaftype = leaf.GetTypeName()
-    if leaftype == "Bool_t":
-        return boolean.of
-    elif leaftype == "Char_t":
-        return int8.of
-    elif leaftype == "Short_t":
-        return int16.of
-    elif leaftype == "Int_t":
-        return int32.of
-    elif leaftype == "Long_t" or leaftype == "Long64_t":
-        return int64.of
-    elif leaftype == "Float_t" or leaftype == "Double32_t":
-        return float32.of
-    elif leaftype == "Double_t":
-        return float64.of
-    elif leaftype == "UChar_t":
-        return uint8.of
-    elif leaftype == "UShort_t":
-        return uint16.of
-    elif leaftype == "UInt_t":
-        return uint32.of
-    elif leaftype == "ULong_t" or leaftype == "ULong64_t":
-        return uint64.of
-    else:
-        raise NotImplementedError("TLeaf::GetTypeName() == \"{0}\"".format(leaftype))
-
-def tree2type(tree, prefix=None, delimiter="-"):
-    if prefix is None:
-        prefix = normalizename(tree.GetName())
-
-    column2branch = {}
-    column2dtype = {}
-
-    def recurse(name, branch):
-        if len(branch.GetListOfBranches()) == 0:
-            try:
-                dtype = branch2dtype(branch)
-
-                out = withrepr(Primitive(dtype), copy=True)
-                out.column = name.str()
-                out.branchname = branch.GetName()
-                out.dtype = out.of
-
-                column2branch[out.column] = out.branchname
-                column2dtype[out.column] = out.dtype
-
-                return out
-
-            except NotImplementedError:
-                return None
-
-        def getfields(name):
-            fields = {}
-            for b in branch.GetListOfBranches():
-                n = b.GetName()
-                if "." in n:
-                    n = n[n.rindex(".") + 1:]
-                n = normalizename(n)
-                if n not in fields:
-                    tpe = recurse(name.toRecord(n), b)
-                    if tpe is not None:
-                        fields[n] = tpe
-            return fields
-
-        className = branch.GetClassName()
-
-        if className == "TClonesArray":
-            assert len(branch.GetListOfLeaves()) == 1   # is this always true?
-
-            fields = getfields(name.toListData())
-            if len(fields) == 0:
-                return None
-
-            out = List(Record(**fields))
-            out.of.column = None
-            out.of.branchname = None
-            out.of.dtype = None
-
-            out.column = name.toListBegin().str()
-            out.column2 = name.toListEnd().str()
-            out.branchname = branch.GetName()
-            out.dtype = branch2dtype(branch)
-
-            column2branch[name.toListSize().str()] = out.branchname
-            column2dtype[name.toListSize().str()] = out.dtype
-
-            return out
-
-        else:
-            fields = getfields(name)
-            if len(fields) == 0:
-                return None
-
-            out = Record(**fields)
-            out.column = None
-            out.branchname = None
-            out.dtype = None
-            return out
-
-    name = ArrayName(prefix, delimiter=delimiter)
-    fields = {}
-    for b in tree.GetListOfBranches():
-        tpe = recurse(name.toListData().toRecord(normalizename(b.GetName())), b)
-        if tpe is not None:
-            fields[b.GetName()] = tpe
-
-    if len(fields) == 0:
-        raise NotImplementedError("none of the branches in this ROOT TTree could be converted into PLUR types")
-
-    tpe = List(Record(**fields))
-    tpe.of.column = None
-    tpe.of.branchname = None
-    tpe.of.dtype = None
-    tpe.column = name.toListBegin().str()
-    tpe.column2 = name.toListEnd().str()
-    tpe.branchname = None
-    tpe.dtype = int64.of
-
-    column2branch[name.toListOffset().str()] = tpe.branchname
-    column2dtype[name.toListOffset().str()] = tpe.dtype
-
-    return tpe, prefix, column2branch, column2dtype
-
-def branch2array(tree, branchname):
-    branch = tree.GetBranch(branchname)
-
-    # infer the Numpy dtype from the TLeaf type, but it starts as big-endian
-    dtype = branch2dtype(branch).newbyteorder(">")
-
-    # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
-    size = branch.GetTotalSize()
-
-    # allocate some memory
-    array = numpy.empty(size, dtype=dtype)
-
-    # fill it
-    entries, bytes = branch.FillNumpyArray(array)
-
-    # if you need to cast, you need to copy the array; otherwise, byte-swap in place
-    array = array.byteswap(True).view(array.dtype.newbyteorder("="))
-
-    # clip it to the actual length, which we know exactly after filling
-    array = array[: (bytes // array.dtype.itemsize)]
-
-    return array
-
 class ROOTDataset(object):
     @staticmethod
     def fromtree(tree, **options):
@@ -204,6 +47,165 @@ class ROOTDataset(object):
 
     def __init__(self):
         raise TypeError("use ROOTDataset.fromtree, ROOTDataset.fromchain, or ROOTDataset.fromfiles to create a ROOTDataset")
+
+    @staticmethod
+    def branch2dtype(branch):
+        leaves = list(branch.GetListOfLeaves())
+        if len(leaves) != 1:
+            raise NotImplementedError("TBranch::GetListOfLeaves()->GetEntries() == {0}".format(len(leaves)))
+        leaf = leaves[0]
+
+        leaftype = leaf.GetTypeName()
+        if leaftype == "Bool_t":
+            return boolean.of
+        elif leaftype == "Char_t":
+            return int8.of
+        elif leaftype == "Short_t":
+            return int16.of
+        elif leaftype == "Int_t":
+            return int32.of
+        elif leaftype == "Long_t" or leaftype == "Long64_t":
+            return int64.of
+        elif leaftype == "Float_t" or leaftype == "Double32_t":
+            return float32.of
+        elif leaftype == "Double_t":
+            return float64.of
+        elif leaftype == "UChar_t":
+            return uint8.of
+        elif leaftype == "UShort_t":
+            return uint16.of
+        elif leaftype == "UInt_t":
+            return uint32.of
+        elif leaftype == "ULong_t" or leaftype == "ULong64_t":
+            return uint64.of
+        else:
+            raise NotImplementedError("TLeaf::GetTypeName() == \"{0}\"".format(leaftype))
+
+    def normalizename(self, name):
+        return ROOTDataset.normalizename.pattern.sub(lambda x: "_{0:02x}".format(ord(x.group(0))), name)
+
+    normalizename.pattern = re.compile("[^a-zA-Z0-9]")   # no underscores because that's an escape character
+
+    def tree2type(self, tree, prefix=None, delimiter="-"):
+        if prefix is None:
+            prefix = self.normalizename(tree.GetName())
+
+        column2branch = {}
+        column2dtype = {}
+
+        def recurse(name, branch):
+            if len(branch.GetListOfBranches()) == 0:
+                try:
+                    dtype = ROOTDataset.branch2dtype(branch)
+
+                    out = withrepr(Primitive(dtype), copy=True)
+                    out.column = name.str()
+                    out.branchname = branch.GetName()
+                    out.dtype = out.of
+
+                    column2branch[out.column] = out.branchname
+                    column2dtype[out.column] = out.dtype
+
+                    return out
+
+                except NotImplementedError:
+                    return None
+
+            def getfields(name):
+                fields = {}
+                for b in branch.GetListOfBranches():
+                    n = b.GetName()
+                    if "." in n:
+                        n = n[n.rindex(".") + 1:]
+                    n = self.normalizename(n)
+                    if n not in fields:
+                        tpe = recurse(name.toRecord(n), b)
+                        if tpe is not None:
+                            fields[n] = tpe
+                return fields
+
+            className = branch.GetClassName()
+
+            if className == "TClonesArray":
+                assert len(branch.GetListOfLeaves()) == 1   # is this always true?
+
+                fields = getfields(name.toListData())
+                if len(fields) == 0:
+                    return None
+
+                out = List(Record(**fields))
+                out.of.column = None
+                out.of.branchname = None
+                out.of.dtype = None
+
+                out.column = name.toListBegin().str()
+                out.column2 = name.toListEnd().str()
+                out.branchname = branch.GetName()
+                out.dtype = ROOTDataset.branch2dtype(branch)
+
+                column2branch[name.toListSize().str()] = out.branchname
+                column2dtype[name.toListSize().str()] = out.dtype
+
+                return out
+
+            else:
+                fields = getfields(name)
+                if len(fields) == 0:
+                    return None
+
+                out = Record(**fields)
+                out.column = None
+                out.branchname = None
+                out.dtype = None
+                return out
+
+        name = ArrayName(prefix, delimiter=delimiter)
+        fields = {}
+        for b in tree.GetListOfBranches():
+            tpe = recurse(name.toListData().toRecord(self.normalizename(b.GetName())), b)
+            if tpe is not None:
+                fields[b.GetName()] = tpe
+
+        if len(fields) == 0:
+            raise NotImplementedError("none of the branches in this ROOT TTree could be converted into PLUR types")
+
+        tpe = List(Record(**fields))
+        tpe.of.column = None
+        tpe.of.branchname = None
+        tpe.of.dtype = None
+        tpe.column = name.toListBegin().str()
+        tpe.column2 = name.toListEnd().str()
+        tpe.branchname = None
+        tpe.dtype = int64.of
+
+        column2branch[name.toListOffset().str()] = tpe.branchname
+        column2dtype[name.toListOffset().str()] = tpe.dtype
+
+        return tpe, prefix, column2branch, column2dtype
+
+    @staticmethod
+    def branch2array(tree, branchname):
+        branch = tree.GetBranch(branchname)
+
+        # infer the Numpy dtype from the TLeaf type, but it starts as big-endian
+        dtype = ROOTDataset.branch2dtype(branch).newbyteorder(">")
+
+        # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
+        size = branch.GetTotalSize()
+
+        # allocate some memory
+        array = numpy.empty(size, dtype=dtype)
+
+        # fill it
+        entries, bytes = branch.FillNumpyArray(array)
+
+        # if you need to cast, you need to copy the array; otherwise, byte-swap in place
+        array = array.byteswap(True).view(array.dtype.newbyteorder("="))
+
+        # clip it to the actual length, which we know exactly after filling
+        array = array[: (bytes // array.dtype.itemsize)]
+
+        return array
 
     def compile(self, fcn, paramtypes={}, environment={}, numba=None, debug=False):
         # compile and also identify the subset of columns that are actually used in the code
@@ -316,7 +318,7 @@ class ROOTDataset(object):
                             sizecolumn = ArrayName(arrayname.prefix, arrayname.path[:-1] + (ArrayName.LIST_SIZE,), arrayname.delimiter).str()
 
                             # which we actually load
-                            sizearray = branch2array(self.tree, self._column2branch[sizecolumn])
+                            sizearray = ROOTDataset.branch2array(self.tree, self._column2branch[sizecolumn])
 
                             # calculate the offset array from it
                             offsetarrays[offsetname] = numpy.empty(len(sizearray) + 1, dtype=numpy.int64)
@@ -330,7 +332,7 @@ class ROOTDataset(object):
 
                     # the usual case: just load the array
                     else:
-                        array = branch2array(self.tree, self._column2branch[column])
+                        array = ROOTDataset.branch2array(self.tree, self._column2branch[column])
                         
                     # put it into the cache for next time
                     if self.cache is not None:
@@ -407,7 +409,7 @@ total time spent compiling: {0:.3f} sec
             self.branchname = branchname
 
         def _load(self):
-            self.array = branch2array(self.tree, self.branchname)
+            self.array = ROOTDataset.branch2array(self.tree, self.branchname)
 
     # interpret negative indexes as starting at the end of the dataset
     def _normalize(self, i, clip, step):
@@ -502,7 +504,7 @@ class ROOTDatasetFromTree(ROOTDataset):
         self._rewind()
         self._next(True)
 
-        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
+        self.type, self.prefix, self._column2branch, self._column2dtype = self.tree2type(self.tree, prefix)
         self._startpartition = startpartition
 
         if hasattr(cache, "newuser"):
@@ -554,7 +556,7 @@ class ROOTDatasetFromTree(ROOTDataset):
                 elif lazy:
                     array = self.ROOTLazyArray(self.tree, branchname)
                 else:
-                    array = self.branch2array(self.tree, branchname)
+                    array = ROOTDataset.branch2array(self.tree, branchname)
                 out[column] = array
 
         return out
@@ -570,7 +572,7 @@ class ROOTDatasetFromChain(ROOTDataset):
             raise IOError("empty TChain")
         self._next(True)
 
-        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
+        self.type, self.prefix, self._column2branch, self._column2dtype = self.tree2type(self.tree, prefix)
         self._startpartition = startpartition
 
         if hasattr(cache, "newuser"):
@@ -642,7 +644,7 @@ class ROOTDatasetFromFiles(ROOTDataset):
             raise IOError("empty file list")
         self._next(True)
 
-        self.type, self.prefix, self._column2branch, self._column2dtype = tree2type(self.tree, prefix)
+        self.type, self.prefix, self._column2branch, self._column2dtype = self.tree2type(self.tree, prefix)
         self._startpartition = startpartition
 
         if hasattr(cache, "newuser"):
