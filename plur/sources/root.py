@@ -120,12 +120,13 @@ def tree2type(tree, prefix=None, delimiter="-"):
             out.of.branchname = None
             out.of.dtype = None
 
-            out.column = name.toListSize().str()
+            out.column = name.toListBegin().str()
+            out.column2 = name.toListEnd().str()
             out.branchname = branch.GetName()
             out.dtype = branch2dtype(branch)
 
-            column2branch[out.column] = out.branchname
-            column2dtype[out.column] = out.dtype
+            column2branch[name.toListSize().str()] = out.branchname
+            column2dtype[name.toListSize().str()] = out.dtype
 
             return out
 
@@ -154,56 +155,17 @@ def tree2type(tree, prefix=None, delimiter="-"):
     tpe.of.column = None
     tpe.of.branchname = None
     tpe.of.dtype = None
-    tpe.column = name.toListOffset().str()
+    tpe.column = name.toListBegin().str()
+    tpe.column2 = name.toListEnd().str()
     tpe.branchname = None
     tpe.dtype = int64.of
 
-    column2branch[tpe.column] = tpe.branchname
-    column2dtype[tpe.column] = tpe.dtype
+    column2branch[name.toListOffset().str()] = tpe.branchname
+    column2dtype[name.toListOffset().str()] = tpe.dtype
 
     return tpe, prefix, column2branch, column2dtype
 
-# def branch2array(tree, branchname, count2offset=False, castdtype=None):
-#     branch = tree.GetBranch(branchname)
-
-#     # infer the Numpy dtype from the TLeaf type, but it starts as big-endian
-#     dtype = branch2dtype(branch).newbyteorder(">")
-
-#     # this is a (slight) overestimate of the size (due to ROOT headers per cluster)
-#     if count2offset:
-#         size = branch.GetTotalSize() + 1
-#     else:
-#         size = branch.GetTotalSize()
-
-#     # allocate some memory
-#     array = numpy.empty(size, dtype=dtype)
-
-#     # fill it
-#     if count2offset:
-#         array[0] = 0
-#         entries, bytes = branch.FillNumpyArray(array[1:])
-#     else:
-#         entries, bytes = branch.FillNumpyArray(array)
-
-#     # if you need to cast, you need to copy the array; otherwise, byte-swap in place
-#     if castdtype is not None:
-#         array = numpy.cast[castdtype](array)
-#     else:
-#         array = array.byteswap(True).view(array.dtype.newbyteorder("="))
-
-#     # clip it to the actual length, which we know exactly after filling
-#     if count2offset:
-#         array = array[: (bytes // array.dtype.itemsize) + 1]
-#     else:
-#         array = array[: (bytes // array.dtype.itemsize)]
-
-#     # if this is to be an offset array, compute the cumulative sum of counts
-#     if count2offset:
-#         numpy.cumsum(array[1:], out=array[1:])
-
-#     return array
-
-def branch2array(tree, branchname, count2offset=False, castdtype=None):
+def branch2array(tree, branchname):
     branch = tree.GetBranch(branchname)
 
     # infer the Numpy dtype from the TLeaf type, but it starts as big-endian
@@ -267,14 +229,22 @@ class ROOTDataset(object):
             longestline = 0
 
         # make the "top array" manually (there is no ROOT equivalent)
-        toparrayname = ArrayName(self.prefix).toListOffset()
-        toparray = numpy.array([0, 0], dtype=numpy.int64)
+        topbeginname = ArrayName(self.prefix).toListBegin()
+        topendname = ArrayName(self.prefix).toListEnd()
+        topbegin = numpy.array([0], dtype=numpy.int64)
+        topend = numpy.array([0], dtype=numpy.int64)
 
         # create empty arguments for a first evaluation of the function (to force compilation)
         fcnargs = []
         for column, arrayname in zip(columns, arraynames):
-            if arrayname == toparrayname:
-                array = toparray
+            if arrayname == topbeginname:
+                array = topbegin
+            elif arrayname == topendname:
+                array = topend
+            elif len(arrayname.path) > 0 and arrayname.path[-1] == (ArrayName.LIST_BEGIN,):
+                array = numpy.array([], dtype=numpy.int64)
+            elif len(arrayname.path) > 0 and arrayname.path[-1] == (ArrayName.LIST_END,):
+                array = numpy.array([], dtype=numpy.int64)
             else:
                 array = numpy.array([], dtype=self._column2dtype[column])
             fcnargs.append(array)
@@ -307,6 +277,7 @@ class ROOTDataset(object):
             fcnargs = []
             nbytes = 0
             cachetotouch = []
+            offsetarrays = {}
             for column, arrayname in zip(columns, arraynames):
                 array = None
 
@@ -319,20 +290,47 @@ class ROOTDataset(object):
                         array = self.cache[cachename]
 
                         # special case: the top array
-                        if arrayname == toparrayname:
-                            toparray = array
+                        if arrayname == topbeginname:
+                            topbegin = array
+                        elif arrayname == topendname:
+                            topend = array
 
                 # if we couldn't get the array from cache, get it from ROOT
                 if array is None:
-                    if arrayname == toparrayname:
-                        toparray[1] = self.tree.GetEntries()
-                        array = toparray
-                    else:
-                        # actually read the ROOT file, converting to offsets if this column is a counter
-                        count2offset = len(arrayname.path) > 0 and arrayname.path[-1] == (ArrayName.LIST_OFFSET,)
-                        castdtype = numpy.dtype(numpy.int64) if count2offset else None
-                        array = branch2array(self.tree, self._column2branch[column], count2offset=count2offset, castdtype=castdtype)
+                    # special case: top array
+                    if arrayname == topbeginname:
+                        array = topbegin
+                    elif arrayname == topendname:
+                        topend[0] = self.tree.GetEntries()
+                        array = topend
 
+                    # if we want -Lb or -Le (begin or end)
+                    elif len(arrayname.path) > 0 and (arrayname.path[-1] == (ArrayName.LIST_BEGIN,) or arrayname.path[-1] == (ArrayName.LIST_END,)):
+                        # we get it from the corresponding -Lo (offset)
+                        offsetname = ArrayName(arrayname.prefix, arrayname.path[:-1] + (ArrayName.LIST_OFFSET,), arrayname.delimiter)
+
+                        # but if we don't have that yet
+                        if offsetname not in offsetarrays:
+                            # we get it from the corresponding -Ls (size)
+                            sizecolumn = ArrayName(arrayname.prefix, arrayname.path[:-1] + (ArrayName.LIST_SIZE,), arrayname.delimiter).str()
+
+                            # which we actually load
+                            sizearray = branch2array(self.tree, self._column2branch[sizecolumn])
+
+                            # calculate the offset array from it
+                            offsetarrays[offsetname] = numpy.empty(len(sizearray) + 1, dtype=numpy.int64)
+                            offsetarrays[offsetname][0] = 0
+                            sizearray.cumsum(out=offsetarrays[offsetname][1:])
+
+                        if arrayname.path[-1] == (ArrayName.LIST_BEGIN,):
+                            array = offsetarrays[offsetname][:-1]
+                        else:
+                            array = offsetarrays[offsetname][1:]
+
+                    # the usual case: just load the array
+                    else:
+                        array = branch2array(self.tree, self._column2branch[column])
+                        
                     # put it into the cache for next time
                     if self.cache is not None:
                         self.cache[cachename] = array
@@ -343,7 +341,7 @@ class ROOTDataset(object):
             # other arguments, not input arrays
             fcnargs.extend(otherargs)
 
-            nentries = toparray[1]
+            nentries = topend[0]
             totalentries += nentries
             totalbytes += nbytes
 
@@ -368,7 +366,7 @@ class ROOTDataset(object):
                 line = "{0:3d}% done; reading: {1:.3f} MB/s, computing: {2:.3f} MHz ({3})".format(
                     int(round(self._percent())),
                     nbytes/(stopwatch5 - stopwatch4)/1024**2,
-                    toparray[1]/(stopwatch6 - stopwatch5)/1e6,
+                    nentries/(stopwatch6 - stopwatch5)/1e6,
                     "..." + self._identity()[-26:] if len(self._identity()) > 29 else self._identity())
                 print(line)
                 longestline = max(longestline, len(line))
@@ -403,15 +401,13 @@ total time spent compiling: {0:.3f} sec
 
     # for random access: only load arrays from ROOT on demand (not cache)
     class LazyArray(object):
-        def __init__(self, tree, branchname, count2offset, castdtype):
+        def __init__(self, tree, branchname):
             self.tree = tree
             self.branchname = branchname
-            self.count2offset = count2offset
-            self.castdtype = castdtype
             self.array = None
 
         def _load(self):
-            self.array = branch2array(self.tree, self.branchname, self.count2offset, self.castdtype)
+            self.array = branch2array(self.tree, self.branchname)
             
         def __getitem__(self, i):
             if self.array is None: self._load()
@@ -531,9 +527,7 @@ total time spent compiling: {0:.3f} sec
                         array = numpy.array([0, tree.GetEntries()], dtype=numpy.int64)
                     else:
                         # create a LazyArray for this ROOT branch; maybe it will be read from ROOT, maybe not
-                        count2offset = len(arrayname.path) > 0 and arrayname.path[-1] == (ArrayName.LIST_OFFSET,)
-                        castdtype = numpy.dtype(numpy.int64) if count2offset else None
-                        array = self.LazyArray(tree, branchname, count2offset=count2offset, castdtype=castdtype)
+                        array = self.LazyArray(tree, branchname)
 
                     lazyarrays[column] = array
 
@@ -592,16 +586,13 @@ class ROOTDatasetFromTree(ROOTDataset):
         for column, branchname in self._column2branch.items():
             arrayname = ArrayName.parse(column, self.prefix)
             if columns(column) and arraynames(arrayname) and branchnames(branchname):
-                count2offset = len(arrayname.path) > 0 and arrayname.path[-1] == (ArrayName.LIST_OFFSET,)
-                castdtype = numpy.dtype(numpy.int64) if count2offset else None
-
                 if arrayname == ArrayName(self.prefix).toListOffset():
                     # special case: the top array
                     array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
                 elif lazy:
-                    array = self.LazyArray(self.tree, branchname, count2offset=count2offset, castdtype=castdtype)
+                    array = self.LazyArray(self.tree, branchname)
                 else:
-                    array = self.branch2array(self.tree, branchname, count2offset=count2offset, castdtype=castdtype)
+                    array = self.branch2array(self.tree, branchname)
                 out[column] = array
 
         return out
