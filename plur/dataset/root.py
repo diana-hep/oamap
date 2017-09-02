@@ -494,7 +494,8 @@ total time spent compiling: {0:.3f} sec
             return self._plur[entry - start]
 
     def dtypes(self, columns=lambda n: True, arraynames=lambda n: True, branchnames=lambda n: True):
-        for column, branchname in self._column2branch.items():
+        for column in sorted(self._column2branch):
+            branchname = self._column2branch[column]
             arrayname = ArrayName.parse(column, self.prefix)
             if columns(column) and arraynames(arrayname) and branchnames(branchname):
                 yield column, branchname, self._column2dtype[column]
@@ -552,7 +553,8 @@ class ROOTDatasetFromTree(ROOTDataset):
         return self.tree.GetEntries()
 
     def arrays(self, columns=lambda n: True, arraynames=lambda n: True, branchnames=lambda n: True, lazy=False):
-        for column, branchname in self._column2branch.items():
+        for column in sorted(self._column2branch):
+            branchname = self._column2branch[column]
             arrayname = ArrayName.parse(column, self.prefix)
             if columns(column) and arraynames(arrayname) and branchnames(branchname):
                 if arrayname == ArrayName(self.prefix).toListBegin():
