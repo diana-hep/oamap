@@ -41,7 +41,7 @@ class DiskCache(object):
             tmpfilename = os.path.join(self.user, "tmp")
             try:
                 dtype = self.parent.linkfile(name, tmpfilename)
-                array = numpy.fromfile(open(tmpfilename, "rb"), dtype=dtype)
+                return numpy.fromfile(open(tmpfilename, "rb"), dtype=dtype)
             finally:
                 # always deleting our extra link when done (or failed)
                 if os.path.exists(tmpfilename):
@@ -77,6 +77,8 @@ class DiskCache(object):
     def overwrite(directory, limitbytes, maxperdir=1000, delimiter="."):
         if os.path.exists(directory):
             shutil.rmtree(directory)
+        if not os.path.exists(os.path.split(directory)[0]):
+            raise OSError("cannot create \"{0}\" because \"{1}\" does not exist".format(directory, os.path.split(directory)[0]))
         os.mkdir(directory)
         os.mkdir(os.path.join(directory, DiskCache.CONFIG_DIR))
 
@@ -87,6 +89,9 @@ class DiskCache(object):
     @staticmethod
     def adopt(directory, limitbytes, maxperdir=1000, delimiter="."):
         if not os.path.exists(directory):
+            if not os.path.exists(os.path.split(directory)[0]):
+                a, b = os.path.split(directory)
+                raise OSError("cannot create {0} because {1} does not exist".format(b, a))
             os.mkdir(directory)
             os.mkdir(os.path.join(directory, DiskCache.CONFIG_DIR))
 
@@ -161,15 +166,13 @@ class DiskCache(object):
             else:
                 name = item[item.index(self.delimiter) + 1:item.rindex(self.delimiter)]
                 if name.startswith(prefix):
+                    self.numbytes -= os.path.getsize(fullpath)
                     del self.lookup[name]
                     os.remove(fullpath)
-
+                    
         for item in os.listdir(self.directory):
             if item != DiskCache.CONFIG_DIR and DiskCache.USER_DIR.match(item) is None:
                 recurse(self.directory, item)
-
-        if os.path.exists(os.path.join(self.directory, DiskCache.CONFIG_DIR, prefix)):
-            os.remove(os.path.join(self.directory, DiskCache.CONFIG_DIR, prefix))
 
     def newuser(self, config):
         for prefix, mnemonic in config.items():
@@ -191,7 +194,7 @@ class DiskCache(object):
         if self.limitbytes is not None:
             bytestofree = self.numbytes + newbytes - self.limitbytes
             if bytestofree > 0:
-                self._evict(bytestofree, self.directory)
+                self._evict(bytestofree, self.directory, True)
 
         newfilename = self._newfilename(name, dtype)
         os.rename(oldfilename, os.path.join(self.directory, newfilename))
@@ -254,27 +257,30 @@ class DiskCache(object):
         os.link(os.path.join(self.directory, fromfilename), tofilename)
         return self.todtype(fromfilename[fromfilename.rindex(self.delimiter) + 1:])
 
-    def _evict(self, bytestofree, path):
+    def _evict(self, bytestofree, path, top):
         # eliminate in sort order
         items = os.listdir(path)
         items.sort()
 
         for fn in items:
-            subpath = os.path.join(path, fn)
+            if not top or (fn != DiskCache.CONFIG_DIR and not DiskCache.USER_DIR.match(fn)):
+                subpath = os.path.join(path, fn)
 
-            if os.path.isdir(subpath):
-                # descend down to the file level
-                bytestofree = self._evict(bytestofree, subpath)
-            else:
-                # delete each file
-                numbytes = os.path.getsize(subpath)
-                os.remove(subpath)
-                bytestofree -= numbytes
-                self.numbytes -= numbytes
+                if os.path.isdir(subpath):
+                    # descend down to the file level
+                    bytestofree = self._evict(bytestofree, subpath, False)
+                else:
+                    # delete each file
+                    name = fn[fn.index(self.delimiter) + 1:fn.rindex(self.delimiter)]
+                    del self.lookup[name]
+                    numbytes = os.path.getsize(subpath)
+                    os.remove(subpath)
+                    bytestofree -= numbytes
+                    self.numbytes -= numbytes
 
-            # until we're under budget
-            if bytestofree <= 0:
-                return 0
+                # until we're under budget
+                if bytestofree <= 0:
+                    return 0
 
         # clean up empty directories
         if len(os.listdir(path)) == 0:
@@ -295,7 +301,7 @@ class DiskCache(object):
             tmp = os.path.join(self.directory, "tmp")
             os.mkdir(tmp)
             for fn in os.listdir(self.directory):
-                if fn != "tmp" and fn != DiskCache.CONFIG_DIR and DiskCache.USER_DIR.match(fn) is None:
+                if fn != "tmp" and fn != DiskCache.CONFIG_DIR and DiskCache.USER_DIR.match(fn):
                     os.rename(os.path.join(self.directory, fn), os.path.join(tmp, fn))
 
             prefix = self._formatter.format(0)
