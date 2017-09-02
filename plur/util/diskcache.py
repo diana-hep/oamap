@@ -41,7 +41,10 @@ class DiskCache(object):
             tmpfilename = os.path.join(self.user, "tmp")
             try:
                 dtype = self.parent.linkfile(name, tmpfilename)
-                return numpy.fromfile(open(tmpfilename, "rb"), dtype=dtype)
+                if self.parent.memmap:
+                    return numpy.memmap(tmpfilename, dtype, "c")
+                else:
+                    return numpy.fromfile(open(tmpfilename, "rb"), dtype=dtype)
             finally:
                 # always deleting our extra link when done (or failed)
                 if os.path.exists(tmpfilename):
@@ -59,11 +62,12 @@ class DiskCache(object):
     def __init__(self, *args, **kwds):
         raise TypeError("use DiskCache.overwrite or DiskCache.adopt to create a DiskCache")
         
-    def _init(self, directory, limitbytes, maxperdir=1000, delimiter="."):
+    def _init(self, directory, limitbytes, maxperdir, delimiter, memmap):
         self.directory = directory
         self.limitbytes = limitbytes
         self.maxperdir = maxperdir
         self.delimiter = delimiter
+        self.memmap = memmap
         self._formatter = "{0:0" + str(int(math.ceil(math.log(maxperdir, 10)))) + "d}"
 
         self.lookup = {}
@@ -74,7 +78,7 @@ class DiskCache(object):
         self.users = 0
         
     @staticmethod
-    def overwrite(directory, limitbytes, maxperdir=1000, delimiter="."):
+    def overwrite(directory, limitbytes, maxperdir=1000, delimiter=".", memmap=True):
         if os.path.exists(directory):
             shutil.rmtree(directory)
         if not os.path.exists(os.path.split(directory)[0]):
@@ -83,11 +87,11 @@ class DiskCache(object):
         os.mkdir(os.path.join(directory, DiskCache.CONFIG_DIR))
 
         out = DiskCache.__new__(DiskCache)
-        out._init(directory, limitbytes, maxperdir, delimiter)
+        out._init(directory, limitbytes, maxperdir, delimiter, memmap)
         return out
 
     @staticmethod
-    def adopt(directory, limitbytes, maxperdir=1000, delimiter="."):
+    def adopt(directory, limitbytes, maxperdir=1000, delimiter=".", memmap=True):
         if not os.path.exists(directory):
             if not os.path.exists(os.path.split(directory)[0]):
                 a, b = os.path.split(directory)
@@ -99,7 +103,7 @@ class DiskCache(object):
             raise IOError("path {0} is not a directory".format(directory))
 
         out = DiskCache.__new__(DiskCache)
-        out._init(directory, limitbytes, maxperdir, delimiter)
+        out._init(directory, limitbytes, maxperdir, delimiter, memmap)
         out.depth = None
         out.number = None
 
