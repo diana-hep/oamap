@@ -24,7 +24,10 @@ def __recurse(tpe, depth, comma, help):
 
     # L
     elif tpe.__class__ == List:
-        return [(depth, "List(", tpe)] + __recurse(tpe.of, depth + 1, "", help) + [(depth + 1, ")" + comma, tpe)]
+        inner = __recurse(tpe.of, depth + 1, "", help)
+        if help and hasattr(tpe.of, "help"):
+            inner[0] = (inner[0][0], inner[0][1] + " # " + tpe.of.help, inner[0][2])
+        return [(depth, "List(", tpe)] + inner + [(depth + 1, ")" + comma, tpe)]
 
     # U
     elif tpe.__class__ == Union:

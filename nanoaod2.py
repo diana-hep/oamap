@@ -11,7 +11,7 @@ from plur.types.arrayname import ArrayName
 from plur.python import fromarrays
 
 # file = ROOT.TFile("/home/pivarski/data/nano-2017-09-01.root")
-file = ROOT.TFile("../compression-tests2/nano-RelValTTbar-2017-09-04-uncompressed.root")
+file = ROOT.TFile("../compression-tests2/nano-TTLHE-2017-09-04-uncompressed.root")
 tree = file.Get("Events")
 
 leaves = list(tree.GetListOfLeaves())
@@ -109,23 +109,30 @@ def toplurtype(pack, name, allowcounters):
                 if n.startswith("n"):
                     n = n[1:]
 
-                subfields = {}
-                for item, data in pairs:
-                    if len(bycounter) == 1:
-                        subname = name.toListData().toRecord(item)
-                    else:
-                        subname = name.toRecord(n).toListData().toRecord(item)
+                if len(pairs) == 1:
+                    item, data = pairs[0]
+                    fields[n] = List(toplurtype(data, name.toRecord(n).toListData(), False))
+                    fields[n].column = name.toRecord(n).toListOffset().str()
+                    fields[n].branchname = data.GetLeafCount().GetBranch().GetName()
 
-                    subfields[item] = toplurtype(data, subname, False)
-                    counterbranch = data.GetLeafCount().GetBranch()
-                
-                fields[n] = List(Record(**subfields))
-                fields[n].of.column = None
-                fields[n].of.branchname = None
-                fields[n].column = name.toListOffset().str()
-                fields[n].branchname = counterbranch.GetName()
+                else:
+                    subfields = {}
+                    for item, data in pairs:
+                        if len(bycounter) == 1:
+                            subname = name.toListData().toRecord(item)
+                        else:
+                            subname = name.toRecord(n).toListData().toRecord(item)
 
-        if len(fields) == 1:
+                        subfields[item] = toplurtype(data, subname, False)
+                        counterbranch = data.GetLeafCount().GetBranch()
+
+                    fields[n] = List(Record(**subfields))
+                    fields[n].of.column = None
+                    fields[n].of.branchname = None
+                    fields[n].column = name.toListOffset().str()
+                    fields[n].branchname = counterbranch.GetName()
+
+        if len(fields) == 1 and len(name.path) > 0 and name.path[-1][0] == ArrayName.RECORD_FIELD and list(fields.keys())[0] == name.path[-1][1]:
             return list(fields.values())[0]
         else:
             out = Record(**fields)
@@ -193,6 +200,10 @@ class LazyArray(object):
         if self.array is None: self._getarray()
         return len(self.array)
 
+    def cumsum(self, out=None):
+        if self.array is None: self._getarray()
+        return self.array.cumsum(out=out)
+
     @property
     def shape(self):
         if self.array is None: self._getarray()
@@ -237,5 +248,7 @@ for event in events:
     for electron in event.Electron:
         print "electron", electron.pt, electron.eta, electron.phi
 
-    print "trigger", event.Flag.toJsonString()
+    print "LHE", event.LHE.toJsonString()
+    print "LHEPdfWeight", event.LHEPdfWeight.toJsonString()
+    print "LHEScaleWeight", event.LHEScaleWeight.toJsonString()
     print
