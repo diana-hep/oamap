@@ -11,7 +11,7 @@ from plur.types.arrayname import ArrayName
 from plur.python import fromarrays
 
 # file = ROOT.TFile("/home/pivarski/data/nano-2017-09-01.root")
-file = ROOT.TFile("../compression-tests/nano-RelValTTbar-2017-09-01-uncompressed.root")
+file = ROOT.TFile("../compression-tests2/nano-RelValTTbar-2017-09-04-uncompressed.root")
 tree = file.Get("Events")
 
 leaves = list(tree.GetListOfLeaves())
@@ -26,6 +26,7 @@ for leaf in leaves:
         else:
             del leaves[index]
 
+seen = []
 packages = {}
 for leaf in leaves:
     if len(leaf.GetBranch().GetListOfLeaves()) != 1:
@@ -34,6 +35,13 @@ for leaf in leaves:
     path = leaf.GetName().split("_")
     if path[0] == "HLT":
         path = [path[0]] + ["_".join(path[1:])]
+
+    for x in seen:
+        for i in range(len(path)):
+            if x == path[:i + 1]:
+                path = path[:i] + ["_".join(path[i:])]
+                break
+    seen.append(path)
 
     pack = packages
     for item in path[:-1]:
@@ -150,6 +158,7 @@ def branch2array(branch, tpe, count2offset=False):
 
     # fill it
     entries, bytes = branch.FillNumpyArray(array)
+    branch.DropBaskets()
 
     # clip it to the actual length, which we know exactly after filling
     array = array[: (bytes // array.dtype.itemsize)]
@@ -210,8 +219,8 @@ def tree2arrays(tree, tpe):
 
     return out
 
-# print("")
-# print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
+print("")
+print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
 
 print("")
 print(len(tree.GetListOfLeaves()), len(tree2arrays(tree, plurtype)))
