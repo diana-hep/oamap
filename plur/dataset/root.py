@@ -198,6 +198,7 @@ class ROOTDataset(object):
 
         # fill it
         entries, bytes = branch.FillNumpyArray(array)
+        branch.DropBaskets()
 
         # if you need to cast, you need to copy the array; otherwise, byte-swap in place
         array = array.byteswap(True).view(array.dtype.newbyteorder("="))
@@ -269,9 +270,9 @@ class ROOTDataset(object):
             if debug:
                 stopwatch3 = time.time()
 
-            # step to the next partition and actually open ROOT files *only if* some needed column can't be found in the cache
-            partition = self._partition()
-            self._next(self.cache is None or any("{0}.{1}".format(column, partition) not in self.cache for column, arrayname in zip(columns, arraynames)))
+            # step to the next filenumber and actually open ROOT files *only if* some needed column can't be found in the cache
+            filenumber = self._filenumber()
+            self._next(self.cache is None or any("{0}.{1}".format(column, filenumber) not in self.cache for column, arrayname in zip(columns, arraynames)))
 
             if debug:
                 stopwatch4 = time.time()
@@ -286,7 +287,7 @@ class ROOTDataset(object):
 
                 # first check the cache for the column
                 if self.cache is not None:
-                    cachename = "{0}.{1}".format(column, partition)
+                    cachename = "{0}.{1}".format(column, filenumber)
 
                     if cachename in self.cache:
                         cachetotouch.append(cachename)
@@ -500,10 +501,37 @@ total time spent compiling: {0:.3f} sec
             if columns(column) and arraynames(arrayname) and branchnames(branchname):
                 yield column, branchname, self._column2dtype[column]
 
+    def arrayiterator(self, filenumbers=lambda n: True, columns=lambda n: True, arraynames=lambda n: True, branchnames=lambda n: True, lazy=False):
+        self._rewind()
+        while self._hasnext():
+            filenumber = self._filenumber()
+            self._next(True)
+
+            for column in sorted(self._column2branch):
+                branchname = self._column2branch[column]
+                arrayname = ArrayName.parse(column, self.prefix)
+                if columns(column) and arraynames(arrayname) and branchnames(branchname):
+                    if arrayname == ArrayName(self.prefix).toListBegin():
+                        array = numpy.array([0], dtype=numpy.int64)
+
+                    elif arrayname == ArrayName(self.prefix).toListEnd():
+                        array = numpy.array([self.tree.GetEntries()], dtype=numpy.int64)
+
+                    elif arrayname == ArrayName(self.prefix).toListOffset():
+                        array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
+
+                    elif lazy:
+                        array = self.ROOTLazyArray(self.tree, branchname)
+
+                    else:
+                        array = ROOTDataset.branch2array(self.tree, branchname)
+
+                    yield filenumber, column, array
+
 ##################################################################### ROOTDataset given a single TTree
 
 class ROOTDatasetFromTree(ROOTDataset):
-    def __init__(self, tree, prefix=None, cache=None, startpartition=0):
+    def __init__(self, tree, prefix=None, cache=None, startfilenumber=0):
         self.tree = tree
         if not self.tree:
             raise IOError("tree not valid")
@@ -512,20 +540,20 @@ class ROOTDatasetFromTree(ROOTDataset):
         self._next(True)
 
         self.type, self.prefix, self._column2branch, self._column2dtype = self.tree2type(self.tree, prefix)
-        self._startpartition = startpartition
+        self._startfilenumber = startfilenumber
 
         if hasattr(cache, "newuser"):
-            self.cache = cache.newuser({"{0}.{1}".format(self.prefix, self._startpartition): {"file": tree.GetCurrentFile().GetName(), "tree": tree.GetName()}})
+            self.cache = cache.newuser({"{0}.{1}".format(self.prefix, self._startfilenumber): {"file": tree.GetCurrentFile().GetName(), "tree": tree.GetName()}})
         else:
             self.cache = cache
 
     @property
-    def startpartition(self):
-        return self._startpartition
+    def startfilenumber(self):
+        return self._startfilenumber
 
     @property
-    def stoppartition(self):
-        return self._startpartition + 1
+    def stopfilenumber(self):
+        return self._startfilenumber + 1
 
     def _rewind(self):
         self._dummyindex = 0
@@ -543,8 +571,8 @@ class ROOTDatasetFromTree(ROOTDataset):
     def _identity(self):
         return self.tree.GetName()
 
-    def _partition(self):
-        return self._startpartition + self._dummyindex
+    def _filenumber(self):
+        return self._startfilenumber + self._dummyindex
 
     def _findentry(self, entry):
         return self.tree, 0
@@ -552,32 +580,10 @@ class ROOTDatasetFromTree(ROOTDataset):
     def __len__(self):
         return self.tree.GetEntries()
 
-    def arrays(self, columns=lambda n: True, arraynames=lambda n: True, branchnames=lambda n: True, lazy=False):
-        for column in sorted(self._column2branch):
-            branchname = self._column2branch[column]
-            arrayname = ArrayName.parse(column, self.prefix)
-            if columns(column) and arraynames(arrayname) and branchnames(branchname):
-                if arrayname == ArrayName(self.prefix).toListBegin():
-                    array = numpy.array([0], dtype=numpy.int64)
-
-                elif arrayname == ArrayName(self.prefix).toListEnd():
-                    array = numpy.array([self.tree.GetEntries()], dtype=numpy.int64)
-
-                elif arrayname == ArrayName(self.prefix).toListOffset():
-                    array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
-
-                elif lazy:
-                    array = self.ROOTLazyArray(self.tree, branchname)
-
-                else:
-                    array = ROOTDataset.branch2array(self.tree, branchname)
-
-                yield column, branchname, array
-
 ##################################################################### ROOTDataset given a PyROOT TChain object
 
 class ROOTDatasetFromChain(ROOTDataset):
-    def __init__(self, chain, prefix=None, cache=None, startpartition=0):
+    def __init__(self, chain, prefix=None, cache=None, startfilenumber=0):
         self.chain = chain
 
         self._rewind()
@@ -586,20 +592,20 @@ class ROOTDatasetFromChain(ROOTDataset):
         self._next(True)
 
         self.type, self.prefix, self._column2branch, self._column2dtype = self.tree2type(self.tree, prefix)
-        self._startpartition = startpartition
+        self._startfilenumber = startfilenumber
 
         if hasattr(cache, "newuser"):
-            self.cache = cache.newuser(dict(("{0}.{1}".format(self.prefix, self._startpartition + i), {"file": x.GetTitle(), "tree": x.GetName()}) for i, x in enumerate(self.chain.GetListOfFiles())))
+            self.cache = cache.newuser(dict(("{0}.{1}".format(self.prefix, self._startfilenumber + i), {"file": x.GetTitle(), "tree": x.GetName()}) for i, x in enumerate(self.chain.GetListOfFiles())))
         else:
             self.cache = cache
 
     @property
-    def startpartition(self):
-        return self._startpartition
+    def startfilenumber(self):
+        return self._startfilenumber
 
     @property
-    def stoppartition(self):
-        return self._startpartition + self.cache.GetNtrees()
+    def stopfilenumber(self):
+        return self._startfilenumber + self.cache.GetNtrees()
 
     def _rewind(self):
         self._filename = ""
@@ -632,8 +638,8 @@ class ROOTDatasetFromChain(ROOTDataset):
     def _identity(self):
         return self._filename
 
-    def _partition(self):
-        return self._startpartition + self._treeindex
+    def _filenumber(self):
+        return self._startfilenumber + self._treeindex
 
     def _findentry(self, entry):
         subentry = self.chain.LoadTree(entry)
@@ -648,7 +654,7 @@ class ROOTDatasetFromChain(ROOTDataset):
 ##################################################################### ROOTDataset given a tree name and files
 
 class ROOTDatasetFromFiles(ROOTDataset):
-    def __init__(self, treepath, filepaths, prefix=None, cache=None, startpartition=0):
+    def __init__(self, treepath, filepaths, prefix=None, cache=None, startfilenumber=0):
         self.treepath = treepath
         self.filepaths = [y for x in filepaths for y in sorted(glob.glob(os.path.expanduser(x)))]
 
@@ -658,20 +664,20 @@ class ROOTDatasetFromFiles(ROOTDataset):
         self._next(True)
 
         self.type, self.prefix, self._column2branch, self._column2dtype = self.tree2type(self.tree, prefix)
-        self._startpartition = startpartition
+        self._startfilenumber = startfilenumber
 
         if hasattr(cache, "newuser"):
-            self.cache = cache.newuser(dict(("{0}.{1}".format(self.prefix, self._startpartition + i), {"file": x, "tree": self.treepath}) for i, x in enumerate(self.filepaths)))
+            self.cache = cache.newuser(dict(("{0}.{1}".format(self.prefix, self._startfilenumber + i), {"file": x, "tree": self.treepath}) for i, x in enumerate(self.filepaths)))
         else:
             self.cache = cache
 
     @property
-    def startpartition(self):
-        return self._startpartition
+    def startfilenumber(self):
+        return self._startfilenumber
 
     @property
-    def stoppartition(self):
-        return self._startpartition + len(self.filepaths)
+    def stopfilenumber(self):
+        return self._startfilenumber + len(self.filepaths)
 
     def _gettree(self, filepath):
         file = ROOT.TFile(filepath)
@@ -705,8 +711,8 @@ class ROOTDatasetFromFiles(ROOTDataset):
     def _identity(self):
         return self._filename
 
-    def _partition(self):
-        return self._startpartition + self._fileindex
+    def _filenumber(self):
+        return self._startfilenumber + self._fileindex
 
     def _findentry(self, entry):
         if not hasattr(self, "_numentries"):
@@ -737,4 +743,3 @@ class ROOTDatasetFromFiles(ROOTDataset):
                 self._numentries.append(tree.GetEntries())
 
         return sum(self._numentries)
-

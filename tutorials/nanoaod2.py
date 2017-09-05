@@ -204,6 +204,10 @@ class LazyArray(object):
         if self.array is None: self._getarray()
         return self.array.cumsum(out=out)
 
+    def tofile(self, filename):
+        if self.array is None: self._getarray()
+        return self.array.tofile(filename)
+
     @property
     def shape(self):
         if self.array is None: self._getarray()
@@ -230,25 +234,28 @@ def tree2arrays(tree, tpe):
 
     return out
 
-print("")
-print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
+# print("")
+# print("\n".join("{:55s} [{:.2g}, {:.2g}, {:.2g}, ...]".format(n, v[0], v[1], v[2]) if len(v) > 3 else "{:55s} [{}]".format(n, ", ".join(map(lambda x: "{:.2g}".format(x), v))) for n, v in sorted(tree2arrays(tree, plurtype).items())))
 
-print("")
-print(len(tree.GetListOfLeaves()), len(tree2arrays(tree, plurtype)))
+# print("")
+# print(len(tree.GetListOfLeaves()), len(tree2arrays(tree, plurtype)))
 
-events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
+for column, array in tree2arrays(tree, plurtype).items():
+    array.tofile("arrays/" + column)
 
-for event in events:
-    print "event", event.run, event.luminosityBlock, event.event
-    print "MET", event.MET.pt, event.MET.phi
+# events = fromarrays("events", tree2arrays(tree, plurtype), tpe=plurtype)
 
-    for jet in event.Jet:
-        print "jet", jet.pt, jet.eta, jet.phi
+# for event in events:
+#     print "event", event.run, event.luminosityBlock, event.event
+#     print "MET", event.MET.pt, event.MET.phi
 
-    for electron in event.Electron:
-        print "electron", electron.pt, electron.eta, electron.phi
+#     for jet in event.Jet:
+#         print "jet", jet.pt, jet.eta, jet.phi
 
-    print "LHE", event.LHE.toJsonString()
-    print "LHEPdfWeight", event.LHEPdfWeight.toJsonString()
-    print "LHEScaleWeight", event.LHEScaleWeight.toJsonString()
-    print
+#     for electron in event.Electron:
+#         print "electron", electron.pt, electron.eta, electron.phi
+
+#     print "LHE", event.LHE.toJsonString()
+#     print "LHEPdfWeight", event.LHEPdfWeight.toJsonString()
+#     print "LHEScaleWeight", event.LHEScaleWeight.toJsonString()
+#     print
