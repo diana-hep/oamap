@@ -505,28 +505,32 @@ total time spent compiling: {0:.3f} sec
         self._rewind()
         while self._hasnext():
             filenumber = self._filenumber()
-            self._next(True)
+            if filenumbers(filenumber):
+                self._next(True)
 
-            for column in sorted(self._column2branch):
-                branchname = self._column2branch[column]
-                arrayname = ArrayName.parse(column, self.prefix)
-                if columns(column) and arraynames(arrayname) and branchnames(branchname):
-                    if arrayname == ArrayName(self.prefix).toListBegin():
-                        array = numpy.array([0], dtype=numpy.int64)
+                for column in sorted(self._column2branch):
+                    branchname = self._column2branch[column]
+                    arrayname = ArrayName.parse(column, self.prefix)
+                    if columns(column) and arraynames(arrayname) and branchnames(branchname):
+                        if arrayname == ArrayName(self.prefix).toListBegin():
+                            array = numpy.array([0], dtype=numpy.int64)
 
-                    elif arrayname == ArrayName(self.prefix).toListEnd():
-                        array = numpy.array([self.tree.GetEntries()], dtype=numpy.int64)
+                        elif arrayname == ArrayName(self.prefix).toListEnd():
+                            array = numpy.array([self.tree.GetEntries()], dtype=numpy.int64)
 
-                    elif arrayname == ArrayName(self.prefix).toListOffset():
-                        array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
+                        elif arrayname == ArrayName(self.prefix).toListOffset():
+                            array = numpy.array([0, self.tree.GetEntries()], dtype=numpy.int64)
 
-                    elif lazy:
-                        array = self.ROOTLazyArray(self.tree, branchname)
+                        elif lazy:
+                            array = self.ROOTLazyArray(self.tree, branchname)
 
-                    else:
-                        array = ROOTDataset.branch2array(self.tree, branchname)
+                        else:
+                            array = ROOTDataset.branch2array(self.tree, branchname)
 
-                    yield filenumber, column, array
+                        yield filenumber, column, array
+
+            else:
+                self._next(False)
 
 ##################################################################### ROOTDataset given a single TTree
 
