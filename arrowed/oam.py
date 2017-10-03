@@ -60,12 +60,113 @@ class ObjectArrayMapping(object):
         _memo.add(id(self))
         return _memo
 
+    @staticmethod
+    def _format_array(array, arraywidth):
+        if isinstance(array, numpy.ndarray):
+            end = ", dtype={0})".format(repr(str(array.dtype)))
+            arraywidth -= len(end)
+            
+            if isinstance(array, numpy.ma.MaskedArray):
+                out = ["masked_array(["]
+                arraywidth -= len(out[-1])
+                index = 0
+                while index < len(array) and arraywidth - 4 > 0:
+                    if index != 0:
+                        out.append(" ")
+                        arraywidth -= 1
+
+                    if array.mask[index]:
+                        out.append("--")
+                        arraywidth -= 2
+                    else:
+                        out.append("{0:g}".format(array.data[index]))
+                        arraywidth -= len(out[-1])
+
+                    index += 1
+
+            else:
+                out = ["array(["]
+                arraywidth -= len(out[-1])
+                index = 0
+                while index < len(array) and arraywidth - 4 > 0:
+                    if index != 0:
+                        out.append(" ")
+                        arraywidth -= 1
+
+                    out.append("{0:g}".format(array[index]))
+                    arraywidth -= len(out[-1])
+
+                    index += 1
+
+            if index < len(array):
+                out.append("...]")
+            else:
+                out.append("]")
+            out.append(end)
+
+            return "".join(out)
+
+        elif isinstance(array, (str, bytes)):
+            out = repr(array)
+            if len(out) > arraywidth:
+                out = out[:arraywidth - 4] + "...'"
+            return out
+
+        else:
+            return repr(array)
+
+    def _format_with_preamble(self, preamble, indent, width, refs, memo):
+        first = True
+        for line in self._format(indent, width, refs, memo):
+            if first:
+                yield indent + preamble + line[len(indent):]
+                first = False
+            else:
+                yield line
+                
+    def format(self, highlight=lambda t: "", width=80):
+        ids = {}
+        refs = {}
+        def recurse(t):
+            if id(t) in ids:
+                refs[id(t)] = "[{0}] ".format(len(refs))
+            else:
+                ids[id(t)] = t
+                c = getattr(t, "contents", ())
+                if isinstance(c, tuple):
+                    for ci in c:
+                        recurse(ci)
+                elif isinstance(c, dict):
+                    for ci in c.values():
+                        recurse(ci)
+                else:
+                    recurse(c)
+                c = getattr(t, "target", None)
+                if c is not None:
+                    recurse(c)
+        recurse(self)
+
+        return "\n".join(self._format("", width, refs, set()))
+
+################################################################ primitives
+
 class PrimitiveOAM(ObjectArrayMapping):
     def __init__(self, array):
         self.array = array
 
     def dereference(self, source, _memo=None):
         return PrimitiveOAM(self._dereference(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"))
+
+    def _format_with_preamble(self, preamble, indent, width, refs, memo):
+        for line in self._format(indent, width - len(preamble), refs, memo):
+            yield indent + preamble + line[len(indent):]
+
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        preamble = refs.get(id(self), "")
+        yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
+
+################################################################ lists
 
 class ListOAM(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
@@ -87,6 +188,16 @@ class ListCountOAM(ListOAM):
         _memo = self._recursion_check(_memo)
         return ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
 
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        yield indent + refs.get(id(self), "") + "List ["
+        indent += "  "
+        preamble = "counts = "
+        yield indent + preamble + self._format_array(self.countarray, width - len(preamble) - len(indent))
+        for line in self.contents._format(indent, width, refs, memo):
+            yield line
+        yield indent + "]"
+
 class ListOffsetOAM(ListOAM):
     def __init__(self, offsetarray, contents):
         self.offsetarray = offsetarray
@@ -99,6 +210,16 @@ class ListOffsetOAM(ListOAM):
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
         return ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        yield indent + refs.get(id(self), "") + "List ["
+        indent += "  "
+        preamble = "offsets = "
+        yield indent + preamble + self._format_array(self.offsetarray, width - len(preamble) - len(indent))
+        for line in self.contents._format(indent, width, refs, memo):
+            yield line
+        yield indent + "]"
         
 class ListStartEndOAM(ListOAM):
     def __init__(self, startarray, endarray, contents):
@@ -112,6 +233,20 @@ class ListStartEndOAM(ListOAM):
         endarray = self._dereference(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
         return ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        yield indent + refs.get(id(self), "") + "List ["
+        indent += "  "
+        preamble = "starts = "
+        yield indent + preamble + self._format_array(self.startarray, width - len(preamble) - len(indent))
+        preamble = "ends   = "
+        yield indent + preamble + self._format_array(self.endarray, width - len(preamble) - len(indent))
+        for line in self.contents._format(indent, width, refs, memo):
+            yield line
+        yield indent + "]"
+
+################################################################ records
 
 class RecordOAM(ObjectArrayMapping):
     def __init__(self, contents):
@@ -131,6 +266,25 @@ class RecordOAM(ObjectArrayMapping):
             return RecordOAM(tuple(x.dereference(source, _memo) for x in self.contents))
         else:
             return RecordOAM(dict((k, v.dereference(source, _memo)) for k, v in self.contents.items()))
+
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        if isinstance(self.contents, tuple):
+            yield indent + refs.get(id(self), "") + "Record ("
+            indent += "  "
+            for index, contents in enumerate(self.contents):
+                for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
+                    yield line
+            yield indent + ")"
+        else:
+            yield indent + refs.get(id(self), "") + "Record {"
+            indent += "  "
+            for key, contents in self.contents.items():
+                for line in contents._format_with_preamble("{0}: ".format(key), indent, width, refs, memo):
+                    yield line
+            yield indent + "}"
+
+################################################################ unions
 
 class UnionOAM(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
@@ -156,6 +310,17 @@ class UnionSparseOAM(UnionOAM):
         _memo = self._recursion_check(_memo)
         return UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
 
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        yield indent + refs.get(id(self), "") + "Union <"
+        indent += "  "
+        preamble = "tags = "
+        yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
+        for index, contents in enumerate(self.contents):
+            for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
+                yield line
+        yield indent + ">"
+
 class UnionSparseOffsetOAM(UnionOAM):
     def __init__(self, tagarray, offsetarray, contents):
         self.tagarray = tagarray
@@ -171,6 +336,21 @@ class UnionSparseOffsetOAM(UnionOAM):
         offsetarray = self._dereference(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
         return UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        yield indent + refs.get(id(self), "") + "Union <"
+        indent += "  "
+        preamble = "tags = "
+        yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
+        preamble = "offsets = "
+        yield indent + preamble + self._format_array(self.offsetarray, width - len(preamble) - len(indent))
+        for index, contents in enumerate(self.contents):
+            for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
+                yield line
+        yield indent + ">"
+
+################################################################ pointers
 
 class PointerOAM(ObjectArrayMapping):
     def __init__(self, indexarray, target):
@@ -189,3 +369,15 @@ class PointerOAM(ObjectArrayMapping):
             out = PointerOAM(indexarray, self.target.dereference(source, set([id(self)])))
         _memo.add(id(self))
         return out
+
+    def _format(self, indent, width, refs, memo):
+        yield indent + refs.get(id(self), "") + "Pointer (*"
+        indent += "  "
+        preamble = "index = "
+        yield indent + preamble + self._format_array(self.indexarray, width - len(preamble) - len(indent))
+        if id(self.target) in refs:
+            yield indent + "ref   = " + refs[id(self.target)].strip()
+        else:
+            for line in self.target._format(indent, width, refs, set()):
+                yield line
+        yield indent + "*)"
