@@ -50,15 +50,13 @@ class ObjectArrayMapping(object):
         else:
             raise ValueError("array cannot be found for key {0}".format(repr(obj)))
 
-    def _recursion_check(self, _memo):
-        if _memo is None:
-            _memo = set()
-
-        if id(self) in _memo:
+    def _recursion_check(self, memo):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
             raise TypeError("a container type cannot be included more than once in the same nested tree")
-
-        _memo.add(id(self))
-        return _memo
+        memo[id(self)] = None
+        return memo
 
     @staticmethod
     def _format_array(array, arraywidth):
@@ -146,7 +144,7 @@ class ObjectArrayMapping(object):
                     recurse(c)
         recurse(self)
 
-        return "\n".join(self._format("", width, refs, set()))
+        return "\n".join(self._format("", width, refs, {}))
 
 ################################################################ primitives
 
@@ -186,7 +184,8 @@ class ListCountOAM(ListOAM):
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
-        return ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -209,7 +208,8 @@ class ListOffsetOAM(ListOAM):
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
-        return ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -232,7 +232,8 @@ class ListStartEndOAM(ListOAM):
         startarray = self._dereference(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         endarray = self._dereference(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
-        return ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -246,43 +247,50 @@ class ListStartEndOAM(ListOAM):
             yield line
         yield indent + "]"
 
-################################################################ records
+################################################################ records and tuples
 
 class RecordOAM(ObjectArrayMapping):
     def __init__(self, contents):
         self.contents = contents
-        if isinstance(self.contents, tuple):
-            assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple or dict of ObjectArrayMappings"
-        elif isinstance(self.contents, dict):
-            assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a tuple or dict of ObjectArrayMappings"
-            assert all(isinstance(x, str) for x in self.contents.keys()), "keys of contents dict must be strings"
-        else:
-            raise AssertionError("contents must be a tuple or dict")
+        assert isinstance(self.contents, dict)
+        assert all(isinstance(x, str) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
+        assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a dict from strings to ObjectArrayMappings"
 
     def dereference(self, source, _memo=None):
         # a record is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
-        if isinstance(self.contents, tuple):
-            return RecordOAM(tuple(x.dereference(source, _memo) for x in self.contents))
-        else:
-            return RecordOAM(dict((k, v.dereference(source, _memo)) for k, v in self.contents.items()))
+        _memo[id(self)] = RecordOAM(dict((k, v.dereference(source, _memo)) for k, v in self.contents.items()))
+        return _memo[id(self)]
+
+    def _format(self, indent, width, refs, memo):
+        self._recursion_check(memo)
+        yield indent + refs.get(id(self), "") + "Record {"
+        indent += "  "
+        for key, contents in self.contents.items():
+            for line in contents._format_with_preamble("{0}: ".format(key), indent, width, refs, memo):
+                yield line
+        yield indent + "}"
+
+class TupleOAM(ObjectArrayMapping):
+    def __init__(self, contents):
+        self.contents = tuple(contents)
+        assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
+
+    def dereference(self, source, _memo=None):
+        # a tuple is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
+        _memo = self._recursion_check(_memo)
+        _memo[id(self)] = TupleOAM(tuple(x.dereference(source, _memo) for x in self.contents))
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         if isinstance(self.contents, tuple):
-            yield indent + refs.get(id(self), "") + "Record ("
+            yield indent + refs.get(id(self), "") + "Tuple ("
             indent += "  "
             for index, contents in enumerate(self.contents):
                 for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
                     yield line
             yield indent + ")"
-        else:
-            yield indent + refs.get(id(self), "") + "Record {"
-            indent += "  "
-            for key, contents in self.contents.items():
-                for line in contents._format_with_preamble("{0}: ".format(key), indent, width, refs, memo):
-                    yield line
-            yield indent + "}"
 
 ################################################################ unions
 
@@ -308,7 +316,8 @@ class UnionSparseOAM(UnionOAM):
             offsetarray[matches] = numpy.linspace(0, nummatches - 1, nummatches, dtype=numpy.int64)
                                                  # offsets corresponding to matching tags should be increasing integers
         _memo = self._recursion_check(_memo)
-        return UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -335,7 +344,8 @@ class UnionSparseOffsetOAM(UnionOAM):
         tagarray = self._dereference(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         offsetarray = self._dereference(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
-        return UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -357,18 +367,17 @@ class PointerOAM(ObjectArrayMapping):
         self.indexarray = indexarray
         self.target = target
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
+        assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
 
     def dereference(self, source, _memo=None):
         indexarray = self._dereference(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         # (only) pointers are allowed to reference themselves, but don't resolve the same pointer more than once
         if _memo is None:
-            _memo = set()
-        if id(self) in _memo:
-            out = PointerOAM(indexarray, self.target)
-        else:
-            out = PointerOAM(indexarray, self.target.dereference(source, set([id(self)])))
-        _memo.add(id(self))
-        return out
+            _memo = {}
+        if id(self.target) not in _memo:
+            self.target.dereference(source, _memo)
+        _memo[id(self)] = PointerOAM(indexarray, _memo[id(self.target)])
+        return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         yield indent + refs.get(id(self), "") + "Pointer (*"
@@ -376,8 +385,8 @@ class PointerOAM(ObjectArrayMapping):
         preamble = "index = "
         yield indent + preamble + self._format_array(self.indexarray, width - len(preamble) - len(indent))
         if id(self.target) in refs:
-            yield indent + "ref   = " + refs[id(self.target)].strip()
+            yield indent + "target: " + refs[id(self.target)].strip()
         else:
-            for line in self.target._format(indent, width, refs, set()):
+            for line in self.target._format(indent, width, refs, {}):
                 yield line
         yield indent + "*)"
