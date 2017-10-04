@@ -16,9 +16,12 @@
 
 import collections
 import json
+from types import MethodType
 
 import numpy
 import numpy.ma
+
+import arrowed.proxy
 
 class ObjectArrayMapping(object):
     def toJsonString(self):
@@ -29,23 +32,23 @@ class ObjectArrayMapping(object):
         return ObjectArrayMapping.fromJson(json.loads(string))
 
     @staticmethod
-    def _dereference_check(array, message, extracheck):
+    def _filled_check(array, message, extracheck):
         assert isinstance(array, numpy.ndarray) and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array), message
         return array
 
     @staticmethod
-    def _dereference(obj, source, message, extracheck=lambda x: True):
+    def _filled(obj, source, message, extracheck=lambda x: True):
         if isinstance(obj, numpy.ndarray):
-            return ObjectArrayMapping._dereference_check(obj, message, extracheck)
+            return ObjectArrayMapping._filled_check(obj, message, extracheck)
 
         elif callable(obj):
             if hasattr(obj, "__code__") and obj.__code__.co_argcount == 0:
-                return ObjectArrayMapping._dereference_check(obj(), message, extracheck)
+                return ObjectArrayMapping._filled_check(obj(), message, extracheck)
             else:
-                return ObjectArrayMapping._dereference_check(obj(source), message, extracheck)
+                return ObjectArrayMapping._filled_check(obj(source), message, extracheck)
 
         elif isinstance(obj, collections.Hashable) and obj in source:
-            return ObjectArrayMapping._dereference_check(source[obj], message, extracheck)
+            return ObjectArrayMapping._filled_check(source[obj], message, extracheck)
 
         else:
             raise ValueError("array cannot be found for key {0}".format(repr(obj)))
@@ -153,8 +156,8 @@ class PrimitiveOAM(ObjectArrayMapping):
         self.array = array
         self.base = base
 
-    def dereference(self, source, _memo=None):
-        return PrimitiveOAM(self._dereference(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"), self)
+    def filled(self, source, _memo=None):
+        return PrimitiveOAM(self._filled(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"), self)
 
     def _format_with_preamble(self, preamble, indent, width, refs, memo):
         for line in self._format(indent, width - len(preamble), refs, memo):
@@ -184,15 +187,15 @@ class ListCountOAM(ListOAM):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
-    def dereference(self, source, _memo=None):
-        countarray = self._dereference(self.countarray, source, "ListCountOAM countarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+    def filled(self, source, _memo=None):
+        countarray = self._filled(self.countarray, source, "ListCountOAM countarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         offsetarray = numpy.empty(len(countarray) + 1, dtype=numpy.int64)   # new allocation
         numpy.cumsum(countarray, offsetarray[1:])                           # fill with offsets
         offsetarray[0] = 0
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo), self)
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.filled(source, _memo), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -218,12 +221,12 @@ class ListOffsetOAM(ListOAM):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
-    def dereference(self, source, _memo=None):
-        offsetarray = self._dereference(self.offsetarray, source, "ListOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+    def filled(self, source, _memo=None):
+        offsetarray = self._filled(self.offsetarray, source, "ListOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo), self)
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.filled(source, _memo), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -250,11 +253,11 @@ class ListStartEndOAM(ListOAM):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
-    def dereference(self, source, _memo=None):
-        startarray = self._dereference(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
-        endarray = self._dereference(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+    def filled(self, source, _memo=None):
+        startarray = self._filled(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+        endarray = self._filled(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo), self)
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.filled(source, _memo), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -278,30 +281,51 @@ class ListStartEndOAM(ListOAM):
 ################################################################ records and tuples
 
 class RecordOAM(ObjectArrayMapping):
-    def __init__(self, contents, base=None):
+    __nameindex = 0
+
+    def __init__(self, contents, base=None, name=None):
         self.contents = contents
         self.base = base
+        if name is None:
+            self.name = "Record-{0}".format(self.__nameindex)
+            self.__nameindex += 1
+        else:
+            self.name = name
+
         assert isinstance(self.contents, dict)
         assert all(isinstance(x, str) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a dict from strings to ObjectArrayMappings"
 
-    def dereference(self, source, _memo=None):
+        if self.base is not None:
+            self.proxyclass = self.base.proxyclass
+
+        else:
+            self.proxyclass = type(self.name, (arrowed.proxy.RecordProxy,), dict((n, property(lambda self: c.proxy(self.__index))) for n, c in self.contents.items()))
+            self.proxyclass.__slots__ = ["__oam", "__index"]
+            def __init__(self, oam, index):
+                self.__oam = oam
+                self.__index = index
+            self.proxyclass.__init__ = MethodType(__init__, None, self.proxyclass)
+        
+    def filled(self, source, _memo=None):
         # a record is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = RecordOAM(dict((k, v.dereference(source, _memo)) for k, v in self.contents.items()), self)
+        _memo[id(self)] = RecordOAM(dict((k, v.filled(source, _memo)) for k, v in self.contents.items()), self, self.name)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "Record {"
         indent += "  "
+        yield indent + "name = {0}".format(repr(self.name))
+
         for key, contents in self.contents.items():
             for line in contents._format_with_preamble("{0}: ".format(key), indent, width, refs, memo):
                 yield line
         yield indent + "}"
 
     def __eq__(self, other):
-        return isinstance(other, RecordOAM) self.contents == other.contents and self.base == other.base
+        return isinstance(other, RecordOAM) and self.contents == other.contents and self.base == other.base and self.name == other.name
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -312,10 +336,10 @@ class TupleOAM(ObjectArrayMapping):
         self.base = base
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
 
-    def dereference(self, source, _memo=None):
+    def filled(self, source, _memo=None):
         # a tuple is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = TupleOAM(tuple(x.dereference(source, _memo) for x in self.contents), self)
+        _memo[id(self)] = TupleOAM(tuple(x.filled(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -329,7 +353,7 @@ class TupleOAM(ObjectArrayMapping):
             yield indent + ")"
 
     def __eq__(self, other):
-        return isinstance(other, TupleOAM) self.contents == other.contents and self.base == other.base
+        return isinstance(other, TupleOAM) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -350,8 +374,8 @@ class UnionSparseOAM(UnionOAM):
         else:
             raise AssertionError("contents must be a tuple")
 
-    def dereference(self, source, _memo=None):
-        tagarray = self._dereference(self.tagarray, source, "UnionSparseOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+    def filled(self, source, _memo=None):
+        tagarray = self._filled(self.tagarray, source, "UnionSparseOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         offsetarray = numpy.empty(len(tagarray), dtype=numpy.int64)
         for tag in range(len(self.contents)):    # for each possible tag
             matches = (tagarray == tag)          # find the elements of tagarray that match this tag
@@ -359,7 +383,7 @@ class UnionSparseOAM(UnionOAM):
             offsetarray[matches] = numpy.linspace(0, nummatches - 1, nummatches, dtype=numpy.int64)
                                                  # offsets corresponding to matching tags should be increasing integers
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents), self)
+        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.filled(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -390,11 +414,11 @@ class UnionSparseOffsetOAM(UnionOAM):
         else:
             raise AssertionError("contents must be a tuple")
 
-    def dereference(self, source, _memo=None):
-        tagarray = self._dereference(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
-        offsetarray = self._dereference(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+    def filled(self, source, _memo=None):
+        tagarray = self._filled(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+        offsetarray = self._filled(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents), self)
+        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.filled(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -426,13 +450,13 @@ class PointerOAM(ObjectArrayMapping):
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
 
-    def dereference(self, source, _memo=None):
-        indexarray = self._dereference(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+    def filled(self, source, _memo=None):
+        indexarray = self._filled(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         # (only) pointers are allowed to reference themselves, but don't resolve the same pointer more than once
         if _memo is None:
             _memo = {}
         if id(self.target) not in _memo:
-            self.target.dereference(source, _memo)
+            self.target.filled(source, _memo)
         _memo[id(self)] = PointerOAM(indexarray, _memo[id(self.target)], self)
         return _memo[id(self)]
 

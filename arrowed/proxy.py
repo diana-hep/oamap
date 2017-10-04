@@ -156,11 +156,8 @@ class ListSliceProxy(ListProxy):
 ################################################################ record proxy superclass
 
 class RecordProxy(Proxy):
-    __slots__ = ["__oam", "__index"]
-
-    def __init__(self, oam, index):
-        self.__oam = oam
-        self.__index = index
+    def __init__(self, *args, **kwds):
+        raise TypeError("RecordProxy is abstract; create record proxies with the RecordOAM.proxy method")
 
     def __repr__(self):
         return "<{0} at index {1}>".format(self.__class__.__name__, self.__index)
@@ -199,8 +196,6 @@ class RecordProxy(Proxy):
 ################################################################ tuple proxy
 
 class TupleProxy(tuple, Proxy):
-    __slots__ = ["__oam", "__index"]
-
     def __init__(self, oam, index):
         self.__oam = oam
         self.__index = index
