@@ -149,11 +149,12 @@ class ObjectArrayMapping(object):
 ################################################################ primitives
 
 class PrimitiveOAM(ObjectArrayMapping):
-    def __init__(self, array):
+    def __init__(self, array, base=None):
         self.array = array
+        self.base = base
 
     def dereference(self, source, _memo=None):
-        return PrimitiveOAM(self._dereference(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"))
+        return PrimitiveOAM(self._dereference(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"), self)
 
     def _format_with_preamble(self, preamble, indent, width, refs, memo):
         for line in self._format(indent, width - len(preamble), refs, memo):
@@ -164,6 +165,12 @@ class PrimitiveOAM(ObjectArrayMapping):
         preamble = refs.get(id(self), "")
         yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
 
+    def __eq__(self, other):
+        return isinstance(other, PrimitiveOAM) and ((isinstance(self.array, ndarray) and isinstance(other.array, ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 ################################################################ lists
 
 class ListOAM(ObjectArrayMapping):
@@ -171,9 +178,10 @@ class ListOAM(ObjectArrayMapping):
         raise TypeError("ListOAM is abstract; use ListCountOAM, ListOffsetOAM, or ListStartEndOAM instead")
 
 class ListCountOAM(ListOAM):
-    def __init__(self, countarray, contents):
+    def __init__(self, countarray, contents, base=None):
         self.countarray = countarray
         self.contents = contents
+        self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
     def dereference(self, source, _memo=None):
@@ -184,23 +192,30 @@ class ListCountOAM(ListOAM):
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "List ["
         indent += "  "
-        preamble = "counts = "
+        preamble = "countarray = "
         yield indent + preamble + self._format_array(self.countarray, width - len(preamble) - len(indent))
         for line in self.contents._format(indent, width, refs, memo):
             yield line
         yield indent + "]"
 
+    def __eq__(self, other):
+        return isinstance(other, ListCountOAM) and ((isinstance(self.countarray, ndarray) and isinstance(other.countarray, ndarray) and numpy.array_equal(self.countarray, other.countarray)) or self.countarray == other.countarray) and self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 class ListOffsetOAM(ListOAM):
-    def __init__(self, offsetarray, contents):
+    def __init__(self, offsetarray, contents, base=None):
         self.offsetarray = offsetarray
         self.contents = contents
+        self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
     def dereference(self, source, _memo=None):
@@ -208,50 +223,64 @@ class ListOffsetOAM(ListOAM):
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "List ["
         indent += "  "
-        preamble = "offsets = "
+        preamble = "offsetarray = "
         yield indent + preamble + self._format_array(self.offsetarray, width - len(preamble) - len(indent))
         for line in self.contents._format(indent, width, refs, memo):
             yield line
         yield indent + "]"
+
+    def __eq__(self, other):
+        return isinstance(other, ListOffsetOAM) and ((isinstance(self.offsetarray, ndarray) and isinstance(other.offsetarray, ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
         
 class ListStartEndOAM(ListOAM):
-    def __init__(self, startarray, endarray, contents):
+    def __init__(self, startarray, endarray, contents, base=None):
         self.startarray = startarray
         self.endarray = endarray
         self.contents = contents
+        self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
     def dereference(self, source, _memo=None):
         startarray = self._dereference(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         endarray = self._dereference(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo))
+        _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.dereference(source, _memo), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "List ["
         indent += "  "
-        preamble = "starts = "
+        preamble = "startarray = "
         yield indent + preamble + self._format_array(self.startarray, width - len(preamble) - len(indent))
-        preamble = "ends   = "
+        preamble = "endarray   = "
         yield indent + preamble + self._format_array(self.endarray, width - len(preamble) - len(indent))
         for line in self.contents._format(indent, width, refs, memo):
             yield line
         yield indent + "]"
 
+    def __eq__(self, other):
+        return isinstance(other, ListStartEndOAM) and ((isinstance(self.startarray, ndarray) and isinstance(other.startarray, ndarray) and numpy.array_equal(self.startarray, other.startarray)) or self.startarray == other.startarray) and ((isinstance(self.endarray, ndarray) and isinstance(other.endarray, ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 ################################################################ records and tuples
 
 class RecordOAM(ObjectArrayMapping):
-    def __init__(self, contents):
+    def __init__(self, contents, base=None):
         self.contents = contents
+        self.base = base
         assert isinstance(self.contents, dict)
         assert all(isinstance(x, str) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a dict from strings to ObjectArrayMappings"
@@ -259,7 +288,7 @@ class RecordOAM(ObjectArrayMapping):
     def dereference(self, source, _memo=None):
         # a record is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = RecordOAM(dict((k, v.dereference(source, _memo)) for k, v in self.contents.items()))
+        _memo[id(self)] = RecordOAM(dict((k, v.dereference(source, _memo)) for k, v in self.contents.items()), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -271,15 +300,22 @@ class RecordOAM(ObjectArrayMapping):
                 yield line
         yield indent + "}"
 
+    def __eq__(self, other):
+        return isinstance(other, RecordOAM) self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 class TupleOAM(ObjectArrayMapping):
-    def __init__(self, contents):
+    def __init__(self, contents, base=None):
         self.contents = tuple(contents)
+        self.base = base
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
 
     def dereference(self, source, _memo=None):
         # a tuple is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = TupleOAM(tuple(x.dereference(source, _memo) for x in self.contents))
+        _memo[id(self)] = TupleOAM(tuple(x.dereference(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
@@ -292,6 +328,12 @@ class TupleOAM(ObjectArrayMapping):
                     yield line
             yield indent + ")"
 
+    def __eq__(self, other):
+        return isinstance(other, TupleOAM) self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 ################################################################ unions
 
 class UnionOAM(ObjectArrayMapping):
@@ -299,9 +341,10 @@ class UnionOAM(ObjectArrayMapping):
         raise TypeError("UnionOAM is abstract; use UnionSparse or UnionSparseOffset instead")
 
 class UnionSparseOAM(UnionOAM):
-    def __init__(self, tagarray, contents):
+    def __init__(self, tagarray, contents, base=None):
         self.tagarray = tagarray
         self.contents = contents
+        self.base = base
         if isinstance(self.contents, tuple):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
         else:
@@ -316,25 +359,32 @@ class UnionSparseOAM(UnionOAM):
             offsetarray[matches] = numpy.linspace(0, nummatches - 1, nummatches, dtype=numpy.int64)
                                                  # offsets corresponding to matching tags should be increasing integers
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "Union <"
         indent += "  "
-        preamble = "tags = "
+        preamble = "tagarray = "
         yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
         for index, contents in enumerate(self.contents):
             for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
                 yield line
         yield indent + ">"
 
+    def __eq__(self, other):
+        return isinstance(other, UnionSparseOAM) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 class UnionSparseOffsetOAM(UnionOAM):
-    def __init__(self, tagarray, offsetarray, contents):
+    def __init__(self, tagarray, offsetarray, contents, base=None):
         self.tagarray = tagarray
         self.offsetarray = offsetarray
         self.contents = contents
+        self.base = base
         if isinstance(self.contents, tuple):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
         else:
@@ -344,28 +394,35 @@ class UnionSparseOffsetOAM(UnionOAM):
         tagarray = self._dereference(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         offsetarray = self._dereference(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents))
+        _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.dereference(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "Union <"
         indent += "  "
-        preamble = "tags = "
+        preamble = "tagarray    = "
         yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
-        preamble = "offsets = "
+        preamble = "offsetarray = "
         yield indent + preamble + self._format_array(self.offsetarray, width - len(preamble) - len(indent))
         for index, contents in enumerate(self.contents):
             for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
                 yield line
         yield indent + ">"
 
+    def __eq__(self, other):
+        return isinstance(other, UnionSparseOffsetOAM) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, ndarray) and isinstance(other.offsetarray, ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
 ################################################################ pointers
 
 class PointerOAM(ObjectArrayMapping):
-    def __init__(self, indexarray, target):
+    def __init__(self, indexarray, target, base=None):
         self.indexarray = indexarray
         self.target = target
+        self.base = base
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
 
@@ -376,13 +433,13 @@ class PointerOAM(ObjectArrayMapping):
             _memo = {}
         if id(self.target) not in _memo:
             self.target.dereference(source, _memo)
-        _memo[id(self)] = PointerOAM(indexarray, _memo[id(self.target)])
+        _memo[id(self)] = PointerOAM(indexarray, _memo[id(self.target)], self)
         return _memo[id(self)]
 
     def _format(self, indent, width, refs, memo):
         yield indent + refs.get(id(self), "") + "Pointer (*"
         indent += "  "
-        preamble = "index = "
+        preamble = "indexarray = "
         yield indent + preamble + self._format_array(self.indexarray, width - len(preamble) - len(indent))
         if id(self.target) in refs:
             yield indent + "target: " + refs[id(self.target)].strip()
@@ -390,3 +447,9 @@ class PointerOAM(ObjectArrayMapping):
             for line in self.target._format(indent, width, refs, {}):
                 yield line
         yield indent + "*)"
+
+    def __eq__(self, other):
+        return isinstance(other, PointerOAM) and ((isinstance(self.indexarray, ndarray) and isinstance(other.indexarray, ndarray) and numpy.array_equal(self.indexarray, other.indexarray)) or self.indexarray == other.indexarray) and self.target is other.target and self.base == other.base
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
