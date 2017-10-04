@@ -39,6 +39,24 @@ class ObjectArrayMapping(object):
     def proxy(self, index):
         raise TypeError("cannot get a proxy for an unresolved ObjectArrayMap; call the resolved method first or pass a source to this method")
 
+    def compile(self, function, paramtypes={}, numba={"nopython": True}, debug=False):
+        import arrowed.compiler
+        paramtypes = paramtypes.copy()
+        paramtypes[0] = self
+        if not hasattr(self, "_functions"):
+            self._functions = {}
+        self._functions[id(function)] = arrowed.compiler.compile(function, paramtypes, numba=numba, debug=debug)
+        return self._functions[id(function)]
+
+    def run(self, function, source, *args, paramtypes={}, numba={"nopython": True}, debug=False):
+        compiled = self.compile(function, paramtypes=paramtypes, numba=numba, debug=debug)
+
+        resolved = {}
+        for param in set(paramtypes).union(set([0])):
+            resolved[param] = compiled.paramtypes[param].resolved(source)
+
+        return compiled.run(resolved, args)
+
     @staticmethod
     def _resolved_check(array, message, extracheck):
         assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array), message
