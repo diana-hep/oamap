@@ -16,7 +16,6 @@
 
 import collections
 import json
-from types import MethodType
 
 import numpy
 import numpy.ma
@@ -31,9 +30,12 @@ class ObjectArrayMapping(object):
     def fromJsonString(string):
         return ObjectArrayMapping.fromJson(json.loads(string))
 
+    def proxy(self, index):
+        raise TypeError("cannot get a proxy for an unfilled ObjectArrayMap; call the filled method first")
+
     @staticmethod
     def _filled_check(array, message, extracheck):
-        assert isinstance(array, numpy.ndarray) and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array), message
+        assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array), message
         return array
 
     @staticmethod
@@ -159,6 +161,12 @@ class PrimitiveOAM(ObjectArrayMapping):
     def filled(self, source, _memo=None):
         return PrimitiveOAM(self._filled(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"), self)
 
+    def proxy(self, index):
+        if isinstance(self.array, numpy.ma.MaskedArray) and self.array.mask[index]:
+            return None
+        else:
+            return self.array[index]
+
     def _format_with_preamble(self, preamble, indent, width, refs, memo):
         for line in self._format(indent, width - len(preamble), refs, memo):
             yield indent + preamble + line[len(indent):]
@@ -190,7 +198,7 @@ class ListCountOAM(ListOAM):
     def filled(self, source, _memo=None):
         countarray = self._filled(self.countarray, source, "ListCountOAM countarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
         offsetarray = numpy.empty(len(countarray) + 1, dtype=numpy.int64)   # new allocation
-        numpy.cumsum(countarray, offsetarray[1:])                           # fill with offsets
+        countarray.cumsum(out=offsetarray[1:])                              # fill with offsets
         offsetarray[0] = 0
         startarray = offsetarray[:-1]  # overlapping views
         endarray = offsetarray[1:]     # overlapping views
@@ -260,6 +268,12 @@ class ListStartEndOAM(ListOAM):
         _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.filled(source, _memo), self)
         return _memo[id(self)]
 
+    def proxy(self, index):
+        if isinstance(self.startarray, numpy.ma.MaskedArray) and self.startarray.mask[index]:
+            return None
+        else:
+            return arrowed.proxy.ListProxy(self, index)
+
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "List ["
@@ -296,22 +310,25 @@ class RecordOAM(ObjectArrayMapping):
         assert all(isinstance(x, str) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a dict from strings to ObjectArrayMappings"
 
-        if self.base is not None:
-            self.proxyclass = self.base.proxyclass
-
+        if self.base is None:
+            superclasses = (arrowed.proxy.RecordProxy,)
         else:
-            self.proxyclass = type(self.name, (arrowed.proxy.RecordProxy,), dict((n, property(lambda self: c.proxy(self.__index))) for n, c in self.contents.items()))
-            self.proxyclass.__slots__ = ["__oam", "__index"]
-            def __init__(self, oam, index):
-                self.__oam = oam
-                self.__index = index
-            self.proxyclass.__init__ = MethodType(__init__, None, self.proxyclass)
+            superclasses = self.base.proxyclass.__bases__
+
+        def makeproperty(n, c):
+            return property(lambda self: c.proxy(self._index))
+
+        self.proxyclass = type(self.name, superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
+        self.proxyclass.__slots__ = ["_oam", "_index"]
         
     def filled(self, source, _memo=None):
         # a record is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
         _memo[id(self)] = RecordOAM(dict((k, v.filled(source, _memo)) for k, v in self.contents.items()), self, self.name)
         return _memo[id(self)]
+
+    def proxy(self, index):
+        return self.proxyclass(self, index)
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -341,6 +358,9 @@ class TupleOAM(ObjectArrayMapping):
         _memo = self._recursion_check(_memo)
         _memo[id(self)] = TupleOAM(tuple(x.filled(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
+
+    def proxy(self, index):
+        return arrowed.proxy.TupleProxy(self, index)
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -421,6 +441,14 @@ class UnionSparseOffsetOAM(UnionOAM):
         _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.filled(source, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
+    def proxy(self, index):
+        if isinstance(self.tagarray, numpy.ma.MaskedArray) and self.tagarray.mask[index]:
+            return None
+        else:
+            tag = self.tagarray[index]
+            offset = self.offsetarray[index]
+            return self.contents[tag].proxy(offset)
+
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "Union <"
@@ -459,6 +487,13 @@ class PointerOAM(ObjectArrayMapping):
             self.target.filled(source, _memo)
         _memo[id(self)] = PointerOAM(indexarray, _memo[id(self.target)], self)
         return _memo[id(self)]
+
+    def proxy(self, index):
+        if isinstance(self.indexarray, numpy.ma.MaskedArray) and self.indexarray.mask[index]:
+            return None
+        else:
+            offset = self.indexarray[index]
+            return self.target.proxy(offset)
 
     def _format(self, indent, width, refs, memo):
         yield indent + refs.get(id(self), "") + "Pointer (*"

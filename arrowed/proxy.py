@@ -156,28 +156,29 @@ class ListSliceProxy(ListProxy):
 ################################################################ record proxy superclass
 
 class RecordProxy(Proxy):
-    def __init__(self, *args, **kwds):
-        raise TypeError("RecordProxy is abstract; create record proxies with the RecordOAM.proxy method")
+    def __init__(self, oam, index):
+        self._oam = oam
+        self._index = index
 
     def __repr__(self):
-        return "<{0} at index {1}>".format(self.__class__.__name__, self.__index)
+        return "<{0} at index {1}>".format(self.__class__.__name__, self._index)
 
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and set(self.__oam.contents.keys()) == set(other.__oam.contents.keys()) and all(getattr(self, name) == getattr(other, name) for name in self.__oam.contents.keys())
+        return isinstance(other, RecordProxy) and set(self._oam.contents.keys()) == set(other._oam.contents.keys()) and all(getattr(self, name) == getattr(other, name) for name in self._oam.contents.keys())
 
     def __lt__(self, other):
         if isinstance(other, RecordProxy):
-            if len(self.__oam.contents) > len(other.__oam.contents):
+            if len(self._oam.contents) > len(other._oam.contents):
                 return True
 
-            elif len(self.__oam.contents) < len(other.__oam.contents):
+            elif len(self._oam.contents) < len(other._oam.contents):
                 return False
 
-            elif set(self.__oam.contents.keys()) == set(other.__oam.contents.keys()):
-                return tuple(getattr(self, name) for name in self.__oam.contents.keys()) < tuple(getattr(other, name) for name in other.__oam.contents.keys())
+            elif set(self._oam.contents.keys()) == set(other._oam.contents.keys()):
+                return tuple(getattr(self, name) for name in self._oam.contents.keys()) < tuple(getattr(other, name) for name in other._oam.contents.keys())
 
             else:
-                return sorted(self.__oam.contents.keys()) == sorted(other.__oam.contents.keys())
+                return sorted(self._oam.contents.keys()) == sorted(other._oam.contents.keys())
 
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
@@ -191,26 +192,26 @@ class RecordProxy(Proxy):
     def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
 
     def toJson(self):
-        return dict((name, toJson(getattr(self, name))) for name in self.__oam.contents)
+        return dict((name, toJson(getattr(self, name))) for name in self._oam.contents)
 
 ################################################################ tuple proxy
 
 class TupleProxy(tuple, Proxy):
     def __init__(self, oam, index):
-        self.__oam = oam
-        self.__index = index
+        self._oam = oam
+        self._index = index
 
     def __repr__(self):
         return "({0})".format(", ".join(repr(x) for x in self))
 
     def __len__(self):
-        return len(self.__oam.contents)
+        return len(self._oam.contents)
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return tuple(self[i] for i in range(len(self.__oam.contents))[index])
+            return tuple(self[i] for i in range(len(self._oam.contents))[index])
         else:
-            return self.__oam.contents[index].proxy(self.__index)
+            return self._oam.contents[index].proxy(self._index)
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
