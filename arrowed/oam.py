@@ -16,11 +16,17 @@
 
 import collections
 import json
+import sys
 
 import numpy
 import numpy.ma
 
 import arrowed.proxy
+
+if sys.version_info[0] <= 2:
+    string_types = (unicode, str)
+else:
+    string_types = (str,)
 
 class ObjectArrayMapping(object):
     def toJsonString(self):
@@ -109,7 +115,7 @@ class ObjectArrayMapping(object):
 
             return "".join(out)
 
-        elif isinstance(array, (str, bytes)):
+        elif isinstance(array, string_types + (bytes,)):
             out = repr(array)
             if len(out) > arraywidth:
                 out = out[:arraywidth - 4] + "...'"
@@ -337,7 +343,7 @@ class RecordOAM(ObjectArrayMapping):
             self.name = name
 
         assert isinstance(self.contents, dict)
-        assert all(isinstance(x, str) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
+        assert all(isinstance(x, string_types) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a dict from strings to ObjectArrayMappings"
 
         if self.base is None:
@@ -348,7 +354,7 @@ class RecordOAM(ObjectArrayMapping):
         def makeproperty(n, c):
             return property(lambda self: c.proxy(self._index))
 
-        self.proxyclass = type(self.name, superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
+        self.proxyclass = type(str(self.name), superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
         self.proxyclass.__slots__ = ["_oam", "_index"]
         
     def resolved(self, source, lazy=False, _memo=None):
