@@ -18,32 +18,55 @@ import sys
 import json
 import math
 
+import numpy
+
 class Proxy(object):
-    def toJsonString(self):
-        return json.dumps(self.toJson())
+    def _toJsonString(self):
+        return json.dumps(self._toJson())
+
+def toJson(obj):
+    if isinstance(obj, Proxy):
+        return obj._toJson()
+    elif isinstance(obj, numpy.integer):
+        return int(obj)
+    elif isinstance(obj, numpy.floating):
+        if math.isnan(obj):
+            return "nan"
+        elif math.isinf(obj) and obj > 0:
+            return "inf"
+        elif math.isinf(obj):
+            return "-inf"
+        else:
+            return float(obj)
+    elif isinstance(obj, numpy.complex):
+        return {"real": toJson(obj.real), "imag": toJson(obj.imag)}
+    elif isinstance(obj, numpy.ndarray):
+        return obj.tolist()
+    else:
+        return obj
 
 ################################################################ list proxy
 
 class ListProxy(list, Proxy):
-    __slots__ = ["__oam", "__index"]
+    __slots__ = ["_oam", "_index"]
 
     def __init__(self, oam, index):
-        self.__oam = oam
-        self.__index = index
+        self._oam = oam
+        self._index = index
 
     def __repr__(self):
         dots = ", ..." if len(self) > 4 else ""
         return "[{0}{1}]".format(", ".join(map(repr, self[:4])), dots)
 
     def __len__(self):
-        return int(self.__oam.endarray[self.__index] - self.__oam.startarray[self.__index])
+        return int(self._oam.endarray[self._index] - self._oam.startarray[self._index])
 
     def __getitem__(self, index):
         if isinstance(index, slice):
             return sliceofproxy(self, index)
         else:
             index = normalizeindex(self, index, False, 1)
-            return self.__oam.contents.proxy(self.__oam.startarray[self.__index] + index)
+            return self._oam.contents.proxy(self._oam.startarray[self._index] + index)
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
@@ -123,7 +146,7 @@ class ListProxy(list, Proxy):
             return list(self) > other
     def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
 
-    def toJson(self):
+    def _toJson(self):
         return [toJson(x) for x in self]
 
 ################################################################ list slice proxy
@@ -138,8 +161,8 @@ class ListSliceProxy(ListProxy):
         self.__step = step
 
     @property
-    def __oam(self):
-        return self.__listproxy.__oam
+    def _oam(self):
+        return self.__listproxy._oam
 
     def __len__(self):
         if self.__step == 1:
@@ -191,7 +214,7 @@ class RecordProxy(Proxy):
             return list(self) > other
     def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
 
-    def toJson(self):
+    def _toJson(self):
         return dict((name, toJson(getattr(self, name))) for name in self._oam.contents)
 
 ################################################################ tuple proxy
@@ -274,7 +297,7 @@ class TupleProxy(tuple, Proxy):
             return tuple(self) > other
     def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
 
-    def toJson(self):
+    def _toJson(self):
         return [toJson(x) for x in self]
 
 ################################################################ helper functions
@@ -326,10 +349,3 @@ def sliceofproxy(listproxy, slice):
         stop = normalizeindex(listproxy, slice.stop, True, step)
 
     return ListSliceProxy(listproxy, start, stop, step)
-
-def mapsto(proxy, byname=True):
-    oam = proxy.__oam
-    if byname:
-        while oam.base is not None:
-            oam = oam.base
-    return proxy.__index, oam
