@@ -58,6 +58,16 @@ class ObjectArrayMapping(object):
         return compiled.run(resolved, args)
 
     @staticmethod
+    def _toint64(array):
+        if array.dtype != numpy.dtype(numpy.int64):
+            if isinstance(array, numpy.ma.MaskedArray) and array.mask is not None:
+                return numpy.ma.MaskedArray(array, dtype=numpy.int64)
+            else:
+                return numpy.array(array, dtype=numpy.int64)
+        else:
+            return array
+
+    @staticmethod
     def _resolved_check(array, message, extracheck):
         assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array), message
         return array
@@ -192,7 +202,7 @@ class PrimitiveOAM(ObjectArrayMapping):
         if callable(self.array):
             self.array = self.array()
 
-        if isinstance(self.array, numpy.ma.MaskedArray) and self.array.mask[index]:
+        if isinstance(self.array, numpy.ma.MaskedArray) and self.array.mask is not None and self.array.mask[index]:
             return None
         else:
             return self.array[index]
@@ -233,6 +243,10 @@ class ListCountOAM(ListOAM):
             offsetarray[0] = 0
             startarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
+
+            if isinstance(countarray, numpy.ma.MaskedArray) and countarray.mask is not None:
+                startarray = numpy.ma.MaskedArray(startarray, mask=countarray.mask)
+
             return startarray, endarray
 
         _memo = self._recursion_check(_memo)
@@ -268,7 +282,7 @@ class ListOffsetOAM(ListOAM):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            offsetarray = self._resolved(self.offsetarray, source, "ListOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "ListOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
             startarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
             return startarray, endarray
@@ -307,8 +321,8 @@ class ListStartEndOAM(ListOAM):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            startarray = self._resolved(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
-            endarray = self._resolved(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+            startarray = self._toint64(self._resolved(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            endarray = self._toint64(self._resolved(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
             return startarray, endarray
 
         _memo = self._recursion_check(_memo)
@@ -323,7 +337,7 @@ class ListStartEndOAM(ListOAM):
         if callable(self.startarray):
             self.startarray, self.endarray = self.startarray()
 
-        if isinstance(self.startarray, numpy.ma.MaskedArray) and self.startarray.mask[index]:
+        if isinstance(self.startarray, numpy.ma.MaskedArray) and self.startarray.mask is not None and self.startarray.mask[index]:
             return None
         else:
             return arrowed.proxy.ListProxy(self, index)
@@ -450,7 +464,8 @@ class UnionSparseOAM(UnionOAM):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._resolved(self.tagarray, source, "UnionSparseOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+
             offsetarray = numpy.empty(len(tagarray), dtype=numpy.int64)
             for tag in range(len(self.contents)):    # for each possible tag
                 matches = (tagarray == tag)          # find the elements of tagarray that match this tag
@@ -497,8 +512,8 @@ class UnionSparseOffsetOAM(UnionOAM):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._resolved(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
-            offsetarray = self._resolved(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
             return tagarray, offsetarray
 
         _memo = self._recursion_check(_memo)
@@ -513,7 +528,7 @@ class UnionSparseOffsetOAM(UnionOAM):
         if callable(self.tagarray):
             self.tagarray, self.offsetarray = self.tagarray()
 
-        if isinstance(self.tagarray, numpy.ma.MaskedArray) and self.tagarray.mask[index]:
+        if isinstance(self.tagarray, numpy.ma.MaskedArray) and self.tagarray.mask is not None and self.tagarray.mask[index]:
             return None
         else:
             tag = self.tagarray[index]
@@ -551,7 +566,7 @@ class PointerOAM(ObjectArrayMapping):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            return self._resolved(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+            return self._toint64(self._resolved(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
 
         # (only) pointers are allowed to reference themselves, but don't resolve the same pointer more than once
         if _memo is None:
@@ -569,7 +584,7 @@ class PointerOAM(ObjectArrayMapping):
         if callable(self.indexarray):
             self.indexarray = self.indexarray()
 
-        if isinstance(self.indexarray, numpy.ma.MaskedArray) and self.indexarray.mask[index]:
+        if isinstance(self.indexarray, numpy.ma.MaskedArray) and self.indexarray.mask is not None and self.indexarray.mask[index]:
             return None
         else:
             offset = self.indexarray[index]
