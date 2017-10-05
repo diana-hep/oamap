@@ -32,12 +32,10 @@ py2 = (sys.version_info[0] <= 2)
 ################################################################ interface
 
 class Compiled(object):
-    def __init__(self, transformed, paramtypes, env, symnames):
-        pass   # this would be a good place to put the exec
-
-    @property
-    def projection(self):
-        pass
+    def __init__(self, transformed, parameters, env):
+        self.transformed = transformed
+        self.parameters = parameters
+        self.env = env
 
     def __call__(self, resolved, *args):
         pass
@@ -118,7 +116,7 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     env[sym("maybe_listsize")] = maybe_listsize
 
     # do the code transformation
-    transformed = transform(function, paramtypes, externalfcns, sym)
+    transformed, parameters = transform(function, paramtypes, externalfcns, sym)
 
     if debug:
         try:
@@ -136,9 +134,14 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
             formatter = "    {0:%ds} --> {1}" % max([len(name) for name, value in sym.remapped] + [0])
             for name, value in sym.remapped:
                 print(formatter.format(name, value))
+        print("\nProjections:\n------------")
+        for parameter in parameters.order:
+            print("    {0}: {1}".format(parameter.index, parameter.originalname))
+            if isinstance(parameter, TransformedParameter):
+                print(parameter.projection().format("         "))
         print("")
 
-    return Compiled(transformed, paramtypes, env, sym.names)
+    return Compiled(transformed, parameters, env)
 
 ################################################################ functions inserted into code
 
@@ -344,21 +347,27 @@ class TransformedParameter(Parameter):
         self.transformed = []
 
         assert len(self.atype.possibilities) == 1
-        self.members = self.atype.possibilities[0].oam.members()
+        self.oam = self.atype.possibilities[0].oam
+        self.members = self.oam.members()
         self.reverse_members = dict((id(m), i) for i, m in enumerate(self.members))
-
-        self.required = [()] * len(self.members)
+        self.required = [False] * len(self.members)
+        self.sym2obj = {}
 
     def require(self, member, attr, sym):
         memberid = self.reverse_members[id(member)]
         key = "par{0}_mem{1}_{2}_{3}".format(self.index, memberid, member.name, attr)
         symbol = sym(key)
-
-        if attr not in self.required[memberid]:
-            self.required[memberid] = self.required[memberid] + (attr,)
+        if not self.required[memberid]:
             self.transformed.append(symbol)
-
+            self.sym2obj[symbol] = (member, attr)
+        self.required[memberid] = True
         return symbol
+
+    def required_members(self):
+        return [m for m, r in zip(self.members, self.required) if r]
+
+    def projection(self):
+        return self.oam.projection(self.required_members())
 
     def args(self):
         if py2:
@@ -376,6 +385,10 @@ class Parameters(object):
 
     def istransformed(self, name):
         return isinstance(self.lookup.get(name, None), TransformedParameter)
+
+    @property
+    def transformed(self):
+        return [x for x in self.order if isinstance(x, TransformedParameter)]
 
     def atype(self, name):
         if name in self.lookup:
@@ -447,7 +460,7 @@ def transform(function, paramtypes, externalfcns, sym):
     transformed = recurse(function)
     transformed.args = parameters.args()
 
-    return transformed
+    return transformed, parameters
 
 ################################################################ specialized rules for each Python AST type
 

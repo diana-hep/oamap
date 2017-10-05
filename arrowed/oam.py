@@ -36,6 +36,24 @@ class ObjectArrayMapping(object):
     def fromJsonString(string):
         return ObjectArrayMapping.fromJson(json.loads(string))
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base._name)
+
+    def hasbase(self, base):
+        obj = self
+        indent = ""
+        while obj is not None:
+            print indent, obj, obj.name
+            indent = indent + "    "
+            if obj is base:
+                return True
+            obj = obj.base
+        return False
+
     def proxy(self, index):
         raise TypeError("cannot get a proxy for an unresolved ObjectArrayMap; call the resolved method first or pass a source to this method")
 
@@ -78,16 +96,19 @@ class ObjectArrayMapping(object):
         assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array) and extracheck2(array), message
         return array
 
-    @staticmethod
-    def _resolved(obj, source, message, masked, extracheck=lambda x: True):
+    def _resolved(self, obj, source, message, masked, extracheck=lambda x: True):
         if isinstance(obj, numpy.ndarray):
             return ObjectArrayMapping._resolved_check(obj, message, masked, extracheck)
 
         elif callable(obj):
             if hasattr(obj, "__code__") and obj.__code__.co_argcount == 0:
                 return ObjectArrayMapping._resolved_check(obj(), message, masked, extracheck)
-            else:
+            elif hasattr(obj, "__code__") and obj.__code__.co_argcount == 1:
                 return ObjectArrayMapping._resolved_check(obj(source), message, masked, extracheck)
+            elif hasattr(obj, "__code__") and obj.__code__.co_argcount == 2:
+                return ObjectArrayMapping._resolved_check(obj(source, self), message, masked, extracheck)
+            else:
+                return ObjectArrayMapping._resolved_check(obj(source, self, self.__class__), message, masked, extracheck)
 
         elif isinstance(obj, collections.Hashable) and obj in source:
             return ObjectArrayMapping._resolved_check(source[obj], message, masked, extracheck)
@@ -167,7 +188,7 @@ class ObjectArrayMapping(object):
             else:
                 yield line
                 
-    def format(self, highlight=lambda t: "", width=80):
+    def format(self, indent="", highlight=lambda t: "", width=80):
         ids = {}
         refs = {}
         def recurse(t):
@@ -189,7 +210,7 @@ class ObjectArrayMapping(object):
                     recurse(c)
         recurse(self)
 
-        return "\n".join(self._format("", width, refs, {}))
+        return "\n".join(self._format(indent, width, refs, {}))
 
 ################################################################ primitives
 
@@ -199,21 +220,27 @@ class PrimitiveOAM(ObjectArrayMapping):
         self.masked = masked
         self.base = base
 
+    def accessedby(self, accessor, _memo=None):
+        return PrimitiveOAM(accessor, self.masked, self)
+
+    def findbybase(self, base, _memo=None):
+        if self.hasbase(base):
+            return self
+        else:
+            return None
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.array)
+    def _name(self):
+        return str(self.array)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
             return self._resolved(self.array, source, "PrimitiveOAM array must map to a one-dimensional, {0}, non-record array", self.masked)
 
         if lazy:
-            return PrimitiveOAM(resolve, self)
+            return PrimitiveOAM(resolve, self.masked, self)
         else:
-            return PrimitiveOAM(resolve(), self)
+            return PrimitiveOAM(resolve(), self.masked, self)
 
     def proxy(self, index):
         if callable(self.array):
@@ -224,8 +251,25 @@ class PrimitiveOAM(ObjectArrayMapping):
         else:
             return self.array[index]
 
+    def get(self, attr):
+        if attr == "array":
+            if callable(self.array):
+                self.array = self.array()
+            return self.array
+        else:
+            raise NameError("PrimitiveOAM has no array {0}".format(repr(attr)))
+
     def members(self, _memo=None):
         return [self]
+
+    def hasany(self, others, _memo=None):
+        return any(x is self for x in others)
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            return PrimitiveOAM(self.array, self.masked, self)
+        else:
+            return None
 
     def _format_with_preamble(self, preamble, indent, width, refs, memo):
         for line in self._format(indent, width - len(preamble), refs, memo):
@@ -248,6 +292,20 @@ class ListOAM(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
         raise TypeError("ListOAM is abstract; use ListCountOAM, ListOffsetOAM, or ListStartEndOAM instead")
 
+    def findbybase(self, base, _memo=None):
+        print "findbybase", self
+
+        if self.hasbase(base):
+            return self
+        else:
+            if _memo is None:
+                _memo = set()
+            if id(self.contents) not in _memo:
+                _memo.add(id(self.contents))
+                return self.contents.findbybase(base, _memo)
+            else:
+                return None
+
     def members(self, _memo=None):
         if _memo is None:
             _memo = set()
@@ -258,6 +316,17 @@ class ListOAM(ObjectArrayMapping):
         else:
             return out
 
+    def hasany(self, others, _memo=None):
+        if any(x is self for x in others):
+            return True
+        if _memo is None:
+            _memo = set()
+        if id(self.contents) not in _memo:
+            _memo.add(id(self.contents))
+            return self.contents.hasany(others, _memo)
+        else:
+            return False
+
 class ListCountOAM(ListOAM):
     def __init__(self, countarray, contents, masked=False, base=None):
         self.countarray = countarray
@@ -266,12 +335,18 @@ class ListCountOAM(ListOAM):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        if id(self.contents) not in _memo:
+            _memo[id(self.contents)] = None
+            _memo[id(self.contents)] = self.contents.accessedby(accessor)
+        contents = _memo[id(self.contents)]
+        return ListCountOAM(accessor, contents, self.masked, self)
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.countarray)
+    def _name(self):
+        return str(self.countarray)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -289,11 +364,33 @@ class ListCountOAM(ListOAM):
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListStartEndOAM(resolve, None, self.contents.resolved(source, lazy, _memo), self)
+            _memo[id(self)] = ListStartEndOAM(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
         else:
             startarray, endarray = resolve()
-            _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.resolved(source, lazy, _memo), self)
+            _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
+
+    def get(self, attr):
+        if attr == "countarray":
+            if callable(self.countarray):
+                self.countarray = self.countarray()
+            return self.countarray
+        else:
+            raise NameError("ListCountOAM has no array {0}".format(repr(attr)))
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            if id(self.contents) not in _memo:
+                _memo[id(self.contents)] = None
+                _memo[id(self.contents)] = self.contents.projection(required, _memo)
+            contents = _memo[id(self.contents)]
+            if contents is None:
+                contents = PrimitiveOAM(self.countarray, self.masked)
+            return ListCountOAM(self.countarray, contents, self.masked, self)
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -319,12 +416,18 @@ class ListOffsetOAM(ListOAM):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        if id(self.contents) not in _memo:
+            _memo[id(self.contents)] = None
+            _memo[id(self.contents)] = self.contents.accessedby(accessor)
+        contents = _memo[id(self.contents)]
+        return ListOffsetOAM(accessor, contents, self.masked, self)
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.offsetarray)
+    def _name(self):
+        return str(self.offsetarray)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -335,11 +438,33 @@ class ListOffsetOAM(ListOAM):
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListStartEndOAM(resolve, None, self.contents.resolved(source, lazy, _memo), self)
+            _memo[id(self)] = ListStartEndOAM(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
         else:
             startarray, endarray = resolve()
-            _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.resolved(source, lazy, _memo), self)
+            _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
+
+    def get(self, attr):
+        if attr == "offsetarray":
+            if callable(self.offsetarray):
+                self.offsetarray = self.offsetarray()
+            return self.offsetarray
+        else:
+            raise NameError("ListOffsetOAM has no array {0}".format(repr(attr)))
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            if id(self.contents) not in _memo:
+                _memo[id(self.contents)] = None
+                _memo[id(self.contents)] = self.contents.projection(required, _memo)
+            contents = _memo[id(self.contents)]
+            if contents is None:
+                contents = PrimitiveOAM(self.offsetarray, self.masked)
+            return ListOffsetOAM(self.offsetarray, contents, self.masked, self)
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -366,12 +491,18 @@ class ListStartEndOAM(ListOAM):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        if id(self.contents) not in _memo:
+            _memo[id(self.contents)] = None
+            _memo[id(self.contents)] = self.contents.accessedby(accessor)
+        contents = _memo[id(self.contents)]
+        return ListStartEndOAM(accessor, None, contents, self.masked, self)
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.startarray)
+    def _name(self):
+        return str(self.startarray)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -381,10 +512,10 @@ class ListStartEndOAM(ListOAM):
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListStartEndOAM(resolve, None, self.contents.resolved(source, lazy, _memo), self)
+            _memo[id(self)] = ListStartEndOAM(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
         else:
             startarray, endarray = resolve()
-            _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.resolved(source, lazy, _memo), self)
+            _memo[id(self)] = ListStartEndOAM(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
 
     def proxy(self, index):
@@ -395,6 +526,32 @@ class ListStartEndOAM(ListOAM):
             return None
         else:
             return arrowed.proxy.ListProxy(self, index)
+
+    def get(self, attr):
+        if attr == "startarray":
+            if callable(self.startarray):
+                self.startarray = self.startarray()
+            return self.startarray
+        elif attr == "endarray":
+            if callable(self.endarray):
+                self.endarray = self.endarray()
+            return self.endarray
+        else:
+            raise NameError("ListStartEndOAM has no array {0}".format(repr(attr)))
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            if id(self.contents) not in _memo:
+                _memo[id(self.contents)] = None
+                _memo[id(self.contents)] = self.contents.projection(required, _memo)
+            contents = _memo[id(self.contents)]
+            if contents is None:
+                contents = PrimitiveOAM(self.startarray, self.masked)
+            return ListStartEndOAM(self.startarray, self.endarray, contents, self.masked, self)
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -423,10 +580,10 @@ class RecordOAM(ObjectArrayMapping):
         self.contents = contents
         self.base = base
         if name is None:
-            self.name = "Record-{0}".format(self.__nameindex)
+            self._name = "Record-{0}".format(self.__nameindex)
             self.__nameindex += 1
         else:
-            self.name = name
+            self._name = name
 
         assert isinstance(self.contents, dict)
         assert all(isinstance(x, string_types) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
@@ -442,15 +599,43 @@ class RecordOAM(ObjectArrayMapping):
 
         self.proxyclass = type(str(self.name), superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
         self.proxyclass.__slots__ = ["_oam", "_index"]
-        
+
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        contents = collections.OrderedDict()
+        for n, c in self.contents.items():
+            if id(c) not in _memo:
+                _memo[id(c)] = None
+                _memo[id(c)] = c.accessedby(accessor)
+            contents[n] = _memo[id(c)]
+        return RecordOAM(contents, self)
+
+    def findbybase(self, base, _memo=None):
+        if self.hasbase(base):
+            return self
+        else:
+            if _memo is None:
+                _memo = set()
+            for x in self.contents.values():
+                if id(x) not in _memo:
+                    _memo.add(id(x))
+                    out = x.findbybase(base, _memo)
+                    if out is not None:
+                        return out
+            return None
+
     def resolved(self, source, lazy=False, _memo=None):
         # a record is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
-        _memo[id(self)] = RecordOAM(dict((k, v.resolved(source, lazy, _memo)) for k, v in self.contents.items()), self, self.name)
+        _memo[id(self)] = RecordOAM(collections.OrderedDict((k, v.resolved(source, lazy, _memo)) for k, v in self.contents.items()), self)
         return _memo[id(self)]
 
     def proxy(self, index):
         return self.proxyclass(self, index)
+
+    def get(self, attr):
+        raise NameError("RecordOAM has no array {0}".format(repr(attr)))
 
     def members(self, _memo=None):
         if _memo is None:
@@ -461,6 +646,36 @@ class RecordOAM(ObjectArrayMapping):
                 _memo.add(id(x))
                 out.extend(x.members(_memo))
         return out
+
+    def hasany(self, others, _memo=None):
+        if any(x is self for x in others):
+            return True
+        if _memo is None:
+            _memo = set()
+        for x in self.contents.values():
+            if id(x) not in _memo:
+                _memo.add(id(x))
+                return x.hasany(others, _memo)
+        return False
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            contents = collections.OrderedDict()
+            for n, x in self.contents.items():
+                if id(x) not in _memo:
+                    _memo[id(x)] = None
+                    _memo[id(x)] = x.projection(required, _memo)
+                content = _memo[id(x)]
+                if content is not None:
+                    contents[n] = content
+            if len(contents) > 0:
+                return RecordOAM(contents, self)
+            else:
+                return None
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -474,7 +689,7 @@ class RecordOAM(ObjectArrayMapping):
         yield indent + "}"
 
     def __eq__(self, other):
-        return isinstance(other, RecordOAM) and self.contents == other.contents and self.base == other.base and self.name == other.name
+        return isinstance(other, RecordOAM) and self.contents == other.contents and self.base == other.base and self._name == other._name
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -485,8 +700,33 @@ class TupleOAM(ObjectArrayMapping):
         self.base = base
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        contents = []
+        for c in self.contents:
+            if id(c) not in _memo:
+                _memo[id(c)] = None
+                _memo[id(c)] = c.accessedby(accessor)
+            contents.append(_memo[id(c)])
+        return TupleOAM(contents, self)
+
+    def findbybase(self, base, _memo=None):
+        if self.hasbase(base):
+            return self
+        else:
+            if _memo is None:
+                _memo = set()
+            for x in self.contents:
+                if id(x) not in _memo:
+                    _memo.add(id(x))
+                    out = x.findbybase(base, _memo)
+                    if out is not None:
+                        return out
+            return None
+
     @property
-    def name(self):
+    def _name(self):
         return "tuple{0}".format(len(self.contents))
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -498,6 +738,9 @@ class TupleOAM(ObjectArrayMapping):
     def proxy(self, index):
         return arrowed.proxy.TupleProxy(self, index)
 
+    def get(self, attr):
+        raise NameError("TupleOAM has no array {0}".format(repr(attr)))
+
     def members(self, _memo=None):
         if _memo is None:
             _memo = set()
@@ -507,6 +750,36 @@ class TupleOAM(ObjectArrayMapping):
                 _memo.add(id(x))
                 out.extend(x.members(_memo))
         return out
+
+    def hasany(self, others, _memo=None):
+        if any(x is self for x in others):
+            return True
+        if _memo is None:
+            _memo = set()
+        for x in self.contents:
+            if id(x) not in _memo:
+                _memo.add(id(x))
+                return x.hasany(others, _memo)
+        return False
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            contents = []
+            for x in self.contents:
+                if id(x) not in _memo:
+                    _memo[id(x)] = None
+                    _memo[id(x)] = x.projection(required, _memo)
+                content = _memo[id(x)]
+                if content is not None:
+                    contents.append(content)
+            if len(contents) > 0:
+                return TupleOAM(contents, self)
+            else:
+                return None
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -530,6 +803,20 @@ class UnionOAM(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
         raise TypeError("UnionOAM is abstract; use UnionSparse or UnionSparseOffset instead")
 
+    def findbybase(self, base, _memo=None):
+        if self.hasbase(base):
+            return self
+        else:
+            if _memo is None:
+                _memo = set()
+            for x in self.contents:
+                if id(x) not in _memo:
+                    _memo.add(id(x))
+                    out = x.findbybase(base, _memo)
+                    if out is not None:
+                        return out
+            return None
+
     def members(self, _memo=None):
         if _memo is None:
             _memo = set()
@@ -540,10 +827,21 @@ class UnionOAM(ObjectArrayMapping):
                 out.extend(x.members(_memo))
         return out
 
+    def hasany(self, others, _memo=None):
+        if any(x is self for x in others):
+            return True
+        if _memo is None:
+            _memo = set()
+        for x in self.contents:
+            if id(x) not in _memo:
+                _memo.add(id(x))
+                return x.hasany(others, _memo)
+        return False
+
 class UnionSparseOAM(UnionOAM):
     def __init__(self, tagarray, contents, masked=False, base=None):
         self.tagarray = tagarray
-        self.contents = contents
+        self.contents = tuple(contents)
         self.masked = masked
         self.base = base
         if isinstance(self.contents, tuple):
@@ -551,12 +849,20 @@ class UnionSparseOAM(UnionOAM):
         else:
             raise AssertionError("contents must be a tuple")
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        contents = []
+        for c in self.contents:
+            if id(c) not in _memo:
+                _memo[id(c)] = None
+                _memo[id(c)] = c.accessedby(accessor)
+            contents.append(_memo[id(c)])
+        return UnionSparseOAM(accessor, contents, self.masked, self)
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.tagarray)
+    def _name(self):
+        return str(self.tagarray)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -572,11 +878,38 @@ class UnionSparseOAM(UnionOAM):
         
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = UnionSparseOffsetOAM(resolve, None, tuple(x.resolved(source, lazy, _memo) for x in self.contents), self)
+            _memo[id(self)] = UnionSparseOffsetOAM(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         else:
             tagarray, offsetarray = resolve()
-            _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.resolved(source, lazy, _memo) for x in self.contents), self)
+            _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         return _memo[id(self)]
+
+    def get(self, attr):
+        if attr == "tagarray":
+            if callable(self.tagarray):
+                self.tagarray = self.tagarray()
+            return self.tagarray
+        else:
+            raise NameError("UnionSparseOAM has no array {0}".format(repr(attr)))
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            contents = []
+            for x in self.contents:
+                if id(x) not in _memo:
+                    _memo[id(x)] = None
+                    _memo[id(x)] = x.projection(required, _memo)
+                content = _memo[id(x)]
+                if content is not None:
+                    contents.append(content)
+            if len(contents) > 0:
+                return UnionSparseOAM(self.tagarray, contents, self.masked, self)
+            else:
+                return None
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -599,7 +932,7 @@ class UnionSparseOffsetOAM(UnionOAM):
     def __init__(self, tagarray, offsetarray, contents, masked=False, base=None):
         self.tagarray = tagarray
         self.offsetarray = offsetarray
-        self.contents = contents
+        self.contents = tuple(contents)
         self.masked = masked
         self.base = base
         if isinstance(self.contents, tuple):
@@ -607,12 +940,20 @@ class UnionSparseOffsetOAM(UnionOAM):
         else:
             raise AssertionError("contents must be a tuple")
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        contents = []
+        for c in self.contents:
+            if id(c) not in _memo:
+                _memo[id(c)] = None
+                _memo[id(c)] = c.accessedby(accessor)
+            contents.append(_memo[id(c)])
+        return UnionSparseOffsetOAM(accessor, None, contents, self.masked, self)
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.tagarray)
+    def _name(self):
+        return str(self.tagarray)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -622,10 +963,10 @@ class UnionSparseOffsetOAM(UnionOAM):
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = UnionSparseOffsetOAM(resolve, None, tuple(x.resolved(source, lazy, _memo) for x in self.contents), self)
+            _memo[id(self)] = UnionSparseOffsetOAM(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         else:
             tagarray, offsetarray = resolve()
-            _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, tuple(x.resolved(source, lazy, _memo) for x in self.contents), self)
+            _memo[id(self)] = UnionSparseOffsetOAM(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         return _memo[id(self)]
 
     def proxy(self, index):
@@ -638,6 +979,37 @@ class UnionSparseOffsetOAM(UnionOAM):
             tag = self.tagarray[index]
             offset = self.offsetarray[index]
             return self.contents[tag].proxy(offset)
+
+    def get(self, attr):
+        if attr == "tagarray":
+            if callable(self.tagarray):
+                self.tagarray = self.tagarray()
+            return self.tagarray
+        elif attr == "offsetarray":
+            if callable(self.offsetarray):
+                self.offsetarray = self.offsetarray()
+            return self.offsetarray
+        else:
+            raise NameError("UnionSparseOffsetOAM has no array {0}".format(repr(attr)))
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            contents = []
+            for x in self.contents:
+                if id(x) not in _memo:
+                    _memo[id(x)] = None
+                    _memo[id(x)] = x.projection(required, _memo)
+                content = _memo[id(x)]
+                if content is not None:
+                    contents.append(content)
+            if len(contents) > 0:
+                return UnionSparseOffsetOAM(self.tagarray, self.offsetarray, contents, self.masked, self)
+            else:
+                return None
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -669,12 +1041,30 @@ class PointerOAM(ObjectArrayMapping):
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
 
+    def accessedby(self, accessor, _memo=None):
+        if _memo is None:
+            _memo = {}
+        if id(self.target) not in _memo:
+            _memo[id(self.target)] = None
+            _memo[id(self.target)] = self.target.accessedby(accessor)
+        target = _memo[id(self.target)]
+        return PointerOAM(accessor, target, self.masked, self)
+
+    def findbybase(self, base, _memo=None):
+        if self.hasbase(base):
+            return self
+        else:
+            if _memo is None:
+                _memo = set()
+            if id(self.target) not in _memo:
+                _memo.add(id(self.target))
+                return self.target.findbybase(base, _memo)
+            else:
+                return None
+
     @property
-    def name(self):
-        base = self
-        while base.base is not None:
-            base = base.base
-        return str(base.indexarray)
+    def _name(self):
+        return str(self.indexarray)
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -687,9 +1077,9 @@ class PointerOAM(ObjectArrayMapping):
             self.target.resolved(source, lazy, _memo)
 
         if lazy:
-            _memo[id(self)] = PointerOAM(resolve, _memo[id(self.target)], self)
+            _memo[id(self)] = PointerOAM(resolve, _memo[id(self.target)], self.masked, self)
         else:
-            _memo[id(self)] = PointerOAM(resolve(), _memo[id(self.target)], self)
+            _memo[id(self)] = PointerOAM(resolve(), _memo[id(self.target)], self.masked, self)
         return _memo[id(self)]
 
     def proxy(self, index):
@@ -702,6 +1092,14 @@ class PointerOAM(ObjectArrayMapping):
             offset = self.indexarray[index]
             return self.target.proxy(offset)
 
+    def get(self, attr):
+        if attr == "indexarray":
+            if callable(self.indexarray):
+                self.indexarray = self.indexarray()
+            return self.indexarray
+        else:
+            raise NameError("PointerOAM has no array {0}".format(repr(attr)))
+
     def members(self, _memo=None):
         if _memo is None:
             _memo = set()
@@ -711,6 +1109,31 @@ class PointerOAM(ObjectArrayMapping):
             return out + self.target.members(_memo)
         else:
             return out
+
+    def hasany(self, others, _memo=None):
+        if any(x is self for x in others):
+            return True
+        if _memo is None:
+            _memo = set()
+        if id(self.target) not in _memo:
+            _memo.add(id(self.target))
+            return self.target.hasany(others, _memo)
+        else:
+            return False
+
+    def projection(self, required, _memo=None):
+        if self.hasany(required):
+            if _memo is None:
+                _memo = {}
+            if id(self.target) not in _memo:
+                _memo[id(self.target)] = None
+                _memo[id(self.target)] = self.target.projection(required, _memo)
+            target = _memo[id(self.target)]
+            if target is None:
+                target = PrimitiveOAM(self.indexarray, self.masked)
+            return PointerOAM(self.indexarray, target, self.masked, self)
+        else:
+            return None
 
     def _format(self, indent, width, refs, memo):
         yield indent + refs.get(id(self), "") + "Pointer (*"
