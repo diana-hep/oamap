@@ -92,10 +92,12 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
                 prefix = "_" + prefix
 
             trial = prefix
+            number = 2
             while trial in symbolsused:
-                trial = "{0}_{1}".format(prefix, sym.number)
-                sym.number += 1
+                trial = "{0}_{1}".format(prefix, number)
+                number += 1
 
+            symbolsused.add(trial)
             sym.names[key] = trial
             if key != trial:
                 sym.remapped.append((key, trial))
@@ -104,14 +106,13 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
 
     sym.bad = re.compile(r"[^a-zA-Z0-9_]*")
     sym.numberchars = [chr(x) for x in range(ord("0"), ord("9") + 1)]
-    sym.number = 0
     sym.names = {}
     sym.remapped = []
 
     env = env.copy()
     env[sym("nonnegotiable")] = nonnegotiable
-    env[sym("indexget")] = indexget
-    env[sym("maybe_indexget")] = maybe_indexget
+    # env[sym("indexget")] = indexget
+    # env[sym("maybe_indexget")] = maybe_indexget
     env[sym("listget")] = listget
     env[sym("listsize")] = listsize
     env[sym("maybe_listsize")] = maybe_listsize
@@ -120,8 +121,16 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     transformed = transform(function, paramtypes, externalfcns, sym)
 
     if debug:
+        try:
+            before = dump_python_source(function).strip()
+        except Exception:
+            before = ast.dump(function)
+        try:
+            after = dump_python_source(transformed).strip()
+        except Exception:
+            after = ast.dump(transformed)
         print("")
-        print("Before transformation:\n----------------------\n{0}\n\nAfter transformation:\n---------------------\n{1}".format(dump_python_source(function).strip(), dump_python_source(transformed).strip()))
+        print("Before transformation:\n----------------------\n{0}\n\nAfter transformation:\n---------------------\n{1}".format(before, after))
         if len(sym.remapped) > 0:
             print("\nRemapped symbol names:\n----------------------")
             formatter = "    {0:%ds} --> {1}" % max([len(name) for name, value in sym.remapped] + [0])
@@ -139,16 +148,16 @@ def nonnegotiable(index):
         raise TypeError("None found where object required")
     return index
 
-@numba.njit(int64(int64[:], int64))
-def indexget(start, index):
-    return start[index]
+# @numba.njit(int64(int64[:], int64))
+# def indexget(start, index):
+#     return start[index]
 
-@numba.njit(numba.optional(int64)(int64[:], int64[:], int64))
-def maybe_indexget(startdata, startmask, index):
-    if startmask[index]:
-        return None
-    else:
-        return startdata[index]
+# @numba.njit(numba.optional(int64)(int64[:], int64[:], int64))
+# def maybe_indexget(startdata, startmask, index):
+#     if startmask[index]:
+#         return None
+#     else:
+#         return startdata[index]
 
 @numba.njit(int64(int64[:], int64[:], int64, int64))
 def listget(start, end, outerindex, index):
@@ -196,7 +205,7 @@ def withequality(obj):
 
             out.lineno = getattr(obj, "lineno", 1)
             out.col_offset = getattr(obj, "col_offset", 0)
-            out.type = getattr(obj, "type", None)
+            out.atype = getattr(obj, "atype", unknown)
             obj = out
 
         for x in obj._fields:
@@ -211,12 +220,7 @@ def withequality(obj):
 
 withequality.classes = {}
 
-def compose(pyast, lineno=None, type=None, **replacements):
-    if lineno is None:
-        lineno, col_offset = 1, 0
-    else:
-        lineno, col_offset = lineno.lineno, lineno.col_offset
-
+def compose(pyast, **replacements):
     def recurse(x):
         if isinstance(x, ast.AST):
             if isinstance(x, ast.Name) and x.id in replacements:
@@ -231,8 +235,6 @@ def compose(pyast, lineno=None, type=None, **replacements):
             for f in x._fields:
                 setattr(x, f, recurse(getattr(x, f)))
 
-            x.lineno, x.col_offset = lineno, col_offset
-            x.type = type
             return x
 
         elif isinstance(x, list):
@@ -243,39 +245,35 @@ def compose(pyast, lineno=None, type=None, **replacements):
 
     return recurse(pyast)
 
-def toexpr(string, lineno=None, type=None, **replacements):
-    return compose(withequality(ast.parse(string).body[0].value), lineno=lineno, type=type, **replacements)
-
-def tostmt(string, lineno=None, type=None, **replacements):
-    return compose(withequality(ast.parse(string).body[0]), lineno=lineno, type=type, **replacements)
-
-def tostmts(string, lineno=None, type=None, **replacements):
-    return compose(withequality(ast.parse(string).body), lineno=lineno, type=type, **replacements)
-
-def toname(string, lineno=None, type=None, ctx=ast.Load()):
-    out = withequality(ast.Name(string, ctx))
+def setlinenoatype(node, lineno, atype):
     if lineno is None:
-        out.lineno, out.col_offset = 1, 0
+        node.lineno, node.col_offset = 1, 0
     else:
-        out.lineno, out.col_offset = lineno.lineno, lineno.col_offset
-    out.type = type
-    return out
+        node.lineno, node.col_offset = lineno.lineno, lineno.col_offset
+    node.atype = atype
+    return node
 
-def toliteral(obj, lineno=None, type=None):
+def toexpr(string, lineno=None, atype=None, **replacements):
+    return setlinenoatype(compose(withequality(ast.parse(string).body[0].value), **replacements), lineno=lineno, atype=atype)
+
+def tostmt(string, lineno=None, atype=None, **replacements):
+    return setlinenoatype(compose(withequality(ast.parse(string).body[0]), **replacements), lineno=lineno, atype=atype)
+
+def tostmts(string, lineno=None, atype=None, **replacements):
+    return setlinenoatype(compose(withequality(ast.parse(string).body), **replacements), lineno=lineno, atype=atype)
+
+def toname(string, lineno=None, atype=None, ctx=ast.Load()):
+    return setlinenoatype(withequality(ast.Name(string, ctx)), lineno=lineno, atype=atype)
+
+def toliteral(obj, lineno=None, atype=None):
     if isinstance(obj, str):
-        out = withequality(ast.Str(obj))
+        return setlinenoatype(withequality(ast.Str(obj)), lineno=lineno, atype=atype)
     elif isinstance(obj, (int, float)):
-        out = withequality(ast.Num(obj))
+        return setlinenoatype(withequality(ast.Num(obj)), lineno=lineno, atype=atype)
     else:
         raise AssertionError
-    if lineno is None:
-        out.lineno, out.col_offset = 1, 0
-    else:
-        out.lineno, out.col_offset = lineno.lineno, lineno.col_offset
-    out.type = type
-    return out
 
-def tofunction(obj, lineno=None, type=None):
+def tofunction(obj, lineno=None, atype=None):
     if not hasattr(obj, "__code__"):
         raise TypeError("attempting to compile {0}, but it is not a Python function (something with a __code__ attribute); no class constructors or C extensions allowed".format(repr(obj)))
     out = make_function(obj.__code__)
@@ -284,35 +282,49 @@ def tofunction(obj, lineno=None, type=None):
             return withequality(ast.FunctionDef("lambda", out.args, [out.body], []))
         else:
             return withequality(ast.FunctionDef("lambda", out.args, [out.body], [], None))
-    if lineno is not None:
-        out.lineno, out.col_offset = lineno.lineno, lineno.col_offset
-    out.type = type
-    return out
+    return setlinenoatype(out, lineno=lineno, atype=atype)
 
-################################################################ description of a symbol's type
+################################################################ the main transformation function
 
 class Possibility(object):
-    def __init__(self, oam, conditions=None):
+    def __init__(self, oam, condition=None):
         self.oam = oam
-        self.conditions = conditions
+        self.condition = condition
 
-class Type(object):
-    def __init__(self, possibilities, enclosinglist=None):
+class ArrowedType(object):
+    def __init__(self, possibilities, parameter, enclosinglist=None):
         if not isinstance(possibilities, (list, tuple)):
             possibilities = [possibilities]
         possibilities = [x if isinstance(x, Possibility) else Possibility(x) for x in possibilities]
         self.possibilities = possibilities
+        self.parameter = parameter
         self.enclosinglist = enclosinglist
 
-unknown = Type([])
+    def generate(self, handler):
+        out = None
+        for possibility in reversed(self.possibilities):
+            result = handler(possibility.oam)
+            if possibility.condition is None:
+                assert out is None
+                out = result
+            else:
+                assert out is not None
+                out = toexpr("CONSEQUENT if PREDICATE else ALTERNATE",
+                             CONSEQUENT = result,
+                             PREDICATE = possibility.condition,
+                             ALTERNATE = out,
+                             lineno = result,
+                             atype = result.atype)
+        return out
 
-################################################################ the main transformation function
+unknown = ArrowedType([], None)
 
 class Parameter(object):
-    def __init__(self, originalname, default):
+    def __init__(self, index, originalname, default):
+        self.index = index
         self.originalname = originalname
         self.default = default
-        self.type = None
+        self.atype = unknown
 
     def args(self):
         if py2:
@@ -324,10 +336,29 @@ class Parameter(object):
         return [self.default]
 
 class TransformedParameter(Parameter):
-    def __init__(self, originalname, type):
+    def __init__(self, index, originalname, atype):
+        self.index = index
         self.originalname = originalname
-        self.type = type
+        self.atype = atype
+        self.atype.parameter = self
         self.transformed = []
+
+        assert len(self.atype.possibilities) == 1
+        self.members = self.atype.possibilities[0].oam.members()
+        self.reverse_members = dict((id(m), i) for i, m in enumerate(self.members))
+
+        self.required = [()] * len(self.members)
+
+    def require(self, member, attr, sym):
+        memberid = self.reverse_members[id(member)]
+        key = "par{0}_mem{1}_{2}_{3}".format(self.index, memberid, member.name, attr)
+        symbol = sym(key)
+
+        if attr not in self.required[memberid]:
+            self.required[memberid] = self.required[memberid] + (attr,)
+            self.transformed.append(symbol)
+
+        return symbol
 
     def args(self):
         if py2:
@@ -342,6 +373,15 @@ class Parameters(object):
     def __init__(self, order):
         self.order = order
         self.lookup = dict((x.originalname, x) for x in self.order)
+
+    def istransformed(self, name):
+        return isinstance(self.lookup.get(name, None), TransformedParameter)
+
+    def atype(self, name):
+        if name in self.lookup:
+            return self.lookup[name].atype
+        else:
+            return unknown
 
     def args(self):
         if py2:
@@ -378,11 +418,11 @@ def transform(function, paramtypes, externalfcns, sym):
             paramtype = None
 
         if paramtype is None:
-            parameters.append(Parameter(paramname, default))
+            parameters.append(Parameter(index, paramname, default))
         else:
             if default is not None:
                 raise ValueError("parameter {0} is an argument defined in paramtypes, which is not allowed to have default parameters")
-            parameters.append(TransformedParameter(paramname, Type(paramtype)))
+            parameters.append(TransformedParameter(index, paramname, ArrowedType(paramtype, None)))
 
     parameters = Parameters(parameters)
 
@@ -392,7 +432,7 @@ def transform(function, paramtypes, externalfcns, sym):
         if isinstance(node, ast.AST):
             handlername = "do_" + node.__class__.__name__
             if handlername in everything:
-                return everything[handlername](node, parameters, externalfcns, sym)
+                return everything[handlername](node, parameters, externalfcns, sym, recurse)
             else:
                 for x in node._fields:
                     setattr(node, x, recurse(getattr(node, x)))
@@ -543,6 +583,11 @@ def transform(function, paramtypes, externalfcns, sym):
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
+def do_Name(node, parameters, externalfcns, sym, recurse):
+    if parameters.istransformed(node.id):
+        return toliteral(0, lineno=node, atype=parameters.atype(node.id))
+    else:
+        return node
 
 # Nonlocal ("names",)  # Py3 only
 
@@ -588,8 +633,35 @@ def transform(function, paramtypes, externalfcns, sym):
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, parameters, externalfcns, sym):
-    return node
+def do_Subscript(node, parameters, externalfcns, sym, recurse):
+    node.value = recurse(node.value)
+    node.slice = recurse(node.slice)
+
+    if node.value.atype is unknown:
+        return node
+
+    else:
+        if not isinstance(node.slice, ast.Index):
+            raise NotImplementedError
+
+        def handler(oam):
+            if isinstance(oam, ListOAM):
+                startarray = node.value.atype.parameter.require(oam, "startarray", sym)
+                endarray = node.value.atype.parameter.require(oam, "endarray", sym)
+
+                return toexpr("LISTGET(START, END, OUTERINDEX, INDEX)",
+                              LISTGET = toname(sym("listget")),
+                              START = toname(startarray),
+                              END = toname(endarray),
+                              OUTERINDEX = node.value,
+                              INDEX = node.slice,
+                              lineno = node,
+                              atype = ArrowedType(oam.contents, node.value.atype.parameter))
+            else:
+                raise NotImplementedError
+
+        return node.value.atype.generate(handler)
+
 
 
 

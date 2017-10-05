@@ -60,7 +60,7 @@ class ObjectArrayMapping(object):
     @staticmethod
     def _toint64(array):
         if array.dtype != numpy.dtype(numpy.int64):
-            if isinstance(array, numpy.ma.MaskedArray) and array.mask is not None:
+            if getattr(array, "mask", None) is not None:
                 return numpy.ma.MaskedArray(array, dtype=numpy.int64)
             else:
                 return numpy.array(array, dtype=numpy.int64)
@@ -68,23 +68,29 @@ class ObjectArrayMapping(object):
             return array
 
     @staticmethod
-    def _resolved_check(array, message, extracheck):
-        assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array), message
+    def _resolved_check(array, message, masked, extracheck):
+        if masked:
+            message = message.format("masked")
+            extracheck2 = lambda x: getattr(x, "mask", None) is not None
+        else:
+            message = message.format("non-masked")
+            extracheck2 = lambda x: getattr(x, "mask", None) is None
+        assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array) and extracheck2(array), message
         return array
 
     @staticmethod
-    def _resolved(obj, source, message, extracheck=lambda x: True):
+    def _resolved(obj, source, message, masked, extracheck=lambda x: True):
         if isinstance(obj, numpy.ndarray):
-            return ObjectArrayMapping._resolved_check(obj, message, extracheck)
+            return ObjectArrayMapping._resolved_check(obj, message, masked, extracheck)
 
         elif callable(obj):
             if hasattr(obj, "__code__") and obj.__code__.co_argcount == 0:
-                return ObjectArrayMapping._resolved_check(obj(), message, extracheck)
+                return ObjectArrayMapping._resolved_check(obj(), message, masked, extracheck)
             else:
-                return ObjectArrayMapping._resolved_check(obj(source), message, extracheck)
+                return ObjectArrayMapping._resolved_check(obj(source), message, masked, extracheck)
 
         elif isinstance(obj, collections.Hashable) and obj in source:
-            return ObjectArrayMapping._resolved_check(source[obj], message, extracheck)
+            return ObjectArrayMapping._resolved_check(source[obj], message, masked, extracheck)
 
         else:
             raise ValueError("array cannot be found for key {0}".format(repr(obj)))
@@ -103,7 +109,7 @@ class ObjectArrayMapping(object):
             end = ", dtype={0})".format(repr(str(array.dtype)))
             arraywidth -= len(end)
             
-            if isinstance(array, numpy.ma.MaskedArray):
+            if getattr(array, "mask", None) is not None:
                 out = ["masked_array(["]
                 arraywidth -= len(out[-1])
                 index = 0
@@ -188,24 +194,38 @@ class ObjectArrayMapping(object):
 ################################################################ primitives
 
 class PrimitiveOAM(ObjectArrayMapping):
-    def __init__(self, array, base=None):
+    def __init__(self, array, masked=False, base=None):
         self.array = array
+        self.masked = masked
         self.base = base
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.array)
+
     def resolved(self, source, lazy=False, _memo=None):
+        def resolve():
+            return self._resolved(self.array, source, "PrimitiveOAM array must map to a one-dimensional, {0}, non-record array", self.masked)
+
         if lazy:
-            return PrimitiveOAM(lambda: self._resolved(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"), self)
+            return PrimitiveOAM(resolve, self)
         else:
-            return PrimitiveOAM(self._resolved(self.array, source, "PrimitiveOAM array must map to a one-dimensional, non-record array"), self)
+            return PrimitiveOAM(resolve(), self)
 
     def proxy(self, index):
         if callable(self.array):
             self.array = self.array()
 
-        if isinstance(self.array, numpy.ma.MaskedArray) and self.array.mask is not None and self.array.mask[index]:
+        if getattr(self.array, "mask", None) is not None and self.array.mask[index]:
             return None
         else:
             return self.array[index]
+
+    def members(self, _memo=None):
+        return [self]
 
     def _format_with_preamble(self, preamble, indent, width, refs, memo):
         for line in self._format(indent, width - len(preamble), refs, memo):
@@ -228,23 +248,41 @@ class ListOAM(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
         raise TypeError("ListOAM is abstract; use ListCountOAM, ListOffsetOAM, or ListStartEndOAM instead")
 
+    def members(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        out = [self]
+        if id(self.contents) not in _memo:
+            _memo.add(id(self.contents))
+            return out + self.contents.members(_memo)
+        else:
+            return out
+
 class ListCountOAM(ListOAM):
-    def __init__(self, countarray, contents, base=None):
+    def __init__(self, countarray, contents, masked=False, base=None):
         self.countarray = countarray
         self.contents = contents
+        self.masked = masked
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.countarray)
+
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            countarray = self._resolved(self.countarray, source, "ListCountOAM countarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer))
+            countarray = self._resolved(self.countarray, source, "ListCountOAM countarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer))
             offsetarray = numpy.empty(len(countarray) + 1, dtype=numpy.int64)   # new allocation
             countarray.cumsum(out=offsetarray[1:])                              # fill with offsets
             offsetarray[0] = 0
             startarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
 
-            if isinstance(countarray, numpy.ma.MaskedArray) and countarray.mask is not None:
+            if getattr(countarray, "mask", None) is not None:
                 startarray = numpy.ma.MaskedArray(startarray, mask=countarray.mask)
 
             return startarray, endarray
@@ -274,15 +312,23 @@ class ListCountOAM(ListOAM):
         return not self.__eq__(self, other)
 
 class ListOffsetOAM(ListOAM):
-    def __init__(self, offsetarray, contents, base=None):
+    def __init__(self, offsetarray, contents, masked=False, base=None):
         self.offsetarray = offsetarray
         self.contents = contents
+        self.masked = masked
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.offsetarray)
+
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "ListOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "ListOffsetOAM offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
             startarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
             return startarray, endarray
@@ -312,17 +358,25 @@ class ListOffsetOAM(ListOAM):
         return not self.__eq__(self, other)
         
 class ListStartEndOAM(ListOAM):
-    def __init__(self, startarray, endarray, contents, base=None):
+    def __init__(self, startarray, endarray, contents, masked=False, base=None):
         self.startarray = startarray
         self.endarray = endarray
         self.contents = contents
+        self.masked = masked
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.startarray)
+
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            startarray = self._toint64(self._resolved(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
-            endarray = self._toint64(self._resolved(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            startarray = self._toint64(self._resolved(self.startarray, source, "ListStartEndOAM startarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            endarray = self._toint64(self._resolved(self.startarray, source, "ListStartEndOAM endarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
             return startarray, endarray
 
         _memo = self._recursion_check(_memo)
@@ -337,7 +391,7 @@ class ListStartEndOAM(ListOAM):
         if callable(self.startarray):
             self.startarray, self.endarray = self.startarray()
 
-        if isinstance(self.startarray, numpy.ma.MaskedArray) and self.startarray.mask is not None and self.startarray.mask[index]:
+        if getattr(self.startarray, "mask", None) is not None and self.startarray.mask[index]:
             return None
         else:
             return arrowed.proxy.ListProxy(self, index)
@@ -398,6 +452,16 @@ class RecordOAM(ObjectArrayMapping):
     def proxy(self, index):
         return self.proxyclass(self, index)
 
+    def members(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        out = [self]
+        for x in self.contents.values():
+            if id(x) not in _memo:
+                _memo.add(id(x))
+                out.extend(x.members(_memo))
+        return out
+
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "Record {"
@@ -421,6 +485,10 @@ class TupleOAM(ObjectArrayMapping):
         self.base = base
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
 
+    @property
+    def name(self):
+        return "tuple{0}".format(len(self.contents))
+
     def resolved(self, source, lazy=False, _memo=None):
         # a tuple is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
         _memo = self._recursion_check(_memo)
@@ -429,6 +497,16 @@ class TupleOAM(ObjectArrayMapping):
 
     def proxy(self, index):
         return arrowed.proxy.TupleProxy(self, index)
+
+    def members(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        out = [self]
+        for x in self.contents:
+            if id(x) not in _memo:
+                _memo.add(id(x))
+                out.extend(x.members(_memo))
+        return out
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -452,19 +530,37 @@ class UnionOAM(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
         raise TypeError("UnionOAM is abstract; use UnionSparse or UnionSparseOffset instead")
 
+    def members(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        out = [self]
+        for x in self.contents:
+            if id(x) not in _memo:
+                _memo.add(id(x))
+                out.extend(x.members(_memo))
+        return out
+
 class UnionSparseOAM(UnionOAM):
-    def __init__(self, tagarray, contents, base=None):
+    def __init__(self, tagarray, contents, masked=False, base=None):
         self.tagarray = tagarray
         self.contents = contents
+        self.masked = masked
         self.base = base
         if isinstance(self.contents, tuple):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
         else:
             raise AssertionError("contents must be a tuple")
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.tagarray)
+
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOAM tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
 
             offsetarray = numpy.empty(len(tagarray), dtype=numpy.int64)
             for tag in range(len(self.contents)):    # for each possible tag
@@ -500,20 +596,28 @@ class UnionSparseOAM(UnionOAM):
         return not self.__eq__(self, other)
 
 class UnionSparseOffsetOAM(UnionOAM):
-    def __init__(self, tagarray, offsetarray, contents, base=None):
+    def __init__(self, tagarray, offsetarray, contents, masked=False, base=None):
         self.tagarray = tagarray
         self.offsetarray = offsetarray
         self.contents = contents
+        self.masked = masked
         self.base = base
         if isinstance(self.contents, tuple):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
         else:
             raise AssertionError("contents must be a tuple")
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.tagarray)
+
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
-            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOffsetOAM tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "UnionSparseOffsetOAM offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
             return tagarray, offsetarray
 
         _memo = self._recursion_check(_memo)
@@ -528,7 +632,7 @@ class UnionSparseOffsetOAM(UnionOAM):
         if callable(self.tagarray):
             self.tagarray, self.offsetarray = self.tagarray()
 
-        if isinstance(self.tagarray, numpy.ma.MaskedArray) and self.tagarray.mask is not None and self.tagarray.mask[index]:
+        if getattr(self.tagarray, "mask", None) is not None and self.tagarray.mask[index]:
             return None
         else:
             tag = self.tagarray[index]
@@ -557,16 +661,24 @@ class UnionSparseOffsetOAM(UnionOAM):
 ################################################################ pointers
 
 class PointerOAM(ObjectArrayMapping):
-    def __init__(self, indexarray, target, base=None):
+    def __init__(self, indexarray, target, masked=False, base=None):
         self.indexarray = indexarray
         self.target = target
+        self.masked = masked
         self.base = base
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
 
+    @property
+    def name(self):
+        base = self
+        while base.base is not None:
+            base = base.base
+        return str(base.indexarray)
+
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            return self._toint64(self._resolved(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, non-record array of integers", lambda x: issubclass(x.dtype.type, numpy.integer)))
+            return self._toint64(self._resolved(self.indexarray, source, "PointerOAM indexarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
 
         # (only) pointers are allowed to reference themselves, but don't resolve the same pointer more than once
         if _memo is None:
@@ -584,11 +696,21 @@ class PointerOAM(ObjectArrayMapping):
         if callable(self.indexarray):
             self.indexarray = self.indexarray()
 
-        if isinstance(self.indexarray, numpy.ma.MaskedArray) and self.indexarray.mask is not None and self.indexarray.mask[index]:
+        if getattr(self.indexarray, "mask", None) is not None and self.indexarray.mask[index]:
             return None
         else:
             offset = self.indexarray[index]
             return self.target.proxy(offset)
+
+    def members(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        out = [self]
+        if id(self.target) not in _memo:
+            _memo.add(id(self.target))
+            return out + self.target.members(_memo)
+        else:
+            return out
 
     def _format(self, indent, width, refs, memo):
         yield indent + refs.get(id(self), "") + "Pointer (*"
