@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import ast
+import re
 import sys
 
 import numpy
@@ -31,7 +32,7 @@ py2 = (sys.version_info[0] <= 2)
 ################################################################ interface
 
 class Compiled(object):
-    def __init__(self, transformed, paramtypes, symnames):
+    def __init__(self, transformed, paramtypes, env, symnames):
         pass   # this would be a good place to put the exec
 
     @property
@@ -60,25 +61,25 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     # get a list of all symbols used by the function and any other functions it references
     symbolsused = set()
     externalfcns = {}
-    def search(syntaxtree):
-        if isinstance(syntaxtree, ast.AST):
-            if isinstance(syntaxtree, ast.Name):
-                symbolsused.add(syntaxtree.id)
+    def search(node):
+        if isinstance(node, ast.AST):
+            if isinstance(node, ast.Name):
+                symbolsused.add(node.id)
 
-            if isinstance(syntaxtree, ast.Call):
+            if isinstance(node, ast.Call):
                 try:
-                    obj = eval(compile(ast.Expression(syntaxtree.func), "", "eval"), env)
+                    obj = eval(compile(ast.Expression(node.func), "", "eval"), env)
                 except Exception as err:
-                    raise err.__class__("code to compile calls the expression below, but it is not defined in the environment (env):\n\n    {0}".format(dump_python_source(syntaxtree.func).strip()))
+                    raise err.__class__("code to compile calls the expression below, but it is not defined in the environment (env):\n\n    {0}".format(dump_python_source(node.func).strip()))
                 else:
-                    externalfcns[syntaxtree.func] = tofunction(obj)
-                    search(externalfcns[syntaxtree.func])
+                    externalfcns[node.func] = tofunction(obj)
+                    search(externalfcns[node.func])
 
-            for x in syntaxtree._fields:
-                search(getattr(syntaxtree, x))
+            for x in node._fields:
+                search(getattr(node, x))
 
-        elif isinstance(syntaxtree, list):
-            for x in syntaxtree:
+        elif isinstance(node, list):
+            for x in node:
                 search(x)
                 
     search(function)
@@ -86,30 +87,49 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     # symbol name generator
     def sym(key):
         if key not in sym.names:
-            while True:
-                trial = "_{0}".format(sym.number)
+            prefix = sym.bad.sub("", key)
+            if len(prefix) == 0 or prefix[0] in sym.numberchars:
+                prefix = "_" + prefix
+
+            trial = prefix
+            while trial in symbolsused:
+                trial = "{0}_{1}".format(prefix, sym.number)
                 sym.number += 1
-                if trial not in symbolsused:
-                    break
+
             sym.names[key] = trial
+            if key != trial:
+                sym.remapped.append((key, trial))
+
         return sym.names[key]
 
+    sym.bad = re.compile(r"[^a-zA-Z0-9_]*")
+    sym.numberchars = [chr(x) for x in range(ord("0"), ord("9") + 1)]
     sym.number = 0
     sym.names = {}
+    sym.remapped = []
+
+    env = env.copy()
+    env[sym("nonnegotiable")] = nonnegotiable
+    env[sym("indexget")] = indexget
+    env[sym("maybe_indexget")] = maybe_indexget
+    env[sym("listget")] = listget
+    env[sym("listsize")] = listsize
+    env[sym("maybe_listsize")] = maybe_listsize
 
     # do the code transformation
     transformed = transform(function, paramtypes, externalfcns, sym)
 
     if debug:
         print("")
-        print("Before transformation:\n----------------------\n{0}\n\nAfter transformation:\n---------------------\n{1}\n\nNew symbols:\n------------\n".format(dump_python_source(function).strip(), dump_python_source(transformed).strip()))
-        for number in range(sym.number):
-            name = "_{0}".format(number)
-            if name in sym.names:
-                print("{0} -->\t{1}".format(name, sym.names[name]))
+        print("Before transformation:\n----------------------\n{0}\n\nAfter transformation:\n---------------------\n{1}".format(dump_python_source(function).strip(), dump_python_source(transformed).strip()))
+        if len(sym.remapped) > 0:
+            print("\nRemapped symbol names:\n----------------------")
+            formatter = "    {0:%ds} --> {1}" % max([len(name) for name, value in sym.remapped] + [0])
+            for name, value in sym.remapped:
+                print(formatter.format(name, value))
         print("")
 
-    return Compiled(transformed, paramtypes, sym.names)
+    return Compiled(transformed, paramtypes, env, sym.names)
 
 ################################################################ functions inserted into code
 
@@ -288,8 +308,106 @@ unknown = Type([])
 
 ################################################################ the main transformation function
 
+class Parameter(object):
+    def __init__(self, originalname, default):
+        self.originalname = originalname
+        self.default = default
+        self.type = None
+
+    def args(self):
+        if py2:
+            return [ast.Name(self.originalname, ast.Param())]
+        else:
+            return [ast.arg(self.originalname, None)]
+
+    def defaults(self):
+        return [self.default]
+
+class TransformedParameter(Parameter):
+    def __init__(self, originalname, type):
+        self.originalname = originalname
+        self.type = type
+        self.transformed = []
+
+    def args(self):
+        if py2:
+            return [ast.Name(x, ast.Param()) for x in self.transformed]
+        else:
+            return [ast.arg(x, None) for x in self.transformed]
+
+    def defaults(self):
+        return []
+
+class Parameters(object):
+    def __init__(self, order):
+        self.order = order
+        self.lookup = dict((x.originalname, x) for x in self.order)
+
+    def args(self):
+        if py2:
+            return ast.arguments(sum((x.args() for x in self.order), []), None, None, sum((x.defaults() for x in self.order), []))
+        else:
+            return ast.arguments(sum((x.args() for x in self.order), []), None, [], [], None, sum((x.defaults() for x in self.order), []))
+
 def transform(function, paramtypes, externalfcns, sym):
-    return function
+    # check for too much dynamism
+    if function.args.vararg is not None:
+        raise TypeError("function {0} has *args, which are not allowed in compiled functions".format(repr(function.name)))
+    if function.args.kwarg is not None:
+        raise TypeError("function {0} has **kwds, which are not allowed in compiled functions".format(repr(function.name)))
+
+    # identify which parameters will be transformed (probably from a single parameter to multiple)
+    defaults = [None] * (len(function.args.args) - len(function.args.defaults)) + function.args.defaults
+    parameters = []
+    for index, (param, default) in enumerate(zip(function.args.args, defaults)):
+        if py2:
+            assert isinstance(param, ast.Name) and isinstance(param.ctx, ast.Param)
+            paramname = param.id
+        else:
+            assert isinstance(param, ast.arg)
+            paramname = param.arg
+
+        if index in paramtypes and paramname in paramtypes:
+            raise ValueError("parameter at index {0} and parameter named {1} are the same parameter in paramtypes".format(index, repr(paramname)))
+
+        if index in paramtypes:
+            paramtype = paramtypes[index]
+        elif paramname in paramtypes:
+            paramtype = paramtypes[paramname]
+        else:
+            paramtype = None
+
+        if paramtype is None:
+            parameters.append(Parameter(paramname, default))
+        else:
+            if default is not None:
+                raise ValueError("parameter {0} is an argument defined in paramtypes, which is not allowed to have default parameters")
+            parameters.append(TransformedParameter(paramname, Type(paramtype)))
+
+    parameters = Parameters(parameters)
+
+    everything = globals()
+
+    def recurse(node):
+        if isinstance(node, ast.AST):
+            handlername = "do_" + node.__class__.__name__
+            if handlername in everything:
+                return everything[handlername](node, parameters, externalfcns, sym)
+            else:
+                for x in node._fields:
+                    setattr(node, x, recurse(getattr(node, x)))
+                return node
+
+        elif isinstance(node, list):
+            return [recurse(x) for x in node]
+
+        else:
+            return node
+
+    transformed = recurse(function)
+    transformed.args = parameters.args()
+
+    return transformed
 
 ################################################################ specialized rules for each Python AST type
 
@@ -470,6 +588,12 @@ def transform(function, paramtypes, externalfcns, sym):
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
+def do_Subscript(node, parameters, externalfcns, sym):
+    return node
+
+
+
+
 
 # Suite ("body",)
 
