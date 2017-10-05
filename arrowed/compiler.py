@@ -33,10 +33,26 @@ string_types = (unicode, str) if py2 else (str, bytes)
 ################################################################ interface
 
 class Compiled(object):
-    def __init__(self, transformed, parameters, env):
+    def __init__(self, transformed, parameters, env, numbaargs):
         self.transformed = transformed
         self.parameters = parameters
         self.env = env
+        self.numbaargs = numbaargs
+
+        full = ast.Module([self.transformed], lineno=1, col_offset=0)
+
+        print full.lineno
+        print full.body[0].lineno
+
+
+        envcopy = env.copy()
+        eval(__builtins__["compile"](full, transformed.name, "exec"), envcopy)
+        self.compiled = envcopy[transformed.name]
+
+        if self.numbaargs is not None:
+            self.executable = numba.jit(self.compiled, **numbaargs)
+        else:
+            self.executable = self.compiled
 
     def __call__(self, resolved, *args):
         pass
@@ -64,6 +80,8 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
         if isinstance(node, ast.AST):
             if isinstance(node, ast.Name):
                 symbolsused.add(node.id)
+            elif isinstance(node, ast.FunctionDef):
+                symbolsused.add(node.name)
 
             if isinstance(node, ast.Call):
                 try:
@@ -142,7 +160,7 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
                 print(parameter.projection().format("         "))
         print("")
 
-    return Compiled(transformed, parameters, env)
+    return Compiled(transformed, parameters, env, numbaargs)
 
 ################################################################ functions inserted into code
 
