@@ -41,14 +41,11 @@ class ObjectArrayMapping(object):
         base = self
         while base.base is not None:
             base = base.base
-        return str(base._name)
+        return base._name
 
     def hasbase(self, base):
         obj = self
-        indent = ""
         while obj is not None:
-            print indent, obj, obj.name
-            indent = indent + "    "
             if obj is base:
                 return True
             obj = obj.base
@@ -231,7 +228,7 @@ class PrimitiveOAM(ObjectArrayMapping):
 
     @property
     def _name(self):
-        return str(self.array)
+        return self.array
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -293,8 +290,6 @@ class ListOAM(ObjectArrayMapping):
         raise TypeError("ListOAM is abstract; use ListCountOAM, ListOffsetOAM, or ListStartEndOAM instead")
 
     def findbybase(self, base, _memo=None):
-        print "findbybase", self
-
         if self.hasbase(base):
             return self
         else:
@@ -346,7 +341,7 @@ class ListCountOAM(ListOAM):
 
     @property
     def _name(self):
-        return str(self.countarray)
+        return self.countarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -427,7 +422,7 @@ class ListOffsetOAM(ListOAM):
 
     @property
     def _name(self):
-        return str(self.offsetarray)
+        return self.offsetarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -502,7 +497,7 @@ class ListStartEndOAM(ListOAM):
 
     @property
     def _name(self):
-        return str(self.startarray)
+        return self.startarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -862,7 +857,7 @@ class UnionSparseOAM(UnionOAM):
 
     @property
     def _name(self):
-        return str(self.tagarray)
+        return self.tagarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -953,7 +948,7 @@ class UnionSparseOffsetOAM(UnionOAM):
 
     @property
     def _name(self):
-        return str(self.tagarray)
+        return self.tagarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
@@ -1064,7 +1059,7 @@ class PointerOAM(ObjectArrayMapping):
 
     @property
     def _name(self):
-        return str(self.indexarray)
+        return self.indexarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
