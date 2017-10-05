@@ -28,6 +28,7 @@ from arrowed.thirdparty.meta import dump_python_source
 from arrowed.oam import *
 
 py2 = (sys.version_info[0] <= 2)
+string_types = (unicode, str) if py2 else (str, bytes)
 
 ################################################################ interface
 
@@ -42,7 +43,7 @@ class Compiled(object):
 
 def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": True}, debug=False):
     # turn the 'function' argument into the syntax tree of a function
-    if isinstance(function, (unicode, str) if py2 else (str, bytes)):
+    if isinstance(function, string_types):
         function = withequality(ast.parse(function).body[0])
         if isinstance(function, ast.Expr) and isinstance(function.value, ast.Lambda):
             if py2:
@@ -196,33 +197,29 @@ class WithEquality(object):
         hashable = lambda x: tuple(x) if isinstance(x, list) else x
         return hash((self.__class__, tuple(hashable(getattr(self, x)) for x in self._fields)))
 
-def withequality(obj):
-    if isinstance(obj, ast.AST):
-        if not isinstance(obj, WithEquality):
-            if obj.__class__.__name__ not in withequality.classes:
-                withequality.classes[obj.__class__.__name__] = type(obj.__class__.__name__, (obj.__class__, WithEquality), {})
-            out = withequality.classes[obj.__class__.__name__]()
+def withequality(pyast):
+    if isinstance(pyast, ast.AST):
+        if not isinstance(pyast, WithEquality):
+            if pyast.__class__.__name__ not in withequality.classes:
+                withequality.classes[pyast.__class__.__name__] = type(pyast.__class__.__name__, (pyast.__class__, WithEquality), {})
 
-            for x in obj._fields:
-                setattr(out, x, getattr(obj, x))
+            out = withequality.classes[pyast.__class__.__name__](*[withequality(getattr(pyast, x)) for x in pyast._fields])
+            out.lineno = getattr(pyast, "lineno", 1)
+            out.col_offset = getattr(pyast, "col_offset", 0)
+            out.atype = getattr(pyast, "atype", untracked)
+            return out
 
-            out.lineno = getattr(obj, "lineno", 1)
-            out.col_offset = getattr(obj, "col_offset", 0)
-            out.atype = getattr(obj, "atype", unknown)
-            obj = out
+        else:
+            return pyast
 
-        for x in obj._fields:
-            setattr(obj, x, withequality(getattr(obj, x)))
-        return obj
-
-    elif isinstance(obj, list):
-        return [withequality(x) for x in obj]
+    elif isinstance(pyast, list):
+        return [withequality(x) for x in pyast]
 
     else:
-        return obj
+        return pyast
 
 withequality.classes = {}
-
+    
 def compose(pyast, **replacements):
     def recurse(x):
         if isinstance(x, ast.AST):
@@ -255,6 +252,13 @@ def setlinenoatype(node, lineno, atype):
         node.lineno, node.col_offset = lineno.lineno, lineno.col_offset
     node.atype = atype
     return node
+
+def retyped(pyast, atype):
+    assert isinstance(pyast, WithEquality)
+    return setlinenoatype(pyast.__class__(*[getattr(pyast, x) for x in pyast._fields]), pyast, atype)
+
+def rebuilt(original, *args):
+    return setlinenoatype(original.__class__(*args), original, original.atype)
 
 def toexpr(string, lineno=None, atype=None, **replacements):
     return setlinenoatype(compose(withequality(ast.parse(string).body[0].value), **replacements), lineno=lineno, atype=atype)
@@ -320,14 +324,14 @@ class ArrowedType(object):
                              atype = result.atype)
         return out
 
-unknown = ArrowedType([], None)
+untracked = ArrowedType([], None)
 
 class Parameter(object):
     def __init__(self, index, originalname, default):
         self.index = index
         self.originalname = originalname
         self.default = default
-        self.atype = unknown
+        self.atype = untracked
 
     def args(self):
         if py2:
@@ -357,9 +361,9 @@ class TransformedParameter(Parameter):
         memberid = self.reverse_members[id(member)]
         key = "par{0}_mem{1}_{2}_{3}".format(self.index, memberid, member.name, attr)
         symbol = sym(key)
-        if not self.required[memberid]:
+        if symbol not in self.transformed:
             self.transformed.append(symbol)
-            self.sym2obj[symbol] = (member, attr)
+        self.sym2obj[symbol] = (member, attr)
         self.required[memberid] = True
         return symbol
 
@@ -394,7 +398,7 @@ class Parameters(object):
         if name in self.lookup:
             return self.lookup[name].atype
         else:
-            return unknown
+            return untracked
 
     def args(self):
         if py2:
@@ -441,26 +445,51 @@ def transform(function, paramtypes, externalfcns, sym):
 
     everything = globals()
 
-    def recurse(node):
-        if isinstance(node, ast.AST):
-            handlername = "do_" + node.__class__.__name__
+    def recurse(pyast):
+        if isinstance(pyast, ast.AST):
+            handlername = "do_" + pyast.__class__.__name__
             if handlername in everything:
-                return everything[handlername](node, parameters, externalfcns, sym, recurse)
+                return everything[handlername](pyast, parameters, externalfcns, sym, recurse)
             else:
-                for x in node._fields:
-                    setattr(node, x, recurse(getattr(node, x)))
-                return node
+                out = pyast.__class__(*[recurse(getattr(pyast, x)) for x in pyast._fields])
+                out.lineno = pyast.lineno
+                out.col_offset = pyast.col_offset
+                out.atype = pyast.atype
+                return out
 
-        elif isinstance(node, list):
-            return [recurse(x) for x in node]
+        elif isinstance(pyast, list):
+            return [recurse(x) for x in pyast]
 
         else:
-            return node
+            return pyast
 
     transformed = recurse(function)
     transformed.args = parameters.args()
 
     return transformed, parameters
+
+################################################################ implicit conversion rules
+
+def implicit(node, sym):
+    if len(node.atype.possibilities) == 1:
+        assert node.atype.possibilities[0].condition is None
+        oam = node.atype.possibilities[0].oam
+
+        if isinstance(oam, PrimitiveOAM):
+            array = node.atype.parameter.require(oam, "array", sym)
+            return toexpr("ARRAY[INDEX]",
+                          ARRAY = toname(array),
+                          INDEX = node,
+                          lineno = node,
+                          atype = untracked)
+
+        # TODO: handle pointers and such
+
+        else:
+            return node
+
+    else:
+        return node
 
 ################################################################ specialized rules for each Python AST type
 
@@ -480,6 +509,25 @@ def transform(function, paramtypes, externalfcns, sym):
 # Assign ("targets", "value")
 
 # Attribute ("value", "attr", "ctx")
+def do_Attribute(node, parameters, externalfcns, sym, recurse):
+    node = rebuilt(node, recurse(node.value), node.attr, node.ctx)
+
+    if node.value.atype is untracked:
+        return node
+
+    else:
+        def handler(oam):
+            if isinstance(oam, RecordOAM):
+                if node.attr in oam.contents:
+                    return retyped(node.value, ArrowedType(oam.contents[node.attr], node.value.atype.parameter))
+                elif isinstance(oam.name, string_types):
+                    raise AttributeError("attribute {0} not found in record {1}".format(repr(node.attr), oam.name))
+                else:
+                    raise AttributeError("attribute {0} not found in record with structure:\n\n{0}".format(repr(node.attr), oam.format("    ")))
+            else:
+                raise AttributeError("object is not a record:\n\n{0}".format(oam.format("    ")))
+
+        return implicit(node.value.atype.generate(handler), sym)
 
 # AugAssign ("target", "op", "value")
 
@@ -600,7 +648,7 @@ def do_Name(node, parameters, externalfcns, sym, recurse):
     if parameters.istransformed(node.id):
         return toliteral(0, lineno=node, atype=parameters.atype(node.id))
     else:
-        return node
+        return implicit(node, sym)
 
 # Nonlocal ("names",)  # Py3 only
 
@@ -647,10 +695,9 @@ def do_Name(node, parameters, externalfcns, sym, recurse):
 
 # Subscript ("value", "slice", "ctx")
 def do_Subscript(node, parameters, externalfcns, sym, recurse):
-    node.value = recurse(node.value)
-    node.slice = recurse(node.slice)
+    node = rebuilt(node, recurse(node.value), recurse(node.slice), node.ctx)
 
-    if node.value.atype is unknown:
+    if node.value.atype is untracked:
         return node
 
     else:
@@ -671,14 +718,9 @@ def do_Subscript(node, parameters, externalfcns, sym, recurse):
                               lineno = node,
                               atype = ArrowedType(oam.contents, node.value.atype.parameter))
             else:
-                raise NotImplementedError
+                raise IndexError("object is not a list:\n\n{0}".format(oam.format("    ")))
 
-        return node.value.atype.generate(handler)
-
-
-
-
-
+        return implicit(node.value.atype.generate(handler), sym)
 
 # Suite ("body",)
 
