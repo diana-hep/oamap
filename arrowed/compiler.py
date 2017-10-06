@@ -41,10 +41,6 @@ class Compiled(object):
 
         full = ast.Module([self.transformed], lineno=1, col_offset=0)
 
-        print full.lineno
-        print full.body[0].lineno
-
-
         envcopy = env.copy()
         eval(__builtins__["compile"](full, transformed.name, "exec"), envcopy)
         self.compiled = envcopy[transformed.name]
@@ -55,7 +51,23 @@ class Compiled(object):
             self.executable = self.compiled
 
     def __call__(self, resolved, *args):
-        pass
+        arguments = []
+        argsi = 0
+        for parameter in self.parameters.order:
+            if isinstance(parameter, TransformedParameter):
+                for symbol in parameter.transformed:
+                    member, attr = parameter.sym2obj[symbol]
+                    arguments.append(resolved.findbybase(member).get(attr))
+            else:
+                if argsi >= len(args):
+                    raise TypeError("too few extra (non-columnar object) arguments provided")
+                arguments.append(args[argsi])
+                argsi += 1
+
+        if argsi < len(args):
+            raise TypeError("too many extra (non-columnar object) arguments provided")
+
+        return self.executable(*arguments)
 
 def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": True}, debug=False):
     # turn the 'function' argument into the syntax tree of a function
@@ -420,9 +432,9 @@ class Parameters(object):
 
     def args(self):
         if py2:
-            return ast.arguments(sum((x.args() for x in self.order), []), None, None, sum((x.defaults() for x in self.order), []))
+            return withequality(ast.arguments(sum((x.args() for x in self.order), []), None, None, sum((x.defaults() for x in self.order), [])))
         else:
-            return ast.arguments(sum((x.args() for x in self.order), []), None, [], [], None, sum((x.defaults() for x in self.order), []))
+            return withequality(ast.arguments(sum((x.args() for x in self.order), []), None, [], [], None, sum((x.defaults() for x in self.order), [])))
 
 def transform(function, paramtypes, externalfcns, sym):
     # check for too much dynamism
@@ -732,7 +744,7 @@ def do_Subscript(node, parameters, externalfcns, sym, recurse):
                               START = toname(startarray),
                               END = toname(endarray),
                               OUTERINDEX = node.value,
-                              INDEX = node.slice,
+                              INDEX = node.slice.value,
                               lineno = node,
                               atype = ArrowedType(oam.contents, node.value.atype.parameter))
             else:

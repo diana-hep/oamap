@@ -249,9 +249,10 @@ class PrimitiveOAM(ObjectArrayMapping):
             return self.array[index]
 
     def get(self, attr):
+        if callable(self.array):
+            self.array = self.array()
+
         if attr == "array":
-            if callable(self.array):
-                self.array = self.array()
             return self.array
         else:
             raise NameError("PrimitiveOAM has no array {0}".format(repr(attr)))
@@ -366,9 +367,10 @@ class ListCountOAM(ListOAM):
         return _memo[id(self)]
 
     def get(self, attr):
+        if callable(self.countarray):
+            self.countarray = self.countarray()
+
         if attr == "countarray":
-            if callable(self.countarray):
-                self.countarray = self.countarray()
             return self.countarray
         else:
             raise NameError("ListCountOAM has no array {0}".format(repr(attr)))
@@ -440,9 +442,10 @@ class ListOffsetOAM(ListOAM):
         return _memo[id(self)]
 
     def get(self, attr):
+        if callable(self.offsetarray):
+            self.offsetarray = self.offsetarray()
+
         if attr == "offsetarray":
-            if callable(self.offsetarray):
-                self.offsetarray = self.offsetarray()
             return self.offsetarray
         else:
             raise NameError("ListOffsetOAM has no array {0}".format(repr(attr)))
@@ -523,13 +526,12 @@ class ListStartEndOAM(ListOAM):
             return arrowed.proxy.ListProxy(self, index)
 
     def get(self, attr):
+        if callable(self.startarray):
+            self.startarray, self.endarray = self.startarray()
+
         if attr == "startarray":
-            if callable(self.startarray):
-                self.startarray = self.startarray()
             return self.startarray
         elif attr == "endarray":
-            if callable(self.endarray):
-                self.endarray = self.endarray()
             return self.endarray
         else:
             raise NameError("ListStartEndOAM has no array {0}".format(repr(attr)))
@@ -880,9 +882,10 @@ class UnionSparseOAM(UnionOAM):
         return _memo[id(self)]
 
     def get(self, attr):
+        if callable(self.tagarray):
+            self.tagarray = self.tagarray()
+
         if attr == "tagarray":
-            if callable(self.tagarray):
-                self.tagarray = self.tagarray()
             return self.tagarray
         else:
             raise NameError("UnionSparseOAM has no array {0}".format(repr(attr)))
@@ -976,13 +979,12 @@ class UnionSparseOffsetOAM(UnionOAM):
             return self.contents[tag].proxy(offset)
 
     def get(self, attr):
+        if callable(self.tagarray):
+            self.tagarray, self.offsetarray = self.tagarray()
+
         if attr == "tagarray":
-            if callable(self.tagarray):
-                self.tagarray = self.tagarray()
             return self.tagarray
         elif attr == "offsetarray":
-            if callable(self.offsetarray):
-                self.offsetarray = self.offsetarray()
             return self.offsetarray
         else:
             raise NameError("UnionSparseOffsetOAM has no array {0}".format(repr(attr)))
@@ -1088,9 +1090,10 @@ class PointerOAM(ObjectArrayMapping):
             return self.target.proxy(offset)
 
     def get(self, attr):
+        if callable(self.indexarray):
+            self.indexarray = self.indexarray()
+
         if attr == "indexarray":
-            if callable(self.indexarray):
-                self.indexarray = self.indexarray()
             return self.indexarray
         else:
             raise NameError("PointerOAM has no array {0}".format(repr(attr)))
