@@ -42,6 +42,15 @@ if sys.version_info[0] <= 2:
 else:
     string_types = (str,)
 
+# Arrow layout reference:
+# -----------------------
+# 
+# https://github.com/apache/arrow/blob/master/format/Layout.md
+#
+# FIXME: indexes and counters should all default to 32-bit signed integers, not 64-bit.
+# FIXME: Structs (Record and Tuple) must optionally support missing data masks.
+# FIXME: handle null BITmaps, not just BYTEmaps: is_valid[j] -> bitmap[j / 8] & (1 << (j % 8))
+
 class ObjectArrayMapping(object):
     def toJsonString(self):
         return json.dumps(self.toJson())
@@ -588,7 +597,11 @@ class ListStartEnd(List):
 
 ################################################################ records and tuples
 
-class Record(ObjectArrayMapping):
+class Struct(ObjectArrayMapping):
+    """We call a Struct with field names a "Record" and a Struct without field names a "Tuple". In Arrow."""
+    pass
+
+class Record(Struct):
     __nameindex = 0
 
     def __init__(self, contents, base=None, name=None):
@@ -709,7 +722,7 @@ class Record(ObjectArrayMapping):
     def __ne__(self, other):
         return not self.__eq__(self, other)
 
-class Tuple(ObjectArrayMapping):
+class Tuple(Struct):
     def __init__(self, contents, base=None):
         self.contents = tuple(contents)
         self.base = base
@@ -816,7 +829,7 @@ class Tuple(ObjectArrayMapping):
 
 class Union(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
-        raise TypeError("Union is abstract; use UnionSparse or UnionSparseOffset instead")
+        raise TypeError("Union is abstract; use UnionDense or UnionDenseOffset instead")
 
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):
@@ -853,7 +866,7 @@ class Union(ObjectArrayMapping):
                 return x.hasany(others, _memo)
         return False
 
-class UnionSparse(Union):
+class UnionDense(Union):
     def __init__(self, tagarray, contents, masked=False, base=None):
         self.tagarray = tagarray
         self.contents = tuple(contents)
@@ -873,7 +886,7 @@ class UnionSparse(Union):
                 _memo[id(c)] = None
                 _memo[id(c)] = c.accessedby(accessor)
             contents.append(_memo[id(c)])
-        return UnionSparse(accessor, contents, self.masked, self)
+        return UnionDense(accessor, contents, self.masked, self)
 
     @property
     def _name(self):
@@ -881,7 +894,7 @@ class UnionSparse(Union):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparse tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionDense tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
 
             offsetarray = numpy.empty(len(tagarray), dtype=numpy.int64)
             for tag in range(len(self.contents)):    # for each possible tag
@@ -893,10 +906,10 @@ class UnionSparse(Union):
         
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = UnionSparseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         else:
             tagarray, offsetarray = resolve()
-            _memo[id(self)] = UnionSparseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         return _memo[id(self)]
 
     def get(self, attr):
@@ -906,7 +919,7 @@ class UnionSparse(Union):
         if attr == "tagarray":
             return self.tagarray
         else:
-            raise NameError("UnionSparse has no array {0}".format(repr(attr)))
+            raise NameError("UnionDense has no array {0}".format(repr(attr)))
 
     def projection(self, required, _memo=None):
         if self.hasany(required):
@@ -921,7 +934,7 @@ class UnionSparse(Union):
                 if content is not None:
                     contents.append(content)
             if len(contents) > 0:
-                return UnionSparse(self.tagarray, contents, self.masked, self)
+                return UnionDense(self.tagarray, contents, self.masked, self)
             else:
                 return None
         else:
@@ -939,12 +952,12 @@ class UnionSparse(Union):
         yield indent + ">"
 
     def __eq__(self, other):
-        return isinstance(other, UnionSparse) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, UnionDense) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
 
-class UnionSparseOffset(Union):
+class UnionDenseOffset(Union):
     def __init__(self, tagarray, offsetarray, contents, masked=False, base=None):
         self.tagarray = tagarray
         self.offsetarray = offsetarray
@@ -965,7 +978,7 @@ class UnionSparseOffset(Union):
                 _memo[id(c)] = None
                 _memo[id(c)] = c.accessedby(accessor)
             contents.append(_memo[id(c)])
-        return UnionSparseOffset(accessor, None, contents, self.masked, self)
+        return UnionDenseOffset(accessor, None, contents, self.masked, self)
 
     @property
     def _name(self):
@@ -973,16 +986,16 @@ class UnionSparseOffset(Union):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionSparseOffset tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
-            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "UnionSparseOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionDenseOffset tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "UnionDenseOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
             return tagarray, offsetarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = UnionSparseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         else:
             tagarray, offsetarray = resolve()
-            _memo[id(self)] = UnionSparseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         return _memo[id(self)]
 
     def proxy(self, index):
@@ -1005,7 +1018,7 @@ class UnionSparseOffset(Union):
         elif attr == "offsetarray":
             return self.offsetarray
         else:
-            raise NameError("UnionSparseOffset has no array {0}".format(repr(attr)))
+            raise NameError("UnionDenseOffset has no array {0}".format(repr(attr)))
 
     def projection(self, required, _memo=None):
         if self.hasany(required):
@@ -1020,7 +1033,7 @@ class UnionSparseOffset(Union):
                 if content is not None:
                     contents.append(content)
             if len(contents) > 0:
-                return UnionSparseOffset(self.tagarray, self.offsetarray, contents, self.masked, self)
+                return UnionDenseOffset(self.tagarray, self.offsetarray, contents, self.masked, self)
             else:
                 return None
         else:
@@ -1040,7 +1053,7 @@ class UnionSparseOffset(Union):
         yield indent + ">"
 
     def __eq__(self, other):
-        return isinstance(other, UnionSparseOffset) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, ndarray) and isinstance(other.offsetarray, ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, UnionDenseOffset) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, ndarray) and isinstance(other.offsetarray, ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
