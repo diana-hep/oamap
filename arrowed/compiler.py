@@ -25,7 +25,7 @@ from numba.types import *
 from arrowed.thirdparty.meta.decompiler.instructions import make_function
 from arrowed.thirdparty.meta import dump_python_source
 
-from arrowed.oam import *
+from arrowed.schema import *
 
 py2 = (sys.version_info[0] <= 2)
 string_types = (unicode, str) if py2 else (str, bytes)
@@ -324,8 +324,8 @@ def tofunction(obj, lineno=None, atype=None):
 ################################################################ the main transformation function
 
 class Possibility(object):
-    def __init__(self, oam, condition=None):
-        self.oam = oam
+    def __init__(self, schema, condition=None):
+        self.schema = schema
         self.condition = condition
 
 class ArrowedType(object):
@@ -340,7 +340,7 @@ class ArrowedType(object):
     def generate(self, handler):
         out = None
         for possibility in reversed(self.possibilities):
-            result = handler(possibility.oam)
+            result = handler(possibility.schema)
             if possibility.condition is None:
                 assert out is None
                 out = result
@@ -381,8 +381,8 @@ class TransformedParameter(Parameter):
         self.transformed = []
 
         assert len(self.atype.possibilities) == 1
-        self.oam = self.atype.possibilities[0].oam
-        self.members = self.oam.members()
+        self.schema = self.atype.possibilities[0].schema
+        self.members = self.schema.members()
         self.reverse_members = dict((id(m), i) for i, m in enumerate(self.members))
         self.required = [False] * len(self.members)
         self.sym2obj = {}
@@ -401,7 +401,7 @@ class TransformedParameter(Parameter):
         return [m for m, r in zip(self.members, self.required) if r]
 
     def projection(self):
-        return self.oam.projection(self.required_members())
+        return self.schema.projection(self.required_members())
 
     def args(self):
         if py2:
@@ -503,10 +503,10 @@ def transform(function, paramtypes, externalfcns, sym):
 def implicit(node, sym):
     if len(node.atype.possibilities) == 1:
         assert node.atype.possibilities[0].condition is None
-        oam = node.atype.possibilities[0].oam
+        schema = node.atype.possibilities[0].schema
 
-        if isinstance(oam, PrimitiveOAM):
-            array = node.atype.parameter.require(oam, "array", sym)
+        if isinstance(schema, Primitive):
+            array = node.atype.parameter.require(schema, "array", sym)
             return toexpr("ARRAY[INDEX]",
                           ARRAY = toname(array),
                           INDEX = node,
@@ -546,16 +546,16 @@ def do_Attribute(node, parameters, externalfcns, sym, recurse):
         return node
 
     else:
-        def handler(oam):
-            if isinstance(oam, RecordOAM):
-                if node.attr in oam.contents:
-                    return retyped(node.value, ArrowedType(oam.contents[node.attr], node.value.atype.parameter))
-                elif isinstance(oam.name, string_types):
-                    raise AttributeError("attribute {0} not found in record {1}".format(repr(node.attr), oam.name))
+        def handler(schema):
+            if isinstance(schema, Record):
+                if node.attr in schema.contents:
+                    return retyped(node.value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
+                elif isinstance(schema.name, string_types):
+                    raise AttributeError("attribute {0} not found in record {1}".format(repr(node.attr), schema.name))
                 else:
-                    raise AttributeError("attribute {0} not found in record with structure:\n\n{0}".format(repr(node.attr), oam.format("    ")))
+                    raise AttributeError("attribute {0} not found in record with structure:\n\n{0}".format(repr(node.attr), schema.format("    ")))
             else:
-                raise AttributeError("object is not a record:\n\n{0}".format(oam.format("    ")))
+                raise AttributeError("object is not a record:\n\n{0}".format(schema.format("    ")))
 
         return implicit(node.value.atype.generate(handler), sym)
 
@@ -734,10 +734,10 @@ def do_Subscript(node, parameters, externalfcns, sym, recurse):
         if not isinstance(node.slice, ast.Index):
             raise NotImplementedError
 
-        def handler(oam):
-            if isinstance(oam, ListOAM):
-                startarray = node.value.atype.parameter.require(oam, "startarray", sym)
-                endarray = node.value.atype.parameter.require(oam, "endarray", sym)
+        def handler(schema):
+            if isinstance(schema, List):
+                startarray = node.value.atype.parameter.require(schema, "startarray", sym)
+                endarray = node.value.atype.parameter.require(schema, "endarray", sym)
 
                 return toexpr("LISTGET(START, END, OUTERINDEX, INDEX)",
                               LISTGET = toname(sym("listget")),
@@ -746,9 +746,9 @@ def do_Subscript(node, parameters, externalfcns, sym, recurse):
                               OUTERINDEX = node.value,
                               INDEX = node.slice.value,
                               lineno = node,
-                              atype = ArrowedType(oam.contents, node.value.atype.parameter))
+                              atype = ArrowedType(schema.contents, node.value.atype.parameter))
             else:
-                raise IndexError("object is not a list:\n\n{0}".format(oam.format("    ")))
+                raise IndexError("object is not a list:\n\n{0}".format(schema.format("    ")))
 
         return implicit(node.value.atype.generate(handler), sym)
 

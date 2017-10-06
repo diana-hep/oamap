@@ -48,10 +48,10 @@ def toJson(obj):
 ################################################################ list proxy
 
 class ListProxy(list, Proxy):
-    __slots__ = ["_oam", "_index"]
+    __slots__ = ["_schema", "_index"]
 
-    def __init__(self, oam, index):
-        self._oam = oam
+    def __init__(self, schema, index):
+        self._schema = schema
         self._index = index
 
     def __repr__(self):
@@ -59,14 +59,14 @@ class ListProxy(list, Proxy):
         return "[{0}{1}]".format(", ".join(map(repr, self[:4])), dots)
 
     def __len__(self):
-        return int(self._oam.endarray[self._index] - self._oam.startarray[self._index])
+        return int(self._schema.endarray[self._index] - self._schema.startarray[self._index])
 
     def __getitem__(self, index):
         if isinstance(index, slice):
             return sliceofproxy(self, index)
         else:
             index = normalizeindex(self, index, False, 1)
-            return self._oam.contents.proxy(self._oam.startarray[self._index] + index)
+            return self._schema.contents.proxy(self._schema.startarray[self._index] + index)
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
@@ -161,8 +161,8 @@ class ListSliceProxy(ListProxy):
         self.__step = step
 
     @property
-    def _oam(self):
-        return self.__listproxy._oam
+    def _schema(self):
+        return self.__listproxy._schema
 
     def __len__(self):
         if self.__step == 1:
@@ -179,29 +179,29 @@ class ListSliceProxy(ListProxy):
 ################################################################ record proxy superclass
 
 class RecordProxy(Proxy):
-    def __init__(self, oam, index):
-        self._oam = oam
+    def __init__(self, schema, index):
+        self._schema = schema
         self._index = index
 
     def __repr__(self):
         return "<{0} at index {1}>".format(self.__class__.__name__, self._index)
 
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and set(self._oam.contents.keys()) == set(other._oam.contents.keys()) and all(getattr(self, name) == getattr(other, name) for name in self._oam.contents.keys())
+        return isinstance(other, RecordProxy) and set(self._schema.contents.keys()) == set(other._schema.contents.keys()) and all(getattr(self, name) == getattr(other, name) for name in self._schema.contents.keys())
 
     def __lt__(self, other):
         if isinstance(other, RecordProxy):
-            if len(self._oam.contents) > len(other._oam.contents):
+            if len(self._schema.contents) > len(other._schema.contents):
                 return True
 
-            elif len(self._oam.contents) < len(other._oam.contents):
+            elif len(self._schema.contents) < len(other._schema.contents):
                 return False
 
-            elif set(self._oam.contents.keys()) == set(other._oam.contents.keys()):
-                return tuple(getattr(self, name) for name in self._oam.contents.keys()) < tuple(getattr(other, name) for name in other._oam.contents.keys())
+            elif set(self._schema.contents.keys()) == set(other._schema.contents.keys()):
+                return tuple(getattr(self, name) for name in self._schema.contents.keys()) < tuple(getattr(other, name) for name in other._schema.contents.keys())
 
             else:
-                return sorted(self._oam.contents.keys()) == sorted(other._oam.contents.keys())
+                return sorted(self._schema.contents.keys()) == sorted(other._schema.contents.keys())
 
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
@@ -215,26 +215,26 @@ class RecordProxy(Proxy):
     def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
 
     def _toJson(self):
-        return dict((name, toJson(getattr(self, name))) for name in self._oam.contents)
+        return dict((name, toJson(getattr(self, name))) for name in self._schema.contents)
 
 ################################################################ tuple proxy
 
 class TupleProxy(tuple, Proxy):
-    def __init__(self, oam, index):
-        self._oam = oam
+    def __init__(self, schema, index):
+        self._schema = schema
         self._index = index
 
     def __repr__(self):
         return "({0})".format(", ".join(repr(x) for x in self))
 
     def __len__(self):
-        return len(self._oam.contents)
+        return len(self._schema.contents)
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return tuple(self[i] for i in range(len(self._oam.contents))[index])
+            return tuple(self[i] for i in range(len(self._schema.contents))[index])
         else:
-            return self._oam.contents[index].proxy(self._index)
+            return self._schema.contents[index].proxy(self._index)
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
