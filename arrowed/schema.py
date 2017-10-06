@@ -244,8 +244,11 @@ class Primitive(ObjectArrayMapping):
         self.masked = masked
         self.base = base
 
-    def accessedby(self, accessor, _memo=None):
-        return Primitive(accessor, self.masked, self)
+    def walk(self, rootfirst=True, _memo=None):
+        yield self
+
+    def accessedby(self, accessor, feedself=False, _memo=None):
+        return Primitive(accessor(self) if feedself else accessor, self.masked, self)
 
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):
@@ -317,6 +320,18 @@ class List(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
         raise TypeError("List is abstract; use ListCount, ListOffset, or ListStartEnd instead")
 
+    def walk(self, rootfirst=True, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) not in _memo:
+            _memo.add(id(self))
+            if rootfirst:
+                yield self
+            for x in self.contents.walk(rootfirst, _memo):
+                yield x
+            if not rootfirst:
+                yield self
+
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):
             return self
@@ -358,14 +373,14 @@ class ListCount(List):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
-    def accessedby(self, accessor, _memo=None):
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         if id(self.contents) not in _memo:
             _memo[id(self.contents)] = None
-            _memo[id(self.contents)] = self.contents.accessedby(accessor)
+            _memo[id(self.contents)] = self.contents.accessedby(accessor, feedself, _memo)
         contents = _memo[id(self.contents)]
-        return ListCount(accessor, contents, self.masked, self)
+        return ListCount(accessor(self) if feedself else accessor, contents, self.masked, self)
 
     @property
     def _name(self):
@@ -440,14 +455,14 @@ class ListOffset(List):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
-    def accessedby(self, accessor, _memo=None):
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         if id(self.contents) not in _memo:
             _memo[id(self.contents)] = None
-            _memo[id(self.contents)] = self.contents.accessedby(accessor)
+            _memo[id(self.contents)] = self.contents.accessedby(accessor, feedself, _memo)
         contents = _memo[id(self.contents)]
-        return ListOffset(accessor, contents, self.masked, self)
+        return ListOffset(accessor(self) if feedself else accessor, contents, self.masked, self)
 
     @property
     def _name(self):
@@ -516,14 +531,19 @@ class ListStartEnd(List):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
-    def accessedby(self, accessor, _memo=None):
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         if id(self.contents) not in _memo:
             _memo[id(self.contents)] = None
-            _memo[id(self.contents)] = self.contents.accessedby(accessor)
+            _memo[id(self.contents)] = self.contents.accessedby(accessor, feedself, _memo)
         contents = _memo[id(self.contents)]
-        return ListStartEnd(accessor, None, contents, self.masked, self)
+
+        result = accessor(self) if feedself else accessor
+        if isinstance(result, tuple) and len(result) == 2:
+            return ListStartEnd(result[0], result[1], contents, self.masked, self)
+        else:
+            return ListStartEnd(result, None, contents, self.masked, self)
 
     @property
     def _name(self):
@@ -628,14 +648,27 @@ class Record(Struct):
         self.proxyclass = type(str(self.name), superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
         self.proxyclass.__slots__ = ["_schema", "_index"]
 
-    def accessedby(self, accessor, _memo=None):
+    def walk(self, rootfirst=True, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) not in _memo:
+            _memo.add(id(self))
+            if rootfirst:
+                yield self
+            for x in self.contents.value():
+                for y in x.walk(rootfirst, _memo):
+                    yield y
+            if not rootfirst:
+                yield self
+
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         contents = collections.OrderedDict()
         for n, c in self.contents.items():
             if id(c) not in _memo:
                 _memo[id(c)] = None
-                _memo[id(c)] = c.accessedby(accessor)
+                _memo[id(c)] = c.accessedby(accessor, feedself, _memo)
             contents[n] = _memo[id(c)]
         return Record(contents, self)
 
@@ -728,14 +761,27 @@ class Tuple(Struct):
         self.base = base
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
 
-    def accessedby(self, accessor, _memo=None):
+    def walk(self, rootfirst=True, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) not in _memo:
+            _memo.add(id(self))
+            if rootfirst:
+                yield self
+            for x in self.contents:
+                for y in x.walk(rootfirst, _memo):
+                    yield y
+            if not rootfirst:
+                yield self
+
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         contents = []
         for c in self.contents:
             if id(c) not in _memo:
                 _memo[id(c)] = None
-                _memo[id(c)] = c.accessedby(accessor)
+                _memo[id(c)] = c.accessedby(accessor, feedself, _memo)
             contents.append(_memo[id(c)])
         return Tuple(contents, self)
 
@@ -831,6 +877,19 @@ class Union(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
         raise TypeError("Union is abstract; use UnionDense or UnionDenseOffset instead")
 
+    def walk(self, rootfirst=True, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) not in _memo:
+            _memo.add(id(self))
+            if rootfirst:
+                yield self
+            for x in self.contents:
+                for y in x.walk(rootfirst, _memo):
+                    yield y
+            if not rootfirst:
+                yield self
+
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):
             return self
@@ -877,16 +936,16 @@ class UnionDense(Union):
         else:
             raise AssertionError("contents must be a tuple")
 
-    def accessedby(self, accessor, _memo=None):
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         contents = []
         for c in self.contents:
             if id(c) not in _memo:
                 _memo[id(c)] = None
-                _memo[id(c)] = c.accessedby(accessor)
+                _memo[id(c)] = c.accessedby(accessor, feedself, _memo)
             contents.append(_memo[id(c)])
-        return UnionDense(accessor, contents, self.masked, self)
+        return UnionDense(accessor(self) if feedself else accessor, contents, self.masked, self)
 
     @property
     def _name(self):
@@ -969,17 +1028,22 @@ class UnionDenseOffset(Union):
         else:
             raise AssertionError("contents must be a tuple")
 
-    def accessedby(self, accessor, _memo=None):
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         contents = []
         for c in self.contents:
             if id(c) not in _memo:
                 _memo[id(c)] = None
-                _memo[id(c)] = c.accessedby(accessor)
+                _memo[id(c)] = c.accessedby(accessor, feedself, _memo)
             contents.append(_memo[id(c)])
-        return UnionDenseOffset(accessor, None, contents, self.masked, self)
 
+        result = accessor(self) if feedself else accessor
+        if isinstance(result, tuple) and len(result) == 2:
+            return UnionDenseOffset(result[0], result[1], contents, self.masked, self)
+        else:
+            return UnionDenseOffset(result, None, contents, self.masked, self)
+        
     @property
     def _name(self):
         return self.tagarray
@@ -1069,14 +1133,26 @@ class Pointer(ObjectArrayMapping):
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
 
-    def accessedby(self, accessor, _memo=None):
+    def walk(self, rootfirst=True, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) not in _memo:
+            _memo.add(id(self))
+            if rootfirst:
+                yield self
+            for x in self.target.walk(rootfirst, _memo):
+                yield x
+            if not rootfirst:
+                yield self
+
+    def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
         if id(self.target) not in _memo:
             _memo[id(self.target)] = None
-            _memo[id(self.target)] = self.target.accessedby(accessor)
+            _memo[id(self.target)] = self.target.accessedby(accessor, feedself, _memo)
         target = _memo[id(self.target)]
-        return Pointer(accessor, target, self.masked, self)
+        return Pointer(accessor(self) if feedself else accessor, target, self.masked, self)
 
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):

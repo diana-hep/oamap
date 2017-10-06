@@ -30,10 +30,13 @@
 
 import numbers
 from collections import OrderedDict
+from types import MethodType
 
 import numpy
 
 from arrowed.schema import *
+
+################################################################ generating OAMs from Python data
 
 def inferschema(obj):
     class Intermediate(object):
@@ -139,7 +142,7 @@ def inferschema(obj):
             return IntermediateUnion(size, missing, self.contents)
 
         def resolve(self):
-            return UnionDense(((self.size,), numpy.dtype(numpy.int8)), [x.resolve() for x in self.contents], self.missing)
+            return UnionDenseOffset(((self.size,), numpy.dtype(numpy.int8)), [x.resolve() for x in self.contents], self.missing)
 
     def unify2(x, y):
         size = x.size + y.size
@@ -223,7 +226,13 @@ def inferschema(obj):
             else:
                 return IntermediateUnion(sum(x.size for x in distinct), False, distinct)
 
-    def buildintermediate(obj):
+    def buildintermediate(obj, memo):
+        if id(obj) in memo:
+            raise ValueError("cyclic reference in Python object at {0}".format(obj))
+
+        # by copying, rather than modifying in-place, we find cyclic references instead of just DAGs
+        memo = memo.union(set(id(obj)))
+
         if obj is None:
             return Unknown(1, True)
 
@@ -240,21 +249,167 @@ def inferschema(obj):
             return Number(1, False, float("-inf"), float("inf"), False, False)
 
         elif isinstance(obj, dict):
-            return IntermediateRecord(1, False, dict((k, buildintermediate(v)) for k, v in obj.items()), None)
+            return IntermediateRecord(1, False, dict((k, buildintermediate(v, memo)) for k, v in obj.items()), None)
 
         elif isinstance(obj, tuple) and hasattr(obj, "_fields"):
             # named tuple is more like a Record than a Tuple
-            return IntermediateRecord(1, False, dict((n, buildintermediate(getattr(obj, n))) for n in obj._fields), obj.__class__.__name__)
+            return IntermediateRecord(1, False, dict((n, buildintermediate(getattr(obj, n), memo)) for n in obj._fields), obj.__class__.__name__)
 
         elif isinstance(obj, tuple):
-            return IntermediateTuple(1, False, [buildintermediate(x) for x in obj])
+            return IntermediateTuple(1, False, [buildintermediate(x, memo) for x in obj])
 
         else:
             try:
                 iter(obj)
             except TypeError:
-                return IntermediateRecord(1, False, dict((n, buildintermediate(getattr(obj, n))) for n in dir(obj) if not n.startswith("_")), obj.__class__.__name__)
+                return IntermediateRecord(1, False, dict((n, buildintermediate(getattr(obj, n), memo)) for n in dir(obj) if not n.startswith("_")), obj.__class__.__name__)
             else:
-                return IntermediateList(1, False, unify([buildintermediate(x) for x in obj]))
+                return IntermediateList(1, False, unify([buildintermediate(x, memo) for x in obj]))
 
-    return buildintermediate(obj).resolve()
+    return buildintermediate(obj, set()).resolve()
+
+################################################################ ways to fill arrays from Python data
+
+class FillableArray(Fillable):
+    def __init__(self, oam):
+        self.index = 0
+        shape, dtype = oam.name
+
+        if oam.masked:
+            if str(numpy.dtype(numpy.bool)) == "bool":
+                dtype = numpy.uint8
+
+            if issubclass(dtype.type, numpy.unsignedinteger):
+                self.fill_value = numpy.iinfo(dtype.type).max
+            elif issubclass(dtype.type, numpy.signedinteger):
+                self.fill_value = numpy.iinfo(dtype.type).min
+            elif issubclass(dtype.type, numpy.floating):
+                self.fill_value = numpy.nan
+            elif issubclass(dtype.type, numpy.complex):
+                self.fill_value = (1+1j) * numpy.nan
+            else:
+                raise AssertionError
+
+            self.array = numpy.ma.MaskedArray(numpy.empty(shape, dtype=dtype), fill_value=self.fill_value)
+
+            def fill(self, value):
+                if value is None:
+                    self.array[self.index] = numpy.ma.masked
+                else:
+                    self.array[self.index] = value
+                self.index += 1
+
+            self.fill = MethodType(fill, self, FillFile)
+
+        else:
+            self.array = numpy.empty(shape, dtype=dtype)
+
+    def fill(self, value):
+        self.array[self.index] = value
+        self.index += 1
+
+    def __call__(self, *args):
+        assert self.index == len(self.array)
+        return self.array
+
+################################################################ filling arrays from Python data
+
+def filled(obj, schema=None, fillable=FillableArray):
+    if schema is None:
+        schema = inferschema(obj)
+
+    oam = schema.accessedby(fillable, feedself=True)
+
+    last_list_offset = {}
+    last_union_offset = {}
+
+    def recurse(obj, oam):
+        if isinstance(oam, Primitive):
+            oam.array.fill(obj)
+
+        elif isinstance(oam, List):
+            if id(oam) not in last_list_offset:
+                last_list_offset[id(oam)] = 0
+
+                if isinstance(oam, ListOffset):
+                    # this is how an offsetarray gets one extra item: the initial zero
+                    oam.offsetarray.fill(0)
+
+            if isinstance(oam, ListStartEnd):
+                # there are always exactly as many startarray fills as endarray fills
+                oam.startarray.fill(last_list_offset[id(oam)])
+
+            try:
+                iter(obj)
+                if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
+                    raise TypeError
+            except TypeError:
+                raise TypeError("cannot fill {0} where expecting type:\n{1}".format(obj, oam.format("    ")))
+            else:
+                length = 0
+                try:
+                    for x in obj:
+                        recurse(x, oam.contents)
+                        length += 1
+                finally:
+                    last_list_offset[id(oam)] += length
+
+                    if isinstance(oam, ListCount):
+                        oam.countarray.fill(length)
+                    elif isinstance(oam, ListOffset):
+                        oam.offsetarray.fill(last_list_offset[id(oam)])
+                    elif isinstance(oam, ListStartEnd):
+                        # there are always exactly as many startarray fills as endarray fills
+                        oam.endarray.fill(last_list_offset[id(oam)])
+
+        elif isinstance(oam, Record):
+            if isinstance(obj, dict):
+                for fn, ft in obj.contents.items():
+                    if fn not in obj:
+                        raise TypeError("cannot fill {0} (missing field \"{1}\") where expecting type:\n{2}".format(obj, fn, oam.format("    ")))
+                    recurse(obj[fn], ft)
+
+            else:
+                for fn, ft in obj.contents.items():
+                    if not hasttr(obj, fn):
+                        raise TypeError("cannot fill {0} (missing field \"{1}\") where expecting type:\n{2}".format(obj, fn, oam.format("    ")))
+                    recurse(getattr(obj, fn), ft)
+
+        elif isinstance(oam, Tuple):
+            if isinstance(obj, tuple):
+                if len(obj) != len(oam.contents):
+                    raise TypeError("cannot fill {0} (length {1}) where expecting a {2}-tuple of type:\n{3}".format(obj, len(obj), len(oam.contents), oam.format("    ")))
+
+                for d, t in zip(obj, oam.contents):
+                    recurse(d, t)
+
+        elif isinstance(oam, Union):
+            t = infertype(obj)   # can be expensive!
+
+            tag = None
+            for i, possibility in enumerate(oam.contents):
+                if t.issubtype(possibility):   # FIXME: issubtype not implemented
+                    tag = i
+                    break
+            if tag is None:
+                raise TypeError("cannot fill {0} where expecting type:\n{1}".format(obj, oam.format("    ")))
+
+            if id(oam) not in last_union_offset:
+                last_union_offset[id(oam)] = 0
+
+            recurse(obj, oam.contents[tag])
+
+            oam.tagarray.fill(tag)
+            if isinstance(oam, UnionDenseOffset):
+                oam.offsetarray.fill(tag)
+
+            last_union_offset[id(oam)] += 1
+
+        elif isinstance(oam, Pointer):
+            raise NotImplementedError
+
+        else:
+            raise AssertionError
+
+        recurse(obj, oam)
+        return oam.resolved(None)
