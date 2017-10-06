@@ -58,19 +58,23 @@ class ObjectArrayMapping(object):
         import arrowed.compiler
         paramtypes = paramtypes.copy()
         paramtypes[0] = self
+
         if not hasattr(self, "_functions"):
             self._functions = {}
-        self._functions[id(function)] = arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, debug=debug)
+        if id(function) not in self._functions:
+            self._functions[id(function)] = arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, debug=debug)
         return self._functions[id(function)]
 
-    def run(self, function, source, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, debug=False, *args):
-        compiled = self.compile(function, paramtypes=paramtypes, env=env, numba=numba, debug=debug)
+    def run(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, debug=False, *args):
+        import arrowed.compiler
 
-        resolved = {}
-        for param in set(paramtypes).union(set([0])):
-            resolved[param] = compiled.paramtypes[param].resolved(source)
+        if not isinstance(function, arrowed.compiler.Compiled):
+            base = self
+            while base.base is not None:
+                base = base.base
+            function = base.compile(function, paramtypes=paramtypes, env=env, numba=numba, debug=debug)
 
-        return compiled(resolved, *args)
+        return function(self, *args)
 
     @staticmethod
     def _toint64(array):
