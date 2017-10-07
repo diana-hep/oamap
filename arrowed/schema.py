@@ -48,7 +48,6 @@ else:
 # 
 # https://github.com/apache/arrow/blob/master/format/Layout.md
 #
-# FIXME: indexes and counters should all default to 32-bit signed integers, not 64-bit.
 # FIXME: Structs (Record and Tuple) must optionally support missing data masks.
 # FIXME: handle null BITmaps, not just BYTEmaps: is_valid[j] -> bitmap[j / 8] & (1 << (j % 8))
 
@@ -101,18 +100,18 @@ class ObjectArrayMapping(object):
         return function(self, *args)
 
     @staticmethod
-    def _toint64(array):
-        if array.dtype != numpy.dtype(numpy.int64):
+    def _toint32(array):
+        if array.dtype != numpy.dtype(numpy.int32):
             if getattr(array, "mask", None) is not None:
-                return numpy.ma.MaskedArray(array, dtype=numpy.int64)
+                return numpy.ma.MaskedArray(array, dtype=numpy.int32)
             else:
-                return numpy.array(array, dtype=numpy.int64)
+                return numpy.array(array, dtype=numpy.int32)
         else:
             return array
 
     @staticmethod
-    def _resolved_check(array, message, masked, extracheck):
-        if masked:
+    def _resolved_check(array, message, nullable, extracheck):
+        if nullable:
             message = message.format("masked")
             extracheck2 = lambda x: getattr(x, "mask", None) is not None
         else:
@@ -121,22 +120,22 @@ class ObjectArrayMapping(object):
         assert hasattr(array, "dtype") and not isinstance(array, numpy.recarray) and len(array.shape) == 1 and extracheck(array) and extracheck2(array), message
         return array
 
-    def _resolved(self, obj, source, message, masked, extracheck=lambda x: True):
+    def _resolved(self, obj, source, message, nullable, extracheck=lambda x: True):
         if isinstance(obj, numpy.ndarray):
-            return ObjectArrayMapping._resolved_check(obj, message, masked, extracheck)
+            return ObjectArrayMapping._resolved_check(obj, message, nullable, extracheck)
 
         elif callable(obj):
             if hasattr(obj, "__code__") and obj.__code__.co_argcount == 0:
-                return ObjectArrayMapping._resolved_check(obj(), message, masked, extracheck)
+                return ObjectArrayMapping._resolved_check(obj(), message, nullable, extracheck)
             elif hasattr(obj, "__code__") and obj.__code__.co_argcount == 1:
-                return ObjectArrayMapping._resolved_check(obj(source), message, masked, extracheck)
+                return ObjectArrayMapping._resolved_check(obj(source), message, nullable, extracheck)
             elif hasattr(obj, "__code__") and obj.__code__.co_argcount == 2:
-                return ObjectArrayMapping._resolved_check(obj(source, self), message, masked, extracheck)
+                return ObjectArrayMapping._resolved_check(obj(source, self), message, nullable, extracheck)
             else:
-                return ObjectArrayMapping._resolved_check(obj(source, self, self.__class__), message, masked, extracheck)
+                return ObjectArrayMapping._resolved_check(obj(source, self, self.__class__), message, nullable, extracheck)
 
         elif isinstance(obj, collections.Hashable) and obj in source:
-            return ObjectArrayMapping._resolved_check(source[obj], message, masked, extracheck)
+            return ObjectArrayMapping._resolved_check(source[obj], message, nullable, extracheck)
 
         else:
             raise ValueError("array cannot be found for key {0}".format(repr(obj)))
@@ -240,16 +239,16 @@ class ObjectArrayMapping(object):
 ################################################################ primitives
 
 class Primitive(ObjectArrayMapping):
-    def __init__(self, array, masked=False, base=None):
+    def __init__(self, array, nullable=False, base=None):
         self.array = array
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
 
     def walk(self, rootfirst=True, _memo=None):
         yield self
 
     def accessedby(self, accessor, feedself=False, _memo=None):
-        return Primitive(accessor(self) if feedself else accessor, self.masked, self)
+        return Primitive(accessor(self) if feedself else accessor, self.nullable, self)
 
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):
@@ -263,12 +262,12 @@ class Primitive(ObjectArrayMapping):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            return self._resolved(self.array, source, "Primitive array must map to a one-dimensional, {0}, non-record array", self.masked)
+            return self._resolved(self.array, source, "Primitive array must map to a one-dimensional, {0}, non-record array", self.nullable)
 
         if lazy:
-            return Primitive(resolve, self.masked, self)
+            return Primitive(resolve, self.nullable, self)
         else:
-            return Primitive(resolve(), self.masked, self)
+            return Primitive(resolve(), self.nullable, self)
 
     def proxy(self, index=0):
         if callable(self.array):
@@ -296,7 +295,7 @@ class Primitive(ObjectArrayMapping):
 
     def projection(self, required, _memo=None):
         if self.hasany(required):
-            return Primitive(self.array, self.masked, self)
+            return Primitive(self.array, self.nullable, self)
         else:
             return None
 
@@ -317,7 +316,7 @@ class Primitive(ObjectArrayMapping):
         else:
             raise TypeError("cannot determine dtype of {0} with array {1}".format(self, self.array))
 
-        if obj is None and self.masked:
+        if obj is None and self.nullable:
             return True
         elif (obj is False or obj is True) and str(dtype) == "bool":
             return True
@@ -337,7 +336,7 @@ class Primitive(ObjectArrayMapping):
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         preamble = refs.get(id(self), "")
-        yield indent + preamble + ("Nullable " if self.masked else "") + self._format_array(self.array, width - len(preamble) - len(indent))
+        yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
 
     def __eq__(self, other):
         return isinstance(other, Primitive) and ((isinstance(self.array, ndarray) and isinstance(other.array, ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.base == other.base
@@ -404,9 +403,9 @@ class List(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
-        print "HERE", obj, self.masked
+        print "HERE", obj, self.nullable
 
-        if obj is None and self.masked:
+        if obj is None and self.nullable:
             print "THERE"
 
             return True
@@ -420,10 +419,10 @@ class List(ObjectArrayMapping):
             return all(self.contents.isinstance(x) for x in obj)
 
 class ListCount(List):
-    def __init__(self, countarray, contents, masked=False, base=None):
+    def __init__(self, countarray, contents, nullable=False, base=None):
         self.countarray = countarray
         self.contents = contents
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
@@ -434,7 +433,7 @@ class ListCount(List):
             _memo[id(self.contents)] = None
             _memo[id(self.contents)] = self.contents.accessedby(accessor, feedself, _memo)
         contents = _memo[id(self.contents)]
-        return ListCount(accessor(self) if feedself else accessor, contents, self.masked, self)
+        return ListCount(accessor(self) if feedself else accessor, contents, self.nullable, self)
 
     @property
     def _name(self):
@@ -442,8 +441,8 @@ class ListCount(List):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            countarray = self._resolved(self.countarray, source, "ListCount countarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer))
-            offsetarray = numpy.empty(len(countarray) + 1, dtype=numpy.int64)   # new allocation
+            countarray = self._resolved(self.countarray, source, "ListCount countarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer))
+            offsetarray = numpy.empty(len(countarray) + 1, dtype=numpy.int32)   # new allocation
             countarray.cumsum(out=offsetarray[1:])                              # fill with offsets
             offsetarray[0] = 0
             beginarray = offsetarray[:-1]  # overlapping views
@@ -456,10 +455,10 @@ class ListCount(List):
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.nullable, self)
         else:
             beginarray, endarray = resolve()
-            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.nullable, self)
         return _memo[id(self)]
 
     def get(self, attr):
@@ -480,14 +479,14 @@ class ListCount(List):
                 _memo[id(self.contents)] = self.contents.projection(required, _memo)
             contents = _memo[id(self.contents)]
             if contents is None:
-                contents = Primitive(self.countarray, self.masked)
-            return ListCount(self.countarray, contents, self.masked, self)
+                contents = Primitive(self.countarray, self.nullable)
+            return ListCount(self.countarray, contents, self.nullable, self)
         else:
             return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "List ["
+        yield indent + refs.get(id(self), "") + "List" + (" (nullable)" if self.nullable else "") + " ["
         indent += "  "
         preamble = "countarray = "
         yield indent + preamble + self._format_array(self.countarray, width - len(preamble) - len(indent))
@@ -502,10 +501,10 @@ class ListCount(List):
         return not self.__eq__(self, other)
 
 class ListOffset(List):
-    def __init__(self, offsetarray, contents, masked=False, base=None):
+    def __init__(self, offsetarray, contents, nullable=False, base=None):
         self.offsetarray = offsetarray
         self.contents = contents
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
@@ -516,7 +515,7 @@ class ListOffset(List):
             _memo[id(self.contents)] = None
             _memo[id(self.contents)] = self.contents.accessedby(accessor, feedself, _memo)
         contents = _memo[id(self.contents)]
-        return ListOffset(accessor(self) if feedself else accessor, contents, self.masked, self)
+        return ListOffset(accessor(self) if feedself else accessor, contents, self.nullable, self)
 
     @property
     def _name(self):
@@ -524,17 +523,17 @@ class ListOffset(List):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "ListOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            offsetarray = self._toint32(self._resolved(self.offsetarray, source, "ListOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
             beginarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
             return beginarray, endarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.nullable, self)
         else:
             beginarray, endarray = resolve()
-            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.nullable, self)
         return _memo[id(self)]
 
     def get(self, attr):
@@ -555,14 +554,14 @@ class ListOffset(List):
                 _memo[id(self.contents)] = self.contents.projection(required, _memo)
             contents = _memo[id(self.contents)]
             if contents is None:
-                contents = Primitive(self.offsetarray, self.masked)
-            return ListOffset(self.offsetarray, contents, self.masked, self)
+                contents = Primitive(self.offsetarray, self.nullable)
+            return ListOffset(self.offsetarray, contents, self.nullable, self)
         else:
             return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "List ["
+        yield indent + refs.get(id(self), "") + "List" + (" (nullable)" if self.nullable else "") + " ["
         indent += "  "
         preamble = "offsetarray = "
         yield indent + preamble + self._format_array(self.offsetarray, width - len(preamble) - len(indent))
@@ -577,11 +576,11 @@ class ListOffset(List):
         return not self.__eq__(self, other)
         
 class ListBeginEnd(List):
-    def __init__(self, beginarray, endarray, contents, masked=False, base=None):
+    def __init__(self, beginarray, endarray, contents, nullable=False, base=None):
         self.beginarray = beginarray
         self.endarray = endarray
         self.contents = contents
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
@@ -595,9 +594,9 @@ class ListBeginEnd(List):
 
         result = accessor(self) if feedself else accessor
         if isinstance(result, tuple) and len(result) == 2:
-            return ListBeginEnd(result[0], result[1], contents, self.masked, self)
+            return ListBeginEnd(result[0], result[1], contents, self.nullable, self)
         else:
-            return ListBeginEnd(result, None, contents, self.masked, self)
+            return ListBeginEnd(result, None, contents, self.nullable, self)
 
     @property
     def _name(self):
@@ -605,16 +604,16 @@ class ListBeginEnd(List):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            beginarray = self._toint64(self._resolved(self.beginarray, source, "ListBeginEnd beginarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
-            endarray = self._toint64(self._resolved(self.beginarray, source, "ListBeginEnd endarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            beginarray = self._toint32(self._resolved(self.beginarray, source, "ListBeginEnd beginarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            endarray = self._toint32(self._resolved(self.beginarray, source, "ListBeginEnd endarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
             return beginarray, endarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.nullable, self)
         else:
             beginarray, endarray = resolve()
-            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.nullable, self)
         return _memo[id(self)]
 
     def proxy(self, index=0):
@@ -646,14 +645,14 @@ class ListBeginEnd(List):
                 _memo[id(self.contents)] = self.contents.projection(required, _memo)
             contents = _memo[id(self.contents)]
             if contents is None:
-                contents = Primitive(self.beginarray, self.masked)
-            return ListBeginEnd(self.beginarray, self.endarray, contents, self.masked, self)
+                contents = Primitive(self.beginarray, self.nullable)
+            return ListBeginEnd(self.beginarray, self.endarray, contents, self.nullable, self)
         else:
             return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "List ["
+        yield indent + refs.get(id(self), "") + "List" + (" (nullable)" if self.nullable else "") + " ["
         indent += "  "
         preamble = "beginarray = "
         yield indent + preamble + self._format_array(self.beginarray, width - len(preamble) - len(indent))
@@ -800,7 +799,7 @@ class Record(Struct):
         else:
             _memo.add(id(self))
 
-        # if obj is None and self.masked:
+        # if obj is None and self.nullable:
         #     return True
         if isinstance(obj, dict):
             return all(n in obj and c.isinstance(obj[n]) for n, c in self.contents.items())
@@ -809,7 +808,7 @@ class Record(Struct):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "Record {"   # FIXME + ("Nullable " if self.masked else "")
+        yield indent + refs.get(id(self), "") + "Record {"   # FIXME + (" (nullable)" if self.nullable else "")
         indent += "  "
         yield indent + "name = {0}".format(repr(self.name))
 
@@ -932,7 +931,7 @@ class Tuple(Struct):
         else:
             _memo.add(id(self))
 
-        # if obj is None and self.masked:
+        # if obj is None and self.nullable:
         #     return True
         if isinstance(obj, tuple) and len(obj) == len(self.contents):
             return all(c.isinstance(x) for x, c in zip(obj, self.contents))
@@ -942,7 +941,7 @@ class Tuple(Struct):
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         if isinstance(self.contents, tuple):
-            yield indent + refs.get(id(self), "") + "Tuple ("   # FIXME + ("Nullable " if self.masked else "")
+            yield indent + refs.get(id(self), "") + "Tuple ("   # FIXME + (" (nullable)" if self.nullable else "")
             indent += "  "
             for index, contents in enumerate(self.contents):
                 for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
@@ -1017,15 +1016,15 @@ class Union(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
-        if obj is None and self.masked:
+        if obj is None and self.nullable:
             return True
         return any(c.isinstance(obj) for c in self.contents)
 
 class UnionDense(Union):
-    def __init__(self, tagarray, contents, masked=False, base=None):
+    def __init__(self, tagarray, contents, nullable=False, base=None):
         self.tagarray = tagarray
         self.contents = tuple(contents)
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
         if isinstance(self.contents, tuple):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
@@ -1041,7 +1040,7 @@ class UnionDense(Union):
                 _memo[id(c)] = None
                 _memo[id(c)] = c.accessedby(accessor, feedself, _memo)
             contents.append(_memo[id(c)])
-        return UnionDense(accessor(self) if feedself else accessor, contents, self.masked, self)
+        return UnionDense(accessor(self) if feedself else accessor, contents, self.nullable, self)
 
     @property
     def _name(self):
@@ -1049,22 +1048,22 @@ class UnionDense(Union):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionDense tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            tagarray = self._toint32(self._resolved(self.tagarray, source, "UnionDense tagarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
 
-            offsetarray = numpy.empty(len(tagarray), dtype=numpy.int64)
+            offsetarray = numpy.empty(len(tagarray), dtype=numpy.int32)
             for tag in range(len(self.contents)):    # for each possible tag
                 matches = (tagarray == tag)          # find the elements of tagarray that match this tag
                 nummatches = matches.sum()
-                offsetarray[matches] = numpy.linspace(0, nummatches - 1, nummatches, dtype=numpy.int64)
+                offsetarray[matches] = numpy.linspace(0, nummatches - 1, nummatches, dtype=numpy.int32)
                                                      # offsets corresponding to matching tags should be increasing integers
             return tagarray, offsetarray
         
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = UnionDenseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.nullable, self)
         else:
             tagarray, offsetarray = resolve()
-            _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.nullable, self)
         return _memo[id(self)]
 
     def get(self, attr):
@@ -1089,7 +1088,7 @@ class UnionDense(Union):
                 if content is not None:
                     contents.append(content)
             if len(contents) > 0:
-                return UnionDense(self.tagarray, contents, self.masked, self)
+                return UnionDense(self.tagarray, contents, self.nullable, self)
             else:
                 return None
         else:
@@ -1097,7 +1096,7 @@ class UnionDense(Union):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "Union <"
+        yield indent + refs.get(id(self), "") + "Union" + (" (nullable)" if self.nullable else "") + " <"
         indent += "  "
         preamble = "tagarray = "
         yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
@@ -1113,11 +1112,11 @@ class UnionDense(Union):
         return not self.__eq__(self, other)
 
 class UnionDenseOffset(Union):
-    def __init__(self, tagarray, offsetarray, contents, masked=False, base=None):
+    def __init__(self, tagarray, offsetarray, contents, nullable=False, base=None):
         self.tagarray = tagarray
         self.offsetarray = offsetarray
         self.contents = tuple(contents)
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
         if isinstance(self.contents, tuple):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
@@ -1136,9 +1135,9 @@ class UnionDenseOffset(Union):
 
         result = accessor(self) if feedself else accessor
         if isinstance(result, tuple) and len(result) == 2:
-            return UnionDenseOffset(result[0], result[1], contents, self.masked, self)
+            return UnionDenseOffset(result[0], result[1], contents, self.nullable, self)
         else:
-            return UnionDenseOffset(result, None, contents, self.masked, self)
+            return UnionDenseOffset(result, None, contents, self.nullable, self)
         
     @property
     def _name(self):
@@ -1146,16 +1145,16 @@ class UnionDenseOffset(Union):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            tagarray = self._toint64(self._resolved(self.tagarray, source, "UnionDenseOffset tagarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
-            offsetarray = self._toint64(self._resolved(self.offsetarray, source, "UnionDenseOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            tagarray = self._toint32(self._resolved(self.tagarray, source, "UnionDenseOffset tagarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            offsetarray = self._toint32(self._resolved(self.offsetarray, source, "UnionDenseOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
             return tagarray, offsetarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = UnionDenseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(resolve, None, [x.resolved(source, lazy, _memo) for x in self.contents], self.nullable, self)
         else:
             tagarray, offsetarray = resolve()
-            _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
+            _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.nullable, self)
         return _memo[id(self)]
 
     def proxy(self, index=0):
@@ -1193,7 +1192,7 @@ class UnionDenseOffset(Union):
                 if content is not None:
                     contents.append(content)
             if len(contents) > 0:
-                return UnionDenseOffset(self.tagarray, self.offsetarray, contents, self.masked, self)
+                return UnionDenseOffset(self.tagarray, self.offsetarray, contents, self.nullable, self)
             else:
                 return None
         else:
@@ -1201,7 +1200,7 @@ class UnionDenseOffset(Union):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "Union <"
+        yield indent + refs.get(id(self), "") + "Union" + (" (nullable)" if self.nullable else "") + " <"
         indent += "  "
         preamble = "tagarray    = "
         yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
@@ -1221,10 +1220,10 @@ class UnionDenseOffset(Union):
 ################################################################ pointers
 
 class Pointer(ObjectArrayMapping):
-    def __init__(self, indexarray, target, masked=False, base=None):
+    def __init__(self, indexarray, target, nullable=False, base=None):
         self.indexarray = indexarray
         self.target = target
-        self.masked = masked
+        self.nullable = nullable
         self.base = base
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
@@ -1248,7 +1247,7 @@ class Pointer(ObjectArrayMapping):
             _memo[id(self.target)] = None
             _memo[id(self.target)] = self.target.accessedby(accessor, feedself, _memo)
         target = _memo[id(self.target)]
-        return Pointer(accessor(self) if feedself else accessor, target, self.masked, self)
+        return Pointer(accessor(self) if feedself else accessor, target, self.nullable, self)
 
     def findbybase(self, base, _memo=None):
         if self.hasbase(base):
@@ -1268,7 +1267,7 @@ class Pointer(ObjectArrayMapping):
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            return self._toint64(self._resolved(self.indexarray, source, "Pointer indexarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            return self._toint32(self._resolved(self.indexarray, source, "Pointer indexarray must map to a one-dimensional, {0}, non-record array of integers", self.nullable, lambda x: issubclass(x.dtype.type, numpy.integer)))
 
         # (only) pointers are allowed to reference themselves, but don't resolve the same pointer more than once
         if _memo is None:
@@ -1277,9 +1276,9 @@ class Pointer(ObjectArrayMapping):
             self.target.resolved(source, lazy, _memo)
 
         if lazy:
-            _memo[id(self)] = Pointer(resolve, _memo[id(self.target)], self.masked, self)
+            _memo[id(self)] = Pointer(resolve, _memo[id(self.target)], self.nullable, self)
         else:
-            _memo[id(self)] = Pointer(resolve(), _memo[id(self.target)], self.masked, self)
+            _memo[id(self)] = Pointer(resolve(), _memo[id(self.target)], self.nullable, self)
         return _memo[id(self)]
 
     def proxy(self, index=0):
@@ -1331,8 +1330,8 @@ class Pointer(ObjectArrayMapping):
                 _memo[id(self.target)] = self.target.projection(required, _memo)
             target = _memo[id(self.target)]
             if target is None:
-                target = Primitive(self.indexarray, self.masked)
-            return Pointer(self.indexarray, target, self.masked, self)
+                target = Primitive(self.indexarray, self.nullable)
+            return Pointer(self.indexarray, target, self.nullable, self)
         else:
             return None
 
@@ -1344,12 +1343,12 @@ class Pointer(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
-        if obj is None and self.masked:
+        if obj is None and self.nullable:
             return True
         return self.target.isinstance(obj)
 
     def _format(self, indent, width, refs, memo):
-        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "Pointer (*"
+        yield indent + refs.get(id(self), "") + "Pointer" + (" (nullable)" if self.nullable else "") + " (*"
         indent += "  "
         preamble = "indexarray = "
         yield indent + preamble + self._format_array(self.indexarray, width - len(preamble) - len(indent))

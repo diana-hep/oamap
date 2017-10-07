@@ -190,24 +190,24 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
 
 ################################################################ functions inserted into code
 
-@numba.njit(int64(numba.optional(int64)))
+@numba.njit(int32(numba.optional(int32)))
 def nonnegotiable(index):
     if index is None:
         raise TypeError("None found where object required")
     return index
 
-# @numba.njit(int64(int64[:], int64))
+# @numba.njit(int32(int32[:], int32))
 # def indexget(start, index):
 #     return start[index]
 
-# @numba.njit(numba.optional(int64)(int64[:], int64[:], int64))
+# @numba.njit(numba.optional(int32)(int32[:], int32[:], int32))
 # def maybe_indexget(startdata, startmask, index):
 #     if startmask[index]:
 #         return None
 #     else:
 #         return startdata[index]
 
-@numba.njit(int64(int64[:], int64[:], int64, int64))
+@numba.njit(int32(int32[:], int32[:], int32, int32))
 def listget(start, end, outerindex, index):
     offset = start[outerindex]
     size = end[outerindex] - offset
@@ -217,11 +217,11 @@ def listget(start, end, outerindex, index):
         raise IndexError("index out of range")
     return offset + index
 
-@numba.njit(int64(int64[:], int64[:], int64))
+@numba.njit(int32(int32[:], int32[:], int32))
 def listsize(start, end, index):
     return end[index] - start[index]
 
-@numba.njit(numba.optional(int64)(int64[:], int64[:], int64[:], int64))
+@numba.njit(numba.optional(int32)(int32[:], int32[:], int32[:], int32))
 def maybe_listsize(startdata, startmask, enddata, index):
     if startmask[index]:
         return None

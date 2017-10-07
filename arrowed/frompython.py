@@ -108,7 +108,7 @@ def inferschema(obj):
             return IntermediateList(size, missing, self.contents)
 
         def resolve(self):
-            return ListOffset(((self.size + 1,), numpy.dtype(numpy.int64)), self.contents.resolve(), self.missing)  # FIXME: offset arrays will someday be 32-bit
+            return ListOffset(((self.size + 1,), numpy.dtype(numpy.int32)), self.contents.resolve(), self.missing)  # FIXME: offset arrays will someday be 32-bit
 
     class IntermediateRecord(Intermediate):
         def __init__(self, size, missing, contents, classname):
@@ -267,7 +267,7 @@ class FillableArray(object):
         self.index = 0
         shape, self.dtype = oam.name
 
-        if oam.masked:
+        if oam.nullable:
             if str(self.dtype) == "bool":
                 self.dtype = numpy.dtype(numpy.uint8)
 
@@ -331,7 +331,7 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                 # there are always exactly as many beginarray fills as endarray fills
                 oam.beginarray.fill(last_list_offset[id(oam)])
 
-            if obj is None and oam.masked:
+            if obj is None and oam.nullable:
                 if isinstance(oam, ListCount):
                     oam.countarray.fill(None)
                 elif isinstance(oam, ListOffset):
@@ -368,7 +368,7 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                             raise AssertionError
 
         elif isinstance(oam, Record):
-            # FIXME: check masked
+            # FIXME: check nullable
             if isinstance(obj, dict):
                 for fn, ft in obj.contents.items():
                     if fn not in obj:
@@ -382,7 +382,7 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                     recurse(getattr(obj, fn), ft)
 
         elif isinstance(oam, Tuple):
-            # FIXME: check masked
+            # FIXME: check nullable
             if isinstance(obj, tuple):
                 if len(obj) != len(oam.contents):
                     raise TypeError("cannot fill {0} (length {1}) where expecting a {2}-tuple of type:\n{3}".format(obj, len(obj), len(oam.contents), oam.format("    ")))
@@ -391,7 +391,7 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                     recurse(d, t)
 
         elif isinstance(oam, Union):
-            if obj is None and oam.masked:
+            if obj is None and oam.nullable:
                 if isinstance(oam, UnionDense):
                     oam.tagarray.fill(None)
                 elif isinstance(oam, UnionDenseOffset):
