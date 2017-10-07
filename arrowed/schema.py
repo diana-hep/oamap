@@ -349,7 +349,7 @@ class Primitive(ObjectArrayMapping):
 
 class List(ObjectArrayMapping):
     def __init__(self, *args, **kwds):
-        raise TypeError("List is abstract; use ListCount, ListOffset, or ListStartEnd instead")
+        raise TypeError("List is abstract; use ListCount, ListOffset, or ListBeginEnd instead")
 
     def walk(self, rootfirst=True, _memo=None):
         if _memo is None:
@@ -440,20 +440,20 @@ class ListCount(List):
             offsetarray = numpy.empty(len(countarray) + 1, dtype=numpy.int64)   # new allocation
             countarray.cumsum(out=offsetarray[1:])                              # fill with offsets
             offsetarray[0] = 0
-            startarray = offsetarray[:-1]  # overlapping views
+            beginarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
 
             if getattr(countarray, "mask", None) is not None:
-                startarray = numpy.ma.MaskedArray(startarray, mask=countarray.mask)
+                beginarray = numpy.ma.MaskedArray(beginarray, mask=countarray.mask)
 
-            return startarray, endarray
+            return beginarray, endarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListStartEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
         else:
-            startarray, endarray = resolve()
-            _memo[id(self)] = ListStartEnd(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            beginarray, endarray = resolve()
+            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
 
     def get(self, attr):
@@ -519,16 +519,16 @@ class ListOffset(List):
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
             offsetarray = self._toint64(self._resolved(self.offsetarray, source, "ListOffset offsetarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
-            startarray = offsetarray[:-1]  # overlapping views
+            beginarray = offsetarray[:-1]  # overlapping views
             endarray = offsetarray[1:]     # overlapping views
-            return startarray, endarray
+            return beginarray, endarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListStartEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
         else:
-            startarray, endarray = resolve()
-            _memo[id(self)] = ListStartEnd(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            beginarray, endarray = resolve()
+            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
 
     def get(self, attr):
@@ -570,9 +570,9 @@ class ListOffset(List):
     def __ne__(self, other):
         return not self.__eq__(self, other)
         
-class ListStartEnd(List):
-    def __init__(self, startarray, endarray, contents, masked=False, base=None):
-        self.startarray = startarray
+class ListBeginEnd(List):
+    def __init__(self, beginarray, endarray, contents, masked=False, base=None):
+        self.beginarray = beginarray
         self.endarray = endarray
         self.contents = contents
         self.masked = masked
@@ -589,47 +589,47 @@ class ListStartEnd(List):
 
         result = accessor(self) if feedself else accessor
         if isinstance(result, tuple) and len(result) == 2:
-            return ListStartEnd(result[0], result[1], contents, self.masked, self)
+            return ListBeginEnd(result[0], result[1], contents, self.masked, self)
         else:
-            return ListStartEnd(result, None, contents, self.masked, self)
+            return ListBeginEnd(result, None, contents, self.masked, self)
 
     @property
     def _name(self):
-        return self.startarray
+        return self.beginarray
 
     def resolved(self, source, lazy=False, _memo=None):
         def resolve():
-            startarray = self._toint64(self._resolved(self.startarray, source, "ListStartEnd startarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
-            endarray = self._toint64(self._resolved(self.startarray, source, "ListStartEnd endarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
-            return startarray, endarray
+            beginarray = self._toint64(self._resolved(self.beginarray, source, "ListBeginEnd beginarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            endarray = self._toint64(self._resolved(self.beginarray, source, "ListBeginEnd endarray must map to a one-dimensional, {0}, non-record array of integers", self.masked, lambda x: issubclass(x.dtype.type, numpy.integer)))
+            return beginarray, endarray
 
         _memo = self._recursion_check(_memo)
         if lazy:
-            _memo[id(self)] = ListStartEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            _memo[id(self)] = ListBeginEnd(resolve, None, self.contents.resolved(source, lazy, _memo), self.masked, self)
         else:
-            startarray, endarray = resolve()
-            _memo[id(self)] = ListStartEnd(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
+            beginarray, endarray = resolve()
+            _memo[id(self)] = ListBeginEnd(beginarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
 
     def proxy(self, index=0):
-        if callable(self.startarray):
-            self.startarray, self.endarray = self.startarray()
+        if callable(self.beginarray):
+            self.beginarray, self.endarray = self.beginarray()
 
-        if getattr(self.startarray, "mask", None) is not None and self.startarray.mask[index]:
+        if getattr(self.beginarray, "mask", None) is not None and self.beginarray.mask[index]:
             return None
         else:
             return arrowed.proxy.ListProxy(self, index)
 
     def get(self, attr):
-        if callable(self.startarray):
-            self.startarray, self.endarray = self.startarray()
+        if callable(self.beginarray):
+            self.beginarray, self.endarray = self.beginarray()
 
-        if attr == "startarray":
-            return self.startarray
+        if attr == "beginarray":
+            return self.beginarray
         elif attr == "endarray":
             return self.endarray
         else:
-            raise NameError("ListStartEnd has no array {0}".format(repr(attr)))
+            raise NameError("ListBeginEnd has no array {0}".format(repr(attr)))
 
     def projection(self, required, _memo=None):
         if self.hasany(required):
@@ -640,8 +640,8 @@ class ListStartEnd(List):
                 _memo[id(self.contents)] = self.contents.projection(required, _memo)
             contents = _memo[id(self.contents)]
             if contents is None:
-                contents = Primitive(self.startarray, self.masked)
-            return ListStartEnd(self.startarray, self.endarray, contents, self.masked, self)
+                contents = Primitive(self.beginarray, self.masked)
+            return ListBeginEnd(self.beginarray, self.endarray, contents, self.masked, self)
         else:
             return None
 
@@ -649,8 +649,8 @@ class ListStartEnd(List):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "List ["
         indent += "  "
-        preamble = "startarray = "
-        yield indent + preamble + self._format_array(self.startarray, width - len(preamble) - len(indent))
+        preamble = "beginarray = "
+        yield indent + preamble + self._format_array(self.beginarray, width - len(preamble) - len(indent))
         preamble = "endarray   = "
         yield indent + preamble + self._format_array(self.endarray, width - len(preamble) - len(indent))
         for line in self.contents._format(indent, width, refs, memo):
@@ -658,7 +658,7 @@ class ListStartEnd(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListStartEnd) and ((isinstance(self.startarray, ndarray) and isinstance(other.startarray, ndarray) and numpy.array_equal(self.startarray, other.startarray)) or self.startarray == other.startarray) and ((isinstance(self.endarray, ndarray) and isinstance(other.endarray, ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListBeginEnd) and ((isinstance(self.beginarray, ndarray) and isinstance(other.beginarray, ndarray) and numpy.array_equal(self.beginarray, other.beginarray)) or self.beginarray == other.beginarray) and ((isinstance(self.endarray, ndarray) and isinstance(other.endarray, ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)

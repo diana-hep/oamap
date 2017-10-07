@@ -335,9 +335,9 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                     # this is how an offsetarray gets one extra item: the initial zero
                     oam.offsetarray.fill(0)
 
-            if isinstance(oam, ListStartEnd):
-                # there are always exactly as many startarray fills as endarray fills
-                oam.startarray.fill(last_list_offset[id(oam)])
+            if isinstance(oam, ListBeginEnd):
+                # there are always exactly as many beginarray fills as endarray fills
+                oam.beginarray.fill(last_list_offset[id(oam)])
 
             try:
                 iter(obj)
@@ -358,8 +358,8 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                         oam.countarray.fill(length)
                     elif isinstance(oam, ListOffset):
                         oam.offsetarray.fill(last_list_offset[id(oam)])
-                    elif isinstance(oam, ListStartEnd):
-                        # there are always exactly as many startarray fills as endarray fills
+                    elif isinstance(oam, ListBeginEnd):
+                        # there are always exactly as many beginarray fills as endarray fills
                         oam.endarray.fill(last_list_offset[id(oam)])
 
         elif isinstance(oam, Record):

@@ -73,14 +73,14 @@ class ListProxy(list, Proxy):
         return "[{0}{1}]".format(", ".join(map(repr, self[:4])), dots)
 
     def __len__(self):
-        return int(self._schema.endarray[self._index] - self._schema.startarray[self._index])
+        return int(self._schema.endarray[self._index] - self._schema.beginarray[self._index])
 
     def __getitem__(self, index):
         if isinstance(index, slice):
             return sliceofproxy(self, index)
         else:
             index = normalizeindex(self, index, False, 1)
-            return self._schema.contents.proxy(self._schema.startarray[self._index] + index)
+            return self._schema.contents.proxy(self._schema.beginarray[self._index] + index)
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
