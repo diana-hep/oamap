@@ -197,19 +197,19 @@ def nonnegotiable(index):
     return index
 
 # @numba.njit(int32(int32[:], int32))
-# def indexget(start, index):
-#     return start[index]
+# def indexget(begin, index):
+#     return begin[index]
 
 # @numba.njit(numba.optional(int32)(int32[:], int32[:], int32))
-# def maybe_indexget(startdata, startmask, index):
-#     if startmask[index]:
+# def maybe_indexget(begindata, beginmask, index):
+#     if beginmask[index]:
 #         return None
 #     else:
-#         return startdata[index]
+#         return begindata[index]
 
 @numba.njit(int32(int32[:], int32[:], int32, int32))
-def listget(start, end, outerindex, index):
-    offset = start[outerindex]
+def listget(begin, end, outerindex, index):
+    offset = begin[outerindex]
     size = end[outerindex] - offset
     if index < 0:
         index = size + index
@@ -218,15 +218,15 @@ def listget(start, end, outerindex, index):
     return offset + index
 
 @numba.njit(int32(int32[:], int32[:], int32))
-def listsize(start, end, index):
-    return end[index] - start[index]
+def listsize(begin, end, index):
+    return end[index] - begin[index]
 
 @numba.njit(numba.optional(int32)(int32[:], int32[:], int32[:], int32))
-def maybe_listsize(startdata, startmask, enddata, index):
-    if startmask[index]:
+def maybe_listsize(begindata, beginmask, enddata, index):
+    if beginmask[index]:
         return None
     else:
-        return enddata[index] - startdata[index]
+        return enddata[index] - begindata[index]
 
 ################################################################ for generating ASTs
 
@@ -564,10 +564,10 @@ def do_Attribute(node, parameters, externalfcns, sym, recurse):
             if isinstance(schema, Record):
                 if node.attr in schema.contents:
                     return retyped(node.value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
-                elif isinstance(schema.name, string_types):
-                    raise AttributeError("attribute {0} not found in record {1}".format(repr(node.attr), schema.name))
+                elif schema.name is None:
+                    raise AttributeError("attribute {0} not found in record with structure:\n{1}".format(repr(node.attr), schema.format("    ")))
                 else:
-                    raise AttributeError("attribute {0} not found in record with structure:\n\n{0}".format(repr(node.attr), schema.format("    ")))
+                    raise AttributeError("attribute {0} not found in record {1}".format(repr(node.attr), schema.name))
             else:
                 raise AttributeError("object is not a record:\n\n{0}".format(schema.format("    ")))
 
@@ -750,12 +750,12 @@ def do_Subscript(node, parameters, externalfcns, sym, recurse):
 
         def handler(schema):
             if isinstance(schema, List):
-                startarray = node.value.atype.parameter.require(schema, "startarray", sym)
+                beginarray = node.value.atype.parameter.require(schema, "beginarray", sym)
                 endarray = node.value.atype.parameter.require(schema, "endarray", sym)
 
-                return toexpr("LISTGET(START, END, OUTERINDEX, INDEX)",
+                return toexpr("LISTGET(BEGIN, END, OUTERINDEX, INDEX)",
                               LISTGET = toname(sym("listget")),
-                              START = toname(startarray),
+                              BEGIN = toname(beginarray),
                               END = toname(endarray),
                               OUTERINDEX = node.value,
                               INDEX = node.slice.value,

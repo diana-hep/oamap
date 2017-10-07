@@ -66,6 +66,10 @@ class ObjectArrayMapping(object):
             base = base.base
         return base._name
 
+    @property
+    def primaryarray(self):
+        return None
+
     def hasbase(self, base):
         obj = self
         while obj is not None:
@@ -82,11 +86,7 @@ class ObjectArrayMapping(object):
         paramtypes = paramtypes.copy()
         paramtypes[0] = self
 
-        if not hasattr(self, "_functions"):
-            self._functions = {}
-        if id(function) not in self._functions:
-            self._functions[id(function)] = arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, debug=debug)
-        return self._functions[id(function)]
+        return arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, debug=debug)
 
     def run(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, debug=False, *args):
         import arrowed.compiler
@@ -258,6 +258,13 @@ class Primitive(ObjectArrayMapping):
 
     @property
     def _name(self):
+        if isinstance(self.array, string_types):
+            return self.array
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.array
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -403,11 +410,7 @@ class List(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
-        print "HERE", obj, self.nullable
-
         if obj is None and self.nullable:
-            print "THERE"
-
             return True
         try:
             iter(obj)
@@ -437,6 +440,13 @@ class ListCount(List):
 
     @property
     def _name(self):
+        if isinstance(self.countarray, string_types):
+            return self.countarray
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.countarray
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -519,6 +529,13 @@ class ListOffset(List):
 
     @property
     def _name(self):
+        if isinstance(self.offsetarray, string_types):
+            return self.offsetarray
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.offsetarray
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -600,6 +617,13 @@ class ListBeginEnd(List):
 
     @property
     def _name(self):
+        if isinstance(self.beginarray, string_types):
+            return self.beginarray
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.beginarray
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -824,9 +848,10 @@ class Record(Struct):
         return not self.__eq__(self, other)
 
 class Tuple(Struct):
-    def __init__(self, contents, base=None):
+    def __init__(self, contents, base=None, name=None):
         self.contents = tuple(contents)
         self.base = base
+        self._name = name
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
 
     def walk(self, rootfirst=True, _memo=None):
@@ -866,10 +891,6 @@ class Tuple(Struct):
                     if out is not None:
                         return out
             return None
-
-    @property
-    def _name(self):
-        return "tuple{0}".format(len(self.contents))
 
     def resolved(self, source, lazy=False, _memo=None):
         # a tuple is a purely organizational type; it has no arrays of its own, so just pass on the dereferencing request
@@ -1044,6 +1065,13 @@ class UnionDense(Union):
 
     @property
     def _name(self):
+        if isinstance(self.tagarray, string_types):
+            return self.tagarray
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.tagarray
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -1141,6 +1169,13 @@ class UnionDenseOffset(Union):
         
     @property
     def _name(self):
+        if isinstance(self.tagarray, string_types):
+            return self.tagarray
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.tagarray
 
     def resolved(self, source, lazy=False, _memo=None):
@@ -1263,6 +1298,13 @@ class Pointer(ObjectArrayMapping):
 
     @property
     def _name(self):
+        if isinstance(self.indexarray, string_types):
+            return self.indexarray
+        else:
+            return None
+
+    @property
+    def primaryarray(self):
         return self.indexarray
 
     def resolved(self, source, lazy=False, _memo=None):

@@ -265,7 +265,7 @@ def inferschema(obj):
 class FillableArray(object):
     def __init__(self, oam):
         self.index = 0
-        shape, self.dtype = oam.name
+        shape, self.dtype = oam.primaryarray
 
         if oam.nullable:
             if str(self.dtype) == "bool":
