@@ -722,7 +722,7 @@ class Record(Struct):
         def makeproperty(n, c):
             return property(lambda self: c.proxy(self._index))
 
-        self.proxyclass = type(str(self.name), superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
+        self.proxyclass = type(self._name, superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
         self.proxyclass.__slots__ = ["_schema", "_index"]
 
     def walk(self, rootfirst=True, _memo=None):
@@ -834,7 +834,8 @@ class Record(Struct):
         self._recursion_check(memo)
         yield indent + refs.get(id(self), "") + "Record {"   # FIXME + (" (nullable)" if self.nullable else "")
         indent += "  "
-        yield indent + "name = {0}".format(repr(self.name))
+        if self._name is not None:
+            yield indent + "name = {0}".format(repr(self._name))
 
         for key, contents in self.contents.items():
             for line in contents._format_with_preamble("{0}: ".format(key), indent, width, refs, memo):
@@ -961,13 +962,15 @@ class Tuple(Struct):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        if isinstance(self.contents, tuple):
-            yield indent + refs.get(id(self), "") + "Tuple ("   # FIXME + (" (nullable)" if self.nullable else "")
-            indent += "  "
-            for index, contents in enumerate(self.contents):
-                for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
-                    yield line
-            yield indent + ")"
+        yield indent + refs.get(id(self), "") + "Tuple ("   # FIXME + (" (nullable)" if self.nullable else "")
+        indent += "  "
+        if self._name is not None:
+            yield indent + "name = {0}".format(repr(self._name))
+
+        for index, contents in enumerate(self.contents):
+            for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
+                yield line
+        yield indent + ")"
 
     def __eq__(self, other):
         return isinstance(other, Tuple) and self.contents == other.contents and self.base == other.base

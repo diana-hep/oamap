@@ -28,6 +28,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from collections import OrderedDict
+
 from schema import *
 
 ################################################################ structured name objects
@@ -43,6 +45,8 @@ class Name(object):
     UNION_TAG     = "Ut"
     UNION_OFFSET  = "Uo"
     UNION_DATA    = "Ud"
+    POINTER_INDEX = "Pi"
+    POINTER_DATA  = "Pd"
 
     def __init__(self, prefix="", path=(), delimiter="-"):
         self.prefix = prefix
@@ -64,7 +68,10 @@ class Name(object):
     def str(self, prefix=None):
         if prefix is None:
             prefix = self.prefix
-        return prefix + "".join(self.delimiter + "".join(x) for x in self.path)
+        if prefix == "":
+            return self.delimiter.join(x if isinstance(x, str) else x[0] + x[1] for x in self.path)
+        else:
+            return prefix + self.delimiter + self.str("")
 
     def __str__(self):
         return self.str()
@@ -124,6 +131,12 @@ class Name(object):
         assert isinstance(number, int)
         return Name(self.prefix, self.path + ((Name.UNION_DATA, repr(number)),), self.delimiter)
 
+    def toPointerIndex(self):
+        return Name(self.prefix, self.path + (Name.POINTER_INDEX,), self.delimiter)
+
+    def toPointerData(self):
+        return Name(self.prefix, self.path + (Name.POINTER_DATA,), self.delimiter)
+
     def isPrimitive(self):
         return len(self.path) == 0
 
@@ -166,5 +179,58 @@ class Name(object):
         else:
             return -len(self.path) <= index < len(self.path) and self.path[index] == (Name.UNION_DATA, repr(number))
 
+    def isPointerIndex(self, index=0):
+        return -len(self.path) <= index < len(self.path) and self.path[index] == Name.POINTER_INDEX
+
+    def isPointerData(self, index=0):
+        return -len(self.path) <= index < len(self.path) and self.path[index] == Name.POINTER_DATA
+
 ################################################################ add names to base
 
+def isnamed(oam):
+    for x in oam.walk():
+        if x.name is None:
+            return False
+    return True
+
+def namebase(oam, prefix="", delimiter="-"):
+    def drill(oam):
+        out = oam
+        while out.base is not None:
+            out = out.base
+        return out
+
+    def recurse(name, oam):
+        if isinstance(oam, Primitive):
+            drill(oam).base = Primitive(name.str(), nullable=oam.nullable)
+
+        elif isinstance(oam, ListCount):
+            drill(oam).base = ListCount(name.toListCount().str(), recurse(name.toListData(), oam.contents), nullable=oam.nullable)
+
+        elif isinstance(oam, ListOffset):
+            drill(oam).base = ListOffset(name.toListOffset().str(), recurse(name.toListData(), oam.contents), nullable=oam.nullable)
+
+        elif isinstance(oam, ListBeginEnd):
+            drill(oam).base = ListBeginEnd(name.toListBegin().str(), name.toListEnd().str(), recurse(name.toListData(), oam.contents), nullable=oam.nullable)
+
+        elif isinstance(oam, Record):
+            drill(oam).base = Record(OrderedDict((n, recurse(name.toRecordField(n), c)) for n, c in oam.contents.items()), name=name.str())
+
+        elif isinstance(oam, Tuple):
+            drill(oam).base = Tuple([recurse(name.toTupleIndex(i), x) for i, x in enumerate(oam.contents)], name=name.str())
+
+        elif isinstance(oam, UnionDense):
+            drill(oam).base = UnionDense(name.toUnionTag().str(), [recurse(name.toUnionData(i), x) for i, x in enumerate(oam.contents)], nullable=oam.nullable)
+
+        elif isinstance(oam, UnionDenseOffset):
+            drill(oam).base = UnionDenseOffset(name.toUnionTag().str(), name.toUnionOffset().str(), [recurse(name.toUnionData(i), x) for i, x in enumerate(oam.contents)], nullable=oam.nullable)
+
+        elif isinstance(oam, Pointer):
+            drill(oam).base = Pointer(name.toPointerIndex().str(), recurse(name.toPointerData(), oam.target), nullable=oam.nullable)
+
+        else:
+            raise AssertionError
+
+        return drill(oam)
+
+    return recurse(Name(prefix, (), delimiter), oam)
