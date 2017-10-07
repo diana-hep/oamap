@@ -144,6 +144,9 @@ def inferschema(obj):
         def resolve(self):
             return UnionDense(((self.size,), numpy.dtype(numpy.int8)), [x.resolve() for x in self.contents], self.missing)
 
+    def flatten(types):
+        return [y for x in types if isinstance(x, IntermediateUnion) for y in x.contents] + [x for x in types if not isinstance(x, IntermediateUnion)]
+
     def unify2(x, y):
         size = x.size + y.size
         missing = x.missing or y.missing
@@ -172,25 +175,18 @@ def inferschema(obj):
         elif isinstance(x, IntermediateTuple) and isinstance(y, IntermediateTuple) and len(x.contents) == len(y.contents):
             return IntermediateTuple(size, missing, [unify2(xi, yi) for xi, yi in zip(x.contents, y.contents)])
 
-        # x is not an IntermediateUnion because it comes directly from flattened (see below); y might be
+        elif isinstance(x, IntermediateUnion) and isinstance(y, IntermediateUnion):
+            return unify(x.contents + y.contents)
+
+        elif isinstance(x, IntermediateUnion):
+            return unify(x.contents + [y])
+
         elif isinstance(y, IntermediateUnion):
-            distinct = []
-            found = False
-            for yi in y.contents:
-                merged = unify2(x, yi)   # doesn't recurse forever because yi is not an IntermediateUnion
-                if not isinstance(merged, IntermediateUnion):
-                    distinct[i] = merged
-                    found = True
-                    break
-
-            if not found:
-                distinct.append(x)
-
-            return IntermediateUnion(size, missing, distinct)
+            return unify([x] + y.contents)
 
         else:
             # can't be unified
-            return IntermediateUnion(size, missing, [x, y])
+            return IntermediateUnion(size, missing, flatten([x, y]))
 
     def unify(types):
         if len(types) == 0:
@@ -203,15 +199,11 @@ def inferschema(obj):
             return unify2(types[0], types[1])
 
         else:
-            # there are no IntermediateUnions in flattened
-            flattened = [y for x in types if isinstance(x, IntermediateUnion) for y in x.contents] + [x for x in types if not isinstance(x, IntermediateUnion)]
-
             distinct = []
-            for x in flattened:
+            for x in flatten(types):
                 found = False
 
                 for i, y in enumerate(distinct):
-                    # x is not an IntermediateUnion because it comes directly from flattened; y might be
                     merged = unify2(x, y)
                     if not isinstance(merged, IntermediateUnion):
                         distinct[i] = merged
@@ -224,7 +216,7 @@ def inferschema(obj):
             if len(distinct) == 1:
                 return distinct[0]
             else:
-                return IntermediateUnion(sum(x.size for x in distinct), False, distinct)
+                return IntermediateUnion(sum(x.size for x in distinct), False, flatten(distinct))
 
     def buildintermediate(obj, memo):
         if id(obj) in memo:
@@ -339,30 +331,44 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                 # there are always exactly as many beginarray fills as endarray fills
                 oam.beginarray.fill(last_list_offset[id(oam)])
 
-            try:
-                iter(obj)
-                if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
-                    raise TypeError
-            except TypeError:
-                raise TypeError("cannot fill {0} where expecting type:\n{1}".format(obj, oam.format("    ")))
+            if obj is None and oam.masked:
+                if isinstance(oam, ListCount):
+                    oam.countarray.fill(None)
+                elif isinstance(oam, ListOffset):
+                    oam.offsetarray.fill(None)
+                elif isinstance(oam, ListBeginEnd):
+                    oam.beginarray.fill(None)
+                    oam.endarray.fill(None)
+                else:
+                    raise AssertionError
             else:
-                length = 0
                 try:
-                    for x in obj:
-                        recurse(x, oam.contents)
-                        length += 1
-                finally:
-                    last_list_offset[id(oam)] += length
+                    iter(obj)
+                    if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
+                        raise TypeError
+                except TypeError:
+                    raise TypeError("cannot fill {0} where expecting type:\n{1}".format(obj, oam.format("    ")))
+                else:
+                    length = 0
+                    try:
+                        for x in obj:
+                            recurse(x, oam.contents)
+                            length += 1
+                    finally:
+                        last_list_offset[id(oam)] += length
 
-                    if isinstance(oam, ListCount):
-                        oam.countarray.fill(length)
-                    elif isinstance(oam, ListOffset):
-                        oam.offsetarray.fill(last_list_offset[id(oam)])
-                    elif isinstance(oam, ListBeginEnd):
-                        # there are always exactly as many beginarray fills as endarray fills
-                        oam.endarray.fill(last_list_offset[id(oam)])
+                        if isinstance(oam, ListCount):
+                            oam.countarray.fill(length)
+                        elif isinstance(oam, ListOffset):
+                            oam.offsetarray.fill(last_list_offset[id(oam)])
+                        elif isinstance(oam, ListBeginEnd):
+                            # there are always exactly as many beginarray fills as endarray fills
+                            oam.endarray.fill(last_list_offset[id(oam)])
+                        else:
+                            raise AssertionError
 
         elif isinstance(oam, Record):
+            # FIXME: check masked
             if isinstance(obj, dict):
                 for fn, ft in obj.contents.items():
                     if fn not in obj:
@@ -376,6 +382,7 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                     recurse(getattr(obj, fn), ft)
 
         elif isinstance(oam, Tuple):
+            # FIXME: check masked
             if isinstance(obj, tuple):
                 if len(obj) != len(oam.contents):
                     raise TypeError("cannot fill {0} (length {1}) where expecting a {2}-tuple of type:\n{3}".format(obj, len(obj), len(oam.contents), oam.format("    ")))
@@ -384,6 +391,15 @@ def toarrays(obj, schema=None, fillable=FillableArray):
                     recurse(d, t)
 
         elif isinstance(oam, Union):
+            if obj is None and oam.masked:
+                if isinstance(oam, UnionDense):
+                    oam.tagarray.fill(None)
+                elif isinstance(oam, UnionDenseOffset):
+                    oam.tagarray.fill(None)
+                    oam.offsetarray.fill(None)
+                else:
+                    raise AssertionError
+
             tag = None
             for i, possibility in enumerate(oam.contents):
                 if possibility.isinstance(obj):
@@ -397,9 +413,13 @@ def toarrays(obj, schema=None, fillable=FillableArray):
 
             recurse(obj, oam.contents[tag])
 
-            oam.tagarray.fill(tag)
-            if isinstance(oam, UnionDenseOffset):
+            if isinstance(oam, UnionDense):
+                oam.tagarray.fill(tag)
+            elif isinstance(oam, UnionDenseOffset):
+                oam.tagarray.fill(tag)
                 oam.offsetarray.fill(tag)
+            else:
+                raise AssertionError
 
             last_union_offset[id(oam)] += 1
 

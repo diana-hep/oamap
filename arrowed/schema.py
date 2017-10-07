@@ -319,9 +319,9 @@ class Primitive(ObjectArrayMapping):
 
         if obj is None and self.masked:
             return True
-        elif obj is False or obj is True and str(dtype) == "bool":
+        elif (obj is False or obj is True) and str(dtype) == "bool":
             return True
-        elif isinstance(obj, numbers.Integral) and issubclass(dtype.type, numpy.integer) and numpy.iinfo(dtype.type).min <= obj <= numpy.iinfo(dtype.type).max:
+        elif obj is not False and obj is not True and isinstance(obj, numbers.Integral) and issubclass(dtype.type, numpy.integer) and numpy.iinfo(dtype.type).min <= obj <= numpy.iinfo(dtype.type).max:
             return True
         elif isinstance(obj, numbers.Real) and issubclass(dtype.type, numpy.floating):
             return True
@@ -337,7 +337,7 @@ class Primitive(ObjectArrayMapping):
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         preamble = refs.get(id(self), "")
-        yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
+        yield indent + preamble + ("Nullable " if self.masked else "") + self._format_array(self.array, width - len(preamble) - len(indent))
 
     def __eq__(self, other):
         return isinstance(other, Primitive) and ((isinstance(self.array, ndarray) and isinstance(other.array, ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.base == other.base
@@ -404,6 +404,12 @@ class List(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
+        print "HERE", obj, self.masked
+
+        if obj is None and self.masked:
+            print "THERE"
+
+            return True
         try:
             iter(obj)
             if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
@@ -481,7 +487,7 @@ class ListCount(List):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "List ["
+        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "List ["
         indent += "  "
         preamble = "countarray = "
         yield indent + preamble + self._format_array(self.countarray, width - len(preamble) - len(indent))
@@ -556,7 +562,7 @@ class ListOffset(List):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "List ["
+        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "List ["
         indent += "  "
         preamble = "offsetarray = "
         yield indent + preamble + self._format_array(self.offsetarray, width - len(preamble) - len(indent))
@@ -615,7 +621,7 @@ class ListBeginEnd(List):
         if callable(self.beginarray):
             self.beginarray, self.endarray = self.beginarray()
 
-        if getattr(self.beginarray, "mask", None) is not None and self.beginarray.mask[index]:
+        if (getattr(self.beginarray, "mask", None) is not None and self.beginarray.mask[index]) or (getattr(self.endarray, "mask", None) is not None and self.endarray.mask[index]):
             return None
         else:
             return arrowed.proxy.ListProxy(self, index)
@@ -647,7 +653,7 @@ class ListBeginEnd(List):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "List ["
+        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "List ["
         indent += "  "
         preamble = "beginarray = "
         yield indent + preamble + self._format_array(self.beginarray, width - len(preamble) - len(indent))
@@ -794,6 +800,8 @@ class Record(Struct):
         else:
             _memo.add(id(self))
 
+        # if obj is None and self.masked:
+        #     return True
         if isinstance(obj, dict):
             return all(n in obj and c.isinstance(obj[n]) for n, c in self.contents.items())
         else:
@@ -801,7 +809,7 @@ class Record(Struct):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "Record {"
+        yield indent + refs.get(id(self), "") + "Record {"   # FIXME + ("Nullable " if self.masked else "")
         indent += "  "
         yield indent + "name = {0}".format(repr(self.name))
 
@@ -924,6 +932,8 @@ class Tuple(Struct):
         else:
             _memo.add(id(self))
 
+        # if obj is None and self.masked:
+        #     return True
         if isinstance(obj, tuple) and len(obj) == len(self.contents):
             return all(c.isinstance(x) for x, c in zip(obj, self.contents))
         else:
@@ -932,7 +942,7 @@ class Tuple(Struct):
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
         if isinstance(self.contents, tuple):
-            yield indent + refs.get(id(self), "") + "Tuple ("
+            yield indent + refs.get(id(self), "") + "Tuple ("   # FIXME + ("Nullable " if self.masked else "")
             indent += "  "
             for index, contents in enumerate(self.contents):
                 for line in contents._format_with_preamble("{0}: ".format(index), indent, width, refs, memo):
@@ -1007,6 +1017,8 @@ class Union(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
+        if obj is None and self.masked:
+            return True
         return any(c.isinstance(obj) for c in self.contents)
 
 class UnionDense(Union):
@@ -1085,7 +1097,7 @@ class UnionDense(Union):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "Union <"
+        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "Union <"
         indent += "  "
         preamble = "tagarray = "
         yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
@@ -1150,7 +1162,7 @@ class UnionDenseOffset(Union):
         if callable(self.tagarray):
             self.tagarray, self.offsetarray = self.tagarray()
 
-        if getattr(self.tagarray, "mask", None) is not None and self.tagarray.mask[index]:
+        if (getattr(self.tagarray, "mask", None) is not None and self.tagarray.mask[index]) or (getattr(self.offsetarray, "mask", None) is not None and self.offsetarray.mask[index]):
             return None
         else:
             tag = self.tagarray[index]
@@ -1189,7 +1201,7 @@ class UnionDenseOffset(Union):
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
-        yield indent + refs.get(id(self), "") + "Union <"
+        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "Union <"
         indent += "  "
         preamble = "tagarray    = "
         yield indent + preamble + self._format_array(self.tagarray, width - len(preamble) - len(indent))
@@ -1332,10 +1344,12 @@ class Pointer(ObjectArrayMapping):
         else:
             _memo.add(id(self))
 
+        if obj is None and self.masked:
+            return True
         return self.target.isinstance(obj)
 
     def _format(self, indent, width, refs, memo):
-        yield indent + refs.get(id(self), "") + "Pointer (*"
+        yield indent + refs.get(id(self), "") + ("Nullable " if self.masked else "") + "Pointer (*"
         indent += "  "
         preamble = "indexarray = "
         yield indent + preamble + self._format_array(self.indexarray, width - len(preamble) - len(indent))
