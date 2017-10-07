@@ -29,6 +29,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import collections
+import numbers
 import json
 import sys
 
@@ -74,7 +75,7 @@ class ObjectArrayMapping(object):
             obj = obj.base
         return False
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         raise TypeError("cannot get a proxy for an unresolved ObjectArrayMap; call the resolved method first or pass a source to this method")
 
     def compile(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, debug=False):
@@ -269,7 +270,7 @@ class Primitive(ObjectArrayMapping):
         else:
             return Primitive(resolve(), self.masked, self)
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         if callable(self.array):
             self.array = self.array()
 
@@ -299,6 +300,36 @@ class Primitive(ObjectArrayMapping):
         else:
             return None
 
+    def isinstance(self, obj, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            return False
+        else:
+            _memo.add(id(self))
+
+        if isinstance(self.array, numpy.dtype):
+            dtype = self.array
+        elif isinstance(self.array, tuple) and isinstance(self.array[1], numpy.dtype):
+            dtype = self.array[1]
+        elif hasattr(self.array, "dtype"):
+            dtype = self.array.dtype
+        else:
+            raise TypeError("cannot determine dtype of {0} with array {1}".format(self, self.array))
+
+        if obj is None and self.masked:
+            return True
+        elif obj is False or obj is True and str(dtype) == "bool":
+            return True
+        elif isinstance(obj, numbers.Integral) and issubclass(dtype.type, numpy.integer) and numpy.iinfo(dtype.type).min <= obj <= numpy.iinfo(dtype.type).max:
+            return True
+        elif isinstance(obj, numbers.Real) and issubclass(dtype.type, numpy.floating):
+            return True
+        elif isinstance(obj, numbers.Complex) and issubclass(dtype.type, numpy.complex):
+            return True
+        else:
+            return False
+        
     def _format_with_preamble(self, preamble, indent, width, refs, memo):
         for line in self._format(indent, width - len(preamble), refs, memo):
             yield indent + preamble + line[len(indent):]
@@ -364,6 +395,23 @@ class List(ObjectArrayMapping):
             return self.contents.hasany(others, _memo)
         else:
             return False
+
+    def isinstance(self, obj, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            return False
+        else:
+            _memo.add(id(self))
+
+        try:
+            iter(obj)
+            if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
+                raise TypeError
+        except TypeError:
+            return False
+        else:
+            return all(self.contents.isinstance(x) for x in obj)
 
 class ListCount(List):
     def __init__(self, countarray, contents, masked=False, base=None):
@@ -563,7 +611,7 @@ class ListStartEnd(List):
             _memo[id(self)] = ListStartEnd(startarray, endarray, self.contents.resolved(source, lazy, _memo), self.masked, self)
         return _memo[id(self)]
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         if callable(self.startarray):
             self.startarray, self.endarray = self.startarray()
 
@@ -692,7 +740,7 @@ class Record(Struct):
         _memo[id(self)] = Record(collections.OrderedDict((k, v.resolved(source, lazy, _memo)) for k, v in self.contents.items()), self)
         return _memo[id(self)]
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         return self.proxyclass(self, index)
 
     def get(self, attr):
@@ -737,6 +785,19 @@ class Record(Struct):
                 return None
         else:
             return None
+
+    def isinstance(self, obj, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            return False
+        else:
+            _memo.add(id(self))
+
+        if isinstance(obj, dict):
+            return all(n in obj and c.isinstance(obj[n]) for n, c in self.contents.items())
+        else:
+            return all(hasattr(obj, n) and c.isinstance(getattr(obj, n)) for n, c in self.contents.items())
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -809,7 +870,7 @@ class Tuple(Struct):
         _memo[id(self)] = Tuple(tuple(x.resolved(source, lazy, _memo) for x in self.contents), self)
         return _memo[id(self)]
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         return arrowed.proxy.TupleProxy(self, index)
 
     def get(self, attr):
@@ -854,6 +915,19 @@ class Tuple(Struct):
                 return None
         else:
             return None
+
+    def isinstance(self, obj, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            return False
+        else:
+            _memo.add(id(self))
+
+        if isinstance(obj, tuple) and len(obj) == len(self.contents):
+            return all(c.isinstance(x) for x, c in zip(obj, self.contents))
+        else:
+            return False
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -924,6 +998,16 @@ class Union(ObjectArrayMapping):
                 _memo.add(id(x))
                 return x.hasany(others, _memo)
         return False
+
+    def isinstance(self, obj, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            return False
+        else:
+            _memo.add(id(self))
+
+        return any(c.isinstance(obj) for c in self.contents)
 
 class UnionDense(Union):
     def __init__(self, tagarray, contents, masked=False, base=None):
@@ -1062,7 +1146,7 @@ class UnionDenseOffset(Union):
             _memo[id(self)] = UnionDenseOffset(tagarray, offsetarray, [x.resolved(source, lazy, _memo) for x in self.contents], self.masked, self)
         return _memo[id(self)]
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         if callable(self.tagarray):
             self.tagarray, self.offsetarray = self.tagarray()
 
@@ -1186,7 +1270,7 @@ class Pointer(ObjectArrayMapping):
             _memo[id(self)] = Pointer(resolve(), _memo[id(self.target)], self.masked, self)
         return _memo[id(self)]
 
-    def proxy(self, index):
+    def proxy(self, index=0):
         if callable(self.indexarray):
             self.indexarray = self.indexarray()
 
@@ -1239,6 +1323,16 @@ class Pointer(ObjectArrayMapping):
             return Pointer(self.indexarray, target, self.masked, self)
         else:
             return None
+
+    def isinstance(self, obj, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            return False
+        else:
+            _memo.add(id(self))
+
+        return self.target.isinstance(obj)
 
     def _format(self, indent, width, refs, memo):
         yield indent + refs.get(id(self), "") + "Pointer (*"

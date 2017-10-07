@@ -142,7 +142,7 @@ def inferschema(obj):
             return IntermediateUnion(size, missing, self.contents)
 
         def resolve(self):
-            return UnionDenseOffset(((self.size,), numpy.dtype(numpy.int8)), [x.resolve() for x in self.contents], self.missing)
+            return UnionDense(((self.size,), numpy.dtype(numpy.int8)), [x.resolve() for x in self.contents], self.missing)
 
     def unify2(x, y):
         size = x.size + y.size
@@ -231,7 +231,7 @@ def inferschema(obj):
             raise ValueError("cyclic reference in Python object at {0}".format(obj))
 
         # by copying, rather than modifying in-place, we find cyclic references instead of just DAGs
-        memo = memo.union(set(id(obj)))
+        memo = memo.union(set([id(obj)]))
 
         if obj is None:
             return Unknown(1, True)
@@ -270,27 +270,27 @@ def inferschema(obj):
 
 ################################################################ ways to fill arrays from Python data
 
-class FillableArray(Fillable):
+class FillableArray(object):
     def __init__(self, oam):
         self.index = 0
-        shape, dtype = oam.name
+        shape, self.dtype = oam.name
 
         if oam.masked:
-            if str(numpy.dtype(numpy.bool)) == "bool":
-                dtype = numpy.uint8
+            if str(self.dtype) == "bool":
+                self.dtype = numpy.dtype(numpy.uint8)
 
-            if issubclass(dtype.type, numpy.unsignedinteger):
-                self.fill_value = numpy.iinfo(dtype.type).max
-            elif issubclass(dtype.type, numpy.signedinteger):
-                self.fill_value = numpy.iinfo(dtype.type).min
-            elif issubclass(dtype.type, numpy.floating):
+            if issubclass(self.dtype.type, numpy.unsignedinteger):
+                self.fill_value = numpy.iinfo(self.dtype.type).max
+            elif issubclass(self.dtype.type, numpy.signedinteger):
+                self.fill_value = numpy.iinfo(self.dtype.type).min
+            elif issubclass(self.dtype.type, numpy.floating):
                 self.fill_value = numpy.nan
-            elif issubclass(dtype.type, numpy.complex):
+            elif issubclass(self.dtype.type, numpy.complex):
                 self.fill_value = (1+1j) * numpy.nan
             else:
                 raise AssertionError
 
-            self.array = numpy.ma.MaskedArray(numpy.empty(shape, dtype=dtype), fill_value=self.fill_value)
+            self.array = numpy.ma.MaskedArray(numpy.empty(shape, dtype=self.dtype), fill_value=self.fill_value)
 
             def fill(self, value):
                 if value is None:
@@ -299,10 +299,10 @@ class FillableArray(Fillable):
                     self.array[self.index] = value
                 self.index += 1
 
-            self.fill = MethodType(fill, self, FillFile)
+            self.fill = MethodType(fill, self, FillableArray)
 
         else:
-            self.array = numpy.empty(shape, dtype=dtype)
+            self.array = numpy.empty(shape, dtype=self.dtype)
 
     def fill(self, value):
         self.array[self.index] = value
@@ -314,7 +314,7 @@ class FillableArray(Fillable):
 
 ################################################################ filling arrays from Python data
 
-def filled(obj, schema=None, fillable=FillableArray):
+def toarrays(obj, schema=None, fillable=FillableArray):
     if schema is None:
         schema = inferschema(obj)
 
@@ -384,11 +384,9 @@ def filled(obj, schema=None, fillable=FillableArray):
                     recurse(d, t)
 
         elif isinstance(oam, Union):
-            t = infertype(obj)   # can be expensive!
-
             tag = None
             for i, possibility in enumerate(oam.contents):
-                if t.issubtype(possibility):   # FIXME: issubtype not implemented
+                if possibility.isinstance(obj):
                     tag = i
                     break
             if tag is None:
@@ -411,5 +409,5 @@ def filled(obj, schema=None, fillable=FillableArray):
         else:
             raise AssertionError
 
-        recurse(obj, oam)
-        return oam.resolved(None)
+    recurse(obj, oam)
+    return oam.resolved(None)
