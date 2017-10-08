@@ -31,6 +31,7 @@
 import ast
 import re
 import sys
+import inspect
 from collections import namedtuple
 
 import numpy
@@ -91,6 +92,7 @@ class Compiled(object):
 def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": True}, debug=False):
     # turn the 'function' argument into the syntax tree of a function
     if isinstance(function, string_types):
+        sourcefile = "<string>"
         function = withequality(ast.parse(function).body[0])
         if isinstance(function, ast.Expr) and isinstance(function.value, ast.Lambda):
             if py2:
@@ -102,6 +104,7 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
             raise TypeError("string to compile must declare exactly one function")
 
     else:
+        sourcefile = inspect.getfile(function)
         function = tofunction(function)
 
     # get a list of all symbols used by the function and any other functions it references
@@ -167,7 +170,7 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     env[sym("ToProxy")] = ToProxy
 
     # do the code transformation
-    transformed, parameters = transform(function, paramtypes, externalfcns, sym)
+    transformed, parameters = transform(function, paramtypes, externalfcns, sym, sourcefile)
 
     if debug:
         try:
@@ -462,7 +465,7 @@ class Parameters(object):
         else:
             return withequality(ast.arguments(sum((x.args() for x in self.order), []), None, [], [], None, sum((x.defaults() for x in self.order), [])))
 
-def transform(function, paramtypes, externalfcns, sym):
+def transform(function, paramtypes, externalfcns, sym, sourcefile):
     # check for too much dynamism
     if function.args.vararg is not None:
         raise TypeError("function {0} has *args, which are not allowed in compiled functions".format(repr(function.name)))
@@ -506,7 +509,7 @@ def transform(function, paramtypes, externalfcns, sym):
         if isinstance(pyast, ast.AST):
             handlername = "do_" + pyast.__class__.__name__
             if handlername in everything:
-                return everything[handlername](pyast, symtable, externalfcns, sym, recurse)
+                return everything[handlername](pyast, symtable, externalfcns, sym, sourcefile, recurse)
             else:
                 out = pyast.__class__(*[recurse(getattr(pyast, x)) for x in pyast._fields])
                 out.lineno = pyast.lineno
@@ -563,7 +566,7 @@ def implicit(node, sym):
 # Assign ("targets", "value")
 
 # Attribute ("value", "attr", "ctx")
-def do_Attribute(node, symtable, externalfcns, sym, recurse):
+def do_Attribute(node, symtable, externalfcns, sym, sourcefile, recurse):
     node = rebuilt(node, recurse(node.value), node.attr, node.ctx)
 
     if node.value.atype is untracked:
@@ -575,11 +578,14 @@ def do_Attribute(node, symtable, externalfcns, sym, recurse):
                 if node.attr in schema.contents:
                     return retyped(node.value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
                 elif schema.name is None:
-                    raise AttributeError("attribute {0} not found in record with structure:\n{1}".format(repr(node.attr), schema.format("    ")))
+                    raise AttributeError("attribute {0} not found in record with structure:\n\n{1}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
+                        repr(node.attr), schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
                 else:
-                    raise AttributeError("attribute {0} not found in record {1}".format(repr(node.attr), schema.name))
+                    raise AttributeError("attribute {0} not found in record {1}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
+                        repr(node.attr), schema.name, lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
             else:
-                raise AttributeError("object is not a record:\n\n{0}".format(schema.format("    ")))
+                raise TypeError("object is not a record:\n\n{0}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
 
         return implicit(node.value.atype.generate(handler), sym)
 
@@ -641,7 +647,7 @@ def do_Attribute(node, symtable, externalfcns, sym, recurse):
 # FloorDiv ()
 
 # For ("target", "iter", "body", "orelse")
-def do_For(node, symtable, externalfcns, sym, recurse):
+def do_For(node, symtable, externalfcns, sym, sourcefile, recurse):
     node = rebuilt(node, node.target, recurse(node.iter), node.body, recurse(node.orelse))
 
     if node.iter.atype is untracked:
@@ -666,7 +672,8 @@ def do_For(node, symtable, externalfcns, sym, recurse):
                               lineno = node)
 
             else:
-                raise IndexError("object is not a list:\n\n{0}".format(schema.format("    ")))
+                raise IndexError("object is not a list:\n\n{0}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
 
         node.iter = node.iter.atype.generate(handler)
         node.body = recurse(node.body)
@@ -728,7 +735,7 @@ def do_For(node, symtable, externalfcns, sym, recurse):
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
-def do_Name(node, symtable, externalfcns, sym, recurse):
+def do_Name(node, symtable, externalfcns, sym, sourcefile, recurse):
     if isinstance(node.ctx, ast.Load):
         if node.id not in symtable or symtable[node.id] is untracked:
             return node
@@ -770,7 +777,7 @@ def do_Name(node, symtable, externalfcns, sym, recurse):
 # Repr ("value",)  # Py2 only
 
 # Return ("value",)
-def do_Return(node, symtable, externalfcns, sym, recurse):
+def do_Return(node, symtable, externalfcns, sym, sourcefile, recurse):
     value = recurse(node.value)
 
     if value.atype is untracked:      # TODO: also take this branch if in an externalfcn
@@ -803,7 +810,7 @@ def do_Return(node, symtable, externalfcns, sym, recurse):
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, symtable, externalfcns, sym, recurse):
+def do_Subscript(node, symtable, externalfcns, sym, sourcefile, recurse):
     node = rebuilt(node, recurse(node.value), recurse(node.slice), node.ctx)
 
     if node.value.atype is untracked:
@@ -827,7 +834,8 @@ def do_Subscript(node, symtable, externalfcns, sym, recurse):
                               lineno = node,
                               atype = ArrowedType(schema.contents, node.value.atype.parameter))
             else:
-                raise IndexError("object is not a list:\n\n{0}".format(schema.format("    ")))
+                raise TypeError("object is not a list:\n\n{0}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
 
         return implicit(node.value.atype.generate(handler), sym)
 

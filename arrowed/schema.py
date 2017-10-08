@@ -354,6 +354,9 @@ class Primitive(ObjectArrayMapping):
         preamble = refs.get(id(self), "")
         yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
 
+    def format(self, indent="", highlight=lambda t: "", width=80):
+        return indent + "<Primitive {0}>".format("".join(self._format("", width - 12, {}, {})))
+
     def __eq__(self, other):
         if isinstance(self.array, numpy.ndarray) and isinstance(other.array, numpy.ndarray):
             arrayeq = numpy.array_equal(self.array, other.array)

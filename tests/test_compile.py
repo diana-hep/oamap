@@ -85,6 +85,7 @@ class TestCompile(unittest.TestCase):
         self.compare([3.14, 2.71, 99.9], lambda x: x[-3])
         self.failure([3.14, 2.71, 99.9], lambda x: x[3], IndexError)
         self.failure([3.14, 2.71, 99.9], lambda x: x[-4], IndexError)
+        self.failure(5, lambda x: x[-3], TypeError, onlycompiled=True)
 
     def test_attribute(self):
         T = namedtuple("T", ["one", "two"])
