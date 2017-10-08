@@ -14,19 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from plur.types.type import Type
+import re
 
-from plur.types.primitive import Primitive # P
-from plur.types.list import List           # L
-from plur.types.union import Union         # U
-from plur.types.record import Record       # R
+__version__ = "0.0.9"
+version = __version__
+version_info = tuple(re.split(r"[-\.]", __version__))
 
-from plur.types.primitive import *
-
-from plur.types.columns import type2columns
-from plur.types.columns import columns2type
-from plur.types.columns import arrays2type
-
-from plur.types.printing import formattype, formatdiff
-
-__all__ = ["Type", "Primitive", "List", "Union", "Record"] + primitivetypes + ["type2columns", "columns2type", "arrays2type", "formattype", "formatdiff"]
+del re

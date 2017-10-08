@@ -1,289 +1,172 @@
 #!/usr/bin/env python
 
-# Copyright 2017 DIANA-HEP
+# Copyright (c) 2017, DIANA-HEP
+# All rights reserved.
 # 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 # 
-#     http://www.apache.org/licenses/LICENSE-2.0
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
 # 
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+# 
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import sys
 import unittest
 from collections import namedtuple
 
 import numpy
 
-from plur.types import *
-from plur.types.columns import arrays2type
-from plur.python import *
-from plur.compile import *
-from plur.compile.code import fcn2syntaxtree, rewrite, compilefcn, callfcn, fillin
-
-from plur.thirdparty.meta import dump_python_source
+from arrowed.frompython import toarrays
 
 class TestCompile(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_rewrite(self):
-        def same(data, fcn, testsets, debug=False):
-            arrays = toarrays("prefix", data)
-            tpe = arrays2type(arrays, "prefix")
-            if debug:
-                print("\n\nDATA: {0}".format(data))
-                print("\nTYPE: {0}".format(tpe))
+    def compare(self, data, function, numba=None, debug=False):
+        arrays = toarrays(data)
+        if debug:
+            print arrays.format()
 
-            code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
+        python_result = function(data)
+        proxy_result = function(arrays.proxy())
+        compiled_result = arrays.run(function, numba=numba, debug=debug)
 
-            fillin(arrays, (tpe,), filter=arrayparams)
+        if debug:
+            print("")
+            print("python:   {0}".format(python_result))
+            print("proxy:    {0}".format(proxy_result))
+            print("compiled: {0}".format(compiled_result))
 
-            if debug:
-                print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
-                    dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
-                for x in arrayparams:
-                    print("{0}\t{1}".format(x, arrays[x]))
-                print("")
+        self.assertEqual(python_result, proxy_result)
+        self.assertEqual(python_result, compiled_result)
 
-            newfcn = compilefcn(code, code.name, fcn.__code__.co_filename)
+    def failure(self, data, function, exception, numba=None, onlycompiled=False):
+        arrays = toarrays(data)
 
-            for otherargs in testsets:
-                if not isinstance(otherargs, (list, tuple)):
-                    otherargs = (otherargs,)
+        if not onlycompiled:
+            self.assertRaises(exception, lambda: function(data))
+            self.assertRaises(exception, lambda: function(arrays.proxy()))
+        self.assertRaises(exception, lambda: arrays.run(function, numba=numba))
 
-                out1 = callfcn(arrays, newfcn, arrayparams, *otherargs)
-                out2 = fcn(data, *otherargs)
-                if debug:
-                    print("otherargs == {0} --> {1} vs {2}".format(otherargs, out1, out2))
+    def test_simple(self):
+        self.compare([3.14, 2.71, 99.9], lambda x: x)
 
-                if not out1 == out2:
-                    raise AssertionError("failed for otherargs == {0}: {1} vs {2}\n{3}\n{4}".format(
-                        otherargs, out1, out2, dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
+        def good(x):
+            return x
+        self.compare([3.14, 2.71, 99.9], good)
 
-        same(3, lambda x, y: x + y, [1.1, 2.2, 3.3])
-        same([3, 2, 1], lambda x, i, y: x[i] + y, [(i, y) for i in range(3) for y in [1.1, 2.2, 3.3]])
-        same([[], [1, 2], [3, 4, 5]], lambda x, i, j, y: x[i][j] + y, [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]])
-        same([[[], [1, 2], [3, 4, 5]]], lambda x, i, j, y: x[0][i][j] + y, [(i, j, y) for i, j in [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)] for y in [1.1, 2.2, 3.3]])
+        def good2(x):
+            return None
+        self.compare([3.14, 2.71, 99.9], good2)
 
-        def check_only_union(data, debug=False):
-            arrays = toarrays("prefix", data, Union(boolean, float64))
-            tpe = arrays2type(arrays, "prefix")
-            fcn = lambda x: x
-            code, arrayparams, enclosedfcns, encloseddata = rewrite(fcn, (tpe,))
-            if debug:
-                print("\nBEFORE:\n{0}\nAFTER:\n{1}".format(
-                    dump_python_source(fcn2syntaxtree(fcn)), dump_python_source(code)))
-                for x in arrayparams:
-                    print("{0}\t{1}".format(x, arrays[x]))
-                print("")
-                print(tpe)
-                print("")
-            self.assertEqual(callfcn(arrays, compilefcn(code, code.name, fcn.__code__.co_filename), arrayparams), data)
+    def test_subscript(self):
+        self.compare([3.14, 2.71, 99.9], lambda x: x[0])
+        self.compare([3.14, 2.71, 99.9], lambda x: x[1])
+        self.compare([3.14, 2.71, 99.9], lambda x: x[2])
+        self.compare([3.14, 2.71, 99.9], lambda x: x[-1])
+        self.compare([3.14, 2.71, 99.9], lambda x: x[-2])
+        self.compare([3.14, 2.71, 99.9], lambda x: x[-3])
+        self.failure([3.14, 2.71, 99.9], lambda x: x[3], IndexError)
+        self.failure([3.14, 2.71, 99.9], lambda x: x[-4], IndexError)
+        self.failure(5, lambda x: x[-3], TypeError, onlycompiled=True)
 
-        check_only_union(False)
-        check_only_union(3.14)
-        check_only_union(True)
-        check_only_union(99.9)
-
-        same([False, 3.14, True, 99.9], lambda x, i: x[i], [0, 1, 2, 3])
-        same([[False, True], [1.1, 2.2]], lambda x, i, j: x[i][j], [(0, 0), (0, 1), (1, 0), (1, 1)])
-
+    def test_attribute(self):
         T = namedtuple("T", ["one", "two"])
+        self.compare(T(1, 2.2), lambda x: x.one)
+        self.compare(T(1, 2.2), lambda x: x.two)
+        self.failure(T(1, 2.2), lambda x: x.three, AttributeError)
+        self.compare(T(1, 2.2), lambda x: x)
 
-        same(T(False, 3.14), lambda x, i: x.one if i == 0 else x.two, [0, 1])
+    def test_subscript_attribute(self):
+        T = namedtuple("T", ["one", "two"])
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[0].one)
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[0].two)
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[1].one)
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[1].two)
+        self.failure([T(1, 1.1), T(2, 2.2)], lambda x: x[2].one, IndexError)
+        self.failure([T(1, 1.1), T(2, 2.2)], lambda x: x[1].three, AttributeError)
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[0])
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[1])
 
-        same([T(False, 1.1), T(True, 2.2), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
-        same([[T(False, 1.1), T(True, 2.2), T(False, 3.3)]], lambda x, i, j: x[0][j].one if i == 0 else x[0][j].two, [(i, j) for j in range(3) for i in range(2)])
-        same([T([False], 1.1), T([True], 2.2), T([False], 3.3)], lambda x, i, j: x[j].one[0] if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
-        same([T(False, [1.1]), T(True, [2.2]), T(False, [3.3])], lambda x, i, j: x[j].one if i == 0 else x[j].two[0], [(i, j) for j in range(3) for i in range(2)])
-        same([T([False], [1.1]), T([True], [2.2]), T([False], [3.3])], lambda x, i, j: x[j].one[0] if i == 0 else x[j].two[0], [(i, j) for j in range(3) for i in range(2)])
+    def test_attribute_subscript(self):
+        T = namedtuple("T", ["one", "two"])
+        self.compare(T([1, 2], 3.3), lambda x: x.one[0])
+        self.compare(T([1, 2], 3.3), lambda x: x.one[1])
+        self.compare(T([1, 2], 3.3), lambda x: x.two)
+        self.failure(T([1, 2], 3.3), lambda x: x.three, AttributeError)
+        self.failure(T([1, 2], 3.3), lambda x: x.one[2], IndexError)
+        self.compare(T([1, 2], 3.3), lambda x: x.one)
 
-        same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, j, k: x[j].two[k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
-        same([[T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])]], lambda x, j, k: x[0][j].two[k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
-        same([T(False, [[]]), T(True, [[1, 2]]), T(False, [[3, 4, 5]])], lambda x, j, k: x[j].two[0][k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
-        same([T(False, []), T(True, [[1, 2]]), T(False, [[3, 4, 5]])], lambda x, j, k: x[j].two[0][k], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
-        same([T(False, []), T(True, [[1], [2]]), T(False, [[3], [4], [5]])], lambda x, j, k: x[j].two[k][0], [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2)])
+    def test_forloop(self):
+        def go(data):
+            total = 0
+            for x in data:
+                total += x
+            return total
+        self.compare([1, 2, 3, 4, 55], go)
 
-        same([T(False, []), T(True, [1, 2]), T(False, [3, 4, 5])], lambda x, i, j, k: x[j].one if i == 0 else x[j].two[k], [(0, 1, 0), (0, 1, 1), (0, 2, 0), (0, 2, 1), (0, 2, 2), (1, 1, 0), (1, 1, 1), (1, 2, 0), (1, 2, 1), (1, 2, 2)])
+    def test_forloop2(self):
+        def go(data):
+            total = 0
+            for sublist in data:
+                for x in sublist:
+                    total += x
+            return total
+        self.compare([[1, 2, 3], [], [4, 55]], go)
 
-        same([T(False, 1.1), T(True, False), T(False, 3.3)], lambda x, i, j: x[j].one if i == 0 else x[j].two, [(i, j) for j in range(3) for i in range(2)])
+    def test_assign(self):
+        def go(data):
+            x = data[1]
+            return x
+        self.compare([3.14, 2.71, 99.9], go)
 
-        T2 = namedtuple("T2", ["three", "one"])
+        def go(data):
+            x = data[1]
+            if False:
+                x = data[0]
+            return x
+        self.compare([3.14, 2.71, 99.9], go)
 
-        def f(x, i):
-            if i == 0:
-                return x.one.three
-            elif i == 1:
-                return x.one.one
-            elif i == 2:
-                return x.two.three
-            else:
-                return x.two.one
+        def go(data):
+            x = None
+            if False:
+                x = data[0]
+            return x
+        self.compare([3.14, 2.71, 99.9], go)
 
-        same(T(T2(False, 3.14), T2(True, 99.9)), f, [0, 1, 2, 3])
+        def go(data):
+            x = None
+            if False:
+                x = data[0]
+            return x[2]
+        self.failure([[1, 2, 3], [], [4, 55]], go, TypeError)
 
-        def f(x, i, j):
-            if i == 0:
-                return x.one[j].three
-            elif i == 1:
-                return x.one[j].one
-            elif i == 2:
-                return x.two.three
-            else:
-                return x.two.one
+        def go(data):
+            x = None
+            if True:
+                x = data[0]
+            return x[2]
+        self.compare([[1, 2, 3], [], [4, 55]], go)
 
-        same(T([T2(False, 3.14), T2(True, -3.14)], T2(True, 99.9)), f, [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0)])
-
-        same([T(False, False), T2(99.9, 99.2), T(True, True)], lambda x, i: x[i].one, [0, 1, 2])
-        same([T(T(False, True), False), T2(1.1, T2(2.2, 3.3)), T(T(True, False), True)], lambda x, i: x[i].one.one, [0, 1, 2])
-        same([T(T(False, True), False), T2(1.1, T(2.2, 3.3)), T(T(True, False), True)], lambda x, i: x[i].one.two, [0, 1, 2])
-
-        same([T([False], False), T2(99.9, [99.2]), T([True], True)], lambda x, i: x[i].one[0], [0, 1, 2])
-        same([T(T([False], True), False), T2(1.1, T2(2.2, [3.3])), T(T([True], False), True)], lambda x, i: x[i].one.one[0], [0, 1, 2])
-        same([T(T(False, [True]), False), T2(1.1, T(2.2, [3.3])), T(T(True, [False]), True)], lambda x, i: x[i].one.two[0], [0, 1, 2])
-
-        same([T([[False]], False), T2(99.9, [[99.2]]), T([[True]], True)], lambda x, i: x[i].one[0][0], [0, 1, 2])
-        same([T([[False, True]], False), T2(99.9, [[99.2, 3.14]]), T([[True, False]], True)], lambda x, i: x[i].one[0][1], [0, 1, 2])
-
-        ####### len
-
-        same([1, 2, 3, 4, 5], lambda x, dummy: len(x), [0])
-        same([[], [1, 2], [3, 4, 5]], lambda x, i: len(x[i]), [0, 1, 2])
-
-        same([[], [T(1, 1), T(2, 2)], [T(3, 3), T(4, 4), T(5, 5)]], lambda x, i: len(x[i]), [0, 1, 2])
-        same([T([], []), T([1, 2], [1, 2]), T([3, 4, 5], [3, 4, 5])], lambda x, i: len(x[i].one), [0, 1, 2])
-        same([T([1], [1]), T2([1, 2], [1, 2]), T([3, 4, 5], [3, 4, 5])], lambda x, i: len(x[i].one), [0, 1, 2])
-
-        ####### iter
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                out += y
-            return out
-
-        same([1, 2, 3, 4, 5], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                for z in y:
-                    out += z
-            return out
-
-        same([[], [1, 2], [3, 4, 5]], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                for z in y.one:
-                    out += z
-            return out
-
-        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
-
-        ####### assign
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                Y = y
-                for z in Y:
-                    out += z
-            return out
-
-        same([[], [1, 2], [3, 4, 5]], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                Y, Z = y, 3.14
-                for z in Y:
-                    out += z
-            return out
-
-        same([[], [1, 2], [3, 4, 5]], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                Y = Z = y
-                for z in Y:
-                    out += z
-            return out
-
-        same([[], [1, 2], [3, 4, 5]], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                Y = y
-                for z in Y.one:
-                    out += z
-            return out
-
-        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                Y, Z = y, 3.14
-                for z in Y.one:
-                    out += z
-            return out
-
-        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
-
-        def doit(x, dummy):
-            out = 0.0
-            for y in x:
-                Y = Z = y
-                for z in Y.one:
-                    out += z
-            return out
-
-        same([T([], 0), T([1, 2], 0), T([3, 4, 5], 0)], doit, [0])
-
-    def test_toplur(self):
-        data = [[], [1, 2], [3, 4, 5]]
-        arrays = toarrays("prefix", data)
-        tpe = arrays2type(arrays, "prefix")
-        fcn, arrayparams = toplur(lambda x, i, j: x[i][j], {"x": tpe})
-        self.assertEqual(arrayparams, ["prefix-Lb", "prefix-Le", "prefix-Ld-Lb", "prefix-Ld-Le", "prefix-Ld-Ld"])
-
-        fillin(arrays, (tpe,), filter=arrayparams)
-
-        arrayargs = [arrays[x] for x in arrayparams]
-        self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)
-        self.assertEqual(fcn(*(arrayargs + [1, 1])), 2)
-        self.assertEqual(fcn(*(arrayargs + [2, 0])), 3)
-        self.assertEqual(fcn(*(arrayargs + [2, 1])), 4)
-        self.assertEqual(fcn(*(arrayargs + [2, 2])), 5)
-
-    def test_numba(self):
-        try:
-            import numba
-        except ImportError:
-            sys.stderr.write("skipping (Numba is not installed)\n")
-            return
-
-        data = [[], [1, 2], [3, 4, 5]]
-        arrays = toarrays("prefix", data)
-        tpe = arrays2type(arrays, "prefix")
-        fcn, arrayparams = toplur(lambda x, i, j: x[i][j], {"x": tpe}, numba={})
-        self.assertEqual(arrayparams, ["prefix-Lb", "prefix-Le", "prefix-Ld-Lb", "prefix-Ld-Le", "prefix-Ld-Ld"])
-
-        fillin(arrays, (tpe,), filter=arrayparams, numba={})
-
-        arrayargs = [arrays[x] for x in arrayparams]
-        self.assertEqual(fcn(*(arrayargs + [1, 0])), 1)
-        self.assertEqual(fcn(*(arrayargs + [1, 1])), 2)
-        self.assertEqual(fcn(*(arrayargs + [2, 0])), 3)
-        self.assertEqual(fcn(*(arrayargs + [2, 1])), 4)
-        self.assertEqual(fcn(*(arrayargs + [2, 2])), 5)
+    def test_listlen(self):
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x))
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x[0]))
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x[1]))
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x[2]))
