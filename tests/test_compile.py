@@ -57,13 +57,13 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(python_result, proxy_result)
         self.assertEqual(python_result, compiled_result)
 
-    def failure(self, data, function, exception, onlycompiled=False):
+    def failure(self, data, function, exception, numba=None, onlycompiled=False):
         arrays = toarrays(data)
 
         if not onlycompiled:
             self.assertRaises(exception, lambda: function(data))
             self.assertRaises(exception, lambda: function(arrays.proxy()))
-        self.assertRaises(exception, lambda: arrays.run(function, numba=None))
+        self.assertRaises(exception, lambda: arrays.run(function, numba=numba))
 
     def test_simple(self):
         self.compare([3.14, 2.71, 99.9], lambda x: x)
@@ -129,4 +129,38 @@ class TestCompile(unittest.TestCase):
                 for x in sublist:
                     total += x
             return total
+        self.compare([[1, 2, 3], [], [4, 55]], go)
+
+    def test_assign(self):
+        def go(data):
+            x = data[1]
+            return x
+        self.compare([3.14, 2.71, 99.9], go)
+
+        def go(data):
+            x = data[1]
+            if False:
+                x = data[0]
+            return x
+        self.compare([3.14, 2.71, 99.9], go)
+
+        def go(data):
+            x = None
+            if False:
+                x = data[0]
+            return x
+        self.compare([3.14, 2.71, 99.9], go)
+
+        def go(data):
+            x = None
+            if False:
+                x = data[0]
+            return x[2]
+        self.failure([[1, 2, 3], [], [4, 55]], go, TypeError)
+
+        def go(data):
+            x = None
+            if True:
+                x = data[0]
+            return x[2]
         self.compare([[1, 2, 3], [], [4, 55]], go)

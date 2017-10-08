@@ -161,16 +161,14 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     sym.remapped = []
 
     env = env.copy()
-    env[sym("nonnegotiable")] = nonnegotiable
-    # env[sym("indexget")] = indexget
-    # env[sym("maybe_indexget")] = maybe_indexget
+    env[sym("passnone")] = passnone
     env[sym("listget")] = listget
     env[sym("listsize")] = listsize
     env[sym("maybe_listsize")] = maybe_listsize
     env[sym("ToProxy")] = ToProxy
 
     # do the code transformation
-    transformed, parameters = transform(function, paramtypes, externalfcns, sym, sourcefile)
+    transformed, parameters = transform(function, paramtypes, externalfcns, env, sym, sourcefile)
 
     if debug:
         try:
@@ -201,22 +199,26 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
 
 ################################################################ functions inserted into code
 
-@numba.njit(int32(numba.optional(int32)))
-def nonnegotiable(index):
+def newrefusenone(env, sym, what, lineno, sourcefile):
+    message = "None found where {0} required\n\nat line {lineno} of {sourcefile}".format(
+        what, lineno=lineno, sourcefile=sourcefile)
+
+    @numba.njit(int32(numba.optional(int32)))
+    def refusenone(index):
+        if index is None:
+            raise TypeError(message)
+        return index
+
+    symbol = sym("refusenone")
+    env[symbol] = refusenone
+    return symbol
+
+@numba.njit
+def passnone(array, index):
     if index is None:
-        raise TypeError("None found where object required")
-    return index
-
-# @numba.njit(int32(int32[:], int32))
-# def indexget(begin, index):
-#     return begin[index]
-
-# @numba.njit(numba.optional(int32)(int32[:], int32[:], int32))
-# def maybe_indexget(begindata, beginmask, index):
-#     if beginmask[index]:
-#         return None
-#     else:
-#         return begindata[index]
+        return None
+    else:
+        return array[index]
 
 @numba.njit(int32(int32[:], int32[:], int32, int32))
 def listget(begin, end, outerindex, index):
@@ -364,6 +366,13 @@ class ArrowedType(object):
         self.possibilities = possibilities
         self.parameter = parameter
         self.isparameter = False
+        self.nullable = False
+
+    def setnullable(self, value=True):
+        out = ArrowedType(self.possibilities, self.parameter)
+        out.isparameter = self.isparameter
+        out.nullable = value
+        return out
 
     def generate(self, handler):
         out = None
@@ -382,7 +391,14 @@ class ArrowedType(object):
                              atype = result.atype)
         return out
 
+    def __eq__(self, other):
+        return isinstance(other, ArrowedType) and self.parameter is other.parameter and len(self.possibilities) == len(other.possibilities) and all(self.parameter.reverse_members[id(x.schema)] == other.parameter.reverse_members[id(y.schema)] for x, y in zip(self.possibilities, other.possibilities))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 untracked = ArrowedType([], None)
+nullable = ArrowedType([], None)
 
 class Parameter(object):
     def __init__(self, index, originalname, default):
@@ -411,8 +427,11 @@ class TransformedParameter(Parameter):
 
         assert len(self.atype.possibilities) == 1
         self.schema = self.atype.possibilities[0].schema
+
         self.members = self.schema.members()
         self.reverse_members = dict((id(m), i) for i, m in enumerate(self.members))
+        assert len(self.members) == len(self.reverse_members)
+
         self.required = [False] * len(self.members)
         self.sym2obj = {}
 
@@ -465,7 +484,7 @@ class Parameters(object):
         else:
             return withequality(ast.arguments(sum((x.args() for x in self.order), []), None, [], [], None, sum((x.defaults() for x in self.order), [])))
 
-def transform(function, paramtypes, externalfcns, sym, sourcefile):
+def transform(function, paramtypes, externalfcns, env, sym, sourcefile):
     # check for too much dynamism
     if function.args.vararg is not None:
         raise TypeError("function {0} has *args, which are not allowed in compiled functions".format(repr(function.name)))
@@ -509,7 +528,7 @@ def transform(function, paramtypes, externalfcns, sym, sourcefile):
         if isinstance(pyast, ast.AST):
             handlername = "do_" + pyast.__class__.__name__
             if handlername in everything:
-                return everything[handlername](pyast, symtable, externalfcns, sym, sourcefile, recurse)
+                return everything[handlername](pyast, symtable, externalfcns, env, sym, sourcefile, recurse)
             else:
                 out = pyast.__class__(*[recurse(getattr(pyast, x)) for x in pyast._fields])
                 out.lineno = pyast.lineno
@@ -535,18 +554,32 @@ def implicit(node, sym):
     def handler(schema):
         if isinstance(schema, Primitive):
             array = node.atype.parameter.require(schema, "array", sym)
-            return toexpr("ARRAY[INDEX]",
-                          ARRAY = toname(array),
-                          INDEX = node,
-                          lineno = node,
-                          atype = untracked)
+
+            if node.atype.nullable or schema.nullable:
+                return toexpr("PASSNONE(ARRAY, INDEX)",
+                              PASSNONE = toname(sym("passnone")),
+                              ARRAY = toname(array),
+                              INDEX = node,
+                              lineno = node,
+                              atype = untracked)
+            else:
+                return toexpr("ARRAY[INDEX]",
+                              ARRAY = toname(array),
+                              INDEX = node,
+                              lineno = node,
+                              atype = untracked)
 
         # TODO: handle pointers and such
 
         else:
             return node
 
-    return node.atype.generate(handler)
+    if node.atype is untracked:
+        return node
+    elif node.atype is nullable:
+        return node
+    else:
+        return node.atype.generate(handler)
 
 ################################################################ specialized rules for each Python AST type
 
@@ -564,9 +597,43 @@ def implicit(node, sym):
 # Assert ("test", "msg")
 
 # Assign ("targets", "value")
+def do_Assign(node, symtable, externalfcns, env, sym, sourcefile, recurse):
+    value = recurse(node.value)
+
+    def assign(lhs, rhs):
+        if isinstance(lhs, ast.Name):
+            if rhs.atype is untracked:
+                pass
+            elif rhs.atype is nullable:
+                if lhs.id in symtable:
+                    symtable[lhs.id] = symtable[lhs.id].setnullable()
+                else:
+                    symtable[lhs.id] = nullable
+            else:
+                if lhs.id in symtable and symtable[lhs.id] is nullable:
+                    symtable[lhs.id] = rhs.atype.setnullable()
+                elif lhs.id in symtable and symtable[lhs.id] == rhs.atype:
+                    pass
+                elif lhs.id in symtable:
+                    raise TypeError("cannot use the same variable ({0}) for different parts of a dataset structure\n\nat line {lineno} of {sourcefile}".format(
+                        lhs.id, lineno=node.lineno, sourcefile=sourcefile))
+                else:
+                    symtable[lhs.id] = rhs.atype
+                    
+        elif isinstance(lhs, (ast.List, ast.Tuple)):
+            if rhs.atype is not untracked:
+                raise NotImplementedError  # unpack Lists and Tuples
+            elif isinstance(rhs, ast.Tuple):
+                for lelt, relt in zip(lhs.elts, rhs.elts):
+                    assign(lelt, relt)
+
+    for target in node.targets:
+        assign(target, value)
+
+    return rebuilt(node, node.targets, value)
 
 # Attribute ("value", "attr", "ctx")
-def do_Attribute(node, symtable, externalfcns, sym, sourcefile, recurse):
+def do_Attribute(node, symtable, externalfcns, env, sym, sourcefile, recurse):
     node = rebuilt(node, recurse(node.value), node.attr, node.ctx)
 
     if node.value.atype is untracked:
@@ -578,14 +645,14 @@ def do_Attribute(node, symtable, externalfcns, sym, sourcefile, recurse):
                 if node.attr in schema.contents:
                     return retyped(node.value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
                 elif schema.name is None:
-                    raise AttributeError("attribute {0} not found in record with structure:\n\n{1}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
-                        repr(node.attr), schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
+                    raise AttributeError("attribute {0} not found in record with structure:\n\n{1}\n\nat line {lineno} of {sourcefile}".format(
+                        repr(node.attr), schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
                 else:
-                    raise AttributeError("attribute {0} not found in record {1}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
-                        repr(node.attr), schema.name, lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
+                    raise AttributeError("attribute {0} not found in record {1}\n\nat line {lineno} of {sourcefile}".format(
+                        repr(node.attr), schema.name, lineno=node.lineno, sourcefile=sourcefile))
             else:
-                raise TypeError("object is not a record:\n\n{0}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
-                    schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
+                raise TypeError("object is not a record:\n\n{0}\n\nat line {lineno} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
 
         return implicit(node.value.atype.generate(handler), sym)
 
@@ -647,7 +714,7 @@ def do_Attribute(node, symtable, externalfcns, sym, sourcefile, recurse):
 # FloorDiv ()
 
 # For ("target", "iter", "body", "orelse")
-def do_For(node, symtable, externalfcns, sym, sourcefile, recurse):
+def do_For(node, symtable, externalfcns, env, sym, sourcefile, recurse):
     node = rebuilt(node, node.target, recurse(node.iter), node.body, recurse(node.orelse))
 
     if node.iter.atype is untracked:
@@ -672,8 +739,8 @@ def do_For(node, symtable, externalfcns, sym, sourcefile, recurse):
                               lineno = node)
 
             else:
-                raise IndexError("object is not a list:\n\n{0}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
-                    schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
+                raise IndexError("object is not a list:\n\n{0}\n\nat line {lineno} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
 
         node.iter = node.iter.atype.generate(handler)
         node.body = recurse(node.body)
@@ -733,11 +800,21 @@ def do_For(node, symtable, externalfcns, sym, sourcefile, recurse):
 # Mult ()
 
 # NameConstant ("value",)  # Py3 only
+def do_NameConstant(node, symtable, externalfcns, env, sym, sourcefile, recurse):
+    if node.value is None:
+        node = rebuilt(node, node.value)
+        node.atype = nullable
+    return node
 
 # Name ("id", "ctx")
-def do_Name(node, symtable, externalfcns, sym, sourcefile, recurse):
+def do_Name(node, symtable, externalfcns, env, sym, sourcefile, recurse):
     if isinstance(node.ctx, ast.Load):
-        if node.id not in symtable or symtable[node.id] is untracked:
+        if node.id == "None":
+            node = rebuilt(node, node.id, node.ctx)
+            node.atype = nullable
+            return node
+        
+        elif node.id not in symtable or symtable[node.id] is untracked:
             return node
 
         elif symtable[node.id].isparameter:
@@ -777,10 +854,13 @@ def do_Name(node, symtable, externalfcns, sym, sourcefile, recurse):
 # Repr ("value",)  # Py2 only
 
 # Return ("value",)
-def do_Return(node, symtable, externalfcns, sym, sourcefile, recurse):
+def do_Return(node, symtable, externalfcns, env, sym, sourcefile, recurse):
     value = recurse(node.value)
 
     if value.atype is untracked:      # TODO: also take this branch if in an externalfcn
+        return rebuilt(node, value)
+
+    elif value.atype is nullable:
         return rebuilt(node, value)
 
     else:
@@ -810,7 +890,7 @@ def do_Return(node, symtable, externalfcns, sym, sourcefile, recurse):
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, symtable, externalfcns, sym, sourcefile, recurse):
+def do_Subscript(node, symtable, externalfcns, env, sym, sourcefile, recurse):
     node = rebuilt(node, recurse(node.value), recurse(node.slice), node.ctx)
 
     if node.value.atype is untracked:
@@ -825,17 +905,25 @@ def do_Subscript(node, symtable, externalfcns, sym, sourcefile, recurse):
                 beginarray = node.value.atype.parameter.require(schema, "beginarray", sym)
                 endarray = node.value.atype.parameter.require(schema, "endarray", sym)
 
+                if node.value.atype.nullable or schema.nullable:
+                    outerindex = toexpr("REFUSENONE(INDEX)",
+                                        REFUSENONE = toname(newrefusenone(env, sym, "list", node.value.lineno, sourcefile)),
+                                        INDEX = node.value,
+                                        atype = node.value.atype.setnullable(False))
+                else:
+                    outerindex = node.value
+
                 return toexpr("LISTGET(BEGIN, END, OUTERINDEX, INDEX)",
                               LISTGET = toname(sym("listget")),
                               BEGIN = toname(beginarray),
                               END = toname(endarray),
-                              OUTERINDEX = node.value,
+                              OUTERINDEX = outerindex,
                               INDEX = node.slice.value,
                               lineno = node,
                               atype = ArrowedType(schema.contents, node.value.atype.parameter))
             else:
-                raise TypeError("object is not a list:\n\n{0}\n\nat line:col {lineno}:{col_offset} of {sourcefile}".format(
-                    schema.format("    "), lineno=node.lineno, col_offset=node.col_offset, sourcefile=sourcefile))
+                raise TypeError("object is not a list:\n\n{0}\n\nat line {lineno} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
 
         return implicit(node.value.atype.generate(handler), sym)
 
