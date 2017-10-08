@@ -135,6 +135,27 @@ class TestInferSchema(unittest.TestCase):
         self.assertEqual(inferschema([0, 1, float("inf")]), ListOffset(((2,), numpy.dtype(numpy.int32)), Primitive(((3,), numpy.dtype(numpy.float64)))))
         self.assertEqual(inferschema([0, 1, float("nan")]), ListOffset(((2,), numpy.dtype(numpy.int32)), Primitive(((3,), numpy.dtype(numpy.float64)))))
 
+    def test_record(self):
+        self.assertEqual(inferschema({"one": 1, "two": 3.14}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64))), "one": Primitive(((1,), numpy.dtype(numpy.uint8)))}))
+
+        self.assertEqual(inferschema([{"one": 1, "two": 3.14}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64))), "one": Primitive(((1,), numpy.dtype(numpy.uint8)))})))
+        self.assertEqual(inferschema([{"one": 1, "two": 3.14}, {"one": 2, "two": 99.9}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((2,), numpy.dtype(numpy.float64))), "one": Primitive(((2,), numpy.dtype(numpy.uint8)))})))
+        self.assertEqual(inferschema([{"one": 1, "two": 3.14}, {"one": 2.71, "two": 99.9}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((2,), numpy.dtype(numpy.float64))), "one": Primitive(((2,), numpy.dtype(numpy.float64)))})))
+        self.assertEqual(inferschema([{"one": 1, "two": 3.14}, {"one": False, "two": 99.9}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((2,), numpy.dtype(numpy.float64))), "one": UnionDense(((2,), numpy.dtype(numpy.int8)), (Primitive(((1,), numpy.dtype(numpy.uint8))), Primitive(((1,), numpy.dtype(numpy.bool)))))})))
+        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((2,), numpy.dtype(numpy.int8)), (Record({"one": Primitive(((1,), numpy.dtype(numpy.uint8)))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
+        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": 2}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": Primitive(((2,), numpy.dtype(numpy.uint8)))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
+        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": 2.71}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": Primitive(((2,), numpy.dtype(numpy.float64)))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
+        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": False}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": UnionDense(((2,), numpy.dtype(numpy.int8)), (Primitive(((1,), numpy.dtype(numpy.bool))), Primitive(((1,), numpy.dtype(numpy.uint8)))))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
+        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": [0]}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": UnionDense(((2,), numpy.dtype(numpy.int8)), (ListOffset(((2,), numpy.dtype(numpy.int32)), Primitive(((1,), numpy.dtype(numpy.uint8)))), Primitive(((1,), numpy.dtype(numpy.uint8)))))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
+        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": [0]}, {"one": []}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((4,), numpy.dtype(numpy.int8)), (Record({"one": UnionDense(((3,), numpy.dtype(numpy.int8)), (ListOffset(((3,), numpy.dtype(numpy.int32)), Primitive(((1,), numpy.dtype(numpy.uint8)))), Primitive(((1,), numpy.dtype(numpy.uint8)))))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
+
+        self.assertRaises(TypeError, lambda: inferschema([{"one": []}, {"one": []}]))
+        self.assertRaises(TypeError, lambda: inferschema([{"one": 1}, {"one": []}, {"one": []}]))
+        self.assertRaises(TypeError, lambda: inferschema([{"two": 3.14}, {"one": []}, {"one": []}]))
+        self.assertRaises(TypeError, lambda: inferschema([{"one": 1}, {"two": 3.14}, {"one": []}, {"one": []}]))
+
+    # TODO: Tuple tests
+
     def test_uniondata(self):
         self.assertEqual(inferschema([0, False, 255]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Primitive(((2,), numpy.dtype(numpy.uint8))), Primitive(((1,), numpy.dtype(numpy.bool_)))))))
         self.assertEqual(inferschema([255, False, 256]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Primitive(((2,), numpy.dtype(numpy.uint16))), Primitive(((1,), numpy.dtype(numpy.bool_)))))))
@@ -185,22 +206,3 @@ class TestInferSchema(unittest.TestCase):
         self.assertRaises(TypeError, lambda: inferschema([[], []]))
         self.assertRaises(TypeError, lambda: inferschema([0, [], []]))
         self.assertRaises(TypeError, lambda: inferschema([0, [], [], 255]))
-
-    def test_record(self):
-        self.assertEqual(inferschema({"one": 1, "two": 3.14}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64))), "one": Primitive(((1,), numpy.dtype(numpy.uint8)))}))
-
-        self.assertEqual(inferschema([{"one": 1, "two": 3.14}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64))), "one": Primitive(((1,), numpy.dtype(numpy.uint8)))})))
-        self.assertEqual(inferschema([{"one": 1, "two": 3.14}, {"one": 2, "two": 99.9}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((2,), numpy.dtype(numpy.float64))), "one": Primitive(((2,), numpy.dtype(numpy.uint8)))})))
-        self.assertEqual(inferschema([{"one": 1, "two": 3.14}, {"one": 2.71, "two": 99.9}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((2,), numpy.dtype(numpy.float64))), "one": Primitive(((2,), numpy.dtype(numpy.float64)))})))
-        self.assertEqual(inferschema([{"one": 1, "two": 3.14}, {"one": False, "two": 99.9}]), ListOffset(((2,), numpy.dtype(numpy.int32)), Record({"two": Primitive(((2,), numpy.dtype(numpy.float64))), "one": UnionDense(((2,), numpy.dtype(numpy.int8)), (Primitive(((1,), numpy.dtype(numpy.uint8))), Primitive(((1,), numpy.dtype(numpy.bool)))))})))
-        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((2,), numpy.dtype(numpy.int8)), (Record({"one": Primitive(((1,), numpy.dtype(numpy.uint8)))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
-        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": 2}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": Primitive(((2,), numpy.dtype(numpy.uint8)))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
-        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": 2.71}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": Primitive(((2,), numpy.dtype(numpy.float64)))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
-        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": False}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": UnionDense(((2,), numpy.dtype(numpy.int8)), (Primitive(((1,), numpy.dtype(numpy.bool))), Primitive(((1,), numpy.dtype(numpy.uint8)))))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
-        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": [0]}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((3,), numpy.dtype(numpy.int8)), (Record({"one": UnionDense(((2,), numpy.dtype(numpy.int8)), (ListOffset(((2,), numpy.dtype(numpy.int32)), Primitive(((1,), numpy.dtype(numpy.uint8)))), Primitive(((1,), numpy.dtype(numpy.uint8)))))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
-        self.assertEqual(inferschema([{"one": 1}, {"two": 3.14}, {"one": [0]}, {"one": []}]), ListOffset(((2,), numpy.dtype(numpy.int32)), UnionDense(((4,), numpy.dtype(numpy.int8)), (Record({"one": UnionDense(((3,), numpy.dtype(numpy.int8)), (ListOffset(((3,), numpy.dtype(numpy.int32)), Primitive(((1,), numpy.dtype(numpy.uint8)))), Primitive(((1,), numpy.dtype(numpy.uint8)))))}), Record({"two": Primitive(((1,), numpy.dtype(numpy.float64)))})))))
-
-        self.assertRaises(TypeError, lambda: inferschema([{"one": []}, {"one": []}]))
-        self.assertRaises(TypeError, lambda: inferschema([{"one": 1}, {"one": []}, {"one": []}]))
-        self.assertRaises(TypeError, lambda: inferschema([{"two": 3.14}, {"one": []}, {"one": []}]))
-        self.assertRaises(TypeError, lambda: inferschema([{"one": 1}, {"two": 3.14}, {"one": []}, {"one": []}]))
