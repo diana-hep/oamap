@@ -55,16 +55,29 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(python_result, proxy_result)
         self.assertEqual(python_result, compiled_result)
 
-    def failure(self, data, function, exception):
+    def failure(self, data, function, exception, onlycompiled=False):
         arrays = toarrays(data)
 
-        self.assertRaises(exception, lambda: function(data))
-        self.assertRaises(exception, lambda: function(arrays.proxy()))
+        if not onlycompiled:
+            self.assertRaises(exception, lambda: function(data))
+            self.assertRaises(exception, lambda: function(arrays.proxy()))
         self.assertRaises(exception, lambda: arrays.run(function, numba=None))
 
     def test_simple(self):
         self.compare([3.14, 2.71, 99.9], lambda x: x)
-        
+
+        def good(x):
+            return x
+        self.compare([3.14, 2.71, 99.9], good)
+
+        def good2(x):
+            return None
+        self.compare([3.14, 2.71, 99.9], good2)
+
+        # def bad(x):
+        #     x = 5
+        # self.failure([3.14, 2.71, 99.9], bad, TypeError, onlycompiled=True)
+
     def test_subscript(self):
         self.compare([3.14, 2.71, 99.9], lambda x: x[0])
         self.compare([3.14, 2.71, 99.9], lambda x: x[1])

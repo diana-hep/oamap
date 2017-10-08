@@ -334,7 +334,7 @@ def toliteral(obj, lineno=None, atype=None):
     else:
         raise AssertionError
 
-def tofunction(obj, lineno=None, atype=None):
+def tofunction(obj):
     if not hasattr(obj, "__code__"):
         raise TypeError("attempting to compile {0}, but it is not a Python function (something with a __code__ attribute); no class constructors or C extensions allowed".format(repr(obj)))
     out = make_function(obj.__code__)
@@ -343,7 +343,8 @@ def tofunction(obj, lineno=None, atype=None):
             return withequality(ast.FunctionDef("lambda", out.args, [out.body], []))
         else:
             return withequality(ast.FunctionDef("lambda", out.args, [out.body], [], None))
-    return setlinenoatype(out, lineno=lineno, atype=atype)
+    else:
+        return withequality(out)
 
 ################################################################ the main transformation function
 
@@ -353,13 +354,13 @@ class Possibility(object):
         self.condition = condition
 
 class ArrowedType(object):
-    def __init__(self, possibilities, parameter, enclosinglist=None):
+    def __init__(self, possibilities, parameter):
         if not isinstance(possibilities, (list, tuple)):
             possibilities = [possibilities]
         possibilities = [x if isinstance(x, Possibility) else Possibility(x) for x in possibilities]
         self.possibilities = possibilities
         self.parameter = parameter
-        self.enclosinglist = enclosinglist
+        self.isparameter = False
 
     def generate(self, handler):
         out = None
@@ -402,6 +403,7 @@ class TransformedParameter(Parameter):
         self.originalname = originalname
         self.atype = atype
         self.atype.parameter = self
+        self.atype.isparameter = True
         self.transformed = []
 
         assert len(self.atype.possibilities) == 1
@@ -470,6 +472,7 @@ def transform(function, paramtypes, externalfcns, sym):
     # identify which parameters will be transformed (probably from a single parameter to multiple)
     defaults = [None] * (len(function.args.args) - len(function.args.defaults)) + function.args.defaults
     parameters = []
+    symtable = {}
     for index, (param, default) in enumerate(zip(function.args.args, defaults)):
         if py2:
             assert isinstance(param, ast.Name) and isinstance(param.ctx, ast.Param)
@@ -490,20 +493,20 @@ def transform(function, paramtypes, externalfcns, sym):
 
         if paramtype is None:
             parameters.append(Parameter(index, paramname, default))
+            symtable[paramname] = untracked
         else:
             if default is not None:
                 raise ValueError("parameter {0} is an argument defined in paramtypes, which is not allowed to have default parameters")
-            parameters.append(TransformedParameter(index, paramname, ArrowedType(paramtype, None)))
-
-    parameters = Parameters(parameters)
+            paramtype = ArrowedType(paramtype, None)  # modified by TransformedParameter constructor
+            parameters.append(TransformedParameter(index, paramname, paramtype))
+            symtable[paramname] = paramtype
 
     everything = globals()
-
     def recurse(pyast):
         if isinstance(pyast, ast.AST):
             handlername = "do_" + pyast.__class__.__name__
             if handlername in everything:
-                return everything[handlername](pyast, parameters, externalfcns, sym, recurse)
+                return everything[handlername](pyast, symtable, externalfcns, sym, recurse)
             else:
                 out = pyast.__class__(*[recurse(getattr(pyast, x)) for x in pyast._fields])
                 out.lineno = pyast.lineno
@@ -518,9 +521,10 @@ def transform(function, paramtypes, externalfcns, sym):
             return pyast
 
     transformed = recurse(function)
-    transformed.args = parameters.args()
+    parametersobj = Parameters(parameters)
+    transformed.args = parametersobj.args()
 
-    return transformed, parameters
+    return transformed, parametersobj
 
 ################################################################ implicit conversion rules
 
@@ -563,7 +567,7 @@ def implicit(node, sym):
 # Assign ("targets", "value")
 
 # Attribute ("value", "attr", "ctx")
-def do_Attribute(node, parameters, externalfcns, sym, recurse):
+def do_Attribute(node, symtable, externalfcns, sym, recurse):
     node = rebuilt(node, recurse(node.value), node.attr, node.ctx)
 
     if node.value.atype is untracked:
@@ -641,6 +645,36 @@ def do_Attribute(node, parameters, externalfcns, sym, recurse):
 # FloorDiv ()
 
 # For ("target", "iter", "body", "orelse")
+def do_For(node, symtable, externalfcns, sym, recurse):
+    node = rebuilt(node, target, recurse(iter), body, recurse(orelse))
+
+    if node.iter.atype is untracked:
+        node.body = recurse(body)
+        return node
+
+    else:
+        if not isinstance(node.target, ast.Name):
+            raise NotImplementedError
+
+        def handler(schema):
+            if isinstance(schema, List):
+                beginarray = node.iter.atype.parameter.require(schema, "beginarray", sym)
+                endarray = node.iter.atype.parameter.require(schema, "endarray", sym)
+
+                symtable[node.target] = ArrowedType(schema.contents, node.iter.atype.parameter)
+
+                return toexpr("range(BEGIN[OUTERINDEX], END[OUTERINDEX])",
+                              BEGIN = toname(beginarray),
+                              END = toname(endarray),
+                              OUTERINDEX = node.iter,
+                              lineno = node)
+
+            else:
+                raise IndexError("object is not a list:\n\n{0}".format(schema.format("    ")))
+
+        node.iter = node.iter.atype.generate(handler)
+        node.body = recurse(body)
+        return node
 
 # FunctionDef ("name", "args", "body", "decorator_list")             # Py2
 # FunctionDef ("name", "args", "body", "decorator_list", "returns")  # Py3
@@ -698,11 +732,16 @@ def do_Attribute(node, parameters, externalfcns, sym, recurse):
 # NameConstant ("value",)  # Py3 only
 
 # Name ("id", "ctx")
-def do_Name(node, parameters, externalfcns, sym, recurse):
-    if parameters.istransformed(node.id):
-        return toliteral(0, lineno=node, atype=parameters.atype(node.id))
-    else:
-        return implicit(node, sym)
+def do_Name(node, symtable, externalfcns, sym, recurse):
+    if isinstance(node.ctx, ast.Load):
+        if node.id not in symtable or symtable[node.id] is untracked:
+            return node
+
+        elif symtable[node.id].isparameter:
+            return toliteral(0, lineno=node, atype=symtable[node.id])
+
+        else:
+            return implicit(node, sym)
 
 # Nonlocal ("names",)  # Py3 only
 
@@ -730,7 +769,7 @@ def do_Name(node, parameters, externalfcns, sym, recurse):
 # Repr ("value",)  # Py2 only
 
 # Return ("value",)
-def do_Return(node, parameters, externalfcns, sym, recurse):
+def do_Return(node, symtable, externalfcns, sym, recurse):
     value = recurse(node.value)
 
     if value.atype is untracked:      # TODO: also take this branch if in an externalfcn
@@ -763,7 +802,7 @@ def do_Return(node, parameters, externalfcns, sym, recurse):
 # Sub ()
 
 # Subscript ("value", "slice", "ctx")
-def do_Subscript(node, parameters, externalfcns, sym, recurse):
+def do_Subscript(node, symtable, externalfcns, sym, recurse):
     node = rebuilt(node, recurse(node.value), recurse(node.slice), node.ctx)
 
     if node.value.atype is untracked:
