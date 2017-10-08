@@ -377,7 +377,7 @@ def toarrays(obj, schema=None, fillable=FillableArray):
 
             else:
                 for fn, ft in oam.contents.items():
-                    if not hasttr(obj, fn):
+                    if not hasattr(obj, fn):
                         raise TypeError("cannot fill {0} (missing field \"{1}\") where expecting type:\n{2}".format(obj, fn, oam.format("    ")))
                     recurse(getattr(obj, fn), ft)
 

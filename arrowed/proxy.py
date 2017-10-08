@@ -200,8 +200,14 @@ class RecordProxy(Proxy):
     def __repr__(self):
         return "<{0} at index {1}>".format(self.__class__.__name__, self._index)
 
+    def __getitem__(self, name):
+        return getattr(self, name)
+
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and set(self._schema.contents.keys()) == set(other._schema.contents.keys()) and all(getattr(self, name) == getattr(other, name) for name in self._schema.contents.keys())
+        if isinstance(other, dict):
+            return all(name in other and getattr(self, name) == other[name] for name in self._schema.contents.keys())
+        else:
+            return all(hasattr(other, name) and getattr(self, name) == getattr(other, name) for name in self._schema.contents.keys())
 
     def __lt__(self, other):
         if isinstance(other, RecordProxy):
