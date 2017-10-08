@@ -39,12 +39,12 @@ class TestCompile(unittest.TestCase):
     def runTest(self):
         pass
 
-    def compare(self, data, function, debug=False):
+    def compare(self, data, function, numba=None, debug=False):
         arrays = toarrays(data)
 
         python_result = function(data)
         proxy_result = function(arrays.proxy())
-        compiled_result = arrays.run(function, numba=None)
+        compiled_result = arrays.run(function, numba=numba, debug=debug)
 
         if debug:
             print("")
@@ -63,7 +63,7 @@ class TestCompile(unittest.TestCase):
         self.assertRaises(exception, lambda: arrays.run(function, numba=None))
 
     def test_simple(self):
-        self.compare([3.14, 2.71, 99.9], lambda x: x, debug=True)
+        self.compare([3.14, 2.71, 99.9], lambda x: x)
         
     def test_subscript(self):
         self.compare([3.14, 2.71, 99.9], lambda x: x[0])
@@ -80,6 +80,7 @@ class TestCompile(unittest.TestCase):
         self.compare(T(1, 2.2), lambda x: x.one)
         self.compare(T(1, 2.2), lambda x: x.two)
         self.failure(T(1, 2.2), lambda x: x.three, AttributeError)
+        self.compare(T(1, 2.2), lambda x: x)
 
     def test_subscript_attribute(self):
         T = namedtuple("T", ["one", "two"])
@@ -89,6 +90,8 @@ class TestCompile(unittest.TestCase):
         self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[1].two)
         self.failure([T(1, 1.1), T(2, 2.2)], lambda x: x[2].one, IndexError)
         self.failure([T(1, 1.1), T(2, 2.2)], lambda x: x[1].three, AttributeError)
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[0])
+        self.compare([T(1, 1.1), T(2, 2.2)], lambda x: x[1])
 
     def test_attribute_subscript(self):
         T = namedtuple("T", ["one", "two"])
@@ -97,3 +100,4 @@ class TestCompile(unittest.TestCase):
         self.compare(T([1, 2], 3.3), lambda x: x.two)
         self.failure(T([1, 2], 3.3), lambda x: x.three, AttributeError)
         self.failure(T([1, 2], 3.3), lambda x: x.one[2], IndexError)
+        self.compare(T([1, 2], 3.3), lambda x: x.one)

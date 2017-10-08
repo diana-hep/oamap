@@ -31,6 +31,7 @@
 import ast
 import re
 import sys
+from collections import namedtuple
 
 import numpy
 import numba
@@ -60,7 +61,7 @@ class Compiled(object):
         self.compiled = envcopy[transformed.name]
 
         if self.numbaargs is not None:
-            self.executable = numba.jit(self.compiled, **numbaargs)
+            self.executable = numba.jit(**numbaargs)(self.compiled)
         else:
             self.executable = self.compiled
 
@@ -81,7 +82,11 @@ class Compiled(object):
         if argsi < len(args):
             raise TypeError("too many extra (non-columnar object) arguments provided")
 
-        return self.executable(*arguments)
+        out = self.executable(*arguments)
+        if isinstance(out, ToProxy):
+            return resolved.findbybase(self.parameters.order[out.parameterid].members[out.memberid]).proxy(out.index)
+        else:
+            return out
 
 def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": True}, debug=False):
     # turn the 'function' argument into the syntax tree of a function
@@ -159,6 +164,7 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     env[sym("listget")] = listget
     env[sym("listsize")] = listsize
     env[sym("maybe_listsize")] = maybe_listsize
+    env[sym("ToProxy")] = ToProxy
 
     # do the code transformation
     transformed, parameters = transform(function, paramtypes, externalfcns, sym)
@@ -183,7 +189,9 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
         for parameter in parameters.order:
             print("    {0}: {1}".format(parameter.index, parameter.originalname))
             if isinstance(parameter, TransformedParameter):
-                print(parameter.projection().format("         "))
+                projection = parameter.projection()
+                if projection is not None:
+                    print(projection.format("         "))
         print("")
 
     return Compiled(transformed, parameters, env, numbaargs)
@@ -227,6 +235,8 @@ def maybe_listsize(begindata, beginmask, enddata, index):
         return None
     else:
         return enddata[index] - begindata[index]
+
+ToProxy = namedtuple("ToProxy", ["parameterid", "memberid", "index"])
 
 ################################################################ for generating ASTs
 
@@ -720,6 +730,21 @@ def do_Name(node, parameters, externalfcns, sym, recurse):
 # Repr ("value",)  # Py2 only
 
 # Return ("value",)
+def do_Return(node, parameters, externalfcns, sym, recurse):
+    value = recurse(node.value)
+
+    if value.atype is untracked:      # TODO: also take this branch if in an externalfcn
+        return rebuilt(node, value)
+
+    else:
+        def handler(schema):
+            return tostmt("return TOPROXY(PARAMID, MEMBERID, INDEX)",
+                          TOPROXY = toname(sym("ToProxy")),
+                          PARAMID = toliteral(value.atype.parameter.index),
+                          MEMBERID = toliteral(value.atype.parameter.reverse_members[id(schema)]),
+                          INDEX = value)
+
+        return value.atype.generate(handler)
 
 # RShift ()
 
