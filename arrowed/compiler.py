@@ -529,10 +529,7 @@ def transform(function, paramtypes, externalfcns, sym):
 ################################################################ implicit conversion rules
 
 def implicit(node, sym):
-    if len(node.atype.possibilities) == 1:
-        assert node.atype.possibilities[0].condition is None
-        schema = node.atype.possibilities[0].schema
-
+    def handler(schema):
         if isinstance(schema, Primitive):
             array = node.atype.parameter.require(schema, "array", sym)
             return toexpr("ARRAY[INDEX]",
@@ -546,8 +543,7 @@ def implicit(node, sym):
         else:
             return node
 
-    else:
-        return node
+    return node.atype.generate(handler)
 
 ################################################################ specialized rules for each Python AST type
 
@@ -646,10 +642,10 @@ def do_Attribute(node, symtable, externalfcns, sym, recurse):
 
 # For ("target", "iter", "body", "orelse")
 def do_For(node, symtable, externalfcns, sym, recurse):
-    node = rebuilt(node, target, recurse(iter), body, recurse(orelse))
+    node = rebuilt(node, node.target, recurse(node.iter), node.body, recurse(node.orelse))
 
     if node.iter.atype is untracked:
-        node.body = recurse(body)
+        node.body = recurse(node.body)
         return node
 
     else:
@@ -661,7 +657,7 @@ def do_For(node, symtable, externalfcns, sym, recurse):
                 beginarray = node.iter.atype.parameter.require(schema, "beginarray", sym)
                 endarray = node.iter.atype.parameter.require(schema, "endarray", sym)
 
-                symtable[node.target] = ArrowedType(schema.contents, node.iter.atype.parameter)
+                symtable[node.target.id] = ArrowedType(schema.contents, node.iter.atype.parameter)
 
                 return toexpr("range(BEGIN[OUTERINDEX], END[OUTERINDEX])",
                               BEGIN = toname(beginarray),
@@ -673,7 +669,7 @@ def do_For(node, symtable, externalfcns, sym, recurse):
                 raise IndexError("object is not a list:\n\n{0}".format(schema.format("    ")))
 
         node.iter = node.iter.atype.generate(handler)
-        node.body = recurse(body)
+        node.body = recurse(node.body)
         return node
 
 # FunctionDef ("name", "args", "body", "decorator_list")             # Py2
@@ -741,7 +737,12 @@ def do_Name(node, symtable, externalfcns, sym, recurse):
             return toliteral(0, lineno=node, atype=symtable[node.id])
 
         else:
+            node = rebuilt(node, node.id, node.ctx)
+            node.atype = symtable[node.id]
             return implicit(node, sym)
+
+    else:
+        return node
 
 # Nonlocal ("names",)  # Py3 only
 

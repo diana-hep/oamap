@@ -41,6 +41,8 @@ class TestCompile(unittest.TestCase):
 
     def compare(self, data, function, numba=None, debug=False):
         arrays = toarrays(data)
+        if debug:
+            print arrays.format()
 
         python_result = function(data)
         proxy_result = function(arrays.proxy())
@@ -73,10 +75,6 @@ class TestCompile(unittest.TestCase):
         def good2(x):
             return None
         self.compare([3.14, 2.71, 99.9], good2)
-
-        # def bad(x):
-        #     x = 5
-        # self.failure([3.14, 2.71, 99.9], bad, TypeError, onlycompiled=True)
 
     def test_subscript(self):
         self.compare([3.14, 2.71, 99.9], lambda x: x[0])
@@ -114,3 +112,20 @@ class TestCompile(unittest.TestCase):
         self.failure(T([1, 2], 3.3), lambda x: x.three, AttributeError)
         self.failure(T([1, 2], 3.3), lambda x: x.one[2], IndexError)
         self.compare(T([1, 2], 3.3), lambda x: x.one)
+
+    def test_forloop(self):
+        def go(data):
+            total = 0
+            for x in data:
+                total += x
+            return total
+        self.compare([1, 2, 3, 4, 55], go)
+
+    def test_forloop2(self):
+        def go(data):
+            total = 0
+            for sublist in data:
+                for x in sublist:
+                    total += x
+            return total
+        self.compare([[1, 2, 3], [], [4, 55]], go)
