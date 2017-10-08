@@ -166,6 +166,8 @@ class ObjectArrayMapping(object):
                     if array.mask[index]:
                         out.append("--")
                         arraywidth -= 2
+                    elif str(array.dtype) == "bool":
+                        out.append("True" if array.data[index] else "False")
                     else:
                         out.append("{0:g}".format(array.data[index]))
                         arraywidth -= len(out[-1])
@@ -181,7 +183,10 @@ class ObjectArrayMapping(object):
                         out.append(" ")
                         arraywidth -= 1
 
-                    out.append("{0:g}".format(array[index]))
+                    if str(array.dtype) == "bool":
+                        out.append("True" if array.data[index] else "False")
+                    else:
+                        out.append("{0:g}".format(array[index]))
                     arraywidth -= len(out[-1])
 
                     index += 1
@@ -349,7 +354,7 @@ class Primitive(ObjectArrayMapping):
         yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
 
     def __eq__(self, other):
-        return isinstance(other, Primitive) and ((isinstance(self.array, numpy.ndarray) and isinstance(other.array, numpy.ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.base == other.base
+        return isinstance(other, Primitive) and ((isinstance(self.array, numpy.ndarray) and isinstance(other.array, numpy.ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -516,7 +521,7 @@ class ListCount(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListCount) and ((isinstance(self.countarray, numpy.ndarray) and isinstance(other.countarray, numpy.ndarray) and numpy.array_equal(self.countarray, other.countarray)) or self.countarray == other.countarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListCount) and ((isinstance(self.countarray, numpy.ndarray) and isinstance(other.countarray, numpy.ndarray) and numpy.array_equal(self.countarray, other.countarray)) or self.countarray == other.countarray) and self.contents == other.contents and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -606,7 +611,7 @@ class ListOffset(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListOffset) and ((isinstance(self.offsetarray, numpy.ndarray) and isinstance(other.offsetarray, numpy.ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListOffset) and ((isinstance(self.offsetarray, numpy.ndarray) and isinstance(other.offsetarray, numpy.ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -714,7 +719,7 @@ class ListBeginEnd(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListBeginEnd) and ((isinstance(self.beginarray, numpy.ndarray) and isinstance(other.beginarray, numpy.ndarray) and numpy.array_equal(self.beginarray, other.beginarray)) or self.beginarray == other.beginarray) and ((isinstance(self.endarray, numpy.ndarray) and isinstance(other.endarray, numpy.ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListBeginEnd) and ((isinstance(self.beginarray, numpy.ndarray) and isinstance(other.beginarray, numpy.ndarray) and numpy.array_equal(self.beginarray, other.beginarray)) or self.beginarray == other.beginarray) and ((isinstance(self.endarray, numpy.ndarray) and isinstance(other.endarray, numpy.ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -873,7 +878,7 @@ class Record(Struct):
         yield indent + "}"
 
     def __eq__(self, other):
-        return isinstance(other, Record) and self.contents == other.contents and self.base == other.base and self._name == other._name
+        return isinstance(other, Record) and self.contents == other.contents and self._name == other._name
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -1014,7 +1019,7 @@ class Tuple(Struct):
         yield indent + ")"
 
     def __eq__(self, other):
-        return isinstance(other, Tuple) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, Tuple) and self.contents == other.contents and self._name == other._name
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -1189,7 +1194,7 @@ class UnionDense(Union):
         yield indent + ">"
 
     def __eq__(self, other):
-        return isinstance(other, UnionDense) and ((isinstance(self.tagarray, numpy.ndarray) and isinstance(other.tagarray, numpy.ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, UnionDense) and ((isinstance(self.tagarray, numpy.ndarray) and isinstance(other.tagarray, numpy.ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -1313,7 +1318,7 @@ class UnionDenseOffset(Union):
         yield indent + ">"
 
     def __eq__(self, other):
-        return isinstance(other, UnionDenseOffset) and ((isinstance(self.tagarray, numpy.ndarray) and isinstance(other.tagarray, numpy.ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, numpy.ndarray) and isinstance(other.offsetarray, numpy.ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, UnionDenseOffset) and ((isinstance(self.tagarray, numpy.ndarray) and isinstance(other.tagarray, numpy.ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, numpy.ndarray) and isinstance(other.offsetarray, numpy.ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -1476,7 +1481,7 @@ class Pointer(ObjectArrayMapping):
         yield indent + "*)"
 
     def __eq__(self, other):
-        return isinstance(other, Pointer) and ((isinstance(self.indexarray, numpy.ndarray) and isinstance(other.indexarray, numpy.ndarray) and numpy.array_equal(self.indexarray, other.indexarray)) or self.indexarray == other.indexarray) and self.target is other.target and self.base == other.base
+        return isinstance(other, Pointer) and ((isinstance(self.indexarray, numpy.ndarray) and isinstance(other.indexarray, numpy.ndarray) and numpy.array_equal(self.indexarray, other.indexarray)) or self.indexarray == other.indexarray) and self.target is other.target and self.nullable == other.nullable
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
