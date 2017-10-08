@@ -40,10 +40,6 @@ class TestFromPython(unittest.TestCase):
         pass
 
     def test_primitives(self):
-        print
-        print toarrays(False).format()
-        print Primitive(numpy.array([False], dtype=numpy.bool_)).format()
-
         self.assertEqual(toarrays(False), Primitive(numpy.array([False], dtype=numpy.bool_)))
         self.assertEqual(toarrays(True), Primitive(numpy.array([True], dtype=numpy.bool_)))
 
