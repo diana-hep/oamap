@@ -200,37 +200,40 @@ def namebase(oam, prefix="", delimiter="-"):
             out = out.base
         return out
 
-    def recurse(name, oam):
-        if isinstance(oam, Primitive):
-            drill(oam).base = Primitive(name.str(), nullable=oam.nullable)
+    def recurse(name, oam, memo):
+        if id(oam) not in memo:
+            memo.add(id(oam))
 
-        elif isinstance(oam, ListCount):
-            drill(oam).base = ListCount(name.toListCount().str(), recurse(name.toListData(), oam.contents), nullable=oam.nullable)
+            if isinstance(oam, Primitive):
+                drill(oam).base = Primitive(name.str(), nullable=oam.nullable)
 
-        elif isinstance(oam, ListOffset):
-            drill(oam).base = ListOffset(name.toListOffset().str(), recurse(name.toListData(), oam.contents), nullable=oam.nullable)
+            elif isinstance(oam, ListCount):
+                drill(oam).base = ListCount(name.toListCount().str(), recurse(name.toListData(), oam.contents, memo), nullable=oam.nullable)
 
-        elif isinstance(oam, ListBeginEnd):
-            drill(oam).base = ListBeginEnd(name.toListBegin().str(), name.toListEnd().str(), recurse(name.toListData(), oam.contents), nullable=oam.nullable)
+            elif isinstance(oam, ListOffset):
+                drill(oam).base = ListOffset(name.toListOffset().str(), recurse(name.toListData(), oam.contents, memo), nullable=oam.nullable)
 
-        elif isinstance(oam, Record):
-            drill(oam).base = Record(OrderedDict((n, recurse(name.toRecordField(n), c)) for n, c in oam.contents.items()), name=name.str())
+            elif isinstance(oam, ListBeginEnd):
+                drill(oam).base = ListBeginEnd(name.toListBegin().str(), name.toListEnd().str(), recurse(name.toListData(), oam.contents, memo), nullable=oam.nullable)
 
-        elif isinstance(oam, Tuple):
-            drill(oam).base = Tuple([recurse(name.toTupleIndex(i), x) for i, x in enumerate(oam.contents)], name=name.str())
+            elif isinstance(oam, Record):
+                drill(oam).base = Record(OrderedDict((n, recurse(name.toRecordField(n), c, memo)) for n, c in oam.contents.items()), name=name.str())
 
-        elif isinstance(oam, UnionDense):
-            drill(oam).base = UnionDense(name.toUnionTag().str(), [recurse(name.toUnionData(i), x) for i, x in enumerate(oam.contents)], nullable=oam.nullable)
+            elif isinstance(oam, Tuple):
+                drill(oam).base = Tuple([recurse(name.toTupleIndex(i), x, memo) for i, x in enumerate(oam.contents)], name=name.str())
 
-        elif isinstance(oam, UnionDenseOffset):
-            drill(oam).base = UnionDenseOffset(name.toUnionTag().str(), name.toUnionOffset().str(), [recurse(name.toUnionData(i), x) for i, x in enumerate(oam.contents)], nullable=oam.nullable)
+            elif isinstance(oam, UnionDense):
+                drill(oam).base = UnionDense(name.toUnionTag().str(), [recurse(name.toUnionData(i), x, memo) for i, x in enumerate(oam.contents)], nullable=oam.nullable)
 
-        elif isinstance(oam, Pointer):
-            drill(oam).base = Pointer(name.toPointerIndex().str(), recurse(name.toPointerData(), oam.target), nullable=oam.nullable)
+            elif isinstance(oam, UnionDenseOffset):
+                drill(oam).base = UnionDenseOffset(name.toUnionTag().str(), name.toUnionOffset().str(), [recurse(name.toUnionData(i), x, memo) for i, x in enumerate(oam.contents)], nullable=oam.nullable)
 
-        else:
-            raise AssertionError
+            elif isinstance(oam, Pointer):
+                drill(oam).base = Pointer(name.toPointerIndex().str(), recurse(name.toPointerData(), oam.target, memo), nullable=oam.nullable)
+
+            else:
+                raise AssertionError
 
         return drill(oam)
 
-    return recurse(Name(prefix, (), delimiter), oam)
+    return recurse(Name(prefix, (), delimiter), oam, set())

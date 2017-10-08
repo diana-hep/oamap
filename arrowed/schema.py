@@ -244,6 +244,9 @@ class Primitive(ObjectArrayMapping):
         self.nullable = nullable
         self.base = base
 
+    def str(self, _memo=None):
+        return "Primitive({0}{1}{2})".format(repr(self.array), ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
+        
     def walk(self, rootfirst=True, _memo=None):
         yield self
 
@@ -346,7 +349,7 @@ class Primitive(ObjectArrayMapping):
         yield indent + preamble + self._format_array(self.array, width - len(preamble) - len(indent))
 
     def __eq__(self, other):
-        return isinstance(other, Primitive) and ((isinstance(self.array, ndarray) and isinstance(other.array, ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.base == other.base
+        return isinstance(other, Primitive) and ((isinstance(self.array, numpy.ndarray) and isinstance(other.array, numpy.ndarray) and numpy.array_equal(self.array, other.array)) or self.array == other.array) and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -429,6 +432,14 @@ class ListCount(List):
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
 
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        contents = self.contents.str(_memo.union(set([self])))
+        return "ListCount({0}, {1}{2}{3})".format(repr(self.countarray), contents, ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
+
     def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
@@ -505,7 +516,7 @@ class ListCount(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListCount) and ((isinstance(self.countarray, ndarray) and isinstance(other.countarray, ndarray) and numpy.array_equal(self.countarray, other.countarray)) or self.countarray == other.countarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListCount) and ((isinstance(self.countarray, numpy.ndarray) and isinstance(other.countarray, numpy.ndarray) and numpy.array_equal(self.countarray, other.countarray)) or self.countarray == other.countarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -517,6 +528,14 @@ class ListOffset(List):
         self.nullable = nullable
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
+
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        contents = self.contents.str(_memo.union(set([self])))
+        return "ListOffset({0}, {1}{2}{3})".format(repr(self.offsetarray), contents, ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
 
     def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
@@ -587,7 +606,7 @@ class ListOffset(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListOffset) and ((isinstance(self.offsetarray, ndarray) and isinstance(other.offsetarray, ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListOffset) and ((isinstance(self.offsetarray, numpy.ndarray) and isinstance(other.offsetarray, numpy.ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -600,6 +619,14 @@ class ListBeginEnd(List):
         self.nullable = nullable
         self.base = base
         assert isinstance(self.contents, ObjectArrayMapping), "contents must be an ObjectArrayMapping"
+
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        contents = self.contents.str(_memo.union(set([self])))
+        return "ListBeginEnd({0}, {1}, {2}{3}{4})".format(repr(self.beginarray), repr(self.endarray), contents, ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
 
     def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
@@ -687,7 +714,7 @@ class ListBeginEnd(List):
         yield indent + "]"
 
     def __eq__(self, other):
-        return isinstance(other, ListBeginEnd) and ((isinstance(self.beginarray, ndarray) and isinstance(other.beginarray, ndarray) and numpy.array_equal(self.beginarray, other.beginarray)) or self.beginarray == other.beginarray) and ((isinstance(self.endarray, ndarray) and isinstance(other.endarray, ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, ListBeginEnd) and ((isinstance(self.beginarray, numpy.ndarray) and isinstance(other.beginarray, numpy.ndarray) and numpy.array_equal(self.beginarray, other.beginarray)) or self.beginarray == other.beginarray) and ((isinstance(self.endarray, numpy.ndarray) and isinstance(other.endarray, numpy.ndarray) and numpy.array_equal(self.endarray, other.endarray)) or self.endarray == other.endarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -699,16 +726,10 @@ class Struct(ObjectArrayMapping):
     pass
 
 class Record(Struct):
-    __nameindex = 0
-
     def __init__(self, contents, base=None, name=None):
         self.contents = contents
         self.base = base
-        if name is None:
-            self._name = "Record-{0}".format(self.__nameindex)
-            self.__nameindex += 1
-        else:
-            self._name = name
+        self._name = name
 
         assert isinstance(self.contents, dict)
         assert all(isinstance(x, string_types) for x in self.contents.keys()), "contents must be a dict from strings to ObjectArrayMappings"
@@ -722,8 +743,17 @@ class Record(Struct):
         def makeproperty(n, c):
             return property(lambda self: c.proxy(self._index))
 
-        self.proxyclass = type(self._name, superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
+        self.proxyclass = type("Record" if self._name is None else self._name, superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
         self.proxyclass.__slots__ = ["_schema", "_index"]
+
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        _memo = _memo.union(set([self]))
+        contents = ", ".join(repr(n) + ": " + c.str(_memo) for n, c in self.contents.items())
+        return "Record({{{0}}}{1}{2})".format(contents, ", " + repr(self.base) if self.base is not None else "", ", name=" + repr(self._name) if self._name is not None else "")
 
     def walk(self, rootfirst=True, _memo=None):
         if _memo is None:
@@ -854,6 +884,17 @@ class Tuple(Struct):
         self.base = base
         self._name = name
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
+
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        _memo = _memo.union(set([self]))
+        contents = ", ".join(c.str(_memo) for c in self.contents)
+        if len(self.contents) == 1:
+            contents = contents + ","
+        return "Tuple(({0}){1}{2})".format(contents, ", " + repr(self.base) if self.base is not None else "", ", name=" + repr(self._name) if self._name is not None else "")
 
     def walk(self, rootfirst=True, _memo=None):
         if _memo is None:
@@ -1055,6 +1096,17 @@ class UnionDense(Union):
         else:
             raise AssertionError("contents must be a tuple")
 
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        _memo = _memo.union(set([self]))
+        contents = ", ".join(c.str(_memo) for c in self.contents)
+        if len(self.contents) == 1:
+            contents = contents + ","
+        return "UnionDense({0}, ({1}){2}{3})".format(repr(self.tagarray), contents, ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
+
     def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
             _memo = {}
@@ -1137,7 +1189,7 @@ class UnionDense(Union):
         yield indent + ">"
 
     def __eq__(self, other):
-        return isinstance(other, UnionDense) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, UnionDense) and ((isinstance(self.tagarray, numpy.ndarray) and isinstance(other.tagarray, numpy.ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -1153,6 +1205,17 @@ class UnionDenseOffset(Union):
             assert all(isinstance(x, ObjectArrayMapping) for x in self.contents), "contents must be a tuple of ObjectArrayMappings"
         else:
             raise AssertionError("contents must be a tuple")
+
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        _memo = _memo.union(set([self]))
+        contents = ", ".join(c.str(_memo) for c in self.contents)
+        if len(self.contents) == 1:
+            contents = contents + ","
+        return "UnionDenseOffset({0}, {1}, ({2}){3}{4})".format(repr(self.tagarray), repr(self.offsetarray), contents, ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
 
     def accessedby(self, accessor, feedself=False, _memo=None):
         if _memo is None:
@@ -1250,7 +1313,7 @@ class UnionDenseOffset(Union):
         yield indent + ">"
 
     def __eq__(self, other):
-        return isinstance(other, UnionDenseOffset) and ((isinstance(self.tagarray, ndarray) and isinstance(other.tagarray, ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, ndarray) and isinstance(other.offsetarray, ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
+        return isinstance(other, UnionDenseOffset) and ((isinstance(self.tagarray, numpy.ndarray) and isinstance(other.tagarray, numpy.ndarray) and numpy.array_equal(self.tagarray, other.tagarray)) or self.tagarray == other.tagarray) and ((isinstance(self.offsetarray, numpy.ndarray) and isinstance(other.offsetarray, numpy.ndarray) and numpy.array_equal(self.offsetarray, other.offsetarray)) or self.offsetarray == other.offsetarray) and self.contents == other.contents and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
@@ -1265,6 +1328,14 @@ class Pointer(ObjectArrayMapping):
         self.base = base
         assert isinstance(self.target, ObjectArrayMapping), "target must be an ObjectArrayMapping"
         assert self.target is not self, "pointer's target may contain the pointer, but it must not be the pointer itself"
+
+    def str(self, _memo=None):
+        if _memo is None:
+            _memo = set()
+        if id(self) in _memo:
+            raise ValueError("cyclic reference")
+        target = self.target.str(_memo.union(set([self])))
+        return "Pointer({0}, {1}{2}{3})".format(repr(self.indexarray), target, ", " + repr(self.nullable) if self.nullable is not False else "", ", " + repr(self.base) if self.base is not None else "")
 
     def walk(self, rootfirst=True, _memo=None):
         if _memo is None:
@@ -1405,7 +1476,7 @@ class Pointer(ObjectArrayMapping):
         yield indent + "*)"
 
     def __eq__(self, other):
-        return isinstance(other, Pointer) and ((isinstance(self.indexarray, ndarray) and isinstance(other.indexarray, ndarray) and numpy.array_equal(self.indexarray, other.indexarray)) or self.indexarray == other.indexarray) and self.target is other.target and self.base == other.base
+        return isinstance(other, Pointer) and ((isinstance(self.indexarray, numpy.ndarray) and isinstance(other.indexarray, numpy.ndarray) and numpy.array_equal(self.indexarray, other.indexarray)) or self.indexarray == other.indexarray) and self.target is other.target and self.base == other.base
 
     def __ne__(self, other):
         return not self.__eq__(self, other)
