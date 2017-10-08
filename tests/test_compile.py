@@ -164,3 +164,9 @@ class TestCompile(unittest.TestCase):
                 x = data[0]
             return x[2]
         self.compare([[1, 2, 3], [], [4, 55]], go)
+
+    def test_listlen(self):
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x))
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x[0]))
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x[1]))
+        self.compare([[1, 2, 3], [], [4, 55]], lambda x: len(x[2]))

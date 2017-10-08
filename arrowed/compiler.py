@@ -107,8 +107,12 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
         sourcefile = inspect.getfile(function)
         function = tofunction(function)
 
+    builtins = __builtins__.copy()
+    builtins.update(env)
+    env = builtins
+
     # get a list of all symbols used by the function and any other functions it references
-    symbolsused = set()
+    symbolsused = set(env)
     externalfcns = {}
     def search(node):
         if isinstance(node, ast.AST):
@@ -119,12 +123,13 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
 
             if isinstance(node, ast.Call):
                 try:
-                    obj = eval(compile(ast.Expression(node.func), "", "eval"), env)
+                    obj = eval(__builtins__["compile"](ast.Expression(node.func), "", "eval"), env)
                 except Exception as err:
                     raise err.__class__("code to compile calls the expression below, but it is not defined in the environment (env):\n\n    {0}".format(dump_python_source(node.func).strip()))
                 else:
-                    externalfcns[node.func] = tofunction(obj)
-                    search(externalfcns[node.func])
+                    if hasattr(obj, "__code__"):
+                        externalfcns[node.func] = tofunction(obj)
+                        search(externalfcns[node.func])
 
             for x in node._fields:
                 search(getattr(node, x))
@@ -160,11 +165,9 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
     sym.names = {}
     sym.remapped = []
 
-    env = env.copy()
     env[sym("passnone")] = passnone
     env[sym("listget")] = listget
-    env[sym("listsize")] = listsize
-    env[sym("maybe_listsize")] = maybe_listsize
+    env[sym("listlen")] = listlen
     env[sym("ToProxy")] = ToProxy
 
     # do the code transformation
@@ -231,15 +234,8 @@ def listget(begin, end, outerindex, index):
     return offset + index
 
 @numba.njit(int32(int32[:], int32[:], int32))
-def listsize(begin, end, index):
+def listlen(begin, end, index):
     return end[index] - begin[index]
-
-@numba.njit(numba.optional(int32)(int32[:], int32[:], int32[:], int32))
-def maybe_listsize(begindata, beginmask, enddata, index):
-    if beginmask[index]:
-        return None
-    else:
-        return enddata[index] - begindata[index]
 
 ToProxy = namedtuple("ToProxy", ["parameterid", "memberid", "index"])
 
@@ -341,7 +337,7 @@ def toliteral(obj, lineno=None, atype=None):
 
 def tofunction(obj):
     if not hasattr(obj, "__code__"):
-        raise TypeError("attempting to compile {0}, but it is not a Python function (something with a __code__ attribute); no class constructors or C extensions allowed".format(repr(obj)))
+        raise TypeError("attempting to compile {0}, but it is not a Python function (something with a __code__ attribute)".format(repr(obj)))
     out = make_function(obj.__code__)
     if isinstance(out, ast.Lambda):
         if py2:
@@ -677,6 +673,49 @@ def do_Attribute(node, symtable, externalfcns, env, sym, sourcefile, recurse):
 # Bytes ("s",)  # Py3 only
 
 # Call ("func", "args", "keywords", "starargs", "kwargs")
+def do_Call(node, symtable, externalfcns, env, sym, sourcefile, recurse):
+    func = recurse(node.func)
+    args = recurse(node.args)
+    keywords = recurse(node.keywords)
+    starargs = recurse(node.starargs)
+    kwargs = recurse(node.kwargs)
+
+    if isinstance(func, ast.Name) and func.id in env and env[func.id] is len:
+        if len(args) != 1:
+            raise TypeError("len() takes exactly one argument ({0} given)\n\nat line {lineno} of {sourcefile}".format(
+                len(args), lineno=node.lineno, sourcefile=sourcefile))
+
+        def handler(schema):
+            if isinstance(schema, List):
+                beginarray = args[0].atype.parameter.require(schema, "beginarray", sym)
+                endarray = args[0].atype.parameter.require(schema, "endarray", sym)
+
+                if args[0].atype.nullable or schema.nullable:
+                    index = toexpr("REFUSENONE(INDEX)",
+                                   REFUSENONE = toname(newrefusenone(env, sym, "list", node.value.lineno, sourcefile)),
+                                   INDEX = args[0])
+                else:
+                    index = args[0]
+
+                return toexpr("LISTLEN(BEGIN, END, INDEX)",
+                              LISTLEN = toname(sym("listlen")),
+                              BEGIN = toname(beginarray),
+                              END = toname(endarray),
+                              INDEX = index,
+                              lineno = node,
+                              atype = untracked)
+
+            else:
+                raise TypeError("object is not a list:\n\n{0}\n\nat line {lineno} of {sourcefile}".format(
+                    schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
+
+        if args[0].atype is untracked or args[0].atype is nullable:
+            return rebuilt(node, func, args, keywords, starargs, kwargs)
+        else:
+            return args[0].atype.generate(handler)
+
+    else:
+        return rebuilt(node, func, args, keywords, starargs, kwargs)
 
 # ClassDef ("name", "bases", "body", "decorator_list")                                   # Py2
 # ClassDef ("name", "bases", "keywords", "starargs", "kwargs", "body", "decorator_list") # Py3
@@ -908,8 +947,7 @@ def do_Subscript(node, symtable, externalfcns, env, sym, sourcefile, recurse):
                 if node.value.atype.nullable or schema.nullable:
                     outerindex = toexpr("REFUSENONE(INDEX)",
                                         REFUSENONE = toname(newrefusenone(env, sym, "list", node.value.lineno, sourcefile)),
-                                        INDEX = node.value,
-                                        atype = node.value.atype.setnullable(False))
+                                        INDEX = node.value)
                 else:
                     outerindex = node.value
 
@@ -921,6 +959,7 @@ def do_Subscript(node, symtable, externalfcns, env, sym, sourcefile, recurse):
                               INDEX = node.slice.value,
                               lineno = node,
                               atype = ArrowedType(schema.contents, node.value.atype.parameter))
+
             else:
                 raise TypeError("object is not a list:\n\n{0}\n\nat line {lineno} of {sourcefile}".format(
                     schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
