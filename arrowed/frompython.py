@@ -370,13 +370,13 @@ def toarrays(obj, schema=None, fillable=FillableArray):
         elif isinstance(oam, Record):
             # FIXME: check nullable
             if isinstance(obj, dict):
-                for fn, ft in obj.contents.items():
+                for fn, ft in oam.contents.items():
                     if fn not in obj:
                         raise TypeError("cannot fill {0} (missing field \"{1}\") where expecting type:\n{2}".format(obj, fn, oam.format("    ")))
                     recurse(obj[fn], ft)
 
             else:
-                for fn, ft in obj.contents.items():
+                for fn, ft in oam.contents.items():
                     if not hasttr(obj, fn):
                         raise TypeError("cannot fill {0} (missing field \"{1}\") where expecting type:\n{2}".format(obj, fn, oam.format("    ")))
                     recurse(getattr(obj, fn), ft)
