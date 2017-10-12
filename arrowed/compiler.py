@@ -89,7 +89,12 @@ class Compiled(object):
         else:
             return out
 
-def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": True}, debug=False):
+def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": True}, fcncache=None, debug=False):
+    if fcncache is not None:
+        fcnkey = (function, tuple(sorted(paramtypes.items())), tuple(sorted(env.items())), tuple(sorted(numbaargs.items())))
+        if fcnkey in fcncache:
+            return fcncache[fcnkey]
+
     # turn the 'function' argument into the syntax tree of a function
     if isinstance(function, string_types):
         sourcefile = "<string>"
@@ -199,7 +204,12 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
         #             print(projection.format("         "))
         print("")
 
-    return Compiled(transformed, parameters, env, numbaargs)
+    out = Compiled(transformed, parameters, env, numbaargs)
+
+    if fcncache is not None:
+        fcncache[fcnkey] = out
+
+    return out
 
 ################################################################ functions inserted into code
 

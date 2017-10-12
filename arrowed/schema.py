@@ -81,21 +81,21 @@ class ObjectArrayMapping(object):
     def proxy(self, index=0):
         raise TypeError("cannot get a proxy for an unresolved ObjectArrayMap; call the resolved method first or pass a source to this method")
 
-    def compile(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, debug=False):
+    def compile(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, fcncache=None, debug=False):
         import arrowed.compiler
         paramtypes = paramtypes.copy()
         paramtypes[0] = self
 
-        return arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, debug=debug)
+        return arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, fcncache=fcncache, debug=debug)
 
-    def run(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, debug=False, *args):
+    def run(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, fcncache=None, debug=False, *args):
         import arrowed.compiler
 
         if not isinstance(function, arrowed.compiler.Compiled):
             base = self
             while base.base is not None:
                 base = base.base
-            function = base.compile(function, paramtypes=paramtypes, env=env, numba=numba, debug=debug)
+            function = base.compile(function, paramtypes=paramtypes, env=env, numba=numba, fcncache=fcncache, debug=debug)
 
         return function(self, *args)
 
