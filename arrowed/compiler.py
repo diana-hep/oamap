@@ -376,10 +376,13 @@ class ArrowedType(object):
         self.nullable = False
 
     def setnullable(self, value=True):
-        out = ArrowedType(self.possibilities, self.parameter)
-        out.isparameter = self.isparameter
-        out.nullable = value
-        return out
+        if self is nullable or self is untracked:
+            return self
+        else:
+            out = ArrowedType(self.possibilities, self.parameter)
+            out.isparameter = self.isparameter
+            out.nullable = value
+            return out
 
     def generate(self, handler):
         out = None
@@ -654,7 +657,14 @@ def do_Attribute(node, symtable, externalfcns, env, sym, sourcefile, recurse):
         def handler(schema):
             if isinstance(schema, Record):
                 if node.attr in schema.contents:
-                    return retyped(node.value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
+                    if node.value.atype.nullable:   #  FIXME: or schema.nullable
+                        value = toexpr("REFUSENONE(VALUE)",
+                                       REFUSENONE = toname(newrefusenone(env, sym, "record" if schema.name is None else schema.name, node.value.lineno, sourcefile)),
+                                       VALUE = node.value)
+                    else:
+                        value = node.value
+                    return retyped(value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
+
                 elif schema.name is None:
                     raise AttributeError("attribute {0} not found in record with structure:\n\n{1}\n\nat line {lineno} of {sourcefile}".format(
                         repr(node.attr), schema.format("    "), lineno=node.lineno, sourcefile=sourcefile))
@@ -814,6 +824,10 @@ def do_For(node, symtable, externalfcns, env, sym, sourcefile, recurse):
 # IfExp ("test", "body", "orelse")
 
 # If ("test", "body", "orelse")
+def do_If(node, symtable, externalfcns, env, sym, sourcefile, recurse):
+    body = recurse(node.body)
+    orelse = recurse(node.orelse)
+    return rebuilt(node, recurse(node.test), body, orelse)
 
 # ImportFrom ("module", "names", "level")
 
