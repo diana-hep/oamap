@@ -189,13 +189,14 @@ def compile(function, paramtypes, env={}, numbaargs={"nopython": True, "nogil": 
             formatter = "    {0:%ds} --> {1}" % max([len(name) for name, value in sym.remapped] + [0])
             for name, value in sym.remapped:
                 print(formatter.format(name, value))
-        print("\nProjections:\n------------")
-        for parameter in parameters.order:
-            print("    {0}: {1}".format(parameter.index, parameter.originalname))
-            if isinstance(parameter, TransformedParameter):
-                projection = parameter.projection()
-                if projection is not None:
-                    print(projection.format("         "))
+        ### FIXME: projections are not correct
+        # print("\nProjections:\n------------")
+        # for parameter in parameters.order:
+        #     print("    {0}: {1}".format(parameter.index, parameter.originalname))
+        #     if isinstance(parameter, TransformedParameter):
+        #         projection = parameter.projection()
+        #         if projection is not None:
+        #             print(projection.format("         "))
         print("")
 
     return Compiled(transformed, parameters, env, numbaargs)
@@ -410,7 +411,10 @@ class Parameter(object):
             return [ast.arg(self.originalname, None)]
 
     def defaults(self):
-        return [self.default]
+        if self.default is None:
+            return []
+        else:
+            return [self.default]
 
 class TransformedParameter(Parameter):
     def __init__(self, index, originalname, atype):
@@ -444,8 +448,9 @@ class TransformedParameter(Parameter):
     def required_members(self):
         return [m for m, r in zip(self.members, self.required) if r]
 
-    def projection(self):
-        return self.schema.projection(self.required_members())
+    ### FIXME: projections are not correct
+    # def projection(self):
+    #     return self.schema.projection(self.required_members())
 
     def args(self):
         if py2:

@@ -308,11 +308,12 @@ class Primitive(ObjectArrayMapping):
     def hasany(self, others, _memo=None):
         return any(x is self for x in others)
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            return Primitive(self.array, self.nullable, self)
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         return Primitive(self.array, self.nullable, self)
+    #     else:
+    #         return None
 
     def isinstance(self, obj, _memo=None):
         if _memo is None:
@@ -504,19 +505,20 @@ class ListCount(List):
         else:
             raise NameError("ListCount has no array {0}".format(repr(attr)))
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            if id(self.contents) not in _memo:
-                _memo[id(self.contents)] = None
-                _memo[id(self.contents)] = self.contents.projection(required, _memo)
-            contents = _memo[id(self.contents)]
-            if contents is None:
-                contents = Primitive(self.countarray, self.nullable)
-            return ListCount(self.countarray, contents, self.nullable, self)
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         if id(self.contents) not in _memo:
+    #             _memo[id(self.contents)] = None
+    #             _memo[id(self.contents)] = self.contents.projection(required, _memo)
+    #         contents = _memo[id(self.contents)]
+    #         if contents is None:
+    #             contents = Primitive(self.countarray, self.nullable)
+    #         return ListCount(self.countarray, contents, self.nullable, self)
+    #     else:
+    #         return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -598,19 +600,20 @@ class ListOffset(List):
         else:
             raise NameError("ListOffset has no array {0}".format(repr(attr)))
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            if id(self.contents) not in _memo:
-                _memo[id(self.contents)] = None
-                _memo[id(self.contents)] = self.contents.projection(required, _memo)
-            contents = _memo[id(self.contents)]
-            if contents is None:
-                contents = Primitive(self.offsetarray, self.nullable)
-            return ListOffset(self.offsetarray, contents, self.nullable, self)
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         if id(self.contents) not in _memo:
+    #             _memo[id(self.contents)] = None
+    #             _memo[id(self.contents)] = self.contents.projection(required, _memo)
+    #         contents = _memo[id(self.contents)]
+    #         if contents is None:
+    #             contents = Primitive(self.offsetarray, self.nullable)
+    #         return ListOffset(self.offsetarray, contents, self.nullable, self)
+    #     else:
+    #         return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -708,19 +711,20 @@ class ListBeginEnd(List):
         else:
             raise NameError("ListBeginEnd has no array {0}".format(repr(attr)))
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            if id(self.contents) not in _memo:
-                _memo[id(self.contents)] = None
-                _memo[id(self.contents)] = self.contents.projection(required, _memo)
-            contents = _memo[id(self.contents)]
-            if contents is None:
-                contents = Primitive(self.beginarray, self.nullable)
-            return ListBeginEnd(self.beginarray, self.endarray, contents, self.nullable, self)
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         if id(self.contents) not in _memo:
+    #             _memo[id(self.contents)] = None
+    #             _memo[id(self.contents)] = self.contents.projection(required, _memo)
+    #         contents = _memo[id(self.contents)]
+    #         if contents is None:
+    #             contents = Primitive(self.beginarray, self.nullable)
+    #         return ListBeginEnd(self.beginarray, self.endarray, contents, self.nullable, self)
+    #     else:
+    #         return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -772,7 +776,7 @@ class Record(Struct):
         def makeproperty(n, c):
             return property(lambda self: c.proxy(self._index))
 
-        self.proxyclass = type("Record" if self._name is None else self._name, superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
+        self.proxyclass = type("Record" if self._name is None else str(self._name), superclasses, dict((n, makeproperty(n, c)) for n, c in self.contents.items()))
         self.proxyclass.__slots__ = ["_schema", "_index"]
 
     def str(self, _memo=None):
@@ -855,24 +859,25 @@ class Record(Struct):
                 return x.hasany(others, _memo)
         return False
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            contents = collections.OrderedDict()
-            for n, x in self.contents.items():
-                if id(x) not in _memo:
-                    _memo[id(x)] = None
-                    _memo[id(x)] = x.projection(required, _memo)
-                content = _memo[id(x)]
-                if content is not None:
-                    contents[n] = content
-            if len(contents) > 0:
-                return Record(contents, self)
-            else:
-                return None
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         contents = collections.OrderedDict()
+    #         for n, x in self.contents.items():
+    #             if id(x) not in _memo:
+    #                 _memo[id(x)] = None
+    #                 _memo[id(x)] = x.projection(required, _memo)
+    #             content = _memo[id(x)]
+    #             if content is not None:
+    #                 contents[n] = content
+    #         if len(contents) > 0:
+    #             return Record(contents, self)
+    #         else:
+    #             return None
+    #     else:
+    #         return None
 
     def isinstance(self, obj, _memo=None):
         if _memo is None:
@@ -996,24 +1001,25 @@ class Tuple(Struct):
                 return x.hasany(others, _memo)
         return False
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            contents = []
-            for x in self.contents:
-                if id(x) not in _memo:
-                    _memo[id(x)] = None
-                    _memo[id(x)] = x.projection(required, _memo)
-                content = _memo[id(x)]
-                if content is not None:
-                    contents.append(content)
-            if len(contents) > 0:
-                return Tuple(contents, self)
-            else:
-                return None
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         contents = []
+    #         for x in self.contents:
+    #             if id(x) not in _memo:
+    #                 _memo[id(x)] = None
+    #                 _memo[id(x)] = x.projection(required, _memo)
+    #             content = _memo[id(x)]
+    #             if content is not None:
+    #                 contents.append(content)
+    #         if len(contents) > 0:
+    #             return Tuple(contents, self)
+    #         else:
+    #             return None
+    #     else:
+    #         return None
 
     def isinstance(self, obj, _memo=None):
         if _memo is None:
@@ -1187,24 +1193,25 @@ class UnionDense(Union):
         else:
             raise NameError("UnionDense has no array {0}".format(repr(attr)))
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            contents = []
-            for x in self.contents:
-                if id(x) not in _memo:
-                    _memo[id(x)] = None
-                    _memo[id(x)] = x.projection(required, _memo)
-                content = _memo[id(x)]
-                if content is not None:
-                    contents.append(content)
-            if len(contents) > 0:
-                return UnionDense(self.tagarray, contents, self.nullable, self)
-            else:
-                return None
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         contents = []
+    #         for x in self.contents:
+    #             if id(x) not in _memo:
+    #                 _memo[id(x)] = None
+    #                 _memo[id(x)] = x.projection(required, _memo)
+    #             content = _memo[id(x)]
+    #             if content is not None:
+    #                 contents.append(content)
+    #         if len(contents) > 0:
+    #             return UnionDense(self.tagarray, contents, self.nullable, self)
+    #         else:
+    #             return None
+    #     else:
+    #         return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -1313,24 +1320,25 @@ class UnionDenseOffset(Union):
         else:
             raise NameError("UnionDenseOffset has no array {0}".format(repr(attr)))
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            contents = []
-            for x in self.contents:
-                if id(x) not in _memo:
-                    _memo[id(x)] = None
-                    _memo[id(x)] = x.projection(required, _memo)
-                content = _memo[id(x)]
-                if content is not None:
-                    contents.append(content)
-            if len(contents) > 0:
-                return UnionDenseOffset(self.tagarray, self.offsetarray, contents, self.nullable, self)
-            else:
-                return None
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         contents = []
+    #         for x in self.contents:
+    #             if id(x) not in _memo:
+    #                 _memo[id(x)] = None
+    #                 _memo[id(x)] = x.projection(required, _memo)
+    #             content = _memo[id(x)]
+    #             if content is not None:
+    #                 contents.append(content)
+    #         if len(contents) > 0:
+    #             return UnionDenseOffset(self.tagarray, self.offsetarray, contents, self.nullable, self)
+    #         else:
+    #             return None
+    #     else:
+    #         return None
 
     def _format(self, indent, width, refs, memo):
         self._recursion_check(memo)
@@ -1478,19 +1486,20 @@ class Pointer(ObjectArrayMapping):
         else:
             return False
 
-    def projection(self, required, _memo=None):
-        if self.hasany(required):
-            if _memo is None:
-                _memo = {}
-            if id(self.target) not in _memo:
-                _memo[id(self.target)] = None
-                _memo[id(self.target)] = self.target.projection(required, _memo)
-            target = _memo[id(self.target)]
-            if target is None:
-                target = Primitive(self.indexarray, self.nullable)
-            return Pointer(self.indexarray, target, self.nullable, self)
-        else:
-            return None
+    ### FIXME: projections are not correct
+    # def projection(self, required, _memo=None):
+    #     if self.hasany(required):
+    #         if _memo is None:
+    #             _memo = {}
+    #         if id(self.target) not in _memo:
+    #             _memo[id(self.target)] = None
+    #             _memo[id(self.target)] = self.target.projection(required, _memo)
+    #         target = _memo[id(self.target)]
+    #         if target is None:
+    #             target = Primitive(self.indexarray, self.nullable)
+    #         return Pointer(self.indexarray, target, self.nullable, self)
+    #     else:
+    #         return None
 
     def isinstance(self, obj, _memo=None):
         if _memo is None:
