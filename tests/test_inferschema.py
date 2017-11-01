@@ -32,8 +32,8 @@ import unittest
 
 import numpy
 
-from arrowed.frompython import inferschema
-from arrowed.schema import *
+from oamap.frompython import inferschema
+from oamap.schema import *
 
 class TestInferSchema(unittest.TestCase):
     def runTest(self):

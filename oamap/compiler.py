@@ -38,10 +38,10 @@ import numpy
 import numba
 from numba.types import *
 
-from arrowed.thirdparty.meta.decompiler.instructions import make_function
-from arrowed.thirdparty.meta import dump_python_source
+from oamap.thirdparty.meta.decompiler.instructions import make_function
+from oamap.thirdparty.meta import dump_python_source
 
-from arrowed.schema import *
+from oamap.schema import *
 
 py2 = (sys.version_info[0] <= 2)
 string_types = (unicode, str) if py2 else (str, bytes)
@@ -365,7 +365,7 @@ class Possibility(object):
         self.schema = schema
         self.condition = condition
 
-class ArrowedType(object):
+class ObjectType(object):
     def __init__(self, possibilities, parameter):
         if not isinstance(possibilities, (list, tuple)):
             possibilities = [possibilities]
@@ -379,7 +379,7 @@ class ArrowedType(object):
         if self is nullable or self is untracked:
             return self
         else:
-            out = ArrowedType(self.possibilities, self.parameter)
+            out = ObjectType(self.possibilities, self.parameter)
             out.isparameter = self.isparameter
             out.nullable = value
             return out
@@ -402,13 +402,13 @@ class ArrowedType(object):
         return out
 
     def __eq__(self, other):
-        return isinstance(other, ArrowedType) and self.parameter is other.parameter and len(self.possibilities) == len(other.possibilities) and all(self.parameter.reverse_members[id(x.schema)] == other.parameter.reverse_members[id(y.schema)] for x, y in zip(self.possibilities, other.possibilities))
+        return isinstance(other, ObjectType) and self.parameter is other.parameter and len(self.possibilities) == len(other.possibilities) and all(self.parameter.reverse_members[id(x.schema)] == other.parameter.reverse_members[id(y.schema)] for x, y in zip(self.possibilities, other.possibilities))
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
-untracked = ArrowedType([], None)
-nullable = ArrowedType([], None)
+untracked = ObjectType([], None)
+nullable = ObjectType([], None)
 
 class Parameter(object):
     def __init__(self, index, originalname, default):
@@ -533,7 +533,7 @@ def transform(function, paramtypes, externalfcns, env, sym, sourcefile):
         else:
             if default is not None:
                 raise ValueError("parameter {0} is an argument defined in paramtypes, which is not allowed to have default parameters")
-            paramtype = ArrowedType(paramtype, None)  # modified by TransformedParameter constructor
+            paramtype = ObjectType(paramtype, None)  # modified by TransformedParameter constructor
             parameters.append(TransformedParameter(index, paramname, paramtype))
             symtable[paramname] = paramtype
 
@@ -663,7 +663,7 @@ def do_Attribute(node, symtable, externalfcns, env, sym, sourcefile, recurse):
                                        VALUE = node.value)
                     else:
                         value = node.value
-                    return retyped(value, ArrowedType(schema.contents[node.attr], node.value.atype.parameter))
+                    return retyped(value, ObjectType(schema.contents[node.attr], node.value.atype.parameter))
 
                 elif schema.name is None:
                     raise AttributeError("attribute {0} not found in record with structure:\n\n{1}\n\nat line {lineno} of {sourcefile}".format(
@@ -794,7 +794,7 @@ def do_For(node, symtable, externalfcns, env, sym, sourcefile, recurse):
                 beginarray = node.iter.atype.parameter.require(schema, "beginarray", sym)
                 endarray = node.iter.atype.parameter.require(schema, "endarray", sym)
 
-                symtable[node.target.id] = ArrowedType(schema.contents, node.iter.atype.parameter)
+                symtable[node.target.id] = ObjectType(schema.contents, node.iter.atype.parameter)
 
                 return toexpr("range(BEGIN[OUTERINDEX], END[OUTERINDEX])",
                               BEGIN = toname(beginarray),
@@ -987,7 +987,7 @@ def do_Subscript(node, symtable, externalfcns, env, sym, sourcefile, recurse):
                               OUTERINDEX = outerindex,
                               INDEX = node.slice.value,
                               lineno = node,
-                              atype = ArrowedType(schema.contents, node.value.atype.parameter))
+                              atype = ObjectType(schema.contents, node.value.atype.parameter))
 
             else:
                 raise TypeError("object is not a list:\n\n{0}\n\nat line {lineno} of {sourcefile}".format(

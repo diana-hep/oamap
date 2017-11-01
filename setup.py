@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Copyright (c) 2017, DIANA-HEP
 # All rights reserved.
@@ -35,27 +36,29 @@ from setuptools import setup
 
 def get_version():
     g = {}
-    exec(open(os.path.join("arrowed", "version.py")).read(), g)
+    exec(open(os.path.join("oamap", "version.py")).read(), g)
     return g["__version__"]
 
-setup(name = "arrowed",
+setup(name = "oamap",
       version = get_version(),
       packages = find_packages(exclude = ["tests"]),
       scripts = [],
-      description = "Compiler and proxies for algorithms running on Arrow data, including nested lists.",
-      long_description = """Arrowed provides an object-oriented view of data in `Arrow format <https://arrow.apache.org/`_, including fully nested object hierarchies with arbitrary-length lists. It can also operate on buffers (disconnected arrays) that are formatted like Arrow but not yet assembled into a single data structure, which allows the same data to be used in multiple datasets.
+      description = "Toolset for computing directly on hierarchically nested, columnar data, such as Apache Arrow.",
+      long_description = """Large datasets can be more compact and faster to access when they are laid out in columns (see `Apache Arrow <https://arrow.apache.org/>`_). Even hierarchically nested data can be presented this way, though converting the data between the columnar form and the object form can degrade performance. Non-hierarchical data (rectangular tables) is often accessed without materializing rows (see `Apache Drill <https://drill.apache.org/docs/performance/>`_), but this is more complex for data containing arbitrary-length lists of objects.
 
-Any function that depends on Arrow data and `the types Numba can handle <http://numba.pydata.org/numba-doc/dev/reference/numpysupported.html>`_ can be "Arrowed". An Arrowed function operates on Arrow buffers in-place, without materializing the objects that you reference in your code. This lets you write natural algorithms, apparently unboxing nested, arbitrary-length lists of record structures, but the only operations that are performed at runtime are contiguous array lookups. Thus, the Arrowed function usually runs much faster than a naive compilation.
+OAMap is a suite of tools for performing calculations in this way. The name stands for Object-Array-Map, in analogy with Object-Relational-Mapping in databases. OAMap has a compiler for high throughput calculations and object proxies for low latency interactive exploration.
 
-This toolkit also includes methods for accessing data interactively in the form of lazy-evaluated proxies. These proxies behave like Python objects; you can interact with them on the commandline or in a notebook, but they load data from Arrow buffers on-the-fly. Compared with compilation, this is a slower but more convenient interface for debugging.
+The compiler takes a Python function operating on objects and converts it to the equivalent function operating on columnar data in Numpy arrays. This by itself can speed up access by an order of magnitude, but especially when further compiled by Numba. Since the transformed function references only numbers and arrays, Numba is capable of compiling it in "nopython" mode.
 
-In addition, there are tools for type-inferring and constructing Arrow buffers from Python objects, JSON, etc. and saving these buffers in any format the supports sets of named arrays, such as Numpy .npz files, HDF5, object store databases, etc. The data's schema is encoded in the names of the arrays, and the data are in the arrays.""",
+The proxies are Python objects whose contents and attributes are generated on demand, accessing the columnar arrays, minimizing downloads if the data are remote. Often, it is useful to explore the data interactively in a Python commandline or notebook, then wrap up scratch work as functions to compile. Compiled functions can also return proxies, so a high-speed search may result in anomalies to investigate by hand.
+
+In addition, OAMap contains tools for type-inferring and constructing Arrow buffers from Python objects, JSON, etc., and saving these buffers in any format the supports sets of named arrays, such as Numpy .npz files, HDF5, object store databases, etc. The data's schema is encoded in the names of the arrays, and the data are in the arrays.""",
       author = "Jim Pivarski (DIANA-HEP)",
       author_email = "pivarski@fnal.gov",
       maintainer = "Jim Pivarski (DIANA-HEP)",
       maintainer_email = "pivarski@fnal.gov",
-      url = "https://github.com/diana-hep/arrowed",
-      download_url = "https://github.com/diana-hep/arrowed/releases",
+      url = "https://github.com/diana-hep/oamap",
+      download_url = "https://github.com/diana-hep/oamap/releases",
       license = "BSD 3-clause",
       test_suite = "tests",
       install_requires = ["numpy", "numba"],  # , "meta"

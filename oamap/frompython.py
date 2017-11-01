@@ -34,7 +34,7 @@ from types import MethodType
 
 import numpy
 
-from arrowed.schema import *
+from oamap.schema import *
 
 ################################################################ generating OAMs from Python data
 

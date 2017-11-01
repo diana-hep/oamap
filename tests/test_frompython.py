@@ -32,8 +32,8 @@ import unittest
 
 import numpy
 
-from arrowed.frompython import toarrays
-from arrowed.schema import *
+from oamap.frompython import toarrays
+from oamap.schema import *
 
 class TestFromPython(unittest.TestCase):
     def runTest(self):

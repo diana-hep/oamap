@@ -36,7 +36,7 @@ import sys
 import numpy
 import numpy.ma
 
-import arrowed.proxy
+import oamap.proxy
 
 if sys.version_info[0] <= 2:
     string_types = (unicode, str)
@@ -82,16 +82,16 @@ class ObjectArrayMapping(object):
         raise TypeError("cannot get a proxy for an unresolved ObjectArrayMap; call the resolved method first or pass a source to this method")
 
     def compile(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, fcncache=None, debug=False):
-        import arrowed.compiler
+        import oamap.compiler
         paramtypes = paramtypes.copy()
         paramtypes[0] = self
 
-        return arrowed.compiler.compile(function, paramtypes, env=env, numbaargs=numba, fcncache=fcncache, debug=debug)
+        return oamap.compiler.compile(function, paramtypes, env=env, numbaargs=numba, fcncache=fcncache, debug=debug)
 
     def run(self, function, paramtypes={}, env={}, numba={"nopython": True, "nogil": True}, fcncache=None, debug=False, *args):
-        import arrowed.compiler
+        import oamap.compiler
 
-        if not isinstance(function, arrowed.compiler.Compiled):
+        if not isinstance(function, oamap.compiler.Compiled):
             base = self
             while base.base is not None:
                 base = base.base
@@ -698,7 +698,7 @@ class ListBeginEnd(List):
         if (getattr(self.beginarray, "mask", None) is not None and self.beginarray.mask[index]) or (getattr(self.endarray, "mask", None) is not None and self.endarray.mask[index]):
             return None
         else:
-            return arrowed.proxy.ListProxy(self, index)
+            return oamap.proxy.ListProxy(self, index)
 
     def get(self, attr):
         if callable(self.beginarray):
@@ -769,7 +769,7 @@ class Record(Struct):
         assert all(isinstance(x, ObjectArrayMapping) for x in self.contents.values()), "contents must be a dict from strings to ObjectArrayMappings"
 
         if self.base is None:
-            superclasses = (arrowed.proxy.RecordProxy,)
+            superclasses = (oamap.proxy.RecordProxy,)
         else:
             superclasses = self.base.proxyclass.__bases__
 
@@ -975,7 +975,7 @@ class Tuple(Struct):
         return _memo[id(self)]
 
     def proxy(self, index=0):
-        return arrowed.proxy.TupleProxy(self, index)
+        return oamap.proxy.TupleProxy(self, index)
 
     def get(self, attr):
         raise NameError("Tuple has no array {0}".format(repr(attr)))

@@ -33,7 +33,7 @@ from collections import namedtuple
 
 import numpy
 
-from arrowed.frompython import toarrays
+from oamap.frompython import toarrays
 
 class TestCompile(unittest.TestCase):
     def runTest(self):
