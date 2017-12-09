@@ -28,18 +28,22 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import re
 import sys
 import numbers
+from types import MethodType
 
 import numpy
 
-from oamap.types import PrimitiveType
-from oamap.types import MaskedPrimitiveType
-from oamap.types import ListType
-from oamap.types import MaskedListType
+from oamap.proxy import PrimitiveType
+from oamap.proxy import MaskedPrimitiveType
+from oamap.proxy import ListType
+from oamap.proxy import MaskedListType
 
 if sys.version_info[0] > 2:
     basestring = str
+
+# The "PLURTP" type system: Primitives, Lists, Unions, Records, Tuples, and Pointers
 
 class Schema(object):
     def __init__(self, *args, **kwds):
@@ -52,7 +56,7 @@ class Schema(object):
     @nullable.setter
     def nullable(self, value):
         if value is not True and value is not False:
-            raise TypeError("nullable must be True or False")
+            raise TypeError("nullable must be True or False, not {0}".format(repr(value)))
         self._nullable = value
 
     @property
@@ -62,8 +66,21 @@ class Schema(object):
     @mask.setter
     def mask(self, value):
         if not (value is None or isinstance(value, basestring)):
-            raise TypeError("mask must be None or an array name (string)")
+            raise TypeError("mask must be None or an array name (string), not {0}".format(repr(value)))
         self._mask = value
+
+    def _labels(self):
+        labels = []
+        self._collect(set(), labels)
+        return labels
+        
+    def _label(self, labels):
+        for index, label in enumerate(labels):
+            if label is self:
+                return "#{0}".format(index)
+        return None
+
+################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
     def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None):
@@ -72,34 +89,6 @@ class Primitive(Schema):
         self.nullable = nullable
         self.data = data
         self.mask = mask
-
-    def __repr__(self):
-        args = [repr(self.dtype)]
-        if self.dims != ():
-            args.append("dims=" + repr(self.dims))
-        if self.nullable is not False:
-            args.append("nullable=" + repr(self.nullable))
-        if self.data is not None:
-            args.append("data=" + repr(self.data))
-        if self.mask is not None:
-            args.append("mask=" + repr(self.mask))
-        return "Primitive(" + ", ".join(args) + ")"
-
-    def __call__(self, prefix="object", delimiter="-"):
-        if self.data is None:
-            data = prefix
-        else:
-            data = self.data
-
-        if not self.nullable:
-            return type("PrimitiveType", (PrimitiveType,), {"data": data})
-
-        else:
-            if self.mask is None:
-                mask = prefix + delimiter + "M"
-            else:
-                mask = self.mask
-            return type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask})
 
     @property
     def dtype(self):
@@ -118,7 +107,7 @@ class Primitive(Schema):
     @dims.setter
     def dims(self, value):
         if not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value):
-            raise TypeError("dims must be a tuple of non-negative integers")
+            raise TypeError("dims must be a tuple of non-negative integers, not {0}".format(repr(value)))
         self._dims = value
 
     @property
@@ -128,8 +117,60 @@ class Primitive(Schema):
     @data.setter
     def data(self, value):
         if not (value is None or isinstance(value, basestring)):
-            raise TypeError("data must be None or an array name (string)")
+            raise TypeError("data must be None or an array name (string), not {0}".format(repr(value)))
         self._data = value
+
+    def __repr__(self, labels=None, shown=None):
+        if labels is None:
+            labels = self._labels()
+            shown = set()
+        label = self._label(labels)
+
+        if label is None or id(self) not in shown:
+            shown.add(id(self))
+
+            args = [repr(self.dtype)]
+            if self.dims != ():
+                args.append("dims=" + repr(self.dims))
+            if self.nullable is not False:
+                args.append("nullable=" + repr(self.nullable))
+            if self.data is not None:
+                args.append("data=" + repr(self.data))
+            if self.mask is not None:
+                args.append("mask=" + repr(self.mask))
+
+            if label is None:
+                return "Primitive(" + ", ".join(args) + ")"
+            else:
+                return label + ": Primitive(" + ", ".join(args) + ")"
+
+        else:
+            return label
+
+    def _collect(self, collection, labels):
+        if id(self) not in collection:
+            collection.add(id(self))
+        else:
+            labels.append(self)
+
+    def __call__(self, prefix="object", delimiter="-"):
+        if self.data is None:
+            data = prefix
+        else:
+            data = self.data
+
+        if not self.nullable:
+            return type("PrimitiveType", (PrimitiveType,), {"data": data})
+
+        else:
+            if self.mask is None:
+                mask = prefix + delimiter + "M"
+            else:
+                mask = self.mask
+
+            return type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask})
+
+################################################################ Lists may have arbitrary length
 
 class List(Schema):
     def __init__(self, contents, nullable=False, starts=None, stops=None, mask=None):
@@ -139,15 +180,69 @@ class List(Schema):
         self.stops = stops
         self.mask = mask
 
-    def __repr__(self):
-        args = [repr(self.contents)]
-        if self.starts is not None:
-            args.append("starts=" + repr(self.starts))
-        if self.stops is not None:
-            args.append("stops=" + repr(self.stops))
-        if self.mask is not None:
-            args.append("mask=" + repr(self.mask))
-        return "List(" + ", ".join(args) + ")"
+    @property
+    def contents(self):
+        return self._contents
+
+    @contents.setter
+    def contents(self, value):
+        if not isinstance(value, Schema):
+            raise TypeError("contents must be a Schema, not {0}".format(repr(value)))
+        self._contents = value
+
+    @property
+    def starts(self):
+        return self._starts
+
+    @starts.setter
+    def starts(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("starts must be None or an array name (string), not {0}".format(repr(value)))
+        self._starts = value
+
+    @property
+    def stops(self):
+        return self._stops
+
+    @stops.setter
+    def stops(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("stops must be None or an array name (string), not {0}".format(repr(value)))
+        self._stops = value
+
+    def __repr__(self, labels=None, shown=None):
+        if labels is None:
+            labels = self._labels()
+            shown = set()
+        label = self._label(labels)
+
+        if label is None or id(self) not in shown:
+            shown.add(id(self))
+
+            args = [self.contents.__repr__(labels, shown)]
+            if self.nullable is not False:
+                args.append("nullable=" + repr(self.nullable))
+            if self.starts is not None:
+                args.append("starts=" + repr(self.starts))
+            if self.stops is not None:
+                args.append("stops=" + repr(self.stops))
+            if self.mask is not None:
+                args.append("mask=" + repr(self.mask))
+
+            if label is None:
+                return "List(" + ", ".join(args) + ")"
+            else:
+                return label + ": List(" + ", ".join(args) + ")"
+
+        else:
+            return label
+
+    def _collect(self, collection, labels):
+        if id(self) not in collection:
+            collection.add(id(self))
+            self._contents._collect(collection, labels)
+        else:
+            labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
         if self.starts is None:
@@ -161,7 +256,7 @@ class List(Schema):
             stops = self.stops
 
         if not self.nullable:
-            return type("ListType", (ListType,), {"contents": self.contents(prefix + delimiter + "L"), "starts": starts, "stops": stops})
+            return type("ListType", (ListType,), {"contents": self.contents(prefix + delimiter + "C"), "starts": starts, "stops": stops})
 
         else:
             if self.mask is None:
@@ -169,34 +264,158 @@ class List(Schema):
             else:
                 mask = self.mask
 
-            return type("MaskedListType", (MaskedListType,), {"contents": self.contents(prefix + delimiter + "L"), "starts": starts, "stops": stops, "mask": mask})
+            return type("MaskedListType", (MaskedListType,), {"contents": self.contents(prefix + delimiter + "C"), "starts": starts, "stops": stops, "mask": mask})
+
+################################################################ Unions may be one of several types
+
+class Union(Schema):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None):
+        self.possibilities = possibilities
+        self.nullable = nullable
+        self.tags = tags
+        self.offsets = offsets
+        self.mask = mask
 
     @property
-    def contents(self):
-        return self._contents
+    def possibilities(self):
+        return tuple(self._possibilities)
 
-    @contents.setter
-    def contents(self, value):
+    @possibilities.setter
+    def possibilities(self, value):
+        self._extend(value, [])
+
+    def _extend(self, possibilities, start):
+        trial = []
+        try:
+            for i, x in enumerate(value):
+                assert isinstance(x, Schema), "possibilities must be an iterable of Schemas; item at {0} is {1}".format(i, x)
+                trial.append(x)
+        except TypeError:
+            raise TypeError("possibilities must be an iterable of Schemas, not {0}".format(repr(value)))
+        except AssertionError as err:
+            raise TypeError(err.message)
+        self._possibilities = start + trial
+
+    def append(self, possibility):
+        if not isinstance(possibility, Schema):
+            raise TypeError("possibilities must be Schemas, not {0}".format(repr(possibility)))
+        self._possibilities.append(possibility)
+
+    def insert(self, index, possibility):
+        if not isinstance(possibility, Schema):
+            raise TypeError("possibilities must be Schemas, not {0}".format(repr(possibility)))
+        self._possibilities.insert(index, possibility)
+
+    def extend(self, possibilities):
+        self._extend(possibilities, self._possibilities)
+
+    def __getitem__(self, index):
+        return self._possibilities[index]
+
+    def __setitem__(self, index, value):
         if not isinstance(value, Schema):
-            raise TypeError("contents must be a Schema")
-        self._contents = value
+            raise TypeError("possibilities must be Schemas, not {0}".format(repr(value)))
+        self._possibilities[index] = value
+
+    def __repr__(self, labels=None, shown=None):
+        if labels is None:
+            labels = self._labels()
+            shown = set()
+        label = self._label(labels)
+
+        if label is None or id(self) not in shown:
+            shown.add(id(self))
+
+            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self.possibilities) + "]"]
+            if self.nullable is not False:
+                args.append("nullable=" + repr(self.nullable))
+            if self.tags is not None:
+                args.append("tags=" + repr(self.tags))
+            if self.offsets is not None:
+                args.append("offsets=" + repr(self.offsets))
+            if self.mask is not None:
+                args.append("mask=" + repr(self.mask))
+
+            if label is None:
+                return "Union(" + ", ".join(args) + ")"
+            else:
+                return label + ": Union(" + ", ".join(args) + ")"
+
+        else:
+            return label
+
+    def _collect(self, collection, labels):
+        if id(self) not in collection:
+            collection.add(id(self))
+            for possibility in self._possibilities:
+                possibility._collect(collection, labels)
+        else:
+            labels.append(self)
+
+    def __call__(self, prefix="object", delimiter="-"):
+        if self.tags is None:
+            tags = prefix + delimiter + "T"
+        else:
+            tags = self.tags
+
+        if self.offsets is None:
+            offsets = prefix + delimiter + "O"
+        else:
+            offsets = self.offsets
+
+        if not self.nullable:
+            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self.possibilities], "tags": tags, "offsets": offsets})
+
+        else:
+            if self.mask is None:
+                mask = prefix + delimiter + "M"
+            else:
+                mask = self.mask
+
+            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self.possibilities], "tags": tags, "offsets": offsets, "mask": mask})
+
+################################################################ Records contain fields of known types
+
+class Record(Schema):
+    def __init__(self, fields, nullable=False, mask=None):
+        self.fields = fields
+        self.nullable = nullable
+        self.mask = mask
 
     @property
-    def starts(self):
-        return self._starts
+    def fields(self):
+        return dict(self._fields)
 
-    @starts.setter
-    def starts(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("starts must be None or an array name (string)")
-        self._starts = value
+    @fields.setter
+    def fields(self, value):
+        self._extend(value, [])
 
-    @property
-    def stops(self):
-        return self._stops
+    _identifier = re.compile("[a-zA-Z_][a-zA-Z_0-9]*")
 
-    @stops.setter
-    def stops(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("stops must be None or an array name (string)")
-        self._stops = value
+    def _extend(self, fields, start):
+        trial = []
+        try:
+            for n, x in fields.items():
+                assert isinstance(n, basestring) and self._identifier.match(n) is not None, "fields must be a dict from identifier strings to Schemas; the key {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern)
+                assert isinstance(x, Schema), "fields must be a dict from identifier strings to Schemas; the value at identifier {0} is {1}".format(repr(n), x)
+                trial.append((n, x))
+        except AttributeError:
+            raise TypeError("fields must be a dict from strings to Schemas; {0} is not a dict".format(repr(fields)))
+        except AssertionError as err:
+            raise TypeError(err.message)
+        self._fields = dict(start + trial)
+
+    def __getitem__(self, index):
+        return self._fields[index]
+
+    def __setitem__(self, index, value):
+        if not isinstance(value, Schema):
+            raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
+        
+
+    
+################################################################ Tuples are like records but with an order instead of field names
+
+
+################################################################ Pointers redirect to Lists with absolute addresses
+
