@@ -32,6 +32,31 @@ import re
 import sys
 import numbers
 from types import MethodType
+try:
+    from collections import OrderedDict
+except ImportError:
+    # simple OrderedDict implementation for Python 2.6
+    class OrderedDict(dict):
+        def __init__(self, items=(), **kwds):
+            items = list(items)
+            self._order = [k for k, v in items] + [k for k, v in kwds.items()]
+            super(OrderedDict, self).__init__(items)
+        def keys(self):
+            return self._order
+        def values(self):
+            return [self[k] for k in self._order]
+        def items(self):
+            return [(k, self[k]) for k in self._order]
+        def __setitem__(self, name, order):
+            if name not in self._order:
+                self._order.append(name)
+            super(OrderedDict, self).__setitem__(name, value)
+        def __delitem__(self, name):
+            if name in self._order:
+                self._order.remove(name)
+            super(OrderedDict, self).__delitem__(name)
+        def __repr__(self):
+            return "OrderedDict([{0}])".format(", ".join("({0}, {1})".format(repr(k), repr(v)) for k, v in self.items()))
 
 import numpy
 
@@ -129,15 +154,15 @@ class Primitive(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = [repr(self.dtype)]
-            if self.dims != ():
-                args.append("dims=" + repr(self.dims))
-            if self.nullable is not False:
-                args.append("nullable=" + repr(self.nullable))
-            if self.data is not None:
-                args.append("data=" + repr(self.data))
-            if self.mask is not None:
-                args.append("mask=" + repr(self.mask))
+            args = [repr(self._dtype)]
+            if self._dims != ():
+                args.append("dims=" + repr(self._dims))
+            if self._nullable is not False:
+                args.append("nullable=" + repr(self._nullable))
+            if self._data is not None:
+                args.append("data=" + repr(self._data))
+            if self._mask is not None:
+                args.append("mask=" + repr(self._mask))
 
             if label is None:
                 return "Primitive(" + ", ".join(args) + ")"
@@ -154,19 +179,19 @@ class Primitive(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        if self.data is None:
+        if self._data is None:
             data = prefix
         else:
-            data = self.data
+            data = self._data
 
-        if not self.nullable:
+        if not self._nullable:
             return type("PrimitiveType", (PrimitiveType,), {"data": data})
 
         else:
-            if self.mask is None:
+            if self._mask is None:
                 mask = prefix + delimiter + "M"
             else:
-                mask = self.mask
+                mask = self._mask
 
             return type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask})
 
@@ -219,15 +244,15 @@ class List(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = [self.contents.__repr__(labels, shown)]
-            if self.nullable is not False:
-                args.append("nullable=" + repr(self.nullable))
-            if self.starts is not None:
-                args.append("starts=" + repr(self.starts))
-            if self.stops is not None:
-                args.append("stops=" + repr(self.stops))
-            if self.mask is not None:
-                args.append("mask=" + repr(self.mask))
+            args = [self._contents.__repr__(labels, shown)]
+            if self._nullable is not False:
+                args.append("nullable=" + repr(self._nullable))
+            if self._starts is not None:
+                args.append("starts=" + repr(self._starts))
+            if self._stops is not None:
+                args.append("stops=" + repr(self._stops))
+            if self._mask is not None:
+                args.append("mask=" + repr(self._mask))
 
             if label is None:
                 return "List(" + ", ".join(args) + ")"
@@ -245,26 +270,26 @@ class List(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        if self.starts is None:
+        if self._starts is None:
             starts = prefix + delimiter + "B"
         else:
-            starts = self.starts
+            starts = self._starts
 
-        if self.stops is None:
+        if self._stops is None:
             stops = prefix + delimiter + "E"
         else:
-            stops = self.stops
+            stops = self._stops
 
-        if not self.nullable:
-            return type("ListType", (ListType,), {"contents": self.contents(prefix + delimiter + "C"), "starts": starts, "stops": stops})
+        if not self._nullable:
+            return type("ListType", (ListType,), {"contents": self._contents(prefix + delimiter + "C"), "starts": starts, "stops": stops})
 
         else:
-            if self.mask is None:
+            if self._mask is None:
                 mask = prefix + delimiter + "M"
             else:
-                mask = self.mask
+                mask = self._mask
 
-            return type("MaskedListType", (MaskedListType,), {"contents": self.contents(prefix + delimiter + "C"), "starts": starts, "stops": stops, "mask": mask})
+            return type("MaskedListType", (MaskedListType,), {"contents": self._contents(prefix + delimiter + "C"), "starts": starts, "stops": stops, "mask": mask})
 
 ################################################################ Unions may be one of several types
 
@@ -326,15 +351,15 @@ class Union(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self.possibilities) + "]"]
-            if self.nullable is not False:
-                args.append("nullable=" + repr(self.nullable))
-            if self.tags is not None:
-                args.append("tags=" + repr(self.tags))
-            if self.offsets is not None:
-                args.append("offsets=" + repr(self.offsets))
-            if self.mask is not None:
-                args.append("mask=" + repr(self.mask))
+            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self._possibilities) + "]"]
+            if self._nullable is not False:
+                args.append("nullable=" + repr(self._nullable))
+            if self._tags is not None:
+                args.append("tags=" + repr(self._tags))
+            if self._offsets is not None:
+                args.append("offsets=" + repr(self._offsets))
+            if self._mask is not None:
+                args.append("mask=" + repr(self._mask))
 
             if label is None:
                 return "Union(" + ", ".join(args) + ")"
@@ -353,26 +378,26 @@ class Union(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        if self.tags is None:
+        if self._tags is None:
             tags = prefix + delimiter + "T"
         else:
-            tags = self.tags
+            tags = self._tags
 
-        if self.offsets is None:
+        if self._offsets is None:
             offsets = prefix + delimiter + "O"
         else:
-            offsets = self.offsets
+            offsets = self._offsets
 
-        if not self.nullable:
-            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self.possibilities], "tags": tags, "offsets": offsets})
+        if not self._nullable:
+            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets})
 
         else:
-            if self.mask is None:
+            if self._mask is None:
                 mask = prefix + delimiter + "M"
             else:
-                mask = self.mask
+                mask = self._mask
 
-            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self.possibilities], "tags": tags, "offsets": offsets, "mask": mask})
+            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets, "mask": mask})
 
 ################################################################ Records contain fields of known types
 
@@ -403,7 +428,7 @@ class Record(Schema):
             raise TypeError("fields must be a dict from strings to Schemas; {0} is not a dict".format(repr(fields)))
         except AssertionError as err:
             raise TypeError(err.message)
-        self._fields = dict(start + trial)
+        self._fields = OrderedDict(start + trial)
 
     def __getitem__(self, index):
         return self._fields[index]
@@ -411,9 +436,22 @@ class Record(Schema):
     def __setitem__(self, index, value):
         if not isinstance(value, Schema):
             raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
-        
+        self._fields[index] = value
 
-    
+    def __repr__(self, labels=None, shown=None):
+        if labels is None:
+            labels = self._labels()
+            shown = set()
+        label = self._label(labels)
+
+        if label is None or id(self) not in shown:
+            shown.add(id(self))
+
+            args = ["{" + ", ".join( for n, x in self.HERE) + "}"]
+
+
+
+            
 ################################################################ Tuples are like records but with an order instead of field names
 
 
