@@ -35,29 +35,39 @@ import numpy
 if sys.version_info[0] > 2:
     xrange = range
 
-################################################################ Primitives have type objects, but no special proxies
+# superclass of all proxies
+class Proxy(object): pass
 
-class PrimitiveType(type):
+# mix-in for masked proxies
+class Masked(object):
     def __new__(cls, arrays, index=0):
-        return arrays[cls.data][index]
-
-class MaskedPrimitiveType(type):
-    def __new__(cls, arrays, index=0):
-        if arrays[cls.mask][index]:
+        if arrays[cls._mask][index]:
             return None
         else:
-            return arrays[cls.data][index]
+            return cls.__bases__[-1].__new__(cls, arrays, index=index)
 
-################################################################ Lists have proxies and type objects
+################################################################ Primitives
 
-class ListProxy(list):
+class PrimitiveProxy(Proxy):
+    def __new__(cls, arrays, index=0):
+        return arrays[cls._data][index]
+
+################################################################ Lists
+
+class ListProxy(list, Proxy):
     __slots__ = ["_arrays", "_start", "_stop", "_step"]
 
-    def __init__(self, arrays, start, stop, step):
-        self._arrays = arrays
-        self._start = start
-        self._stop = stop
-        self._step = step
+    def __new__(cls, arrays, index=0):
+        return cls._slice(arrays, arrays[cls._starts][index], arrays[cls._stops][index], 1)
+
+    @classmethod
+    def _slice(cls, arrays, start, stop, step):
+        out = Proxy.__new__(cls)
+        out._arrays = arrays
+        out._start = start
+        out._stop = stop
+        out._step = step
+        return out
 
     def __repr__(self):
         dots = ", ..." if len(self) > 4 else ""
@@ -85,17 +95,17 @@ class ListProxy(list):
             if step == 0:
                 raise ValueError("slice step cannot be zero")
             else:
-                return ListProxy(self._arrays, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                return self.__class__._slice(self._arrays, self._start + self._step*start, self._start + self._step*stop, self._step*step)
 
         else:
             lenself = len(self)
             normalindex = index if index >= 0 else index + lenself
             if not 0 <= normalindex < lenself:
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
-            return self._content(self._arrays, self._start + self._step*normalindex)
+            return self._content(self._arrays, index=(self._start + self._step*normalindex))
 
     def __iter__(self):
-        return (self._content(self._arrays, i) for i in xrange(self._start, self._stop, self._step))
+        return (self._content(self._arrays, index=i) for i in xrange(self._start, self._stop, self._step))
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
@@ -162,12 +172,13 @@ class ListProxy(list):
                 return True
         return False
 
-class AnonymousListProxy(ListProxy):
+# mix-in
+class AnonymousList(ListProxy):
     def __hash__(self):
-        return hash((AnonymousListProxy,) + tuple(self))
+        return hash((AnonymousList,) + tuple(self))
 
     def __eq__(self, other):
-        if isinstance(other, AnonymousListProxy):
+        if isinstance(other, AnonymousList):
             return list(self) == list(other)
         elif isinstance(other, list):
             return list(self) == other
@@ -175,50 +186,34 @@ class AnonymousListProxy(ListProxy):
             return False
 
     def __lt__(self, other):
-        if isinstance(other, AnonymousListProxy):
+        if isinstance(other, AnonymousList):
             return list(self) < list(other)
         elif isinstance(other, list):
             return list(self) < other
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
-class ListType(type):
+################################################################ Unions
+
+class UnionProxy(Proxy):
     def __new__(cls, arrays, index=0):
-        return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
+        tag = arrays[cls._tags][index]
+        return cls._possibilities[tag](arrays, cls._offsets[tag])
 
-class MaskedListType(type):
-    def __new__(cls, arrays, index=0):
-        if arrays[cls.mask][index]:
-            return None
-        else:
-            return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
+################################################################ Records
 
-################################################################ Unions have type objects, but no special proxies
-
-class UnionType(type):
-    def __new__(cls, arrays, index=0):
-        tag = arrays[cls.tags][index]
-        return cls.possibilities[tag](arrays, cls.offsets[tag])
-
-class MaskedUnionType(type):
-    def __new__(cls, arrays, index=0):
-        if arrays[cls.mask][index]:
-            return None
-        else:
-            tag = arrays[cls.tags][index]
-            return cls.possibilities[tag](arrays, cls.offsets[tag])
-
-################################################################ Records have proxies and type objects
-
-class RecordProxy(object):
+class RecordProxy(Proxy):
     __slots__ = ["_arrays", "_index"]
 
-    def __init__(self, arrays, index):
-        self._arrays = arrays
-        self._index = index
+    def __new__(cls, arrays, index=0):
+        out = Proxy.__new__(cls)
+        out._arrays = arrays
+        out._index = index
+        return out
 
     def __repr__(self):
-        return "<{0} at {1:012x}>".format(self.__class__.__name__, id(self))
+        name = self.__class__.__name__
+        return "<{0} at {1:012x}>".format("Anonymous ({0} fields)".format(len(self._fields)) if name == "" else name, id(self))
 
     def __hash__(self):
         return hash((RecordProxy, self.__class__.__name__) + self._fields + tuple(getattr(self, n) for n in self._fields))
@@ -237,25 +232,16 @@ class RecordProxy(object):
     def __gt__(self, other): return not self.__lt__(other) and not self.__eq__(other)
     def __ge__(self, other): return not self.__lt__(other)
 
-class RecordType(type):
-    def __new__(cls, arrays, index=0):
-        return cls.proxytype(arrays, index)
+################################################################ Tuples
 
-class MaskedRecordType(type):
-    def __new__(cls, arrays, index=0):
-        if arrays[cls.mask][index]:
-            return None
-        else:
-            return cls.proxytype(arrays, index)
-
-################################################################ Tuples have proxies and type objects
-
-class TupleProxy(tuple):
+class TupleProxy(tuple, Proxy):
     __slots__ = ["_arrays", "_index"]
 
-    def __init__(self, arrays, index):
-        self._arrays = arrays
-        self._index = index
+    def __new__(cls, arrays, index=0):
+        out = Proxy.__new__(cls)
+        out._arrays = arrays
+        out._index = index
+        return out
 
     def __repr__(self):
         return "(" + ", ".join(repr(x) for x in self) + ")"
@@ -328,12 +314,13 @@ class TupleProxy(tuple):
                 return True
         return False
 
-class AnonymousTupleProxy(TupleProxy):
+# mix-in
+class AnonymousTuple(object):
     def __hash__(self):
         return hash(tuple(self))
 
     def __eq__(self, other):
-        if isinstance(other, AnonymousTupleProxy):
+        if isinstance(other, AnonymousTuple):
             return tuple(self) == tuple(other)
         elif isinstance(other, tuple):
             return tuple(self) == other
@@ -341,33 +328,15 @@ class AnonymousTupleProxy(TupleProxy):
             return False
 
     def __lt__(self, other):
-        if isinstance(other, AnonymousTupleProxy):
+        if isinstance(other, AnonymousTuple):
             return tuple(self) < tuple(other)
         elif isinstance(other, tuple):
             return tuple(self) < other
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
-class TupleType(type):
-    def __new__(cls, arrays, index=0):
-        return cls.proxytype(arrays, index)
+################################################################ Pointers
 
-class MaskedTupleType(type):
+class PointerProxy(Proxy):
     def __new__(cls, arrays, index=0):
-        if arrays[cls.mask][index]:
-            return None
-        else:
-            return cls.proxytype(arrays, index)
-
-################################################################ Pointers have type objects, but no special proxies
-
-class PointerType(type):
-    def __new__(cls, arrays, index=0):
-        return cls.target(arrays, arrays[cls.indexes][index])
-
-class MaskedPointerType(type):
-    def __new__(cls, arrays, index=0):
-        if arrays[cls.mask][index]:
-            return None
-        else:
-            return cls.target(arrays, arrays[cls.indexes][index])
+        return cls._target(arrays, arrays[cls._positions][index])
