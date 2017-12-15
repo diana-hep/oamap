@@ -36,13 +36,12 @@ class TestProxy(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_primitive(self):
+    def test_Primitive(self):
         self.assertEqual(Primitive("f8")()({"object": [3.14]}), 3.14)
         self.assertEqual(Primitive("f8")()({"object": [[[1, 2], [3, 4]]]}), [[1, 2], [3, 4]])
         self.assertEqual(Primitive("f8", nullable=True)()({"object": [3.14], "object-M": [True]}), None)
         self.assertEqual(Primitive("f8", dims=(2, 2), nullable=True)()({"object": [3.14], "object-M": [False]}), 3.14)
 
-    def test_list(self):
+    def test_List(self):
         self.assertEqual(List(Primitive("f8"))()({"object-B": [0], "object-E": [5], "object-L": [1.1, 2.2, 3.3, 4.4, 5.5]}), [1.1, 2.2, 3.3, 4.4, 5.5])
-
-
+        self.assertEqual(List(List(Primitive("f8")))()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5]}), [[1.1, 2.2], [], [3.3, 4.4, 5.5]])

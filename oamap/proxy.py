@@ -44,7 +44,7 @@ class Masked(object):
         if arrays[cls._mask][index]:
             return None
         else:
-            return cls.__bases__[-1].__new__(cls, arrays, index=index)
+            return cls.__bases__[1].__new__(cls, arrays, index=index)
 
 ################################################################ Primitives
 
@@ -54,7 +54,7 @@ class PrimitiveProxy(Proxy):
 
 ################################################################ Lists
 
-class ListProxy(list, Proxy):
+class ListProxy(Proxy):
     __slots__ = ["_arrays", "_start", "_stop", "_step"]
 
     def __new__(cls, arrays, index=0):
@@ -62,7 +62,7 @@ class ListProxy(list, Proxy):
 
     @classmethod
     def _slice(cls, arrays, start, stop, step):
-        out = list.__new__(cls)
+        out = Proxy.__new__(cls)
         out._arrays = arrays
         out._start = start
         out._stop = stop
@@ -221,9 +221,11 @@ class RecordProxy(Proxy):
 
 ################################################################ Tuples
 
-class TupleProxy(tuple, Proxy):
+class TupleProxy(Proxy):
+    __slots__ = ["_arrays", "_index"]
+
     def __new__(cls, arrays, index=0):
-        out = tuple.__new__(cls)
+        out = Proxy.__new__(cls)
         out._arrays = arrays
         out._index = index
         return out
