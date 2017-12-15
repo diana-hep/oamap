@@ -156,3 +156,52 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[2].x, 2)
         self.assertEqual(x[2].y, 2.2)
         self.assertEqual(x[3], 98)
+
+    def test_Tuple(self):
+        x = Tuple((Primitive("i8"), Primitive("f8")))()({"object-T0": [3], "object-T1": [3.14]})
+        self.assertEqual(x[0], 3)
+        self.assertEqual(x[1], 3.14)
+
+        x = List(Tuple((Primitive("i8"), Primitive("f8"))))()({"object-B": [0], "object-E": [3], "object-L-T0": [1, 2, 3], "object-L-T1": [1.1, 2.2, 3.3]})
+        self.assertEqual(x[0][0], 1)
+        self.assertEqual(x[1][0], 2)
+        self.assertEqual(x[2][0], 3)
+        self.assertEqual(x[0][1], 1.1)
+        self.assertEqual(x[1][1], 2.2)
+        self.assertEqual(x[2][1], 3.3)
+
+        x = List(Tuple((Primitive("i8"), Primitive("f8", nullable=True))))()({"object-B": [0], "object-E": [3], "object-L-T0": [1, 2, 3], "object-L-T1": [1.1, 2.2, 3.3], "object-L-T1-M": [True, False, True]})
+        self.assertEqual(x[0][0], 1)
+        self.assertEqual(x[1][0], 2)
+        self.assertEqual(x[2][0], 3)
+        self.assertEqual(x[0][1], None)
+        self.assertEqual(x[1][1], 2.2)
+        self.assertEqual(x[2][1], None)
+
+        x = List(Tuple((Primitive("i8"), Primitive("f8")), nullable=True))()({"object-B": [0], "object-E": [3], "object-L-M": [False, True, False], "object-L-T0": [1, 2, 3], "object-L-T1": [1.1, 2.2, 3.3]})
+        self.assertEqual(x[0][0], 1)
+        self.assertEqual(x[1], None)
+        self.assertEqual(x[2][0], 3)
+        self.assertEqual(x[0][1], 1.1)
+        self.assertEqual(x[1], None)
+        self.assertEqual(x[2][1], 3.3)
+
+        x = Tuple((Primitive("i8"), List(Primitive("f8"))))()({"object-T0": [3], "object-T1-B": [0], "object-T1-E": [3], "object-T1-L": [1.1, 2.2, 3.3]})
+        self.assertEqual(x[0], 3)
+        self.assertEqual(x[1], [1.1, 2.2, 3.3])
+
+        x = Tuple((Primitive("i8"), Union([Primitive("i8"), Primitive("f8")])))()({"object-T0": [3], "object-T1-G": [0], "object-T1-O": [0], "object-T1-U0": [1], "object-T1-U1": [1.1]})
+        self.assertEqual(x[0], 3)
+        self.assertEqual(x[1], 1)
+
+        x = Tuple((Primitive("i8"), List(Union([Primitive("i8"), Primitive("f8")]))))()({"object-T0": [3], "object-T1-B": [0], "object-T1-E": [3], "object-T1-L-G": [0, 1, 1], "object-T1-L-O": [0, 0, 1], "object-T1-L-U0": [1], "object-T1-L-U1": [1.1, 2.2]})
+        self.assertEqual(x[0], 3)
+        self.assertEqual(x[1], [1, 1.1, 2.2])
+
+        x = List(Union([Primitive("i8"), Tuple((Primitive("i8"), Primitive("f8")))]))()({"object-B": [0], "object-E": [4], "object-L-G": [0, 1, 1, 0], "object-L-O": [0, 0, 1, 1], "object-L-U0": [99, 98], "object-L-U1-T0": [1, 2], "object-L-U1-T1": [1.1, 2.2]})
+        self.assertEqual(x[0], 99)
+        self.assertEqual(x[1][0], 1)
+        self.assertEqual(x[1][1], 1.1)
+        self.assertEqual(x[2][0], 2)
+        self.assertEqual(x[2][1], 2.2)
+        self.assertEqual(x[3], 98)

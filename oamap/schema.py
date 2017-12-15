@@ -594,11 +594,11 @@ class Tuple(Schema):
     def _extend(self, types, start):
         trial = []
         try:
-            for i, x in enumerate(value):
+            for i, x in enumerate(types):
                 assert isinstance(x, Schema), "types must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
                 trial.append(x)
         except TypeError:
-            raise TypeError("types must be an iterable of Schemas, not {0}".format(repr(value)))
+            raise TypeError("types must be an iterable of Schemas, not {0}".format(repr(types)))
         except AssertionError as err:
             raise TypeError(err.message)
         self._types = start + trial
