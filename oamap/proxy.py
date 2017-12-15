@@ -109,16 +109,23 @@ class ListProxy(list, Proxy):
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
-        return hash((ListProxy, self.__class__.__name__) + tuple(self))
+        return hash((ListProxy,) + tuple(self))
 
     def __eq__(self, other):
-        return isinstance(other, ListProxy) and self.__class__.__name__ == other.__class__.__name__ and len(self) == len(other) and all(x == y for x, y in zip(self, other))
+        if isinstance(other, ListProxy):
+            return list(self) == list(other)
+        elif isinstance(other, list):
+            return list(self) == other
+        else:
+            return False
 
     def __lt__(self, other):
-        if isinstance(other, ListProxy) and self.__class__.__name__ == other.__class__.__name__:
+        if isinstance(other, ListProxy):
             return list(self) < list(other)
+        elif isinstance(other, list):
+            return list(self) < other
         else:
-            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+            raise TypeError("unorderable types: list() < {1}()".format(other.__class__))
 
     # all of the following either prohibit normal list functionality (because ListProxy is immutable) or emulate it using the overloaded methods above
 
@@ -172,27 +179,6 @@ class ListProxy(list, Proxy):
                 return True
         return False
 
-# mix-in
-class AnonymousList(object):
-    def __hash__(self):
-        return hash((AnonymousList,) + tuple(self))
-
-    def __eq__(self, other):
-        if isinstance(other, AnonymousList):
-            return list(self) == list(other)
-        elif isinstance(other, list):
-            return list(self) == other
-        else:
-            return False
-
-    def __lt__(self, other):
-        if isinstance(other, AnonymousList):
-            return list(self) < list(other)
-        elif isinstance(other, list):
-            return list(self) < other
-        else:
-            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
-
 ################################################################ Unions
 
 class UnionProxy(Proxy):
@@ -225,7 +211,8 @@ class RecordProxy(Proxy):
         if isinstance(other, RecordProxy) and self.__class__.__name__ == other.__class__.__name__ and self._fields == other._fields:
             return [getattr(self, n) for n in self._fields] < [getattr(other, n) for n in self._fields]
         else:
-            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+            name = self.__class__.__name__
+            raise TypeError("unorderable types: {0}() < {1}()".format(repr("type <'Anonymous ({0} fields)'>".format(len(self._fields))) if name == "" else self.__class__, other.__class__))
 
     def __ne__(self, other): return not self.__eq__(other)
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
@@ -266,16 +253,23 @@ class TupleProxy(tuple, Proxy):
         return (t(self._arrays, self._index) for t in self._types)
 
     def __hash__(self):
-        return hash((TupleProxy, self.__class__.__name__, len(self)) + tuple(self))
+        return hash(tuple(self))
 
     def __eq__(self, other):
-        return isinstance(other, TupleProxy) and self.__class__.__name__ == other.__class__.__name__ and len(self._types) == len(other._types) and all(x == y for x, y in zip(self, other))
+        if isinstance(other, TupleProxy):
+            return tuple(self) == tuple(other)
+        elif isinstance(other, tuple):
+            return tuple(self) == other
+        else:
+            return False
 
     def __lt__(self, other):
-        if isinstance(other, TupleProxy) and self.__class__.__name__ == other.__class__.__name__:
+        if isinstance(other, TupleProxy):
             return tuple(self) < tuple(other)
+        elif isinstance(other, tuple):
+            return tuple(self) < other
         else:
-            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+            raise TypeError("unorderable types: tuple() < {1}()".format(other.__class__))
 
     # all of the following emulate normal tuple functionality using the overloaded methods above
 
@@ -311,27 +305,6 @@ class TupleProxy(tuple, Proxy):
             if x == value:
                 return True
         return False
-
-# mix-in
-class AnonymousTuple(object):
-    def __hash__(self):
-        return hash(tuple(self))
-
-    def __eq__(self, other):
-        if isinstance(other, AnonymousTuple):
-            return tuple(self) == tuple(other)
-        elif isinstance(other, tuple):
-            return tuple(self) == other
-        else:
-            return False
-
-    def __lt__(self, other):
-        if isinstance(other, AnonymousTuple):
-            return tuple(self) < tuple(other)
-        elif isinstance(other, tuple):
-            return tuple(self) < other
-        else:
-            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
 ################################################################ Pointers
 

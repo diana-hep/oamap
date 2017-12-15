@@ -323,9 +323,6 @@ class List(Schema):
 
         attributes["_content"] = self._content._totype(prefix + delimiter + "L", delimiter, memo)
 
-        if self._name is None:
-            bases.insert(0, oamap.proxy.AnonymousList)
-
         if self._nullable:
             bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
@@ -647,9 +644,6 @@ class Tuple(Schema):
         attributes = {}
         
         attributes["_types"] = tuple(x._totype(prefix + delimiter + "T" + repr(i), delimiter, memo) for i, x in enumerate(self._types))
-
-        if self._name is None:
-            bases.insert(0, oamap.proxy.AnonymousTuple)
 
         if self._nullable:
             bases.insert(0, oamap.proxy.Masked)
