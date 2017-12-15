@@ -352,14 +352,34 @@ class Union(Schema):
     def possibilities(self, value):
         self._extend(value, [])
 
+    @property
+    def tags(self):
+        return self._tags
+
+    @tags.setter
+    def tags(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("tags must be None or an array name (string), not {0}".format(repr(value)))
+        self._tags = value
+
+    @property
+    def offsets(self):
+        return self._offsets
+
+    @offsets.setter
+    def offsets(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("offsets must be None or an array name (string), not {0}".format(repr(value)))
+        self._offsets = value
+
     def _extend(self, possibilities, start):
         trial = []
         try:
-            for i, x in enumerate(value):
+            for i, x in enumerate(possibilities):
                 assert isinstance(x, Schema), "possibilities must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
                 trial.append(x)
         except TypeError:
-            raise TypeError("possibilities must be an iterable of Schemas, not {0}".format(repr(value)))
+            raise TypeError("possibilities must be an iterable of Schemas, not {0}".format(repr(possibilities)))
         except AssertionError as err:
             raise TypeError(err.message)
         self._possibilities = start + trial

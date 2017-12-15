@@ -127,26 +127,12 @@ class ListProxy(Proxy):
         else:
             raise TypeError("unorderable types: list() < {1}()".format(other.__class__))
 
-    # all of the following either prohibit normal list functionality (because ListProxy is immutable) or emulate it using the overloaded methods above
+    # all of the following emulate normal list functionality using the overloaded methods above
 
     def __ne__(self, other): return not self.__eq__(other)
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
     def __gt__(self, other): return not self.__lt__(other) and not self.__eq__(other)
     def __ge__(self, other): return not self.__lt__(other)
-
-    def append(self, *args, **kwds):       raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def __delitem__(self, *args, **kwds):  raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def __delslice__(self, *args, **kwds): raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def extend(self, *args, **kwds):       raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def __iadd__(self, *args, **kwds):     raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def __imul__(self, *args, **kwds):     raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def insert(self, *args, **kwds):       raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def pop(self, *args, **kwds):          raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def remove(self, *args, **kwds):       raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def reverse(self, *args, **kwds):      raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def __setitem__(self, *args, **kwds):  raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def __setslice__(self, *args, **kwds): raise TypeError("ListProxy is immutable (cannot be changed in-place)")
-    def sort(self, *args, **kwds):         raise TypeError("ListProxy is immutable (cannot be changed in-place)")
 
     def __add__(self, other): return list(self) + list(other)
     def __mul__(self, reps): return list(self) * reps
@@ -184,7 +170,7 @@ class ListProxy(Proxy):
 class UnionProxy(Proxy):
     def __new__(cls, arrays, index=0):
         tag = arrays[cls._tags][index]
-        return cls._possibilities[tag](arrays, cls._offsets[tag])
+        return cls._possibilities[tag](arrays, arrays[cls._offsets][index])
 
 ################################################################ Records
 
