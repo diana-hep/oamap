@@ -212,6 +212,9 @@ class TestProxy(unittest.TestCase):
         tree = Pointer(None)
         tree.target = List(tree)
         self.assertEqual(tree()({"object-P": [0], "object-X-B": [0], "object-X-E": [0], "object-X-L-P": []}), [])
+
+        print tree()({"object-P": [0], "object-X-B": [0], "object-X-E": [1], "object-X-L-P": [0]})
+
         self.assertEqual(tree()({"object-P": [0, 1], "object-X-B": [0, 1], "object-X-E": [1, 1], "object-X-L-P": [1]}), [[]])
         self.assertEqual(tree()({"object-P": [0, 1], "object-X-B": [0, 2], "object-X-E": [2, 2], "object-X-L-P": [1, 1]}), [[], []])
 

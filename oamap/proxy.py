@@ -69,9 +69,21 @@ class ListProxy(Proxy):
         out._step = step
         return out
 
-    def __repr__(self):
-        dots = ", ..." if len(self) > 4 else ""
-        return "[{0}{1}]".format(", ".join([repr(x) for x in self[:4]]), dots)
+    def __repr__(self, memo=None):
+        if memo is None:
+            memo = set()
+        key = (self._starts, self._stops, self._start, self._stop, self._step)
+        if key in memo:
+            return "[...]"
+        memo.add(key)
+        if len(self) > 10:
+            before = self[:5]
+            after = self[-5:]
+            return "[{0}, ..., {1}".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in before),
+                                           ", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in after))
+        else:
+            contents = list(self)
+            return "[{0}]".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in contents))
 
     def __len__(self):
         return (self._stop - self._start) // self._step
@@ -185,7 +197,7 @@ class RecordProxy(Proxy):
 
     def __repr__(self):
         name = self.__class__.__name__
-        return "<{0} at {1:012x}>".format("Anonymous ({0} fields)".format(len(self._fields)) if name == "" else name, id(self))
+        return "<{0} at index {1}>".format("Record" if name == "" else name, self._index)
 
     def __hash__(self):
         return hash((RecordProxy, self.__class__.__name__) + self._fields + tuple(getattr(self, n) for n in self._fields))
@@ -216,8 +228,15 @@ class TupleProxy(Proxy):
         out._index = index
         return out
 
-    def __repr__(self):
-        return "(" + ", ".join(repr(x) for x in self) + ")"
+    def __repr__(self, memo=None):
+        if memo is None:
+            memo = set()
+        key = (self._index,) + tuple(id(x) for x in self._types)
+        if key in memo:
+            return "(...)"
+        memo.add(key)
+        contents = list(self)
+        return "({0}{1})".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in contents), "," if len(self) == 1 else "")
 
     def __len__(self):
         return len(self._types)
