@@ -65,10 +65,9 @@ class MaskedPrimitiveType(type):
 ################################################################ Lists have proxies and type objects
 
 class ListProxy(list):
-    __slots__ = ["_contents", "_arrays", "_start", "_stop", "_step"]
+    __slots__ = ["_arrays", "_start", "_stop", "_step"]
 
-    def __init__(self, contents, arrays, start, stop, step):
-        self._contents = contents
+    def __init__(self, arrays, start, stop, step):
         self._arrays = arrays
         self._start = start
         self._stop = stop
@@ -83,11 +82,6 @@ class ListProxy(list):
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
-        lenself = len(self)
-        if start < 0:
-            start += lenself
-        if stop < 0:
-            stop += lenself
         return self.__getitem__(slice(start, stop))
 
     def __getitem__(self, index):
@@ -105,23 +99,37 @@ class ListProxy(list):
             if step == 0:
                 raise ValueError("slice step cannot be zero")
             else:
-                return ListProxy(self._contents, self._arrays, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                return ListProxy(self._arrays, self._start + self._step*start, self._start + self._step*stop, self._step*step)
 
         else:
             lenself = len(self)
             normalindex = index if index >= 0 else index + lenself
             if not 0 <= normalindex < lenself:
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
-            return self._contents(self._arrays, self._start + self._step*normalindex)
+            return self._content(self._arrays, self._start + self._step*normalindex)
 
     def __iter__(self):
-        return (self._contents(self._arrays, i) for i in xrange(self._start, self._stop, self._step))
+        return (self._content(self._arrays, i) for i in xrange(self._start, self._stop, self._step))
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
-        return hash(tuple(self))
+        return hash((ListProxy, self.__class__.__name__) + tuple(self))
+
+    def __eq__(self, other):
+        return isinstance(other, ListProxy) and self.__class__.__name__ == other.__class__.__name__ and len(self) == len(other) and all(x == y for x, y in zip(self, other))
+
+    def __lt__(self, other):
+        if isinstance(other, ListProxy) and self.__class__.__name__ == other.__class__.__name__:
+            return list(self) < list(other)
+        else:
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
     # all of the following either prohibit normal list functionality (because ListProxy is immutable) or emulate it using the overloaded methods above
+
+    def __ne__(self, other): return not self.__eq__(other)
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other): return not self.__lt__(other) and not self.__eq__(other)
+    def __ge__(self, other): return not self.__lt__(other)
 
     def append(self, *args, **kwds):       raise TypeError("ListProxy is immutable (cannot be changed in-place)")
     def __delitem__(self, *args, **kwds):  raise TypeError("ListProxy is immutable (cannot be changed in-place)")
@@ -168,30 +176,30 @@ class ListProxy(list):
                 return True
         return False
 
+class AnonymousListProxy(ListProxy):
+    def __hash__(self):
+        return hash((AnonymousListProxy,) + tuple(self))
+
     def __eq__(self, other):
-        return isinstance(other, list) and len(self) == len(other) and all(x == y for x, y in zip(self, other))
+        if isinstance(other, AnonymousListProxy):
+            return list(self) == list(other)
+        elif isinstance(other, list):
+            return list(self) == other
+        else:
+            return False
 
     def __lt__(self, other):
-        if isinstance(other, ListProxy):
+        if isinstance(other, AnonymousListProxy):
             return list(self) < list(other)
         elif isinstance(other, list):
             return list(self) < other
         else:
             raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
 
-    def __ne__(self, other): return not self.__eq__(other)
-    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
-    def __gt__(self, other):
-        if isinstance(other, ListProxy):
-            return list(self) > list(other)
-        else:
-            return list(self) > other
-    def __ge__(self, other): return self.__gt__(other) or self.__eq__(other)
-
 class ListType(type):
     def __new__(cls, arrays, index=0):
         try:
-            return ListProxy(cls.contents, arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
+            return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
 
         except KeyError as err:
             raise KeyError("could not find ListType start {0} and stop {1} in array namespace".format(repr(cls.start), repr(cls.stop)))
@@ -205,7 +213,7 @@ class MaskedListType(type):
             if arrays[cls.mask][index]:
                 return None
             else:
-                return ListProxy(cls.contents, arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
+                return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
 
         except KeyError as err:
             raise KeyError("could not find MaskedListType start {0}, stop {1}, and mask {2} in array namespace".format(repr(cls.start), repr(cls.stop), repr(cls.mask)))
@@ -215,8 +223,206 @@ class MaskedListType(type):
 
 ################################################################ Unions have type objects, but no special proxies
 
+class UnionType(type):
+    def __new__(cls, arrays, index=0):
+        try:
+            tag = arrays[cls.tags][index]
+            return cls.possibilities[tag](arrays, cls.offsets[tag])
 
+        except KeyError as err:
+            raise KeyError("could not find UnionType tags {0} and offsets {1} in array namespace".format(repr(cls.tags), repr(cls.offsets)))
+
+        except IndexError as err:
+            raise IndexError(err.message + " when instantiating UnionType from tags {0} and offsets {1}".format(repr(cls.tags), repr(cls.offsets)))
+
+class MaskedUnionType(type):
+    def __new__(cls, arrays, index=0):
+        try:
+            if arrays[cls.mask][index]:
+                return None
+            else:
+                tag = arrays[cls.tags][index]
+                return cls.possibilities[tag](arrays, cls.offsets[tag])
+
+        except KeyError as err:
+            raise KeyError("could not find MaskedUnionType tags {0}, offsets {1}, and mask {2} in array namespace".format(repr(cls.tags), repr(cls.offsets), repr(cls.mask)))
+
+        except IndexError as err:
+            raise IndexError(err.message + " when instantiating MaskedUnionType from tags {0}, offsets {1}, and mask {2}".format(repr(cls.tags), repr(cls.offsets), repr(cls.mask)))
 
 ################################################################ Records have proxies and type objects
 
+class RecordProxy(object):
+    __slots__ = ["_arrays", "_index"]
 
+    def __init__(self, arrays, index):
+        self._arrays = arrays
+        self._index = index
+
+    def __repr__(self):
+        return "<{0} at {1:012x}>".format(self.__class__.__name__, id(self))
+
+    def __hash__(self):
+        return hash((RecordProxy, self.__class__.__name__) + self._fields + tuple(getattr(self, n) for n in self._fields))
+
+    def __eq__(self, other):
+        return isinstance(other, RecordProxy) and self.__class__.__name__ == other.__class__.__name__ and self._fields == other._fields and all(getattr(self, n) == getattr(other, n) for n in self._fields)
+
+    def __lt__(self, other):
+        if isinstance(other, RecordProxy) and self.__class__.__name__ == other.__class__.__name__ and self._fields == other._fields:
+            return [getattr(self, n) for n in self._fields] < [getattr(other, n) for n in self._fields]
+        else:
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+
+    def __ne__(self, other): return not self.__eq__(other)
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other): return not self.__lt__(other) and not self.__eq__(other)
+    def __ge__(self, other): return not self.__lt__(other)
+
+class RecordType(type):
+    def __new__(cls, arrays, index=0):
+        return cls.proxytype(arrays, index)
+
+class MaskedRecordType(type):
+    def __new__(cls, arrays, index=0):
+        try:
+            if arrays[cls.mask][index]:
+                return None
+            else:
+                return cls.proxytype(arrays, index)
+
+        except KeyError as err:
+            raise KeyError("could not find MaskedRecordType mask {0} in array namespace".format(repr(cls.mask)))
+
+        except IndexError as err:
+            raise IndexError(err.message + " when instantiating MaskedRecordType from mask {0}".format(repr(cls.mask)))
+
+################################################################ Tuples have proxies and type objects
+
+class TupleProxy(tuple):
+    __slots__ = ["_arrays", "_index"]
+
+    def __init__(self, arrays, index):
+        self._arrays = arrays
+        self._index = index
+
+    def __repr__(self):
+        return "(" + ", ".join(repr(x) for x in self) + ")"
+
+    def __len__(self):
+        return len(self._types)
+
+    def __getslice__(self, start, stop):
+        # for old-Python compatibility
+        return self.__getitem__(slice(start, stop))
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            lenself = len(self)
+            start = 0       if index.start is None else index.start
+            stop  = lenself if index.stop  is None else index.stop
+            step  = 1       if index.step  is None else index.step
+            return tuple(self[i] for i in range(start, stop, step))
+
+        else:
+            return self._types[index](self._arrays, self._index)
+
+    def __iter__(self):
+        return (t(self._arrays, self._index) for t in self._types)
+
+    def __hash__(self):
+        return hash((TupleProxy, self.__class__.__name__, len(self)) + tuple(self))
+
+    def __eq__(self, other):
+        return isinstance(other, TupleProxy) and self.__class__.__name__ == other.__class__.__name__ and len(self._types) == len(other._types) and all(x == y for x, y in zip(self, other))
+
+    def __lt__(self, other):
+        if isinstance(other, TupleProxy) and self.__class__.__name__ == other.__class__.__name__:
+            return tuple(self) < tuple(other)
+        else:
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+
+    # all of the following emulate normal tuple functionality using the overloaded methods above
+
+    def __ne__(self, other): return not self.__eq__(other)
+    def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
+    def __gt__(self, other): return not self.__lt__(other) and not self.__eq__(other)
+    def __ge__(self, other): return not self.__lt__(other)
+
+    def __add__(self, other): return tuple(self) + tuple(other)
+    def __mul__(self, reps): return tuple(self) * reps
+    def __rmul__(self, reps): return reps * tuple(self)
+    def __reversed__(self):
+        return (self[i - 1] for i in range(len(self), 0, -1))
+    def count(self, value): return sum(1 for x in self if x == value)
+    def index(self, value, *args):
+        if len(args) == 0:
+            start = 0
+            stop = len(self)
+        elif len(args) == 1:
+            start = args[0]
+            stop = len(self)
+        elif len(args) == 2:
+            start, stop = args
+        else:
+            raise TypeError("index() takes at most 3 arguments ({0} given)".format(1 + len(args)))
+        for i, x in enumerate(self):
+            if x == value:
+                return i
+        raise ValueError("{0} is not in list".format(value))
+
+    def __contains__(self, value):
+        for x in self:
+            if x == value:
+                return True
+        return False
+
+class AnonymousTupleProxy(TupleProxy):
+    def __hash__(self):
+        return hash(tuple(self))
+
+    def __eq__(self, other):
+        if isinstance(other, AnonymousTupleProxy):
+            return tuple(self) == tuple(other)
+        elif isinstance(other, tuple):
+            return tuple(self) == other
+        else:
+            return False
+
+    def __lt__(self, other):
+        if isinstance(other, AnonymousTupleProxy):
+            return tuple(self) < tuple(other)
+        elif isinstance(other, tuple):
+            return tuple(self) < other
+        else:
+            raise TypeError("unorderable types: {0} < {1}".format(self.__class__, other.__class__))
+
+class TupleType(type):
+    def __new__(cls, arrays, index=0):
+        return cls.proxytype(arrays, index)
+
+class MaskedTupleType(type):
+    def __new__(cls, arrays, index=0):
+        try:
+            if arrays[cls.mask][index]:
+                return None
+            else:
+                return cls.proxytype(arrays, index)
+
+        except KeyError as err:
+            raise KeyError("could not find MaskedTupleType mask {0} in array namespace".format(repr(cls.mask)))
+
+        except IndexError as err:
+            raise IndexError(err.message + " when instantiating MaskedTupleType from mask {0}".format(repr(cls.mask)))
+
+################################################################ Pointers have type objects, but no special proxies
+
+class PointerType(type):
+    def __new__(cls, arrays, index=0):
+        try:
+            return cls.target(arrays, arrays[cls.positions][index])
+
+        except:
+            HERE
+
+masked

@@ -60,10 +60,7 @@ except ImportError:
 
 import numpy
 
-from oamap.proxy import PrimitiveType
-from oamap.proxy import MaskedPrimitiveType
-from oamap.proxy import ListType
-from oamap.proxy import MaskedListType
+from oamap.proxy import *
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -94,6 +91,16 @@ class Schema(object):
             raise TypeError("mask must be None or an array name (string), not {0}".format(repr(value)))
         self._mask = value
 
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("name must be None or a string, not {0}".format(repr(value)))
+        self._name = value
+
     def _labels(self):
         labels = []
         self._collect(set(), labels)
@@ -108,12 +115,13 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None):
+    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, name=None):
         self.dtype = dtype
         self.dims = dims
         self.nullable = nullable
         self.data = data
         self.mask = mask
+        self.name = name
 
     @property
     def dtype(self):
@@ -185,7 +193,7 @@ class Primitive(Schema):
             data = self._data
 
         if not self._nullable:
-            return type("PrimitiveType", (PrimitiveType,), {"data": data})
+            return type("PrimitiveType", (PrimitiveType,), {"data": data, "name": self._name})
 
         else:
             if self._mask is None:
@@ -193,17 +201,18 @@ class Primitive(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask})
+            return type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask, "name": self._name})
 
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, name=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
         self.stops = stops
         self.mask = mask
+        self.name = name
 
     @property
     def content(self):
@@ -280,8 +289,13 @@ class List(Schema):
         else:
             stops = self._stops
 
+        if self._name is None:
+            proxytype = type("AnonymousList", (AnonymousListProxy,), {"_content": self._content(prefix + delimiter + "C")})
+        else:
+            proxytype = type(self._name, (ListProxy,), {"_content": self._content(prefix + delimiter + "C")})
+
         if not self._nullable:
-            return type("ListType", (ListType,), {"content": self._content(prefix + delimiter + "C"), "starts": starts, "stops": stops})
+            return type("ListType", (ListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "name": self._name})
 
         else:
             if self._mask is None:
@@ -289,17 +303,18 @@ class List(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedListType", (MaskedListType,), {"content": self._content(prefix + delimiter + "C"), "starts": starts, "stops": stops, "mask": mask})
+            return type("MaskedListType", (MaskedListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "mask": mask, "name": self._name})
 
 ################################################################ Unions may be one of several types
 
 class Union(Schema):
-    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, name=None):
         self.possibilities = possibilities
         self.nullable = nullable
         self.tags = tags
         self.offsets = offsets
         self.mask = mask
+        self.name = name
 
     @property
     def possibilities(self):
@@ -389,7 +404,7 @@ class Union(Schema):
             offsets = self._offsets
 
         if not self._nullable:
-            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets})
+            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets, "name": self._name})
 
         else:
             if self._mask is None:
@@ -397,15 +412,16 @@ class Union(Schema):
             else:
                 mask = self._mask
 
-            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets, "mask": mask})
+            return type("MaskedUnionType", (MaskedUnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets, "mask": mask, "name": self._name})
 
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
-    def __init__(self, fields, nullable=False, mask=None):
+    def __init__(self, fields, nullable=False, mask=None, name=None):
         self.fields = fields
         self.nullable = nullable
         self.mask = mask
+        self.name = name
 
     @property
     def fields(self):
@@ -470,15 +486,32 @@ class Record(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        raise NotImplementedError
+        def wrap_for_python_scope(t):
+            return lambda self: t(self._arrays, self._index)
+
+        fields = tuple(sorted(self._fields))
+        properties = dict((n, property(wrap_for_python_scope(self._fields[n](prefix + delimiter + "F")))) for n in fields)
+        properties["_fields"] = fields
+        proxytype = type("AnonymousRecord" if self._name is None else self._name, (RecordProxy,), properties)
+
+        if not self._nullable:
+            return type("RecordType", (RecordType,), {"proxytype": proxytype, "name": self._name})
+        else:
+            if self._mask is None:
+                mask = prefix + delimiter + "M"
+            else:
+                mask = self._mask
+
+            return type("MaskedRecordType", (MaskedRecordType,), {"proxytype": proxytype, "mask": mask, "name": self._name})
 
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, items, nullable=False, mask=None):
+    def __init__(self, items, nullable=False, mask=None, name=None):
         self.items = items
         self.nullable = nullable
         self.mask = mask
+        self.name = name
 
     @property
     def items(self):
@@ -550,16 +583,33 @@ class Tuple(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        raise NotImplementedError
-        
+        types = tuple(x(prefix + delimiter + "I") for x in self._items)
+
+        if self._name is None:
+            proxytype = type("AnonymousTuple", (AnonymousTupleProxy,), {"_types": types})
+        else:
+            proxytype = type(self._name, (TupleProxy,), {"_types": types})
+
+        if not self._nullable:
+            return type("TupleType", (TupleType,), {"proxytype": proxytype, "name": self._name})
+
+        else:
+            if self._mask is None:
+                mask = prefix + delimiter + "M"
+            else:
+                mask = self._mask
+
+            return type("MaskedTupleType", (MaskedTupleType,), {"proxytype": proxytype, "mask": mask, "name": self._name})
+
 ################################################################ Pointers redirect to Lists with absolute addresses
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None):
+    def __init__(self, target, nullable=False, positions=None, mask=None, name=None):
         self.target = target
         self.nullable = nullable
         self.positions = positions
         self.mask = mask
+        self.name = name
 
     @property
     def target(self):
@@ -614,4 +664,15 @@ class Pointer(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        raise NotImplementedError
+        if self._positions is None:
+            positions = prefix + delimiter + "P"
+        else:
+            positions = self._positions
+
+        if not self._nullable:
+            return type("PointerType", (PointerType,), {"target": self._target(prefix + delimiter + "", delimiter), "positions": positions, "name": self._name})
+
+        else:
+            HERE
+
+# handle recursion with memos (everywhere)
