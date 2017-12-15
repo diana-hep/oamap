@@ -114,7 +114,7 @@ class Schema(object):
 
     def _resolvetargets(self, out, memo):
         for result in memo.values():
-            if isinstance(result, oamap.proxy.PointerProxy):
+            if issubclass(result, oamap.proxy.PointerProxy):
                 # only assign pointer targets after all other types have been resolved
                 target, prefix, delimiter = result._target
                 if id(target) in memo:
@@ -122,7 +122,7 @@ class Schema(object):
                     result._target = memo[id(target)]
                 else:
                     # the target is not in the type tree: resolve it (including cases that might contain a type already seen; they're considered to be different types at different positions)
-                    result._target = target(prefix=(prefix + delimiter + "P"), delimiter=delimiter)
+                    result._target = target(prefix=(prefix + delimiter + "X"), delimiter=delimiter)
         return out
 
 ################################################################ Primitives can be any Numpy type
@@ -642,7 +642,7 @@ class Tuple(Schema):
             if label is None:
                 return "Tuple(" + ", ".join(args) + ")"
             else:
-                return label + "Tuple(" + ", ".join(args) + ")"
+                return label + ": Tuple(" + ", ".join(args) + ")"
 
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
@@ -675,7 +675,7 @@ class Tuple(Schema):
         memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
 
-################################################################ Pointers redirect to Lists with absolute addresses
+################################################################ Pointers redirect to the contents of other types
 
 class Pointer(Schema):
     def __init__(self, target, nullable=False, positions=None, mask=None, name=None):
@@ -691,9 +691,9 @@ class Pointer(Schema):
 
     @target.setter
     def target(self, value):
-        if not isinstance(value, Schema):
-            raise TypeError("target must be a Schema, not {0}".format(repr(value)))
-        self._target = target
+        if not (value is None or isinstance(value, Schema)):
+            raise TypeError("target must be None or a Schema, not {0}".format(repr(value)))
+        self._target = value
 
     @property
     def positions(self):
@@ -725,7 +725,7 @@ class Pointer(Schema):
             if label is None:
                 return "Pointer(" + ", ".join(args) + ")"
             else:
-                return label + "Pointer(" + ", ".join(args) + ")"
+                return label + ": Pointer(" + ", ".join(args) + ")"
 
         else:
             return label
@@ -742,12 +742,15 @@ class Pointer(Schema):
         return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
 
     def _totype(self, prefix, delimiter, memo):
+        if self._target is None:
+            raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
+
         memo[id(self)] = None
         bases = [oamap.proxy.PointerProxy]
         attributes = {}
 
         if self._positions is None:
-            attributes["_positions"] = prefix + delimiter + "N"
+            attributes["_positions"] = prefix + delimiter + "P"
         else:
             attributes["_positions"] = self._positions
 

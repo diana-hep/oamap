@@ -205,3 +205,28 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[2][0], 2)
         self.assertEqual(x[2][1], 2.2)
         self.assertEqual(x[3], 98)
+
+    def test_Pointer(self):
+        self.assertEqual(Pointer(Primitive("f8"))()({"object-P": [3], "object-X": [0.0, 1.1, 2.2, 3.3, 4.4]}), 3.3)
+
+        tree = Pointer(None)
+        tree.target = List(tree)
+        self.assertEqual(tree()({"object-P": [0], "object-X-B": [0], "object-X-E": [0], "object-X-L-P": []}), [])
+        self.assertEqual(tree()({"object-P": [0, 1], "object-X-B": [0, 1], "object-X-E": [1, 1], "object-X-L-P": [1]}), [[]])
+        self.assertEqual(tree()({"object-P": [0, 1], "object-X-B": [0, 2], "object-X-E": [2, 2], "object-X-L-P": [1, 1]}), [[], []])
+
+        linkedlist = Record({"label": Primitive("i8")})
+        linkedlist["next"] = Pointer(linkedlist)
+        x = linkedlist()({"object-Flabel": [0, 1, 2], "object-Fnext-P": [1, 2, 0]})
+        self.assertEqual(x.label, 0)
+        self.assertEqual(x.next.label, 1)
+        self.assertEqual(x.next.next.label, 2)
+        self.assertEqual(x.next.next.next.label, 0)
+
+        linkedlist = Record({"label": Primitive("i8")})
+        linkedlist["next"] = Pointer(linkedlist, nullable=True)
+        x = linkedlist()({"object-Flabel": [0, 1, 2], "object-Fnext-P": [1, 2, 0], "object-Fnext-M": [False, False, True]})
+        self.assertEqual(x.label, 0)
+        self.assertEqual(x.next.label, 1)
+        self.assertEqual(x.next.next.label, 2)
+        self.assertEqual(x.next.next.next, None)
