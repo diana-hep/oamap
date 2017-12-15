@@ -289,10 +289,11 @@ class List(Schema):
         else:
             stops = self._stops
 
+        content = self._content(prefix + delimiter + "L", delimiter)
         if self._name is None:
-            proxytype = type("AnonymousList", (AnonymousListProxy,), {"_content": self._content(prefix + delimiter + "C")})
+            proxytype = type("AnonymousList", (AnonymousListProxy,), {"_content": content})
         else:
-            proxytype = type(self._name, (ListProxy,), {"_content": self._content(prefix + delimiter + "C")})
+            proxytype = type(self._name, (ListProxy,), {"_content": content})
 
         if not self._nullable:
             return type("ListType", (ListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "name": self._name})
@@ -394,7 +395,7 @@ class Union(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         if self._tags is None:
-            tags = prefix + delimiter + "T"
+            tags = prefix + delimiter + "G"
         else:
             tags = self._tags
 
@@ -403,8 +404,10 @@ class Union(Schema):
         else:
             offsets = self._offsets
 
+        possibilities = [x(prefix + delimiter + "U" + repr(i), delimiter) for i, x in enumerate(self._possibilities)]
+
         if not self._nullable:
-            return type("UnionType", (UnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets, "name": self._name})
+            return type("UnionType", (UnionType,), {"possibilities": possibilities, "tags": tags, "offsets": offsets, "name": self._name})
 
         else:
             if self._mask is None:
@@ -412,7 +415,7 @@ class Union(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedUnionType", (MaskedUnionType,), {"possibilities": [x(prefix + delimiter + "U") for x in self._possibilities], "tags": tags, "offsets": offsets, "mask": mask, "name": self._name})
+            return type("MaskedUnionType", (MaskedUnionType,), {"possibilities": possibilities, "tags": tags, "offsets": offsets, "mask": mask, "name": self._name})
 
 ################################################################ Records contain fields of known types
 
@@ -490,7 +493,7 @@ class Record(Schema):
             return lambda self: t(self._arrays, self._index)
 
         fields = tuple(sorted(self._fields))
-        properties = dict((n, property(wrap_for_python_scope(self._fields[n](prefix + delimiter + "F")))) for n in fields)
+        properties = dict((n, property(wrap_for_python_scope(self._fields[n](prefix + delimiter + "F" + n, delimiter)))) for n in fields)
         properties["_fields"] = fields
         proxytype = type("AnonymousRecord" if self._name is None else self._name, (RecordProxy,), properties)
 
@@ -507,52 +510,52 @@ class Record(Schema):
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, items, nullable=False, mask=None, name=None):
-        self.items = items
+    def __init__(self, types, nullable=False, mask=None, name=None):
+        self.types = types
         self.nullable = nullable
         self.mask = mask
         self.name = name
 
     @property
-    def items(self):
-        return tuple(self._items)
+    def types(self):
+        return tuple(self._types)
 
-    @items.setter
-    def items(self, value):
+    @types.setter
+    def types(self, value):
         self._extend(value, [])
 
-    def _extend(self, items, start):
+    def _extend(self, types, start):
         trial = []
         try:
             for i, x in enumerate(value):
-                assert isinstance(x, Schema), "items must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
+                assert isinstance(x, Schema), "types must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
                 trial.append(x)
         except TypeError:
-            raise TypeError("items must be an iterable of Schemas, not {0}".format(repr(value)))
+            raise TypeError("types must be an iterable of Schemas, not {0}".format(repr(value)))
         except AssertionError as err:
             raise TypeError(err.message)
-        self._items = start + trial
+        self._types = start + trial
 
     def append(self, item):
         if not isinstance(item, Schema):
-            raise TypeError("items must be Schemas, not {0}".format(repr(item)))
-        self._items.append(item)
+            raise TypeError("types must be Schemas, not {0}".format(repr(item)))
+        self._types.append(item)
 
     def insert(self, index, item):
         if not isinstance(item, Schema):
-            raise TypeError("items must be Schemas, not {0}".format(repr(item)))
-        self._items.insert(index, item)
+            raise TypeError("types must be Schemas, not {0}".format(repr(item)))
+        self._types.insert(index, item)
 
-    def extend(self, items):
-        self._extend(items, self._items)
+    def extend(self, types):
+        self._extend(types, self._types)
 
     def __getitem__(self, index):
-        return self._items[index]
+        return self._types[index]
 
     def __setitem__(self, index, value):
         if not isinstance(item, Schema):
-            raise TypeError("items must be Schemas, not {0}".format(repr(value)))
-        self._items[index] = value
+            raise TypeError("types must be Schemas, not {0}".format(repr(value)))
+        self._types[index] = value
 
     def __repr__(self, labels=None, shown=None):
         if labels is None:
@@ -563,7 +566,7 @@ class Tuple(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self._items) + "]"]
+            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self._types) + "]"]
             if self._nullable is not False:
                 args.append("nullable=" + repr(self._nullable))
             if self._mask is not None:
@@ -577,13 +580,13 @@ class Tuple(Schema):
     def _collect(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
-            for item in self._items:
+            for item in self._types:
                 item._collect(collection, labels)
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        types = tuple(x(prefix + delimiter + "I") for x in self._items)
+        types = tuple(x(prefix + delimiter + "T" + repr(i), delimiter) for i, x in enumerate(self._types))
 
         if self._name is None:
             proxytype = type("AnonymousTuple", (AnonymousTupleProxy,), {"_types": types})
@@ -604,10 +607,10 @@ class Tuple(Schema):
 ################################################################ Pointers redirect to Lists with absolute addresses
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None, name=None):
+    def __init__(self, target, nullable=False, indexes=None, mask=None, name=None):
         self.target = target
         self.nullable = nullable
-        self.positions = positions
+        self.indexes = indexes
         self.mask = mask
         self.name = name
 
@@ -622,14 +625,14 @@ class Pointer(Schema):
         self._target = target
 
     @property
-    def positions(self):
-        return self._positions
+    def indexes(self):
+        return self._indexes
 
-    @positions.setter
-    def positions(self, value):
+    @indexes.setter
+    def indexes(self, value):
         if not (value is None or isinstance(value, basestring)):
-            raise TypeError("positions must be None or an array name (string), not {0}".format(repr(value)))
-        self._positions = value
+            raise TypeError("indexes must be None or an array name (string), not {0}".format(repr(value)))
+        self._indexes = value
 
     def __repr__(self, labels=None, shown=None):
         if labels is None:
@@ -643,8 +646,8 @@ class Pointer(Schema):
             args = [self._target.__repr__(labels, shown)]
             if self._nullable is not False:
                 args.append("nullable=" + repr(self._nullable))
-            if self._positions is not None:
-                args.append("positions=" + repr(self._positions))
+            if self._indexes is not None:
+                args.append("indexes=" + repr(self._indexes))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
 
@@ -664,15 +667,22 @@ class Pointer(Schema):
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        if self._positions is None:
-            positions = prefix + delimiter + "P"
+        if self._indexes is None:
+            indexes = prefix + delimiter + "I"
         else:
-            positions = self._positions
+            indexes = self._indexes
+
+        target = self._target(prefix + delimiter + "P", delimiter)
 
         if not self._nullable:
-            return type("PointerType", (PointerType,), {"target": self._target(prefix + delimiter + "", delimiter), "positions": positions, "name": self._name})
+            return type("PointerType", (PointerType,), {"target": target, "indexes": indexes, "name": self._name})
 
         else:
-            HERE
+            if self._mask is None:
+                mask = prefix + delimiter + "M"
+            else:
+                mask = self._mask
+
+            return type("MaskedPointerType", (MaskedPointerType,), {"target": target, "indexes": indexes, "mask": mask, "name": self._name})
 
 # handle recursion with memos (everywhere)

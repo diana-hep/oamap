@@ -39,28 +39,14 @@ if sys.version_info[0] > 2:
 
 class PrimitiveType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            return arrays[cls.data][index]
-
-        except KeyError as err:
-            raise KeyError("could not find PrimitiveType data {0} in array namespace".format(repr(cls.data)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating PrimitiveType from data {0}".format(repr(cls.data)))
+        return arrays[cls.data][index]
 
 class MaskedPrimitiveType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            if arrays[cls.mask][index]:
-                return None
-            else:
-                return arrays[cls.data][index]
-
-        except KeyError as err:
-            raise KeyError("could not find MaskedPrimitiveType data {0} and mask {1} in array namespace".format(repr(cls.data), repr(cls.mask)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating MaskedPrimitiveType from data {0} and mask {1}".format(repr(cls.data), repr(cls.mask)))
+        if arrays[cls.mask][index]:
+            return None
+        else:
+            return arrays[cls.data][index]
 
 ################################################################ Lists have proxies and type objects
 
@@ -198,57 +184,29 @@ class AnonymousListProxy(ListProxy):
 
 class ListType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
-
-        except KeyError as err:
-            raise KeyError("could not find ListType start {0} and stop {1} in array namespace".format(repr(cls.start), repr(cls.stop)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating ListType from start {0} and stop {1}".format(repr(cls.start), repr(cls.stop)))
+        return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
 
 class MaskedListType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            if arrays[cls.mask][index]:
-                return None
-            else:
-                return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
-
-        except KeyError as err:
-            raise KeyError("could not find MaskedListType start {0}, stop {1}, and mask {2} in array namespace".format(repr(cls.start), repr(cls.stop), repr(cls.mask)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating MaskedListType from start {0}, stop {1}, and mask {2}".format(repr(cls.start), repr(cls.stop), repr(cls.mask)))
+        if arrays[cls.mask][index]:
+            return None
+        else:
+            return cls.proxytype(arrays, arrays[cls.starts][index], arrays[cls.stops][index], 1)
 
 ################################################################ Unions have type objects, but no special proxies
 
 class UnionType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            tag = arrays[cls.tags][index]
-            return cls.possibilities[tag](arrays, cls.offsets[tag])
-
-        except KeyError as err:
-            raise KeyError("could not find UnionType tags {0} and offsets {1} in array namespace".format(repr(cls.tags), repr(cls.offsets)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating UnionType from tags {0} and offsets {1}".format(repr(cls.tags), repr(cls.offsets)))
+        tag = arrays[cls.tags][index]
+        return cls.possibilities[tag](arrays, cls.offsets[tag])
 
 class MaskedUnionType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            if arrays[cls.mask][index]:
-                return None
-            else:
-                tag = arrays[cls.tags][index]
-                return cls.possibilities[tag](arrays, cls.offsets[tag])
-
-        except KeyError as err:
-            raise KeyError("could not find MaskedUnionType tags {0}, offsets {1}, and mask {2} in array namespace".format(repr(cls.tags), repr(cls.offsets), repr(cls.mask)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating MaskedUnionType from tags {0}, offsets {1}, and mask {2}".format(repr(cls.tags), repr(cls.offsets), repr(cls.mask)))
+        if arrays[cls.mask][index]:
+            return None
+        else:
+            tag = arrays[cls.tags][index]
+            return cls.possibilities[tag](arrays, cls.offsets[tag])
 
 ################################################################ Records have proxies and type objects
 
@@ -285,17 +243,10 @@ class RecordType(type):
 
 class MaskedRecordType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            if arrays[cls.mask][index]:
-                return None
-            else:
-                return cls.proxytype(arrays, index)
-
-        except KeyError as err:
-            raise KeyError("could not find MaskedRecordType mask {0} in array namespace".format(repr(cls.mask)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating MaskedRecordType from mask {0}".format(repr(cls.mask)))
+        if arrays[cls.mask][index]:
+            return None
+        else:
+            return cls.proxytype(arrays, index)
 
 ################################################################ Tuples have proxies and type objects
 
@@ -403,26 +354,20 @@ class TupleType(type):
 
 class MaskedTupleType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            if arrays[cls.mask][index]:
-                return None
-            else:
-                return cls.proxytype(arrays, index)
-
-        except KeyError as err:
-            raise KeyError("could not find MaskedTupleType mask {0} in array namespace".format(repr(cls.mask)))
-
-        except IndexError as err:
-            raise IndexError(err.message + " when instantiating MaskedTupleType from mask {0}".format(repr(cls.mask)))
+        if arrays[cls.mask][index]:
+            return None
+        else:
+            return cls.proxytype(arrays, index)
 
 ################################################################ Pointers have type objects, but no special proxies
 
 class PointerType(type):
     def __new__(cls, arrays, index=0):
-        try:
-            return cls.target(arrays, arrays[cls.positions][index])
+        return cls.target(arrays, arrays[cls.indexes][index])
 
-        except:
-            HERE
-
-masked
+class MaskedPointerType(type):
+    def __new__(cls, arrays, index=0):
+        if arrays[cls.mask][index]:
+            return None
+        else:
+            return cls.target(arrays, arrays[cls.indexes][index])
