@@ -45,3 +45,38 @@ class TestProxy(unittest.TestCase):
     def test_List(self):
         self.assertEqual(List(Primitive("f8"))()({"object-B": [0], "object-E": [5], "object-L": [1.1, 2.2, 3.3, 4.4, 5.5]}), [1.1, 2.2, 3.3, 4.4, 5.5])
         self.assertEqual(List(List(Primitive("f8")))()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5]}), [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(List(List(Primitive("f8")), nullable=True)()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5], "object-M": [True]}), None)
+        self.assertEqual(List(List(Primitive("f8")), nullable=True)()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5], "object-M": [False]}), [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(List(List(Primitive("f8"), nullable=True))()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5], "object-L-M": [False, False, True]}), [[1.1, 2.2], [], None])
+        self.assertEqual(List(List(Primitive("f8"), nullable=True), nullable=True)()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5], "object-M": [False], "object-L-M": [False, False, True]}), [[1.1, 2.2], [], None])
+
+    def test_List_slices(self):
+        x = List(List(Primitive("f8")))()({"object-B": [0], "object-E": [3], "object-L-B": [0, 2, 2], "object-L-E": [2, 2, 5], "object-L-L": [1.1, 2.2, 3.3, 4.4, 5.5]})
+
+        self.assertEqual(x[0], [1.1, 2.2])
+        self.assertEqual(x[1], [])
+        self.assertEqual(x[2], [3.3, 4.4, 5.5])
+        self.assertEqual(x[-1], [3.3, 4.4, 5.5])
+        self.assertEqual(x[-2], [])
+        self.assertEqual(x[-3], [1.1, 2.2])
+        self.assertRaises(IndexError, lambda: x[3])
+        self.assertRaises(IndexError, lambda: x[-4])
+
+        self.assertEqual(x[0:1], [[1.1, 2.2]])
+        self.assertEqual(x[0:2], [[1.1, 2.2], []])
+        self.assertEqual(x[0:3], [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[:], [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[:10], [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[1:3], [[], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[2:3], [[3.3, 4.4, 5.5]])
+        self.assertEqual(x[3:3], [])
+        self.assertEqual(x[-3:1], [[1.1, 2.2]])
+        self.assertEqual(x[-3:2], [[1.1, 2.2], []])
+        self.assertEqual(x[-3:3], [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[-2:3], [[], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[-1:3], [[3.3, 4.4, 5.5]])
+        self.assertEqual(x[-1:-1], [])
+        self.assertEqual(x[-10:3], [[1.1, 2.2], [], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[::2], [[1.1, 2.2], [3.3, 4.4, 5.5]])
+        self.assertEqual(x[1::2], [[]])
+
