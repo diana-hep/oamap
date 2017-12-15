@@ -62,7 +62,7 @@ class ListProxy(list, Proxy):
 
     @classmethod
     def _slice(cls, arrays, start, stop, step):
-        out = Proxy.__new__(cls)
+        out = list.__new__(cls)
         out._arrays = arrays
         out._start = start
         out._stop = stop
@@ -173,7 +173,7 @@ class ListProxy(list, Proxy):
         return False
 
 # mix-in
-class AnonymousList(ListProxy):
+class AnonymousList(object):
     def __hash__(self):
         return hash((AnonymousList,) + tuple(self))
 
@@ -235,10 +235,8 @@ class RecordProxy(Proxy):
 ################################################################ Tuples
 
 class TupleProxy(tuple, Proxy):
-    __slots__ = ["_arrays", "_index"]
-
     def __new__(cls, arrays, index=0):
-        out = Proxy.__new__(cls)
+        out = tuple.__new__(cls)
         out._arrays = arrays
         out._index = index
         return out

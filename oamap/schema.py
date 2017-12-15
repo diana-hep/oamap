@@ -60,7 +60,7 @@ except ImportError:
 
 import numpy
 
-from oamap.proxy import *
+import oamap.proxy
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -114,7 +114,7 @@ class Schema(object):
 
     def _resolvetargets(self, out, memo):
         for result in memo.values():
-            if isinstance(result, (PointerType, MaskedPointerType)):
+            if isinstance(result, oamap.proxy.PointerProxy):
                 # only assign pointer targets after all other types have been resolved
                 target, prefix, delimiter = result._target
                 if id(target) in memo:
@@ -207,7 +207,7 @@ class Primitive(Schema):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [PrimitiveProxy]
+        bases = [oamap.proxy.PrimitiveProxy]
         attributes = {}
         
         if self._data is None:
@@ -216,7 +216,7 @@ class Primitive(Schema):
             attributes["_data"] = self._data
 
         if self._nullable:
-            bases.insert(0, Masked)
+            bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
                 attributes["_mask"] = prefix + delimiter + "M"
             else:
@@ -308,7 +308,7 @@ class List(Schema):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [ListProxy]
+        bases = [oamap.proxy.ListProxy]
         attributes = {}
 
         if self._starts is None:
@@ -324,10 +324,10 @@ class List(Schema):
         attributes["_content"] = self._content._totype(prefix + delimiter + "L", delimiter, memo)
 
         if self._name is None:
-            bases.insert(0, AnonymousList)
+            bases.insert(0, oamap.proxy.AnonymousList)
 
         if self._nullable:
-            bases.insert(0, Masked)
+            bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
                 attributes["_mask"] = prefix + delimiter + "M"
             else:
@@ -431,7 +431,7 @@ class Union(Schema):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [UnionProxy]
+        bases = [oamap.proxy.UnionProxy]
         attributes = {}
 
         if self._tags is None:
@@ -447,7 +447,7 @@ class Union(Schema):
         attributes["_possibilities"] = [x._totype(prefix + delimiter + "U" + repr(i), delimiter, memo) for i, x in enumerate(self._possibilities)]
 
         if self._nullable:
-            bases.insert(0, Masked)
+            bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
                 attributes["_mask"] = prefix + delimiter + "M"
             else:
@@ -535,7 +535,7 @@ class Record(Schema):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [RecordProxy]
+        bases = [oamap.proxy.RecordProxy]
         attributes = {}
 
         def wrap_for_python_scope(t):
@@ -548,7 +548,7 @@ class Record(Schema):
         attributes["_fields"] = fields
 
         if self._nullable:
-            bases.insert(0, Masked)
+            bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
                 attributes["_mask"] = prefix + delimiter + "M"
             else:
@@ -643,16 +643,16 @@ class Tuple(Schema):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [TupleProxy]
+        bases = [oamap.proxy.TupleProxy]
         attributes = {}
         
         attributes["_types"] = tuple(x._totype(prefix + delimiter + "T" + repr(i), delimiter, memo) for i, x in enumerate(self._types))
 
         if self._name is None:
-            bases.insert(0, AnonymousTuple)
+            bases.insert(0, oamap.proxy.AnonymousTuple)
 
         if self._nullable:
-            bases.insert(0, Masked)
+            bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
                 attributes["_mask"] = prefix + delimiter + "M"
             else:
@@ -729,7 +729,7 @@ class Pointer(Schema):
 
     def _totype(self, prefix, delimiter, memo):
         memo[id(self)] = None
-        bases = [PointerProxy]
+        bases = [oamap.proxy.PointerProxy]
         attributes = {}
 
         if self._positions is None:
@@ -740,7 +740,7 @@ class Pointer(Schema):
         attributes["_target"] = (self._target, prefix, delimiter)   # placeholder! see _resolvetargets!
 
         if self._nullable:
-            bases.insert(0, Masked)
+            bases.insert(0, oamap.proxy.Masked)
             if self._mask is None:
                 attributes["_mask"] = prefix + delimiter + "M"
             else:
