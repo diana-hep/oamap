@@ -103,7 +103,7 @@ class Schema(object):
 
     def _labels(self):
         labels = []
-        self._collect(set(), labels)
+        self._collectlabels(set(), labels)
         return labels
         
     def _label(self, labels):
@@ -111,6 +111,19 @@ class Schema(object):
             if label is self:
                 return "#{0}".format(index)
         return None
+
+    def _resolvetargets(self, out, memo):
+        for result in memo.values():
+            if isinstance(result, (PointerType, MaskedPointerType)):
+                # only assign pointer targets after all other types have been resolved
+                target, prefix, delimiter = result.target
+                if id(target) in memo:
+                    # the target points elsewhere in the type tree: link to that
+                    result.target = memo[id(target)]
+                else:
+                    # the target is not in the type tree: resolve it (including cases that might contain a type already seen; they're considered to be different types at different positions)
+                    result.target = target(prefix=(prefix + delimiter + "P"), delimiter=delimiter)
+        return out
 
 ################################################################ Primitives can be any Numpy type
 
@@ -180,20 +193,28 @@ class Primitive(Schema):
         else:
             return label
 
-    def _collect(self, collection, labels):
+    def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
+        memo = {}
+        return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
+
+    def _totype(self, prefix, delimiter, memo):
+        if id(self) in memo:
+            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
+        memo[id(self)] = None
+
         if self._data is None:
             data = prefix
         else:
             data = self._data
 
         if not self._nullable:
-            return type("PrimitiveType", (PrimitiveType,), {"data": data, "name": self._name})
+            out = type("PrimitiveType", (PrimitiveType,), {"data": data, "name": self._name})
 
         else:
             if self._mask is None:
@@ -201,7 +222,10 @@ class Primitive(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask, "name": self._name})
+            out = type("MaskedPrimitiveType", (MaskedPrimitiveType,), {"data": data, "mask": mask, "name": self._name})
+
+        memo[id(self)] = out
+        return out
 
 ################################################################ Lists may have arbitrary length
 
@@ -271,14 +295,22 @@ class List(Schema):
         else:
             return label
 
-    def _collect(self, collection, labels):
+    def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
-            self._content._collect(collection, labels)
+            self._content._collectlabels(collection, labels)
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
+        memo = {}
+        return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
+
+    def _totype(self, prefix, delimiter, memo):
+        if id(self) in memo:
+            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
+        memo[id(self)] = None
+
         if self._starts is None:
             starts = prefix + delimiter + "B"
         else:
@@ -289,14 +321,14 @@ class List(Schema):
         else:
             stops = self._stops
 
-        content = self._content(prefix + delimiter + "L", delimiter)
+        content = self._content._totype(prefix + delimiter + "L", delimiter, memo)
         if self._name is None:
             proxytype = type("AnonymousList", (AnonymousListProxy,), {"_content": content})
         else:
             proxytype = type(self._name, (ListProxy,), {"_content": content})
 
         if not self._nullable:
-            return type("ListType", (ListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "name": self._name})
+            out = type("ListType", (ListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "name": self._name})
 
         else:
             if self._mask is None:
@@ -304,7 +336,10 @@ class List(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedListType", (MaskedListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "mask": mask, "name": self._name})
+            out = type("MaskedListType", (MaskedListType,), {"proxytype": proxytype, "starts": starts, "stops": stops, "mask": mask, "name": self._name})
+
+        memo[id(self)] = out
+        return out
 
 ################################################################ Unions may be one of several types
 
@@ -385,15 +420,23 @@ class Union(Schema):
         else:
             return label
 
-    def _collect(self, collection, labels):
+    def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
             for possibility in self._possibilities:
-                possibility._collect(collection, labels)
+                possibility._collectlabels(collection, labels)
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
+        memo = {}
+        return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
+
+    def _totype(self, prefix, delimiter, memo):
+        if id(self) in memo:
+            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
+        memo[id(self)] = None
+
         if self._tags is None:
             tags = prefix + delimiter + "G"
         else:
@@ -404,10 +447,10 @@ class Union(Schema):
         else:
             offsets = self._offsets
 
-        possibilities = [x(prefix + delimiter + "U" + repr(i), delimiter) for i, x in enumerate(self._possibilities)]
+        possibilities = [x._totype(prefix + delimiter + "U" + repr(i), delimiter, memo) for i, x in enumerate(self._possibilities)]
 
         if not self._nullable:
-            return type("UnionType", (UnionType,), {"possibilities": possibilities, "tags": tags, "offsets": offsets, "name": self._name})
+            out = type("UnionType", (UnionType,), {"possibilities": possibilities, "tags": tags, "offsets": offsets, "name": self._name})
 
         else:
             if self._mask is None:
@@ -415,7 +458,10 @@ class Union(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedUnionType", (MaskedUnionType,), {"possibilities": possibilities, "tags": tags, "offsets": offsets, "mask": mask, "name": self._name})
+            out = type("MaskedUnionType", (MaskedUnionType,), {"possibilities": possibilities, "tags": tags, "offsets": offsets, "mask": mask, "name": self._name})
+
+        memo[id(self)] = out
+        return out
 
 ################################################################ Records contain fields of known types
 
@@ -480,32 +526,43 @@ class Record(Schema):
         else:
             return label
 
-    def _collect(self, collection, labels):
+    def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
             for field in self._fields.values():
-                field._collect(collection, labels)
+                field._collectlabels(collection, labels)
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
+        memo = {}
+        return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
+
+    def _totype(self, prefix, delimiter, memo):
+        if id(self) in memo:
+            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
+        memo[id(self)] = None
+
         def wrap_for_python_scope(t):
             return lambda self: t(self._arrays, self._index)
 
         fields = tuple(sorted(self._fields))
-        properties = dict((n, property(wrap_for_python_scope(self._fields[n](prefix + delimiter + "F" + n, delimiter)))) for n in fields)
+        properties = dict((n, property(wrap_for_python_scope(self._fields[n]._totype(prefix + delimiter + "F" + n, delimiter, memo)))) for n in fields)
         properties["_fields"] = fields
         proxytype = type("AnonymousRecord" if self._name is None else self._name, (RecordProxy,), properties)
 
         if not self._nullable:
-            return type("RecordType", (RecordType,), {"proxytype": proxytype, "name": self._name})
+            out = type("RecordType", (RecordType,), {"proxytype": proxytype, "name": self._name})
         else:
             if self._mask is None:
                 mask = prefix + delimiter + "M"
             else:
                 mask = self._mask
 
-            return type("MaskedRecordType", (MaskedRecordType,), {"proxytype": proxytype, "mask": mask, "name": self._name})
+            out = type("MaskedRecordType", (MaskedRecordType,), {"proxytype": proxytype, "mask": mask, "name": self._name})
+
+        memo[id(self)] = out
+        return out
 
 ################################################################ Tuples are like records but with an order instead of field names
 
@@ -577,16 +634,24 @@ class Tuple(Schema):
             else:
                 return label + "Tuple(" + ", ".join(args) + ")"
 
-    def _collect(self, collection, labels):
+    def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
             for item in self._types:
-                item._collect(collection, labels)
+                item._collectlabels(collection, labels)
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
-        types = tuple(x(prefix + delimiter + "T" + repr(i), delimiter) for i, x in enumerate(self._types))
+        memo = {}
+        return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
+
+    def _totype(self, prefix, delimiter, memo):
+        if id(self) in memo:
+            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
+        memo[id(self)] = None
+
+        types = tuple(x._totype(prefix + delimiter + "T" + repr(i), delimiter, memo) for i, x in enumerate(self._types))
 
         if self._name is None:
             proxytype = type("AnonymousTuple", (AnonymousTupleProxy,), {"_types": types})
@@ -594,7 +659,7 @@ class Tuple(Schema):
             proxytype = type(self._name, (TupleProxy,), {"_types": types})
 
         if not self._nullable:
-            return type("TupleType", (TupleType,), {"proxytype": proxytype, "name": self._name})
+            out = type("TupleType", (TupleType,), {"proxytype": proxytype, "name": self._name})
 
         else:
             if self._mask is None:
@@ -602,7 +667,10 @@ class Tuple(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedTupleType", (MaskedTupleType,), {"proxytype": proxytype, "mask": mask, "name": self._name})
+            out = type("MaskedTupleType", (MaskedTupleType,), {"proxytype": proxytype, "mask": mask, "name": self._name})
+
+        memo[id(self)] = out
+        return out
 
 ################################################################ Pointers redirect to Lists with absolute addresses
 
@@ -659,23 +727,27 @@ class Pointer(Schema):
         else:
             return label
 
-    def _collect(self, collection, labels):
+    def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
-            self._target._collect(collection, labels)
+            self._target._collectlabels(collection, labels)
         else:
             labels.append(self)
 
     def __call__(self, prefix="object", delimiter="-"):
+        memo = {}
+        return self._resolvetargets(self._totype(prefix, delimiter, memo), memo)
+
+    def _totype(self, prefix, delimiter, memo):
         if self._indexes is None:
             indexes = prefix + delimiter + "I"
         else:
             indexes = self._indexes
 
-        target = self._target(prefix + delimiter + "P", delimiter)
+        # don't recurse over _target until _resolvetargets; for now put a 3-tuple in its place, which will be used to construct the target type
 
         if not self._nullable:
-            return type("PointerType", (PointerType,), {"target": target, "indexes": indexes, "name": self._name})
+            out = type("PointerType", (PointerType,), {"target": (self._target, prefix, delimiter), "indexes": indexes, "name": self._name})
 
         else:
             if self._mask is None:
@@ -683,6 +755,6 @@ class Pointer(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedPointerType", (MaskedPointerType,), {"target": target, "indexes": indexes, "mask": mask, "name": self._name})
+            out = type("MaskedPointerType", (MaskedPointerType,), {"target": (self._target, prefix, delimiter), "indexes": indexes, "mask": mask, "name": self._name})
 
-# handle recursion with memos (everywhere)
+        return out
