@@ -198,22 +198,22 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, contents, nullable=False, starts=None, stops=None, mask=None):
-        self.contents = contents
+    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None):
+        self.content = content
         self.nullable = nullable
         self.starts = starts
         self.stops = stops
         self.mask = mask
 
     @property
-    def contents(self):
-        return self._contents
+    def content(self):
+        return self._content
 
-    @contents.setter
-    def contents(self, value):
+    @content.setter
+    def content(self, value):
         if not isinstance(value, Schema):
-            raise TypeError("contents must be a Schema, not {0}".format(repr(value)))
-        self._contents = value
+            raise TypeError("content must be a Schema, not {0}".format(repr(value)))
+        self._content = value
 
     @property
     def starts(self):
@@ -244,7 +244,7 @@ class List(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = [self._contents.__repr__(labels, shown)]
+            args = [self._content.__repr__(labels, shown)]
             if self._nullable is not False:
                 args.append("nullable=" + repr(self._nullable))
             if self._starts is not None:
@@ -265,7 +265,7 @@ class List(Schema):
     def _collect(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
-            self._contents._collect(collection, labels)
+            self._content._collect(collection, labels)
         else:
             labels.append(self)
 
@@ -281,7 +281,7 @@ class List(Schema):
             stops = self._stops
 
         if not self._nullable:
-            return type("ListType", (ListType,), {"contents": self._contents(prefix + delimiter + "C"), "starts": starts, "stops": stops})
+            return type("ListType", (ListType,), {"content": self._content(prefix + delimiter + "C"), "starts": starts, "stops": stops})
 
         else:
             if self._mask is None:
@@ -289,7 +289,7 @@ class List(Schema):
             else:
                 mask = self._mask
 
-            return type("MaskedListType", (MaskedListType,), {"contents": self._contents(prefix + delimiter + "C"), "starts": starts, "stops": stops, "mask": mask})
+            return type("MaskedListType", (MaskedListType,), {"content": self._content(prefix + delimiter + "C"), "starts": starts, "stops": stops, "mask": mask})
 
 ################################################################ Unions may be one of several types
 
@@ -313,7 +313,7 @@ class Union(Schema):
         trial = []
         try:
             for i, x in enumerate(value):
-                assert isinstance(x, Schema), "possibilities must be an iterable of Schemas; item at {0} is {1}".format(i, x)
+                assert isinstance(x, Schema), "possibilities must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
                 trial.append(x)
         except TypeError:
             raise TypeError("possibilities must be an iterable of Schemas, not {0}".format(repr(value)))
@@ -422,7 +422,7 @@ class Record(Schema):
         try:
             for n, x in fields.items():
                 assert isinstance(n, basestring) and self._identifier.match(n) is not None, "fields must be a dict from identifier strings to Schemas; the key {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern)
-                assert isinstance(x, Schema), "fields must be a dict from identifier strings to Schemas; the value at identifier {0} is {1}".format(repr(n), x)
+                assert isinstance(x, Schema), "fields must be a dict from identifier strings to Schemas; the value at key {0} is {1}".format(repr(n), repr(x))
                 trial.append((n, x))
         except AttributeError:
             raise TypeError("fields must be a dict from strings to Schemas; {0} is not a dict".format(repr(fields)))
@@ -447,13 +447,171 @@ class Record(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["{" + ", ".join( for n, x in self.HERE) + "}"]
+            args = ["{" + ", ".join("{0}: {1}".format(repr(n), repr(x)) for n, x in self._fields.items()) + "}"]
+            if self._nullable is not False:
+                args.append("nullable=" + repr(self._nullable))
+            if self._mask is not None:
+                args.append("mask=" + repr(self._mask))
 
+            if label is None:
+                return "Record(" + ", ".join(args) + ")"
+            else:
+                return label + ": Record(" + ", ".join(args) + ")"
 
+        else:
+            return label
 
-            
+    def _collect(self, collection, labels):
+        if id(self) not in collection:
+            collection.add(id(self))
+            for field in self._fields.values():
+                field._collect(collection, labels)
+        else:
+            labels.append(self)
+
+    def __call__(self, prefix="object", delimiter="-"):
+        raise NotImplementedError
+
 ################################################################ Tuples are like records but with an order instead of field names
 
+class Tuple(Schema):
+    def __init__(self, items, nullable=False, mask=None):
+        self.items = items
+        self.nullable = nullable
+        self.mask = mask
 
+    @property
+    def items(self):
+        return tuple(self._items)
+
+    @items.setter
+    def items(self, value):
+        self._extend(value, [])
+
+    def _extend(self, items, start):
+        trial = []
+        try:
+            for i, x in enumerate(value):
+                assert isinstance(x, Schema), "items must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
+                trial.append(x)
+        except TypeError:
+            raise TypeError("items must be an iterable of Schemas, not {0}".format(repr(value)))
+        except AssertionError as err:
+            raise TypeError(err.message)
+        self._items = start + trial
+
+    def append(self, item):
+        if not isinstance(item, Schema):
+            raise TypeError("items must be Schemas, not {0}".format(repr(item)))
+        self._items.append(item)
+
+    def insert(self, index, item):
+        if not isinstance(item, Schema):
+            raise TypeError("items must be Schemas, not {0}".format(repr(item)))
+        self._items.insert(index, item)
+
+    def extend(self, items):
+        self._extend(items, self._items)
+
+    def __getitem__(self, index):
+        return self._items[index]
+
+    def __setitem__(self, index, value):
+        if not isinstance(item, Schema):
+            raise TypeError("items must be Schemas, not {0}".format(repr(value)))
+        self._items[index] = value
+
+    def __repr__(self, labels=None, shown=None):
+        if labels is None:
+            labels = self._labels()
+            shown = set()
+        label = self._label(labels)
+
+        if label is None or id(self) not in shown:
+            shown.add(id(self))
+
+            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self._items) + "]"]
+            if self._nullable is not False:
+                args.append("nullable=" + repr(self._nullable))
+            if self._mask is not None:
+                args.append("mask=" + repr(self._mask))
+
+            if label is None:
+                return "Tuple(" + ", ".join(args) + ")"
+            else:
+                return label + "Tuple(" + ", ".join(args) + ")"
+
+    def _collect(self, collection, labels):
+        if id(self) not in collection:
+            collection.add(id(self))
+            for item in self._items:
+                item._collect(collection, labels)
+        else:
+            labels.append(self)
+
+    def __call__(self, prefix="object", delimiter="-"):
+        raise NotImplementedError
+        
 ################################################################ Pointers redirect to Lists with absolute addresses
 
+class Pointer(Schema):
+    def __init__(self, target, nullable=False, positions=None, mask=None):
+        self.target = target
+        self.nullable = nullable
+        self.positions = positions
+        self.mask = mask
+
+    @property
+    def target(self):
+        return self._target
+
+    @target.setter
+    def target(self, value):
+        if not isinstance(value, Schema):
+            raise TypeError("target must be a Schema, not {0}".format(repr(value)))
+        self._target = target
+
+    @property
+    def positions(self):
+        return self._positions
+
+    @positions.setter
+    def positions(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("positions must be None or an array name (string), not {0}".format(repr(value)))
+        self._positions = value
+
+    def __repr__(self, labels=None, shown=None):
+        if labels is None:
+            labels = self._labels()
+            shown = set()
+        label = self._label(labels)
+
+        if label is None or id(self) not in shown:
+            shown.add(id(self))
+
+            args = [self._target.__repr__(labels, shown)]
+            if self._nullable is not False:
+                args.append("nullable=" + repr(self._nullable))
+            if self._positions is not None:
+                args.append("positions=" + repr(self._positions))
+            if self._mask is not None:
+                args.append("mask=" + repr(self._mask))
+
+            if label is None:
+                return "Pointer(" + ", ".join(args) + ")"
+            else:
+                return label + "Pointer(" + ", ".join(args) + ")"
+
+        else:
+            return label
+
+    def _collect(self, collection, labels):
+        if id(self) not in collection:
+            collection.add(id(self))
+            self._target._collect(collection, labels)
+        else:
+            labels.append(self)
+
+    def __call__(self, prefix="object", delimiter="-"):
+        raise NotImplementedError
