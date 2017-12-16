@@ -36,12 +36,21 @@ if sys.version_info[0] > 2:
     xrange = range
 
 # superclass of all proxies
-class Proxy(object): pass
+class Proxy(object):
+    @classmethod
+    def _getarray(cls, arrays, name, cache, cacheslot):
+        if cacheslot >= len(cache):
+            cache.extend([None] * (1 + cacheslot - len(cache)))
+        if cache[cacheslot] is None:
+            cache[cacheslot] = arrays[name]
+        return cache[cacheslot]
 
 # mix-in for masked proxies
 class Masked(object):
-    def __new__(cls, arrays, index=0):
-        if arrays[cls._mask][index]:
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
+        if cls._getarray(arrays, cls._mask, cache, cls._maskidx)[index]:
             return None
         else:
             return cls.__bases__[1].__new__(cls, arrays, index=index)
@@ -49,21 +58,28 @@ class Masked(object):
 ################################################################ Primitives
 
 class PrimitiveProxy(Proxy):
-    def __new__(cls, arrays, index=0):
-        return arrays[cls._data][index]
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
+        return cls._getarray(arrays, cls._data, cache, cls._dataidx)[index]
 
 ################################################################ Lists
 
 class ListProxy(Proxy):
     __slots__ = ["_arrays", "_start", "_stop", "_step"]
 
-    def __new__(cls, arrays, index=0):
-        return cls._slice(arrays, arrays[cls._starts][index], arrays[cls._stops][index], 1)
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
+        starts = cls._getarray(arrays, cls._starts, cache, cls._startsidx)
+        stops = cls._getarray(arrays, cls._stops, cache, cls._stopsidx)
+        return cls._slice(arrays, cache, starts[index], stops[index], 1)
 
     @classmethod
-    def _slice(cls, arrays, start, stop, step):
+    def _slice(cls, arrays, cache, start, stop, step):
         out = Proxy.__new__(cls)
         out._arrays = arrays
+        out._cache = cache
         out._start = start
         out._stop = stop
         out._step = step
@@ -107,17 +123,17 @@ class ListProxy(Proxy):
             if step == 0:
                 raise ValueError("slice step cannot be zero")
             else:
-                return self.__class__._slice(self._arrays, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                return self.__class__._slice(self._arrays, self._cache, self._start + self._step*start, self._start + self._step*stop, self._step*step)
 
         else:
             lenself = len(self)
             normalindex = index if index >= 0 else index + lenself
             if not 0 <= normalindex < lenself:
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
-            return self._content(self._arrays, index=(self._start + self._step*normalindex))
+            return self._content(self._arrays, index=(self._start + self._step*normalindex), cache=self._cache)
 
     def __iter__(self):
-        return (self._content(self._arrays, index=i) for i in xrange(self._start, self._stop, self._step))
+        return (self._content(self._arrays, index=i, cache=self._cache) for i in xrange(self._start, self._stop, self._step))
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
@@ -180,18 +196,24 @@ class ListProxy(Proxy):
 ################################################################ Unions
 
 class UnionProxy(Proxy):
-    def __new__(cls, arrays, index=0):
-        tag = arrays[cls._tags][index]
-        return cls._possibilities[tag](arrays, arrays[cls._offsets][index])
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
+        tags = cls._getarray(arrays, cls._tags, cache, cls._tagsidx)
+        offsets = cls._getarray(arrays, cls._offsets, cache, cls._offsetsidx)
+        return cls._possibilities[tags[index]](arrays, index=offsets[index], cache=cache)
 
 ################################################################ Records
 
 class RecordProxy(Proxy):
     __slots__ = ["_arrays", "_index"]
 
-    def __new__(cls, arrays, index=0):
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
         out = Proxy.__new__(cls)
         out._arrays = arrays
+        out._cache = cache
         out._index = index
         return out
 
@@ -222,9 +244,12 @@ class RecordProxy(Proxy):
 class TupleProxy(Proxy):
     __slots__ = ["_arrays", "_index"]
 
-    def __new__(cls, arrays, index=0):
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
         out = Proxy.__new__(cls)
         out._arrays = arrays
+        out._cache = cache
         out._index = index
         return out
 
@@ -254,7 +279,7 @@ class TupleProxy(Proxy):
             return tuple(self[i] for i in range(start, stop, step))
 
         else:
-            return self._types[index](self._arrays, self._index)
+            return self._types[index](self._arrays, index=self._index, cache=self._cache)
 
     def __iter__(self):
         return (t(self._arrays, self._index) for t in self._types)
@@ -316,5 +341,8 @@ class TupleProxy(Proxy):
 ################################################################ Pointers
 
 class PointerProxy(Proxy):
-    def __new__(cls, arrays, index=0):
-        return cls._target(arrays, arrays[cls._positions][index])
+    def __new__(cls, arrays, index=0, cache=None):
+        if cache is None:
+            cache = []
+        positions = cls._getarray(arrays, cls._positions, cache, cls._positionsidx)
+        return cls._target(arrays, index=positions[index], cache=cache)
