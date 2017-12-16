@@ -124,6 +124,7 @@ class Schema(object):
                     # the target is not in the type tree: resolve it (including cases that might contain a type already seen; they're considered to be different types at different positions)
                     memo = {}
                     result._target = target._resolvetargets(target._totype(prefix + delimiter + "X", delimiter, cacheidx, memo), cacheidx, memo)
+        out._cachelen = cacheidx[0]
         return out
 
 ################################################################ Primitives can be any Numpy type

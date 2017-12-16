@@ -39,8 +39,6 @@ if sys.version_info[0] > 2:
 class Proxy(object):
     @classmethod
     def _getarray(cls, arrays, name, cache, cacheslot):
-        if cacheslot >= len(cache):
-            cache.extend([None] * (1 + cacheslot - len(cache)))
         if cache[cacheslot] is None:
             cache[cacheslot] = arrays[name]
         return cache[cacheslot]
@@ -49,18 +47,18 @@ class Proxy(object):
 class Masked(object):
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         if cls._getarray(arrays, cls._mask, cache, cls._maskidx)[index]:
             return None
         else:
-            return cls.__bases__[1].__new__(cls, arrays, index=index)
+            return cls.__bases__[1].__new__(cls, arrays, index=index, cache=cache)
 
 ################################################################ Primitives
 
 class PrimitiveProxy(Proxy):
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         return cls._getarray(arrays, cls._data, cache, cls._dataidx)[index]
 
 ################################################################ Lists
@@ -70,7 +68,7 @@ class ListProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         starts = cls._getarray(arrays, cls._starts, cache, cls._startsidx)
         stops = cls._getarray(arrays, cls._stops, cache, cls._stopsidx)
         return cls._slice(arrays, cache, starts[index], stops[index], 1)
@@ -198,7 +196,7 @@ class ListProxy(Proxy):
 class UnionProxy(Proxy):
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         tags = cls._getarray(arrays, cls._tags, cache, cls._tagsidx)
         offsets = cls._getarray(arrays, cls._offsets, cache, cls._offsetsidx)
         return cls._possibilities[tags[index]](arrays, index=offsets[index], cache=cache)
@@ -210,7 +208,7 @@ class RecordProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         out = Proxy.__new__(cls)
         out._arrays = arrays
         out._cache = cache
@@ -246,7 +244,7 @@ class TupleProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         out = Proxy.__new__(cls)
         out._arrays = arrays
         out._cache = cache
@@ -343,6 +341,6 @@ class TupleProxy(Proxy):
 class PointerProxy(Proxy):
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = []
+            cache = [None] * cls._cachelen
         positions = cls._getarray(arrays, cls._positions, cache, cls._positionsidx)
         return cls._target(arrays, index=positions[index], cache=cache)
