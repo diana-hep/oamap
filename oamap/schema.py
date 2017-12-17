@@ -211,7 +211,7 @@ class Primitive(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
         bases = [oamap.proxy.PrimitiveProxy]
-        attributes = {}
+        attributes = {"_dtype": self._dtype, "_dims": self._dims}
         
         if self._data is None:
             attributes["_data"] = prefix
