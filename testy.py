@@ -25,6 +25,16 @@ for i in range(10):
 
 @numba.njit
 def do(x):
-    return x[0]
+    return x[3]
 
+print "ONE"
 print do(x)
+print "TWO", do.overloads.keys()
+
+s = List(Primitive("i8"))
+t = s()
+x = t({"object-B": numpy.array([0], numpy.int32), "object-E": numpy.array([5], numpy.int32), "object-L": numpy.array([0, 1, 2, 3, 4])})
+
+print "THREE"
+print do(x)
+print "FOUR", do.overloads.keys()

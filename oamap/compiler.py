@@ -134,7 +134,7 @@ else:
     class ListProxyNumbaType(numba.types.Type):
         def __init__(self, proxytype):
             self.proxytype = proxytype
-            super(ListProxyNumbaType, self).__init__(name="ListProxy")
+            super(ListProxyNumbaType, self).__init__(name="ListProxy({0})".format(self.proxytype._content._dtype))
 
     def typeof_proxytype(proxytype):
         if issubclass(proxytype, oamap.proxy.PrimitiveProxy):
@@ -169,13 +169,19 @@ else:
         def generic(self, args, kwds):
             tpe, idx = args
             if isinstance(tpe, ListProxyNumbaType):
-                # idx = numba.typing.builtins.normalize_1d_index(idx)
                 if isinstance(idx, numba.types.Integer):
-                    return typeof_proxytype(tpe.proxytype._content)(tpe, idx)
+                    out = typeof_proxytype(tpe.proxytype._content)(tpe, idx)
+                    print "typing", out
+                    return out
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
-        return llvmlite.llvmpy.core.Constant.real(llvmlite.llvmpy.core.Type.double(), 3.14)
+        if isinstance(sig.return_type, numba.types.Integer):
+            print "lower as integer"
+            return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), 314)
+        else:
+            print "lower as real"
+            return llvmlite.llvmpy.core.Constant.real(llvmlite.llvmpy.core.Type.double(), 3.14)
                     
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
