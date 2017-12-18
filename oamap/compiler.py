@@ -32,7 +32,7 @@ import numpy
 
 try:
     import numba
-    import llvmlite
+    import llvmlite.llvmpy.core
 except ImportError:
     numba = None
 
@@ -136,14 +136,25 @@ else:
             self.proxytype = proxytype
             super(ListProxyNumbaType, self).__init__(name="ListProxy")
 
-    @numba.extending.typeof_impl.register(oamap.proxy.ListProxy)
-    def typeof_listproxy(val, c):
-        return ListProxyNumbaType(val.__class__)
+    def typeof_proxytype(proxytype):
+        if issubclass(proxytype, oamap.proxy.PrimitiveProxy):
+            if proxytype._dims == ():
+                return numba.from_dtype(proxytype._dtype)
+            else:
+                raise NotImplementedError(proxytype._dims)
+        elif issubclass(proxytype, oamap.proxy.ListProxy):
+            return ListProxyNumbaType(proxytype)
+        else:
+            raise NotImplementedError(proxytype.__bases__)
+
+    @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
+    def typeof_proxy(val, c):
+        return typeof_proxytype(val.__class__)
 
     @numba.extending.register_model(ListProxyNumbaType)
     class ListProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("cls", numba.types.intp),
+            members = [("proxytype", numba.types.intp),
                        ("arrays", numba.types.intp),
                        ("arraycache", arraycachetype),
                        ("start", numba.types.intp),
@@ -151,6 +162,21 @@ else:
                        ("step", numba.types.intp)]
             super(ListProxyModel, self).__init__(dmm, fe_type, members)
 
+    @numba.typing.templates.infer
+    class ListProxyGetItem(numba.typing.templates.AbstractTemplate):
+        key = "getitem"
+
+        def generic(self, args, kwds):
+            tpe, idx = args
+            if isinstance(tpe, ListProxyNumbaType):
+                # idx = numba.typing.builtins.normalize_1d_index(idx)
+                if isinstance(idx, numba.types.Integer):
+                    return typeof_proxytype(tpe.proxytype._content)(tpe, idx)
+
+    @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
+    def listproxy_getitem(context, builder, sig, args):
+        return llvmlite.llvmpy.core.Constant.real(llvmlite.llvmpy.core.Type.double(), 3.14)
+                    
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
         class_obj = c.pyapi.object_getattr_string(obj, "__class__")
@@ -166,7 +192,7 @@ else:
         arraycache = unbox_arraycache(arraycachetype, arraycache_obj, c)
 
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        listproxy.cls = c.builder.ptrtoint(class_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
+        listproxy.proxytype = c.builder.ptrtoint(class_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.arraycache = arraycache.value
         listproxy.start = c.pyapi.number_as_ssize_t(start_obj)
@@ -187,7 +213,7 @@ else:
     @numba.extending.box(ListProxyNumbaType)
     def box_listproxy(typ, val, c):
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
-        class_obj = c.builder.inttoptr(listproxy.cls, c.pyapi.pyobj)
+        class_obj = c.builder.inttoptr(listproxy.proxytype, c.pyapi.pyobj)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
 
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(c.context, c.builder, value=listproxy.arraycache)
@@ -206,9 +232,8 @@ else:
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
-
         return out
-        
+
     def exposetype(proxytype):
         if issubclass(proxytype, oamap.proxy.ListProxy):
             pass
