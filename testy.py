@@ -14,5 +14,11 @@ def do(x):
     return x
 
 for i in range(10):
-    print sys.getrefcount(x._arrays), sys.getrefcount(x._cache), [sys.getrefcount(z) for z in x._cache], sys.getrefcount(x._start), sys.getrefcount(x._stop), sys.getrefcount(x._step)
+    print sys.getrefcount(x.__class__), sys.getrefcount(x._arrays), sys.getrefcount(x._cache), [sys.getrefcount(z) for z in x._cache], sys.getrefcount(x._start), sys.getrefcount(x._stop), sys.getrefcount(x._step), sys.getrefcount(x.__class__._slice)
+    y = do(x)
+
+print y
+
+for i in range(10):
+    print sys.getrefcount(x.__class__), sys.getrefcount(x._arrays), sys.getrefcount(x._cache), [sys.getrefcount(z) for z in x._cache], sys.getrefcount(x._start), sys.getrefcount(x._stop), sys.getrefcount(x._step), sys.getrefcount(x.__class__._slice)
     y = do(x)

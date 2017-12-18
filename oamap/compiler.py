@@ -173,7 +173,13 @@ else:
         listproxy.stop = c.pyapi.number_as_ssize_t(stop_obj)
         listproxy.step = c.pyapi.number_as_ssize_t(step_obj)
 
-        # decrefs
+        c.pyapi.decref(class_obj)
+        c.pyapi.decref(cache_obj)
+        c.pyapi.decref(start_obj)
+        c.pyapi.decref(stop_obj)
+        c.pyapi.decref(step_obj)
+        c.pyapi.decref(fromcache_fcn)
+        c.pyapi.decref(arraycache_obj)
 
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
         return numba.extending.NativeValue(listproxy._getvalue(), is_error=is_error)
@@ -185,7 +191,7 @@ else:
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
 
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(c.context, c.builder, value=listproxy.arraycache)
-        cache_obj = arraycache.arrayobjs
+        cache_obj = c.builder.inttoptr(arraycache.arrayobjs, c.pyapi.pyobj)
 
         start_obj = c.pyapi.long_from_ssize_t(listproxy.start)
         stop_obj = c.pyapi.long_from_ssize_t(listproxy.stop)
@@ -194,7 +200,12 @@ else:
         slice_fcn = c.pyapi.object_getattr_string(class_obj, "_slice")
         out = c.pyapi.call_function_objargs(slice_fcn, (arrays_obj, cache_obj, start_obj, stop_obj, step_obj))
 
-        # decrefs
+        c.pyapi.decref(class_obj)
+        c.pyapi.decref(arrays_obj)
+        c.pyapi.decref(cache_obj)
+        c.pyapi.decref(start_obj)
+        c.pyapi.decref(stop_obj)
+        c.pyapi.decref(step_obj)
 
         return out
         
