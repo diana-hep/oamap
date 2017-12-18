@@ -107,25 +107,17 @@ else:
         c.pyapi.decref(arraycache_cls)
         return out
 
-    x = ["a", "b", "c"]
-    print "None", id(None), repr(x), id(x)
-
-    arraycache = ArrayCache.empty(5)
-
-    arraycache.arrayobjs[2] = x
-
-    print id(arraycache), arraycache.__dict__
-
-    @numba.njit
-    def inandout(x):
-        return x
-
-    import sys
-
-    for i in range(100):
-        arraycache = inandout(arraycache)
-        print id(arraycache), arraycache.__dict__
-        print sys.getrefcount(arraycache), sys.getrefcount(arraycache.arrayobjs), sys.getrefcount(arraycache.arraydata), sys.getrefcount(arraycache.arraysize)
+    def getarray(arrays, name, cache, cacheidx, dtype, dims):
+        array = arrays[name]
+        if not isinstance(array, numpy.ndarray):
+            raise TypeError("arrays[{0}] returned a {1} ({2}) instead of a Numpy array".format(repr(name), type(array), repr(array)))
+        if array.dtype != dtype:
+            raise TypeError("arrays[{0}] returned an array of type {1} instead of {2}".format(repr(name), array.dtype, dtype))
+        if array.shape[1:] != dims:
+            raise TypeError("arrays[{0}] returned an array with shape[1:] {1} instead of {2}".format(repr(name), array.shape[1:], dims))
+        cache.arrayobjs[cacheidx] = array
+        cache.arraydata[cacheidx] = array.ctypes.data
+        cache.arraysize[cacheidx] = len(array)
 
     def exposetype(proxytype):
         if issubclass(proxytype, oamap.proxy.ListProxy):
