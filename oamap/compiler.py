@@ -32,6 +32,7 @@ import numpy
 
 try:
     import numba
+    import llvmlite
 except ImportError:
     numba = None
 
@@ -45,7 +46,7 @@ else:
     class ArrayCache(object):
         @classmethod
         def empty(cls, cachelen):
-            arrayobjs = numpy.zeros(cachelen, dtype=numpy.intp)
+            arrayobjs = [None] * cachelen
             arraydata = numpy.zeros(cachelen, dtype=numpy.intp)
             arraysize = numpy.zeros(cachelen, dtype=numpy.intp)
             return cls(arrayobjs, arraydata, arraysize)
@@ -83,15 +84,32 @@ else:
         arraydata = c.pyapi.object_getattr_string(obj, "arraydata")
         arraysize = c.pyapi.object_getattr_string(obj, "arraysize")
 
+        zeros_fcn = c.pyapi.unserialize(c.pyapi.serialize_object(numpy.zeros))
+        cachelen_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.cachelen))
+        dtype_obj = c.pyapi.unserialize(c.pyapi.serialize_object(numpy.intp))
+        arrayobjs_array = c.pyapi.call_function_objargs(zeros_fcn, (cachelen_obj, dtype_obj))
+
         arraycache = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        arraycache.arrayobjs = numba.targets.boxing.unbox_array(numba.types.intp[:], arrayobjs, c).value
+        arraycache.arrayobjs = numba.targets.boxing.unbox_array(numba.types.intp[:], arrayobjs_array, c).value
         arraycache.arraydata = numba.targets.boxing.unbox_array(numba.types.intp[:], arraydata, c).value
         arraycache.arraysize = numba.targets.boxing.unbox_array(numba.types.intp[:], arraysize, c).value
-        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+
+        for i in range(typ.cachelen):
+            arrayobj = c.pyapi.list_getitem(arrayobjs, i)
+            sig = numba.types.none(numba.types.intp[:], numba.types.int64, numba.types.intp)
+            args = arraycache.arrayobjs, llvmlite.llvmpy.core.Constant.int(c.pyapi.long, i), c.builder.ptrtoint(arrayobj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
+            numba.targets.arrayobj.setitem_array(c.context, c.builder, sig, args)
+            c.pyapi.decref(arrayobj)
 
         c.pyapi.decref(arrayobjs)
         c.pyapi.decref(arraydata)
         c.pyapi.decref(arraysize)
+        c.pyapi.decref(zeros_fcn)
+        c.pyapi.decref(cachelen_obj)
+        c.pyapi.decref(dtype_obj)
+        c.pyapi.decref(arrayobjs_array)
+
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
         return numba.extending.NativeValue(arraycache._getvalue(), is_error=is_error)
 
     @numba.extending.box(ArrayCacheNumbaType)
@@ -110,10 +128,18 @@ else:
         c.pyapi.decref(arraysize)
         return out
 
+    print "None", id(None)
 
+    arraycache = ArrayCache.empty(5)
 
+    print id(arraycache), arraycache.__dict__
 
-
+    @numba.njit
+    def inandout(x):
+        return x
+    
+    arraycache2 = inandout(arraycache)
+    print id(arraycache2), arraycache2.__dict__
 
     def exposetype(proxytype):
         if issubclass(proxytype, oamap.proxy.ListProxy):
