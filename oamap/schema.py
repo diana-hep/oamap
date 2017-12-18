@@ -133,6 +133,7 @@ class Schema(object):
 
         for proxytype in alltypes:
             proxytype._cachelen = cacheidx[0]
+            oamap.compiler.exposetype(proxytype)
 
         return out
 
