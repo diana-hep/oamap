@@ -61,6 +61,7 @@ except ImportError:
 import numpy
 
 import oamap.proxy
+import oamap.compiler
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -112,19 +113,27 @@ class Schema(object):
                 return "#{0}".format(index)
         return None
 
-    def _resolvetargets(self, out, cacheidx, memo):
-        for result in memo.values():
-            if issubclass(result, oamap.proxy.PointerProxy):
+    def _finalizetype(self, out, cacheidx, memo):
+        alltypes = []
+        for proxytype in memo.values():
+            if issubclass(proxytype, oamap.proxy.PointerProxy):
                 # only assign pointer targets after all other types have been resolved
-                target, prefix, delimiter = result._target
+                target, prefix, delimiter = proxytype._target
                 if id(target) in memo:
                     # the target points elsewhere in the type tree: link to that
-                    result._target = memo[id(target)]
+                    proxytype._target = memo[id(target)]
                 else:
                     # the target is not in the type tree: resolve it (including cases that might contain a type already seen; they're considered to be different types at different positions)
-                    memo = {}
-                    result._target = target._resolvetargets(target._totype(prefix + delimiter + "X", delimiter, cacheidx, memo), cacheidx, memo)
-        out._cachelen = cacheidx[0]
+                    memo2 = {}
+                    proxytype._target = target._finalizetype(target._totype(prefix + delimiter + "X", delimiter, cacheidx, memo2), cacheidx, memo2)
+                    for proxytype2 in memo2.values():
+                        alltypes.append(proxytype2)
+
+            alltypes.append(proxytype)
+
+        for proxytype in alltypes:
+            proxytype._cachelen = cacheidx[0]
+
         return out
 
 ################################################################ Primitives can be any Numpy type
@@ -204,7 +213,7 @@ class Primitive(Schema):
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = {}
-        return self._resolvetargets(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _totype(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
@@ -308,7 +317,7 @@ class List(Schema):
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = {}
-        return self._resolvetargets(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _totype(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
@@ -452,7 +461,7 @@ class Union(Schema):
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = {}
-        return self._resolvetargets(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _totype(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
@@ -560,7 +569,7 @@ class Record(Schema):
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = {}
-        return self._resolvetargets(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _totype(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
@@ -668,7 +677,7 @@ class Tuple(Schema):
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = {}
-        return self._resolvetargets(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _totype(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
@@ -755,7 +764,7 @@ class Pointer(Schema):
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = {}
-        return self._resolvetargets(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _totype(self, prefix, delimiter, cacheidx, memo):
         if self._target is None:
@@ -779,7 +788,7 @@ class Pointer(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
-        attributes["_target"] = (self._target, prefix, delimiter)   # placeholder! see _resolvetargets!
+        attributes["_target"] = (self._target, prefix, delimiter)   # placeholder! see _finalizetype!
 
         memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
