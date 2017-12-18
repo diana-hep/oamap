@@ -44,26 +44,38 @@ if numba is None:
 
 else:
     class ArrayCache(object):
-        @classmethod
-        def empty(cls, cachelen):
+        @staticmethod
+        def empty(cachelen):
             arrayobjs = [None] * cachelen
             arraydata = numpy.zeros(cachelen, dtype=numpy.intp)
             arraysize = numpy.zeros(cachelen, dtype=numpy.intp)
-            return cls(arrayobjs, arraydata, arraysize)
+            return ArrayCache(arrayobjs, arraydata, arraysize)
 
         def __init__(self, arrayobjs, arraydata, arraysize):
             self.arrayobjs = arrayobjs
             self.arraydata = arraydata
             self.arraysize = arraysize
 
+    def ArrayCache_fromcache(cache):
+        arraydata = numpy.zeros(len(cache), dtype=numpy.intp)
+        arraysize = numpy.zeros(len(cache), dtype=numpy.intp)
+        for i, x in enumerate(cache):
+            if x is not None:
+                if not isinstance(x, numpy.ndarray):
+                    raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
+                arraydata[i] = x.ctypes.data
+                arraysize[i] = x.shape[0]
+        return ArrayCache(cache, arraydata, arraysize)
+
     class ArrayCacheNumbaType(numba.types.Type):
-        def __init__(self, cachelen):
-            self.cachelen = cachelen
+        def __init__(self):
             super(ArrayCacheNumbaType, self).__init__(name="ArrayCache")
+
+    arraycachetype = ArrayCacheNumbaType()
 
     @numba.extending.typeof_impl.register(ArrayCache)
     def typeof_arraycache(val, c):
-        return ArrayCacheNumbaType(len(val.arrayobjs))
+        return arraycachetype
 
     @numba.extending.register_model(ArrayCacheNumbaType)
     class ArrayCacheModel(numba.datamodel.models.StructModel):
@@ -107,7 +119,7 @@ else:
         c.pyapi.decref(arraycache_cls)
         return out
 
-    def getarray(arrays, name, cache, cacheidx, dtype, dims):
+    def getarray(arrays, name, arraycache, cacheidx, dtype, dims):
         array = arrays[name]
         if not isinstance(array, numpy.ndarray):
             raise TypeError("arrays[{0}] returned a {1} ({2}) instead of a Numpy array".format(repr(name), type(array), repr(array)))
@@ -115,10 +127,77 @@ else:
             raise TypeError("arrays[{0}] returned an array of type {1} instead of {2}".format(repr(name), array.dtype, dtype))
         if array.shape[1:] != dims:
             raise TypeError("arrays[{0}] returned an array with shape[1:] {1} instead of {2}".format(repr(name), array.shape[1:], dims))
-        cache.arrayobjs[cacheidx] = array
-        cache.arraydata[cacheidx] = array.ctypes.data
-        cache.arraysize[cacheidx] = len(array)
+        arraycache.arrayobjs[cacheidx] = array
+        arraycache.arraydata[cacheidx] = array.ctypes.data
+        arraycache.arraysize[cacheidx] = array.shape[0]
 
+    class ListProxyNumbaType(numba.types.Type):
+        def __init__(self, proxytype):
+            self.proxytype = proxytype
+            super(ListProxyNumbaType, self).__init__(name="ListProxy")
+
+    @numba.extending.typeof_impl.register(oamap.proxy.ListProxy)
+    def typeof_listproxy(val, c):
+        return ListProxyNumbaType(val.__class__)
+
+    @numba.extending.register_model(ListProxyNumbaType)
+    class ListProxyModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("cls", numba.types.intp),
+                       ("arrays", numba.types.intp),
+                       ("arraycache", arraycachetype),
+                       ("start", numba.types.intp),
+                       ("stop", numba.types.intp),
+                       ("step", numba.types.intp)]
+            super(ListProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.unbox(ListProxyNumbaType)
+    def unbox_listproxy(typ, obj, c):
+        class_obj = c.pyapi.object_getattr_string(obj, "__class__")
+        arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
+        cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
+        start_obj = c.pyapi.object_getattr_string(obj, "_start")
+        stop_obj = c.pyapi.object_getattr_string(obj, "_stop")
+        step_obj = c.pyapi.object_getattr_string(obj, "_step")
+
+        fromcache_fcn = c.pyapi.unserialize(c.pyapi.serialize_object(ArrayCache_fromcache))
+        arraycache_obj = c.pyapi.call_function_objargs(fromcache_fcn, (cache_obj,))
+
+        arraycache = unbox_arraycache(arraycachetype, arraycache_obj, c)
+
+        listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        listproxy.cls = c.builder.ptrtoint(class_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
+        listproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
+        listproxy.arraycache = arraycache.value
+        listproxy.start = c.pyapi.number_as_ssize_t(start_obj)
+        listproxy.stop = c.pyapi.number_as_ssize_t(stop_obj)
+        listproxy.step = c.pyapi.number_as_ssize_t(step_obj)
+
+        # decrefs
+
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(listproxy._getvalue(), is_error=is_error)
+
+    @numba.extending.box(ListProxyNumbaType)
+    def box_listproxy(typ, val, c):
+        listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        class_obj = c.builder.inttoptr(listproxy.cls, c.pyapi.pyobj)
+        arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
+
+        arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(c.context, c.builder, value=listproxy.arraycache)
+        cache_obj = arraycache.arrayobjs
+
+        start_obj = c.pyapi.long_from_ssize_t(listproxy.start)
+        stop_obj = c.pyapi.long_from_ssize_t(listproxy.stop)
+        step_obj = c.pyapi.long_from_ssize_t(listproxy.step)
+
+        slice_fcn = c.pyapi.object_getattr_string(class_obj, "_slice")
+        out = c.pyapi.call_function_objargs(slice_fcn, (arrays_obj, cache_obj, start_obj, stop_obj, step_obj))
+
+        # decrefs
+
+        return out
+        
     def exposetype(proxytype):
         if issubclass(proxytype, oamap.proxy.ListProxy):
             pass

@@ -70,7 +70,7 @@ class PrimitiveProxy(Proxy):
 ################################################################ Lists
 
 class ListProxy(Proxy):
-    __slots__ = ["_arrays", "_start", "_stop", "_step"]
+    __slots__ = ["_arrays", "_cache", "_start", "_stop", "_step"]
 
     _dtype = numpy.dtype(numpy.int32)
 
@@ -215,7 +215,7 @@ class UnionProxy(Proxy):
 ################################################################ Records
 
 class RecordProxy(Proxy):
-    __slots__ = ["_arrays", "_index"]
+    __slots__ = ["_arrays", "_cache", "_index"]
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
@@ -251,7 +251,7 @@ class RecordProxy(Proxy):
 ################################################################ Tuples
 
 class TupleProxy(Proxy):
-    __slots__ = ["_arrays", "_index"]
+    __slots__ = ["_arrays", "_cache", "_index"]
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
