@@ -67,6 +67,13 @@ class PrimitiveProxy(Proxy):
             cache = [None] * cls._cachelen
         return cls._getarray(arrays, cls._data, cache, cls._dataidx, cls._dtype, cls._dims)[index]
 
+    @classmethod
+    def _uniquestr(cls):
+        if issubclass(cls, Masked):
+            return "MaskedPrimitive({0}, {1}, {2}, {3}, {4}, {5})".format(repr(cls._dtype), cls._dims, repr(cls._data), cls._dataidx, repr(cls._mask), cls._maskidx)
+        else:
+            return "Primitive({0}, {1}, {2}, {3})".format(repr(cls._dtype), cls._dims, repr(cls._data), cls._dataidx)
+
 ################################################################ Lists
 
 class ListProxy(Proxy):
@@ -80,6 +87,15 @@ class ListProxy(Proxy):
         starts = cls._getarray(arrays, cls._starts, cache, cls._startsidx, ListProxy._dtype)
         stops = cls._getarray(arrays, cls._stops, cache, cls._stopsidx, ListProxy._dtype)
         return cls._slice(arrays, cache, starts[index], stops[index], 1)
+
+    @classmethod
+    def _uniquestr(cls):
+        if issubclass(cls, Masked):
+            return "MaskedList({0}, {1}, {2}, {3}, {4}, {5}, {6})".format(cls._content._uniquestr(), repr(cls._starts), cls._startsidx, repr(cls._stops), cls._stopsidx, repr(cls._mask), cls._maskidx)
+        else:
+            return "MaskedList({0}, {1}, {2}, {3}, {4})".format(cls._content._uniquestr(), repr(cls._starts), cls._startsidx, repr(cls._stops), cls._stopsidx)
+
+# FIXME: keep going! all the types should have _uniquestr
 
     @classmethod
     def _slice(cls, arrays, cache, start, stop, step):
