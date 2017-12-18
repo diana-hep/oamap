@@ -87,10 +87,11 @@ else:
         arraycache.arrayobjs = numba.targets.boxing.unbox_array(numba.types.intp[:], arrayobjs, c).value
         arraycache.arraydata = numba.targets.boxing.unbox_array(numba.types.intp[:], arraydata, c).value
         arraycache.arraysize = numba.targets.boxing.unbox_array(numba.types.intp[:], arraysize, c).value
-
-        # decref
-
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+
+        c.pyapi.decref(arrayobjs)
+        c.pyapi.decref(arraydata)
+        c.pyapi.decref(arraysize)
         return numba.extending.NativeValue(arraycache._getvalue(), is_error=is_error)
 
     @numba.extending.box(ArrayCacheNumbaType)
@@ -103,24 +104,14 @@ else:
         arraycache_cls = c.pyapi.unserialize(c.pyapi.serialize_object(ArrayCache))
         out = c.pyapi.call_function_objargs(arraycache_cls, (arrayobjs, arraydata, arraysize))
 
-        # decref
-
+        c.pyapi.decref(arraycache_cls)
+        c.pyapi.decref(arrayobjs)
+        c.pyapi.decref(arraydata)
+        c.pyapi.decref(arraysize)
         return out
 
-    arraycache = ArrayCache.empty(5)
-    arraycache.arrayobjs[2] = 999
 
-    print id(arraycache), arraycache.__dict__
 
-    @numba.njit
-    def inandout(x):
-        return x
-
-    arraycache2 = inandout(arraycache)
-
-    arraycache.arrayobjs[3] = 888
-
-    print id(arraycache2), arraycache2.__dict__
 
 
 
