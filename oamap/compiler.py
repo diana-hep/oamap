@@ -68,15 +68,11 @@ else:
     @numba.extending.register_model(ArrayCacheNumbaType)
     class ArrayCacheModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("arrayobjs", numba.types.intp[:]),
+            members = [("arrayobjs", numba.types.intp),
                        ("arraydata", numba.types.intp[:]),
                        ("arraysize", numba.types.intp[:]),
                        ("cachelen", numba.types.int32)]
             super(ArrayCacheModel, self).__init__(dmm, fe_type, members)
-
-    class GetIt(Exception):
-        def __init__(self, stuff):
-            self.stuff = stuff
 
     @numba.extending.unbox(ArrayCacheNumbaType)
     def unbox_arraycache(typ, obj, c):
@@ -84,30 +80,13 @@ else:
         arraydata = c.pyapi.object_getattr_string(obj, "arraydata")
         arraysize = c.pyapi.object_getattr_string(obj, "arraysize")
 
-        zeros_fcn = c.pyapi.unserialize(c.pyapi.serialize_object(numpy.zeros))
-        cachelen_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.cachelen))
-        dtype_obj = c.pyapi.unserialize(c.pyapi.serialize_object(numpy.intp))
-        arrayobjs_array = c.pyapi.call_function_objargs(zeros_fcn, (cachelen_obj, dtype_obj))
-
         arraycache = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        arraycache.arrayobjs = numba.targets.boxing.unbox_array(numba.types.intp[:], arrayobjs_array, c).value
+        arraycache.arrayobjs = c.builder.ptrtoint(arrayobjs, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         arraycache.arraydata = numba.targets.boxing.unbox_array(numba.types.intp[:], arraydata, c).value
         arraycache.arraysize = numba.targets.boxing.unbox_array(numba.types.intp[:], arraysize, c).value
 
-        for i in range(typ.cachelen):
-            arrayobj = c.pyapi.list_getitem(arrayobjs, i)
-            c.pyapi.incref(arrayobj)
-            sig = numba.types.none(numba.types.intp[:], numba.types.int64, numba.types.intp)
-            args = arraycache.arrayobjs, llvmlite.llvmpy.core.Constant.int(c.pyapi.long, i), c.builder.ptrtoint(arrayobj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
-            numba.targets.arrayobj.setitem_array(c.context, c.builder, sig, args)
-
-        c.pyapi.decref(arrayobjs)
         c.pyapi.decref(arraydata)
         c.pyapi.decref(arraysize)
-        c.pyapi.decref(zeros_fcn)
-        c.pyapi.decref(cachelen_obj)
-        c.pyapi.decref(dtype_obj)
-        c.pyapi.decref(arrayobjs_array)
 
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
         return numba.extending.NativeValue(arraycache._getvalue(), is_error=is_error)
@@ -115,43 +94,38 @@ else:
     @numba.extending.box(ArrayCacheNumbaType)
     def box_arraycache(typ, val, c):
         arraycache = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        arrayobjs = c.builder.inttoptr(arraycache.arrayobjs, c.pyapi.pyobj)
         arraydata = numba.targets.boxing.box_array(numba.types.intp[:], arraycache.arraydata, c)
         arraysize = numba.targets.boxing.box_array(numba.types.intp[:], arraycache.arraysize, c)
-
-        arrayobjs = c.pyapi.list_new(llvmlite.llvmpy.core.Constant.int(c.pyapi.long, typ.cachelen))
-        for i in range(typ.cachelen):
-            sig = numba.types.intp(numba.types.intp[:], numba.types.int64)
-            args = arraycache.arrayobjs, llvmlite.llvmpy.core.Constant.int(c.pyapi.long, i)
-            pos = numba.targets.arrayobj.getitem_arraynd_intp(c.context, c.builder, sig, args)
-            ptr = c.builder.inttoptr(pos, c.pyapi.pyobj)
-            c.pyapi.list_setitem(arrayobjs, llvmlite.llvmpy.core.Constant.int(c.pyapi.long, i), ptr)
 
         arraycache_cls = c.pyapi.unserialize(c.pyapi.serialize_object(ArrayCache))
         out = c.pyapi.call_function_objargs(arraycache_cls, (arrayobjs, arraydata, arraysize))
 
-        c.pyapi.decref(arraycache_cls)
         c.pyapi.decref(arrayobjs)
         c.pyapi.decref(arraydata)
         c.pyapi.decref(arraysize)
+        c.pyapi.decref(arraycache_cls)
         return out
 
-    for j in range(5):
-        x = ["a", "b", "c"]
-        print "None", id(None), repr(x), id(x)
+    x = ["a", "b", "c"]
+    print "None", id(None), repr(x), id(x)
 
-        arraycache = ArrayCache.empty(5)
+    arraycache = ArrayCache.empty(5)
 
-        arraycache.arrayobjs[2] = x
+    arraycache.arrayobjs[2] = x
 
+    print id(arraycache), arraycache.__dict__
+
+    @numba.njit
+    def inandout(x):
+        return x
+
+    import sys
+
+    for i in range(100):
+        arraycache = inandout(arraycache)
         print id(arraycache), arraycache.__dict__
-
-        @numba.njit
-        def inandout(x):
-            return x
-
-        for i in range(100):
-            arraycache2 = inandout(arraycache)
-            print id(arraycache2), arraycache2.__dict__
+        print sys.getrefcount(arraycache), sys.getrefcount(arraycache.arrayobjs), sys.getrefcount(arraycache.arraydata), sys.getrefcount(arraycache.arraysize)
 
     def exposetype(proxytype):
         if issubclass(proxytype, oamap.proxy.ListProxy):
