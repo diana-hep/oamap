@@ -137,28 +137,6 @@ class Schema(object):
             oamap.compiler.exposetype(proxytype)
 
         oamap.proxy._uniquestr(out, set())
-
-        def quickie(t, memo):
-            print t._uniquestr
-            if id(t) not in memo:
-                memo.add(id(t))
-                if issubclass(t, oamap.proxy.PrimitiveProxy):
-                    pass
-                elif issubclass(t, oamap.proxy.ListProxy):
-                    quickie(t._content, memo)
-                elif issubclass(t, oamap.proxy.UnionProxy):
-                    for tt in t._possibilities:
-                        quickie(tt, memo)
-                elif issubclass(t, oamap.proxy.RecordProxy):
-                    for tt in t._fieldtypes:
-                        quickie(tt, memo)
-                elif issubclass(t, oamap.proxy.TupleProxy):
-                    for tt in t._types:
-                        quickie(tt, memo)
-                elif issubclass(t, oamap.proxy.PointerProxy):
-                    quickie(t._target, memo)
-
-        quickie(out, set())
         return out
 
 ################################################################ Primitives can be any Numpy type
