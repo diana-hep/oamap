@@ -359,10 +359,6 @@ class PointerProxy(Proxy):
 
 ################################################################ for assigning unique names to types
 
-# def _quotedstr(string):
-#     return _quotedstr._pattern.sub(lambda bad: "_" + "".join("{0:02x}".format(ord(x)) for x in bad.group(0)) + "_", string)
-# _quotedstr._pattern = re.compile("[^a-zA-Z0-9]+")
-
 def _firstindex(t):
     if issubclass(t, PrimitiveProxy):
         return t._dataidx

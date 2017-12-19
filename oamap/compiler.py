@@ -134,7 +134,7 @@ else:
     class ListProxyNumbaType(numba.types.Type):
         def __init__(self, proxytype):
             self.proxytype = proxytype
-            super(ListProxyNumbaType, self).__init__(name="ListProxy({0})".format(self.proxytype._content._dtype))
+            super(ListProxyNumbaType, self).__init__(name=self.proxytype._uniquestr)
 
     def typeof_proxytype(proxytype):
         if issubclass(proxytype, oamap.proxy.PrimitiveProxy):
