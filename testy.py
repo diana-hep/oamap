@@ -16,11 +16,11 @@ def do(x):
 print x._cache
 y = do(x)
 print x._cache
-print y._cache
+# print y._cache
 print y
 print x._cache
-print y._cache
+# print y._cache
 
 for i in range(100):
-    print sys.getrefcount(x._cache.data), sys.getrefcount(x._cache.size), sys.getrefcount(x._cache.entercompiled)
+    print sys.getrefcount(x._arrays), sys.getrefcount(x._cache), sys.getrefcount(x._cache.data), sys.getrefcount(x._cache.size), sys.getrefcount(x._cache.entercompiled)
     y = do(x)

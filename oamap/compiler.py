@@ -68,15 +68,22 @@ else:
         arraycache.data = numba.targets.boxing.unbox_array(numba.types.intp[:], data_obj, c).value
         arraycache.size = numba.targets.boxing.unbox_array(numba.types.intp[:], size_obj, c).value
 
-        # one ref is from getattr, the other from unbox_array
-        c.pyapi.decref(data_obj); c.pyapi.decref(data_obj)
-        c.pyapi.decref(size_obj); c.pyapi.decref(size_obj)
+        c.pyapi.decref(cache_obj)
+        c.pyapi.decref(data_obj)
+        c.pyapi.decref(size_obj)
 
         return arraycache._getvalue()
 
-    def box_arraycache(context, builder, pyapi, arraycache_val):
+    def box_arraycache(context, builder, pyapi, arraycache_val, decref_arrays=False):
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(context, builder, value=arraycache_val)
-        return builder.inttoptr(arraycache.cache, pyapi.pyobj)
+        cache_obj = builder.inttoptr(arraycache.cache, pyapi.pyobj)
+        if decref_arrays:
+            data_obj = pyapi.object_getattr_string(cache_obj, "data")
+            size_obj = pyapi.object_getattr_string(cache_obj, "size")
+            pyapi.decref(data_obj); pyapi.decref(data_obj)
+            pyapi.decref(size_obj); pyapi.decref(size_obj)
+
+        return cache_obj
 
     # def getarray(arrays, name, arraycache, cacheidx, dtype, dims):
     #     print "calling getarray", arrays, name, arraycache, cacheidx, dtype, dims
@@ -141,6 +148,10 @@ else:
 
         pyapi = context.get_python_api(builder)
 
+        listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
+
+
+
         # listproxy = numba.cgutils.create_struct_proxy(listtyp)(context, builder, value=listval)
         # arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(context, builder, value=listproxy.arraycache)
         # box_arraycache(arraycachetype, arraycahce, 
@@ -184,7 +195,7 @@ else:
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
         class_obj = c.builder.inttoptr(listproxy.proxytype, c.pyapi.pyobj)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
-        cache_obj = box_arraycache(c.context, c.builder, c.pyapi, listproxy.arraycache)
+        cache_obj = box_arraycache(c.context, c.builder, c.pyapi, listproxy.arraycache, decref_arrays=True)
         start_obj = c.pyapi.long_from_ssize_t(listproxy.start)
         stop_obj = c.pyapi.long_from_ssize_t(listproxy.stop)
         step_obj = c.pyapi.long_from_ssize_t(listproxy.step)
@@ -194,11 +205,11 @@ else:
 
         c.pyapi.decref(class_obj)
         # c.pyapi.decref(arrays_obj)   # not this one
-        c.pyapi.decref(cache_obj)
+        # c.pyapi.decref(cache_obj)    # not this one
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
-        # c.pyapi.decref(slice_fcn)    # nor this one
+        # c.pyapi.decref(slice_fcn)    # not this one
         return out
 
     def exposetype(proxytype):
