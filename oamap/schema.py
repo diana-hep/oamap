@@ -126,6 +126,7 @@ class Schema(object):
                     # the target is not in the type tree: resolve it (including cases that might contain a type already seen; they're considered to be different types at different positions)
                     memo2 = {}
                     proxytype._target = target._finalizetype(target._totype(prefix + delimiter + "X", delimiter, cacheidx, memo2), cacheidx, memo2)
+
                     for proxytype2 in memo2.values():
                         alltypes.append(proxytype2)
 
@@ -135,6 +136,29 @@ class Schema(object):
             proxytype._cachelen = cacheidx[0]
             oamap.compiler.exposetype(proxytype)
 
+        oamap.proxy._uniquestr(out, set())
+
+        def quickie(t, memo):
+            print t._uniquestr
+            if id(t) not in memo:
+                memo.add(id(t))
+                if issubclass(t, oamap.proxy.PrimitiveProxy):
+                    pass
+                elif issubclass(t, oamap.proxy.ListProxy):
+                    quickie(t._content, memo)
+                elif issubclass(t, oamap.proxy.UnionProxy):
+                    for tt in t._possibilities:
+                        quickie(tt, memo)
+                elif issubclass(t, oamap.proxy.RecordProxy):
+                    for tt in t._fieldtypes:
+                        quickie(tt, memo)
+                elif issubclass(t, oamap.proxy.TupleProxy):
+                    for tt in t._types:
+                        quickie(tt, memo)
+                elif issubclass(t, oamap.proxy.PointerProxy):
+                    quickie(t._target, memo)
+
+        quickie(out, set())
         return out
 
 ################################################################ Primitives can be any Numpy type
@@ -237,7 +261,9 @@ class Primitive(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
-        memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
+        attributes["_name"] = self._name
+
+        memo[id(self)] = type("SpecificPrimitiveProxy" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
 
 ################################################################ Lists may have arbitrary length
@@ -347,9 +373,10 @@ class List(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
+        attributes["_name"] = self._name
         attributes["_content"] = self._content._totype(prefix + delimiter + "L", delimiter, cacheidx, memo)
 
-        memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
+        memo[id(self)] = type("SpecificListProxy" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
 
 ################################################################ Unions may be one of several types
@@ -491,9 +518,10 @@ class Union(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
+        attributes["_name"] = self._name
         attributes["_possibilities"] = [x._totype(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._possibilities)]
 
-        memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
+        memo[id(self)] = type("SpecificUnionProxy" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
 
 ################################################################ Records contain fields of known types
@@ -578,9 +606,6 @@ class Record(Schema):
         memo[id(self)] = None
         bases = [oamap.proxy.RecordProxy]
         attributes = {}
-        
-        def wrap_for_python_scope(t):
-            return lambda self: t(self._arrays, index=self._index, cache=self._cache)
 
         if self._nullable:
             bases.insert(0, oamap.proxy.Masked)
@@ -590,11 +615,16 @@ class Record(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
-        attributes["_fields"] = tuple(sorted(self._fields))
-        for n in attributes["_fields"]:
-            attributes[n] = property(wrap_for_python_scope(self._fields[n]._totype(prefix + delimiter + "F" + n, delimiter, cacheidx, memo)))
+        def wrap_for_python_scope(t):
+            return lambda self: t(self._arrays, index=self._index, cache=self._cache)
 
-        memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
+        attributes["_name"] = self._name
+        attributes["_fields"] = tuple(sorted(self._fields))
+        attributes["_fieldtypes"] = tuple(self._fields[n]._totype(prefix + delimiter + "F" + n, delimiter, cacheidx, memo) for n in attributes["_fields"])
+        for n, t in zip(attributes["_fields"], attributes["_fieldtypes"]):
+            attributes[n] = property(wrap_for_python_scope(t))
+
+        memo[id(self)] = type("SpecificRecordProxy" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
 
 ################################################################ Tuples are like records but with an order instead of field names
@@ -695,9 +725,10 @@ class Tuple(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
+        attributes["_name"] = self._name
         attributes["_types"] = tuple(x._totype(prefix + delimiter + "T" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types))
 
-        memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
+        memo[id(self)] = type("SpecificTupleProxy" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]
 
 ################################################################ Pointers redirect to the contents of other types
@@ -789,7 +820,8 @@ class Pointer(Schema):
                 attributes["_mask"] = self._mask
             attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
 
+        attributes["_name"] = self._name
         attributes["_target"] = (self._target, prefix, delimiter)   # placeholder! see _finalizetype!
 
-        memo[id(self)] = type("" if self._name is None else self._name, tuple(bases), attributes)
+        memo[id(self)] = type("SpecificPointerProxy" if self._name is None else self._name, tuple(bases), attributes)
         return memo[id(self)]

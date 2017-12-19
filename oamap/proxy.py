@@ -67,13 +67,6 @@ class PrimitiveProxy(Proxy):
             cache = [None] * cls._cachelen
         return cls._getarray(arrays, cls._data, cache, cls._dataidx, cls._dtype, cls._dims)[index]
 
-    @classmethod
-    def _uniquestr(cls):
-        if issubclass(cls, Masked):
-            return "MaskedPrimitive({0}, {1}, {2}, {3}, {4}, {5})".format(repr(cls._dtype), cls._dims, repr(cls._data), cls._dataidx, repr(cls._mask), cls._maskidx)
-        else:
-            return "Primitive({0}, {1}, {2}, {3})".format(repr(cls._dtype), cls._dims, repr(cls._data), cls._dataidx)
-
 ################################################################ Lists
 
 class ListProxy(Proxy):
@@ -87,15 +80,6 @@ class ListProxy(Proxy):
         starts = cls._getarray(arrays, cls._starts, cache, cls._startsidx, ListProxy._dtype)
         stops = cls._getarray(arrays, cls._stops, cache, cls._stopsidx, ListProxy._dtype)
         return cls._slice(arrays, cache, starts[index], stops[index], 1)
-
-    @classmethod
-    def _uniquestr(cls):
-        if issubclass(cls, Masked):
-            return "MaskedList({0}, {1}, {2}, {3}, {4}, {5}, {6})".format(cls._content._uniquestr(), repr(cls._starts), cls._startsidx, repr(cls._stops), cls._stopsidx, repr(cls._mask), cls._maskidx)
-        else:
-            return "MaskedList({0}, {1}, {2}, {3}, {4})".format(cls._content._uniquestr(), repr(cls._starts), cls._startsidx, repr(cls._stops), cls._stopsidx)
-
-# FIXME: keep going! all the types should have _uniquestr
 
     @classmethod
     def _slice(cls, arrays, cache, start, stop, step):
@@ -243,8 +227,7 @@ class RecordProxy(Proxy):
         return out
 
     def __repr__(self):
-        name = self.__class__.__name__
-        return "<{0} at index {1}>".format("Record" if name == "" else name, self._index)
+        return "<{0} at index {1}>".format(self.__class__.__name__, self._index)
 
     def __hash__(self):
         return hash((RecordProxy, self.__class__.__name__) + self._fields + tuple(getattr(self, n) for n in self._fields))
@@ -373,3 +356,93 @@ class PointerProxy(Proxy):
             cache = [None] * cls._cachelen
         positions = cls._getarray(arrays, cls._positions, cache, cls._positionsidx, PointerProxy._dtype)
         return cls._target(arrays, index=positions[index], cache=cache)
+
+################################################################ for assigning unique names to types
+
+# def _quotedstr(string):
+#     return _quotedstr._pattern.sub(lambda bad: "_" + "".join("{0:02x}".format(ord(x)) for x in bad.group(0)) + "_", string)
+# _quotedstr._pattern = re.compile("[^a-zA-Z0-9]+")
+
+def _firstindex(t):
+    if issubclass(t, PrimitiveProxy):
+        return t._dataidx
+    elif issubclass(t, ListProxy):
+        return t._startsidx
+    elif issubclass(t, UnionProxy):
+        return t._tagsidx
+    elif issubclass(t, Masked) and issubclass(t, RecordProxy):
+        return t._maskidx
+    elif issubclass(t, RecordProxy):
+        for tt in t._fieldtypes:
+            return _firstindex(tt)
+        return -1
+    elif issubclass(t, Masked) and issubclass(t, TupleProxy):
+        return t._maskidx
+    elif issubclass(t, TupleProxy):
+        for tt in t._types:
+            return _firstindex(tt)
+        return -1
+    elif issubclass(t, PointerProxy):
+        return t._positionsidx
+    else:
+        raise AssertionError("unrecognized proxy type: {0}".format(t))
+
+def _uniquestr(cls, memo):
+    if id(cls) not in memo:
+        memo.add(id(cls))
+        givenname = "nil" if cls._name is None else repr(cls._name)
+
+        if issubclass(cls, Masked) and issubclass(cls, PrimitiveProxy):
+            cls._uniquestr = "(P {0} {1} ({2}) {3} {4} {5} {6})".format(givenname, repr(str(cls._dtype)), " ".join(map(repr, cls._dims)), cls._dataidx, repr(cls._data), cls._maskidx, repr(cls._mask))
+
+        elif issubclass(cls, PrimitiveProxy):
+            cls._uniquestr = "(P {0} {1} ({2}) {3} {4})".format(givenname, repr(str(cls._dtype)), " ".join(map(repr, cls._dims)), cls._dataidx, repr(cls._data))
+
+        elif issubclass(cls, Masked) and issubclass(cls, ListProxy):
+            _uniquestr(cls._content, memo)
+            cls._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6} {7})".format(givenname, cls._startsidx, repr(cls._starts), cls._stopsidx, repr(cls._stops), cls._maskidx, repr(cls._mask), cls._content._uniquestr)
+
+        elif issubclass(cls, ListProxy):
+            _uniquestr(cls._content, memo)
+            cls._uniquestr = "(L {0} {1} {2} {3} {4} {5})".format(givenname, cls._startsidx, repr(cls._starts), cls._stopsidx, repr(cls._stops), cls._content._uniquestr)
+
+        elif issubclass(cls, Masked) and issubclass(cls, UnionProxy):
+            for t in cls._possibilities:
+                _uniquestr(t, memo)
+            cls._uniquestr = "(U {0} {1} {2} {3} {4} {5} {6} ({7}))".format(givenname, cls._tagsidx, repr(cls._tags), cls._offsetsidx, repr(cls._offsets), cls._maskidx, repr(cls._mask), " ".join(x._uniquestr for x in cls._possibilities))
+
+        elif issubclass(cls, UnionProxy):
+            for t in cls._possibilities:
+                _uniquestr(t, memo)
+            cls._uniquestr = "(U {0} {1} {2} {3} {4} ({5}))".format(givenname, cls._tagsidx, repr(cls._tags), cls._offsetsidx, repr(cls._offsets), " ".join(x._uniquestr for x in cls._possibilities))
+
+        elif issubclass(cls, Masked) and issubclass(cls, RecordProxy):
+            for t in cls._fieldtypes:
+                _uniquestr(t, memo)
+            cls._uniquestr = "(R {0} {1} {2} ({3}))".format(givenname, cls._maskidx, repr(cls._mask), " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in zip(cls._fields, cls._fieldtypes)))
+
+        elif issubclass(cls, RecordProxy):
+            for t in cls._fieldtypes:
+                _uniquestr(t, memo)
+            cls._uniquestr = "(R {0} ({1}))".format(givenname, " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in zip(cls._fields, cls._fieldtypes)))
+
+        elif issubclass(cls, Masked) and issubclass(cls, TupleProxy):
+            for t in cls._types:
+                _uniquestr(t, memo)
+            cls._uniquestr = "(T {0} {1} {2} ({3}))".format(givenname, cls._maskidx, repr(cls._mask), " ".join(t._uniquestr for t in cls._types))
+
+        elif issubclass(cls, TupleProxy):
+            for t in cls._types:
+                _uniquestr(t, memo)
+            cls._uniquestr = "(T {0} ({1}))".format(givenname, " ".join(t._uniquestr for t in cls._types))
+
+        elif issubclass(cls, Masked) and issubclass(cls, PointerProxy):
+            _uniquestr(cls._target, memo)
+            cls._uniquestr = "(X {0} {1} {2} {3} {4} {5})".format(givenname, cls._positionsidx, repr(cls._positions), cls._maskidx, repr(cls._mask), _firstindex(cls._target))
+
+        elif issubclass(cls, PointerProxy):
+            _uniquestr(cls._target, memo)
+            cls._uniquestr = "(X {0} {1} {2} {3})".format(givenname, cls._positionsidx, repr(cls._positions), _firstindex(cls._target))
+
+        else:
+            AssertionError("unrecognized proxy type: {0}".format(cls))
