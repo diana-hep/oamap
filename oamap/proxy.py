@@ -35,17 +35,34 @@ import numpy
 if sys.version_info[0] > 2:
     xrange = range
 
+class ArrayCache(object):
+    def __init__(self, cachelen):
+        self.arraylist = [None] * cachelen
+        self.data = numpy.zeros(cachelen, dtype=numpy.intp)   # these two are only set and used in compiled code
+        self.size = numpy.zeros(cachelen, dtype=numpy.intp)
+
+    def entercompiled(self):
+        for i, x in enumerate(self.arraylist):
+            if x is None:
+                self.data[i] = 0
+                self.size[i] = 0
+            else:
+                if not isinstance(x, numpy.ndarray):
+                    raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
+                self.data[i] = x.ctypes.data
+                self.size[i] = x.shape[0]
+
 # superclass of all proxies
 class Proxy(object):
     @classmethod
     def _getarray(cls, arrays, name, cache, cacheidx, dtype, dims=()):
-        if cache[cacheidx] is None:
-            cache[cacheidx] = arrays[name]
-            if getattr(cache[cacheidx], "dtype", dtype) != dtype:
-                raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(name), cache[cacheidx].dtype, dtype))
-            if getattr(cache[cacheidx], "shape", (0,) + dims)[1:] != dims:
-                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache[cacheidx].shape[1:], dims))
-        return cache[cacheidx]
+        if cache.arraylist[cacheidx] is None:
+            cache.arraylist[cacheidx] = arrays[name]
+            if getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
+                raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].dtype, dtype))
+            if getattr(cache.arraylist[cacheidx], "shape", (0,) + dims)[1:] != dims:
+                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
+        return cache.arraylist[cacheidx]
 
 # mix-in for masked proxies
 class Masked(object):
@@ -53,7 +70,7 @@ class Masked(object):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         if cls._getarray(arrays, cls._mask, cache, cls._maskidx, Masked._dtype)[index]:
             return None
         else:
@@ -64,7 +81,7 @@ class Masked(object):
 class PrimitiveProxy(Proxy):
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         return cls._getarray(arrays, cls._data, cache, cls._dataidx, cls._dtype, cls._dims)[index]
 
 ################################################################ Lists
@@ -76,7 +93,7 @@ class ListProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         starts = cls._getarray(arrays, cls._starts, cache, cls._startsidx, ListProxy._dtype)
         stops = cls._getarray(arrays, cls._stops, cache, cls._stopsidx, ListProxy._dtype)
         return cls._slice(arrays, cache, starts[index], stops[index], 1)
@@ -207,7 +224,7 @@ class UnionProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         tags = cls._getarray(arrays, cls._tags, cache, cls._tagsidx, UnionProxy._tagdtype)
         offsets = cls._getarray(arrays, cls._offsets, cache, cls._offsetsidx, UnionProxy._offsetdtype)
         return cls._possibilities[tags[index]](arrays, index=offsets[index], cache=cache)
@@ -219,7 +236,7 @@ class RecordProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         out = Proxy.__new__(cls)
         out._arrays = arrays
         out._cache = cache
@@ -254,7 +271,7 @@ class TupleProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         out = Proxy.__new__(cls)
         out._arrays = arrays
         out._cache = cache
@@ -353,7 +370,7 @@ class PointerProxy(Proxy):
 
     def __new__(cls, arrays, index=0, cache=None):
         if cache is None:
-            cache = [None] * cls._cachelen
+            cache = ArrayCache(cls._cachelen)
         positions = cls._getarray(arrays, cls._positions, cache, cls._positionsidx, PointerProxy._dtype)
         return cls._target(arrays, index=positions[index], cache=cache)
 

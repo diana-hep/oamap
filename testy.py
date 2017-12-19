@@ -13,28 +13,14 @@ x = t({"object-B": numpy.array([0], numpy.int32), "object-E": numpy.array([5], n
 def do(x):
     return x
 
-for i in range(10):
-    print sys.getrefcount(x.__class__), sys.getrefcount(x._arrays), sys.getrefcount(x._cache), [sys.getrefcount(z) for z in x._cache], sys.getrefcount(x._start), sys.getrefcount(x._stop), sys.getrefcount(x._step), sys.getrefcount(x.__class__._slice)
-    y = do(x)
-
+print x._cache
+y = do(x)
+print x._cache
+print y._cache
 print y
+print x._cache
+print y._cache
 
-for i in range(10):
-    print sys.getrefcount(x.__class__), sys.getrefcount(x._arrays), sys.getrefcount(x._cache), [sys.getrefcount(z) for z in x._cache], sys.getrefcount(x._start), sys.getrefcount(x._stop), sys.getrefcount(x._step), sys.getrefcount(x.__class__._slice)
+for i in range(100):
+    print sys.getrefcount(x._cache.data), sys.getrefcount(x._cache.size), sys.getrefcount(x._cache.entercompiled)
     y = do(x)
-
-@numba.njit
-def do(x):
-    return x[3]
-
-print "ONE"
-print do(x)
-print "TWO", do.overloads.keys()
-
-s = List(Primitive("i8"))
-t = s()
-x = t({"object-B": numpy.array([0], numpy.int32), "object-E": numpy.array([5], numpy.int32), "object-L": numpy.array([0, 1, 2, 3, 4])})
-
-print "THREE"
-print do(x)
-print "FOUR", do.overloads.keys()
