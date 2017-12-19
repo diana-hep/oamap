@@ -133,8 +133,9 @@ else:
                 if isinstance(idx, numba.types.Integer):
                     return typeof_proxytype(tpe.proxytype._content)(tpe, idx)
 
+    import sys
+
     def getarray(arrays, name, cache, cacheidx, dtype, dims):
-        print "calling getarray"
         array = arrays[name]
         if not isinstance(array, numpy.ndarray):
             raise TypeError("arrays[{0}] returned a {1} ({2}) instead of a Numpy array".format(repr(name), type(array), repr(array)))
@@ -171,7 +172,9 @@ else:
             dims_obj = pyapi.unserialize(pyapi.serialize_object(listtpe.proxytype._content._dims))
             pyapi.call_function_objargs(getarray_fcn, (arrays_obj, name_obj, cache_obj, cacheidx_obj, dtype_obj, dims_obj))
 
-        # FIXME: decrefs
+            pyapi.decref(cacheidx_obj)
+            pyapi.decref(dtype_obj)
+            pyapi.decref(dims_obj)
 
         data = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.data)
         data_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], data, [cacheidx]))
