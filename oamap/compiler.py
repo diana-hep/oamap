@@ -28,6 +28,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import pickle
+
 import numpy
 
 try:
@@ -140,14 +142,16 @@ else:
         cache.ptr[cacheidx] = array.ctypes.data
         cache.len[cacheidx] = array.shape[0]
 
-    def constint(value):
-        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), value)
+        return pickle.dumps(Exception("hello"))
+
+    def constint(value, bits=64):
+        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(bits), value)
 
     def atidx(context, builder, ptrarray, idx):
         return numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], ptrarray, [idx]))
 
     def ensure(context, builder, pyapi, ptr, arrays, name, cache, cacheidx, dtype, dims):
-        with numba.cgutils.if_unlikely(builder, builder.not_(context.is_true(builder, numba.types.int8, ptr))):
+        with builder.if_then(builder.not_(context.is_true(builder, numba.types.int8, ptr)), likely=False):
             getarray_fcn = pyapi.unserialize(pyapi.serialize_object(getarray))
             arrays_obj = builder.inttoptr(arrays, pyapi.pyobj)
             name_obj = pyapi.unserialize(pyapi.serialize_object(name))
@@ -155,10 +159,58 @@ else:
             cacheidx_obj = pyapi.long_from_long(cacheidx)
             dtype_obj = pyapi.unserialize(pyapi.serialize_object(dtype))
             dims_obj = pyapi.unserialize(pyapi.serialize_object(dims))
-            pyapi.call_function_objargs(getarray_fcn, (arrays_obj, name_obj, cache_obj, cacheidx_obj, dtype_obj, dims_obj))
+            exception = pyapi.call_function_objargs(getarray_fcn, (arrays_obj, name_obj, cache_obj, cacheidx_obj, dtype_obj, dims_obj))
             pyapi.decref(cacheidx_obj)
             pyapi.decref(dtype_obj)
             pyapi.decref(dims_obj)
+
+            ok, buf, len64 = pyapi.string_as_string_and_size(exception)
+            len32 = builder.trunc(len64, llvmlite.llvmpy.core.Type.int(32))
+            buflen = llvmlite.llvmpy.core.ir.Constant.literal_struct([buf, len32])
+
+            # buflen = numba.cgutils.alloca_once_value(builder, llvmlite.llvmpy.core.ir.Constant.literal_struct([buf, len32]))
+
+            # print dir(buflen)
+
+            # buflentype = llvmlite.llvmpy.core.Type.struct([llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.int(8)), llvmlite.llvmpy.core.Type.int(32)])
+            # buflen = numba.cgutils.alloca_once(builder, buflentype)
+            # builder.store(llvmlite.llvmpy.core.ir.Constant.literal_struct([buf, len32]), buflen)
+
+            # context.pack_value(builder, buflentype, llvmlite.llvmpy.core.ir.Constant.literal_struct([buf, len_]), buflen)
+
+            # help(context.pack_value)
+
+            # buflentype = llvmlite.llvmpy.core.Type.struct([llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.int(8)), llvmlite.llvmpy.core.Type.int(32)])
+            # buflen = numba.cgutils.alloca_once(builder, buflentype)
+            # numba.cgutils.printf(builder, "WOWIE %ld\n", buflen)
+            # builder.store(ir.Constant.literal_struct([]), buflen)
+            # # builder.store(buf, builder.bitcast(buflen, llvmlite.llvmpy.core.Type.pointer(buflentype.elements[0])))
+            # # context.cast(builder, buflen, buflentype, buflentype.elements[0])
+            # # builder.store(buf, )
+            # numba.cgutils.printf(builder, "WOWIE %ld\n", buflen)
+            # print "buflen.type", buflen.type
+
+            # numba.cgutils.alloca_once(builder, HERE llvmlite.llvmpy.core.Type.int(64))
+
+            exception2 = pyapi.serialize_object(KeyError("whatever"))
+            # builder.store(llvmlite.llvmpy.core.ir.Constant.literal_struct([buf, len32]), exception2)
+
+            print "exception2.type", exception2.type
+
+            excptr = context.call_conv._get_excinfo_argument(builder.function)
+
+            print "excptr.type", excptr.type
+            
+            builder.store(exception2, excptr)
+            # builder.store(buflen, excptr)
+            context.call_conv._return_errcode_raw(builder, numba.targets.callconv.RETCODE_USEREXC)
+
+
+            # with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
+            #     builder.ret(numba.targets.callconv.RETCODE_USEREXC)
+                # context.call_conv.return_value(builder, llvmlite.llvmpy.core.Constant.real(llvmlite.llvmpy.core.Type.double(), 3.14))
+
+                # context.call_conv.return_user_exc(builder, IndexError, ("hey",))
 
     def llvmptr(context, builder, pos, dtype):
         return builder.inttoptr(pos, llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.from_dtype(dtype))))

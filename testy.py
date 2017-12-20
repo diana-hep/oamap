@@ -13,10 +13,12 @@ x = t({"object-B": numpy.array([0], numpy.int32), "object-E": numpy.array([5], n
 def do(x, i):
     return x[i]
 
-for j in range(5):
-    for i in range(5):
-        print do(x, i)
-    print
+# for j in range(5):
+#     for i in range(5):
+#         print do(x, i)
+#     print
+
+print do(x, 3)
 
 
 
