@@ -39,10 +39,10 @@ class Proxy(object): pass
 ################################################################ Lists
 
 class ListProxy(Proxy):
-    __slots__ = ["_name", "_arrays", "_cache", "_content", "_start", "_stop", "_step"]
+    __slots__ = ["_generator", "_arrays", "_cache", "_content", "_start", "_stop", "_step"]
 
-    def __init__(self, name, arrays, cache, content, start, stop, step):
-        self._name = name
+    def __init__(self, generator, arrays, cache, content, start, stop, step):
+        self._generator = generator
         self._arrays = arrays
         self._cache = cache
         self._content = content
@@ -88,7 +88,7 @@ class ListProxy(Proxy):
             if step == 0:
                 raise ValueError("slice step cannot be zero")
             else:
-                return ListProxy(self._name, self._arrays, self._cache, self._content, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                return ListProxy(self._generator, self._arrays, self._cache, self._content, self._start + self._step*start, self._start + self._step*stop, self._step*step)
 
         else:
             lenself = len(self)
@@ -161,17 +161,17 @@ class ListProxy(Proxy):
 ################################################################ Records
 
 class RecordProxy(Proxy):
-    __slots__ = ["_fields", "_name", "_arrays", "_cache", "_index"]
+    __slots__ = ["_generator", "_fields", "_arrays", "_cache", "_index"]
 
-    def __init__(self, fields, name, arrays, cache, index):
+    def __init__(self, generator, fields, arrays, cache, index):
+        self._generator = generator
         self._fields = fields
-        self._name = name
         self._arrays = arrays
         self._cache = cache
         self._index = index
 
     def __repr__(self):
-        return "<{0} at index {1}>".format("Record" if self._name is None else self._name, self._index)
+        return "<{0} at index {1}>".format("Record" if self._generator.name is None else self._generator.name, self._index)
 
     def __getattr__(self, field):
         if field.startswith("_"):
@@ -180,21 +180,21 @@ class RecordProxy(Proxy):
             try:
                 generator = self._fields[field]
             except KeyError:
-                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._name is None else self._name), repr(field)))
+                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
             else:
                 return generator._generate(self._arrays, self._index, self._cache)
 
     def __hash__(self):
-        return hash((RecordProxy, self._name) + tuple(self._fields.items()))
+        return hash((RecordProxy, self._generator.name) + tuple(self._fields.items()))
 
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and self._name == other._name and set(self._fields) == set(other._fields) and all(self.__getattr__(n) for n in self._fields)
+        return isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._fields) == set(other._fields) and all(self.__getattr__(n) for n in self._fields)
 
     def __lt__(self, other):
-        if isinstance(other, RecordProxy) and self._name == other._name and set(self._fields) == set(other._fields):
+        if isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._fields) == set(other._fields):
             return [self.__getattr__(n) for n in self._fields] < [other.__getattr__(n) for n in self._fields]
         else:
-            raise TypeError("unorderable types: {0}() < {1}()".format("<type 'Record'>" if self._name is None else "<type {0}>".format(repr(self._name)), other.__class__))
+            raise TypeError("unorderable types: {0}() < {1}()".format("<type 'Record'>" if self._generator.name is None else "<type {0}>".format(repr(self._generator.name)), other.__class__))
 
     def __ne__(self, other): return not self.__eq__(other)
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
@@ -204,11 +204,11 @@ class RecordProxy(Proxy):
 ################################################################ Tuples
 
 class TupleProxy(Proxy):
-    __slots__ = ["_types", "_name", "_arrays", "_cache", "_index"]
+    __slots__ = ["_generator", "_types", "_arrays", "_cache", "_index"]
 
-    def __init__(self, types, name, arrays, cache, index):
+    def __init__(self, generator, types, arrays, cache, index):
+        self._generator = generator
         self._types = types
-        self._name = name
         self._arrays = arrays
         self._cache = cache
         self._index = index

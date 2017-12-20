@@ -38,13 +38,10 @@ try:
 except ImportError:
     numba = None
 
+import oamap.generator
 import oamap.proxy
 
-if numba is None:
-    def exposetype(proxytype):
-        pass
-
-else:
+if numba is not None:
     class CacheType(numba.types.Type):
         def __init__(self):
             super(CacheType, self).__init__(name="CacheType")
@@ -302,8 +299,3 @@ else:
         c.pyapi.decref(step_obj)
         # c.pyapi.decref(slice_fcn)    # not this one
         return out
-
-    def exposetype(proxytype):
-        if issubclass(proxytype, oamap.proxy.ListProxy):
-            pass
-

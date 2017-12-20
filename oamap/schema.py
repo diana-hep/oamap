@@ -112,6 +112,9 @@ class Schema(object):
                 return "#{0}".format(index)
         return None
 
+    def __call__(self, arrays, prefix="object", delimiter="-"):
+        return self.generator(prefix=prefix, delimiter=delimiter)(arrays)
+
     def _finalizegenerator(self, out, cacheidx, memo):
         allgenerators = list(memo.values())
         for generator in memo.values():
@@ -210,7 +213,7 @@ class Primitive(Schema):
         else:
             labels.append(self)
 
-    def __call__(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -319,7 +322,7 @@ class List(Schema):
         else:
             labels.append(self)
 
-    def __call__(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -465,7 +468,7 @@ class Union(Schema):
         else:
             labels.append(self)
 
-    def __call__(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -575,7 +578,7 @@ class Record(Schema):
         else:
             labels.append(self)
 
-    def __call__(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -680,7 +683,7 @@ class Tuple(Schema):
         else:
             labels.append(self)
 
-    def __call__(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -769,7 +772,7 @@ class Pointer(Schema):
         else:
             labels.append(self)
 
-    def __call__(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-"):
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)

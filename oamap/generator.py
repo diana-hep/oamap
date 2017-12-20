@@ -116,7 +116,7 @@ class ListGenerator(Generator):
     def _generate(self, arrays, index, cache):
         starts = self._getarray(arrays, self.starts, cache, self.startsidx, ListGenerator.dtype)
         stops  = self._getarray(arrays, self.stops,  cache, self.stopsidx,  ListGenerator.dtype)
-        return oamap.proxy.ListProxy(self.name, arrays, cache, self.content, starts[index], stops[index], 1)
+        return oamap.proxy.ListProxy(self, arrays, cache, self.content, starts[index], stops[index], 1)
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, name):
@@ -154,7 +154,7 @@ class RecordGenerator(Generator):
         Generator.__init__(self, name)
 
     def _generate(self, arrays, index, cache):
-        return oamap.proxy.RecordProxy(self.fields, self.name, arrays, cache, index)
+        return oamap.proxy.RecordProxy(self, self.fields, arrays, cache, index)
 
 class MaskedRecordGenerator(Masked, RecordGenerator):
     def __init__(self, mask, maskidx, fields, name):
@@ -169,7 +169,7 @@ class TupleGenerator(Generator):
         Generator.__init__(self, name)
 
     def _generate(self, arrays, index, cache):
-        return oamap.proxy.TupleProxy(self.types, self.name, arrays, cache, index)
+        return oamap.proxy.TupleProxy(self, self.types, arrays, cache, index)
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
     def __init__(self, mask, maskidx, types, name):
