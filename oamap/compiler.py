@@ -221,36 +221,34 @@ if numba is not None:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ListGenerator):
-            raise NotImplementedError
+            startsidx = constint(generator.startsidx)
+            startsptr = atidx(context, builder, cachestruct.ptr, startsidx)
+            ensure(context, builder, pyapi, startsptr, arrays, generator.starts, cache, startsidx, generator.dtype, ())
 
-            # startsidx = constint(generator.startsidx)
-            # startsptr = atidx(context, builder, ptrarray, startsidx)
-            # ensure(context, builder, pyapi, startsptr, arrays, generator.starts, cache, startsidx, generator.dtype, ())
+            stopsidx = constint(generator.stopsidx)
+            stopsptr = atidx(context, builder, cachestruct.ptr, stopsidx)
+            ensure(context, builder, pyapi, stopsptr, arrays, generator.stops, cache, stopsidx, generator.dtype, ())
 
-            # stopsidx = constint(generator.stopsidx)
-            # stopsptr = atidx(context, builder, ptrarray, stopsidx)
-            # ensure(context, builder, pyapi, stopsptr, arrays, generator.stops, cache, stopsidx, generator.dtype, ())
+            startsptr = atidx(context, builder, cachestruct.ptr, startsidx)
+            startslen = atidx(context, builder, cachestruct.len, startsidx)
+            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, startslen), "ListProxy starts array index out of range")
 
-            # startsptr = atidx(context, builder, ptrarray, startsidx)
-            # startslen = atidx(context, builder, lenarray, startsidx)
-            # runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, startslen), "ListProxy starts array index out of range")
+            stopsptr = atidx(context, builder, cachestruct.ptr, stopsidx)
+            stopslen = atidx(context, builder, cachestruct.len, stopsidx)
+            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
 
-            # stopsptr = atidx(context, builder, ptrarray, stopsidx)
-            # stopslen = atidx(context, builder, lenarray, stopsidx)
-            # runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
+            listproxytype = typeof_generator(generator)
+            listproxysize = constint(context.get_abi_sizeof(context.get_data_type(listproxytype)))
+            listproxybuffer = builder.bitcast(context.nrt.allocate(builder, listproxysize), llvmlite.llvmpy.core.Type.pointer(context.get_value_type(listproxytype)))
 
-            # listproxytype = typeof_generator(generator)
-            # listproxysize = constint(context.get_abi_sizeof(context.get_data_type(listproxytype)))
-            # listproxybuffer = builder.bitcast(context.nrt.allocate(builder, listproxysize), llvmlite.llvmpy.core.Type.pointer(context.get_value_type(listproxytype)))
-
-            # listproxytype = typeof_generator(generator)
-            # listproxy = numba.cgutils.create_struct_proxy(listproxytype)(context, builder)
-            # listproxy.arrays = arrays
-            # listproxy.cache = cache
-            # listproxy.start = castint(builder, arrayitem(context, builder, startsptr, at, generator.dtype))
-            # listproxy.stop = castint(builder, arrayitem(context, builder, stopsptr,  at, generator.dtype))
-            # listproxy.step = constint(1)
-            # return listproxy._getvalue()
+            listproxytype = typeof_generator(generator)
+            listproxy = numba.cgutils.create_struct_proxy(listproxytype)(context, builder)
+            listproxy.arrays = arrays
+            listproxy.cache = cache
+            listproxy.start = castint(builder, arrayitem(context, builder, startsptr, at, generator.dtype))
+            listproxy.stop = castint(builder, arrayitem(context, builder, stopsptr,  at, generator.dtype))
+            listproxy.step = constint(1)
+            return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
             raise NotImplementedError
