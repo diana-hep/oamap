@@ -111,7 +111,7 @@ else:
     @numba.extending.register_model(ListProxyNumbaType)
     class ListProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("proxytype", numba.types.intp),
+            members = [# ("proxytype", numba.types.intp),
                        ("arrays", numba.types.intp),
                        ("cache", cachetype),
                        ("start", numba.types.intp),
@@ -129,6 +129,7 @@ else:
                     return typeof_proxytype(tpe.proxytype._content)(tpe, idx)
 
     def getarray(arrays, name, cache, cacheidx, dtype, dims):
+        print "getarray", name, cacheidx
         try:
             array = arrays[name]
             if not isinstance(array, numpy.ndarray):
@@ -151,6 +152,13 @@ else:
     def atidx(context, builder, ptrarray, idx):
         return numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], ptrarray, [idx]))
 
+    def runtimeerror(context, builder, pyapi, case, message):
+        with builder.if_then(case, likely=False):
+            exc = pyapi.serialize_object(RuntimeError(message))
+            excptr = context.call_conv._get_excinfo_argument(builder.function)
+            builder.store(exc, excptr)
+            builder.ret(numba.targets.callconv.RETCODE_USEREXC)
+
     def ensure(context, builder, pyapi, ptr, arrays, name, cache, cacheidx, dtype, dims):
         with builder.if_then(builder.not_(context.is_true(builder, numba.types.int8, ptr)), likely=False):
             getarray_fcn = pyapi.unserialize(pyapi.serialize_object(getarray))
@@ -166,15 +174,12 @@ else:
             pyapi.decref(dtype_obj)
             pyapi.decref(dims_obj)
             pyapi.decref(ok_obj)
+            runtimeerror(context, builder, pyapi, builder.not_(context.is_true(builder, numba.types.intc, ok)), "an exception occurred while trying to load an array")
 
-            with builder.if_then(builder.not_(context.is_true(builder, numba.types.intc, ok)), likely=False):
-                exception = pyapi.serialize_object(RuntimeError("an exception occurred while trying to load an array"))
-                excptr = context.call_conv._get_excinfo_argument(builder.function)
-                builder.store(exception, excptr)
-                builder.ret(numba.targets.callconv.RETCODE_USEREXC)
-
-    def llvmptr(context, builder, pos, dtype):
-        return builder.inttoptr(pos, llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.from_dtype(dtype))))
+    def arrayitem(context, builder, ptr, at, dtype):
+        pos = builder.add(ptr, builder.mul(at, constint(dtype.itemsize)))
+        posptr = builder.inttoptr(pos, llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.from_dtype(dtype))))
+        return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(dtype)[:], posptr)
 
     def new(context, builder, pyapi, arrays, cache, proxytype, at):
         cacheproxy = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache)
@@ -191,9 +196,37 @@ else:
 
             dataptr = atidx(context, builder, ptrarray, dataidx)
             datalen = atidx(context, builder, lenarray, dataidx)
+            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, datalen), "PrimitiveProxy data array index out of range")
 
-            pos = builder.add(dataptr, builder.mul(at, constint(proxytype._dtype.itemsize)))
-            return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(proxytype._dtype)[:], llvmptr(context, builder, pos, proxytype._dtype))
+            return arrayitem(context, builder, dataptr, at, proxytype._dtype)
+
+        elif issubclass(proxytype, oamap.proxy.Masked) and issubclass(proxytype, oamap.proxy.ListProxy):
+            raise NotImplementedError
+
+        elif issubclass(proxytype, oamap.proxy.ListProxy):
+            startsidx = constint(proxytype._stopsidx)
+            startsptr = atidx(context, builder, ptrarray, startsidx)
+            ensure(context, builder, pyapi, startsptr, arras, proxytype._starts, cache, startsidx, proxytype._dtype, ())
+
+            stopsidx = constint(proxytype._stopsidx)
+            stopsptr = atidx(context, builder, ptrarray, stopsidx)
+            ensure(context, builder, pyapi, stopsptr, arras, proxytype._stops, cache, stopsidx, proxytype._dtype, ())
+
+            startsptr = atidx(context, builder, ptrarray, startsidx)
+            startslen = atidx(context, builder, lenarray, startsidx)
+            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, startslen), "ListProxy starts array index out of range")
+
+            stopsptr = atidx(context, builder, ptrarray, stopsidx)
+            stopslen = atidx(context, builder, lenarray, stopsidx)
+            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
+
+            start = arrayitem(context, builder, startsptr, at, proxytype._dtype)
+            stop = arrayitem(context, builder, stopsptr, at, proxytype._dtype)
+
+            listproxy = numba.cgutils.create_struct_proxy(typeof_proxytype(proxytype))(context, builder)
+            HERE
+
+
 
         else:
             raise NotImplementedError
@@ -223,7 +256,7 @@ else:
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
-        class_obj = c.pyapi.object_getattr_string(obj, "__class__")
+        # class_obj = c.pyapi.object_getattr_string(obj, "__class__")
         arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         start_obj = c.pyapi.object_getattr_string(obj, "_start")
@@ -231,14 +264,14 @@ else:
         step_obj = c.pyapi.object_getattr_string(obj, "_step")
 
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        listproxy.proxytype = c.builder.ptrtoint(class_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
+        # listproxy.proxytype = c.builder.ptrtoint(class_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.cache = unbox_cache(cache_obj, c)
         listproxy.start = c.pyapi.number_as_ssize_t(start_obj)
         listproxy.stop = c.pyapi.number_as_ssize_t(stop_obj)
         listproxy.step = c.pyapi.number_as_ssize_t(step_obj)
 
-        c.pyapi.decref(class_obj)
+        # c.pyapi.decref(class_obj)
         c.pyapi.decref(arrays_obj)
         c.pyapi.decref(cache_obj)
         c.pyapi.decref(start_obj)
@@ -251,7 +284,7 @@ else:
     @numba.extending.box(ListProxyNumbaType)
     def box_listproxy(typ, val, c):
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
-        class_obj = c.builder.inttoptr(listproxy.proxytype, c.pyapi.pyobj)
+        class_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.proxytype)) # c.builder.inttoptr(listproxy.proxytype, c.pyapi.pyobj)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
         cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache, decref_arrays=True)
         start_obj = c.pyapi.long_from_ssize_t(listproxy.start)

@@ -10,15 +10,23 @@ t = s()
 x = t({"object-B": numpy.array([0], numpy.int32), "object-E": numpy.array([5], numpy.int32), "object-L": numpy.array([1.1, 2.2, 3.3, 4.4, 5.5])})
 
 @numba.njit
-def do(x, i):
-    return x[i]
+def do(x):
+    return x
+
+y = do(x)
+print x.__class__ is y.__class__
+
+
+# @numba.njit
+# def do(x, i):
+#     return x[i]
 
 # for j in range(5):
 #     for i in range(5):
 #         print do(x, i)
 #     print
 
-print do(x, 3)
+# print do(x, 3)
 
 
 # print x._cache.data
