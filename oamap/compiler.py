@@ -42,6 +42,8 @@ import oamap.generator
 import oamap.proxy
 
 if numba is not None:
+    ################################################################ Cache
+
     class CacheType(numba.types.Type):
         def __init__(self):
             super(CacheType, self).__init__(name="CacheType")
@@ -83,47 +85,54 @@ if numba is not None:
             pyapi.decref(len_obj); pyapi.decref(len_obj)
         return cache_obj
 
-    class ListProxyNumbaType(numba.types.Type):
-        def __init__(self, proxytype):
-            self.proxytype = proxytype
-            super(ListProxyNumbaType, self).__init__(name=self.proxytype._uniquestr)
+    ################################################################ general routines for all types
 
-    def typeof_proxytype(proxytype):
-        if issubclass(proxytype, oamap.proxy.PrimitiveProxy):
-            if proxytype._dims == ():
-                return numba.from_dtype(proxytype._dtype)
+    def typeof_generator(generator):
+        if isinstance(generator, oamap.generator.MaskedPrimitiveGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.PrimitiveGenerator):
+            if generator.dims == ():
+                return numba.from_dtype(generator.dtype)
             else:
-                raise NotImplementedError(proxytype._dims)
+                raise NotImplementedError
 
-        elif issubclass(proxytype, oamap.proxy.ListProxy):
-            return ListProxyNumbaType(proxytype)
+        elif isinstance(generator, oamap.generator.MaskedListGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.ListGenerator):
+            return ListProxyNumbaType(generator)
+
+        elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.UnionGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.MaskedRecordGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.RecordGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.MaskedTupleGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.TupleGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.MaskedPointerGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.PointerGenerator):
+            raise NotImplementedError
 
         else:
-            raise NotImplementedError(proxytype.__bases__)
+            raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
 
     @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
     def typeof_proxy(val, c):
-        return typeof_proxytype(val.__class__)
-
-    @numba.extending.register_model(ListProxyNumbaType)
-    class ListProxyModel(numba.datamodel.models.StructModel):
-        def __init__(self, dmm, fe_type):
-            members = [# ("proxytype", numba.types.intp),
-                       ("arrays", numba.types.intp),
-                       ("cache", cachetype),
-                       ("start", numba.types.intp),
-                       ("stop", numba.types.intp),
-                       ("step", numba.types.intp)]
-            super(ListProxyModel, self).__init__(dmm, fe_type, members)
-
-    @numba.typing.templates.infer
-    class ListProxyGetItem(numba.typing.templates.AbstractTemplate):
-        key = "getitem"
-        def generic(self, args, kwds):
-            tpe, idx = args
-            if isinstance(tpe, ListProxyNumbaType):
-                if isinstance(idx, numba.types.Integer):
-                    return typeof_proxytype(tpe.proxytype._content)(tpe, idx)
+        return typeof_generator(val._generator)
 
     def getarray(arrays, name, cache, cacheidx, dtype, dims):
         print "getarray", name, cacheidx
@@ -178,36 +187,36 @@ if numba is not None:
         posptr = builder.inttoptr(pos, llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.from_dtype(dtype))))
         return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(dtype)[:], posptr)
 
-    def new(context, builder, pyapi, arrays, cache, proxytype, at):
+    def new(context, builder, pyapi, arrays, cache, generator, at):
         cacheproxy = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache)
         ptrarray = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=cacheproxy.ptr)
         lenarray = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=cacheproxy.len)
 
-        if issubclass(proxytype, oamap.proxy.Masked) and issubclass(proxytype, oamap.proxy.PrimitiveProxy):
+        if isinstance(generator, oamap.generator.MaskedPrimitiveGenerator):
             raise NotImplementedError
 
-        elif issubclass(proxytype, oamap.proxy.PrimitiveProxy):
-            dataidx = constint(proxytype._dataidx)
+        elif isinstance(generator, oamap.generator.PrimitiveGenerator):
+            dataidx = constint(generator.dataidx)
             dataptr = atidx(context, builder, ptrarray, dataidx)
-            ensure(context, builder, pyapi, dataptr, arrays, proxytype._data, cache, dataidx, proxytype._dtype, proxytype._dims)
+            ensure(context, builder, pyapi, dataptr, arrays, generator.data, cache, dataidx, generator.dtype, generator.dims)
 
             dataptr = atidx(context, builder, ptrarray, dataidx)
             datalen = atidx(context, builder, lenarray, dataidx)
             runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, datalen), "PrimitiveProxy data array index out of range")
 
-            return arrayitem(context, builder, dataptr, at, proxytype._dtype)
+            return arrayitem(context, builder, dataptr, at, generator.dtype)
 
-        elif issubclass(proxytype, oamap.proxy.Masked) and issubclass(proxytype, oamap.proxy.ListProxy):
+        elif isinstance(generator, oamap.generator.MaskedListGenerator):
             raise NotImplementedError
 
-        elif issubclass(proxytype, oamap.proxy.ListProxy):
-            startsidx = constint(proxytype._stopsidx)
+        elif isinstance(generator, oamap.generator.ListGenerator):
+            startsidx = constint(generator.startsidx)
             startsptr = atidx(context, builder, ptrarray, startsidx)
-            ensure(context, builder, pyapi, startsptr, arras, proxytype._starts, cache, startsidx, proxytype._dtype, ())
+            ensure(context, builder, pyapi, startsptr, arras, generator.starts, cache, startsidx, generator.dtype, ())
 
-            stopsidx = constint(proxytype._stopsidx)
+            stopsidx = constint(generator.stopsidx)
             stopsptr = atidx(context, builder, ptrarray, stopsidx)
-            ensure(context, builder, pyapi, stopsptr, arras, proxytype._stops, cache, stopsidx, proxytype._dtype, ())
+            ensure(context, builder, pyapi, stopsptr, arras, generator.stops, cache, stopsidx, generator.dtype, ())
 
             startsptr = atidx(context, builder, ptrarray, startsidx)
             startslen = atidx(context, builder, lenarray, startsidx)
@@ -217,16 +226,67 @@ if numba is not None:
             stopslen = atidx(context, builder, lenarray, stopsidx)
             runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
 
-            start = arrayitem(context, builder, startsptr, at, proxytype._dtype)
-            stop = arrayitem(context, builder, stopsptr, at, proxytype._dtype)
+            start = arrayitem(context, builder, startsptr, at, generator.dtype)
+            stop = arrayitem(context, builder, stopsptr, at, generator.dtype)
 
-            listproxy = numba.cgutils.create_struct_proxy(typeof_proxytype(proxytype))(context, builder)
+            listproxy = numba.cgutils.create_struct_proxy(typeof_generator(generator))(context, builder)
             HERE
 
 
 
+
+        elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.UnionGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.MaskedRecordGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.RecordGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.MaskedTupleGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.TupleGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.MaskedPointerGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.PointerGenerator):
+            raise NotImplementedError
+
         else:
             raise NotImplementedError
+
+    ################################################################ ListProxy
+
+    class ListProxyNumbaType(numba.types.Type):
+        def __init__(self, generator):
+            self.generator = generator
+            super(ListProxyNumbaType, self).__init__(name=self.generator._uniquestr)
+
+    @numba.extending.register_model(ListProxyNumbaType)
+    class ListProxyModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("arrays", numba.types.intp),
+                       ("cache", cachetype),
+                       ("start", numba.types.intp),
+                       ("stop", numba.types.intp),
+                       ("step", numba.types.intp)]
+            super(ListProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.typing.templates.infer
+    class ListProxyGetItem(numba.typing.templates.AbstractTemplate):
+        key = "getitem"
+        def generic(self, args, kwds):
+            tpe, idx = args
+            if isinstance(tpe, ListProxyNumbaType):
+                if isinstance(idx, numba.types.Integer):
+                    return typeof_generator(tpe.generator.content)(tpe, idx)
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
@@ -249,11 +309,10 @@ if numba is not None:
             context.call_conv.return_user_exc(builder, IndexError, ("index out of bounds",))
 
         at = builder.add(listproxy.start, builder.mul(listproxy.step, normval))
-        return new(context, builder, pyapi, listproxy.arrays, listproxy.cache, listtpe.proxytype._content, at)
+        return new(context, builder, pyapi, listproxy.arrays, listproxy.cache, listtpe.generator.content, at)
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
-        # class_obj = c.pyapi.object_getattr_string(obj, "__class__")
         arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         start_obj = c.pyapi.object_getattr_string(obj, "_start")
@@ -261,14 +320,12 @@ if numba is not None:
         step_obj = c.pyapi.object_getattr_string(obj, "_step")
 
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        # listproxy.proxytype = c.builder.ptrtoint(class_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.cache = unbox_cache(cache_obj, c)
         listproxy.start = c.pyapi.number_as_ssize_t(start_obj)
         listproxy.stop = c.pyapi.number_as_ssize_t(stop_obj)
         listproxy.step = c.pyapi.number_as_ssize_t(step_obj)
 
-        # c.pyapi.decref(class_obj)
         c.pyapi.decref(arrays_obj)
         c.pyapi.decref(cache_obj)
         c.pyapi.decref(start_obj)
@@ -281,21 +338,23 @@ if numba is not None:
     @numba.extending.box(ListProxyNumbaType)
     def box_listproxy(typ, val, c):
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
-        class_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.proxytype)) # c.builder.inttoptr(listproxy.proxytype, c.pyapi.pyobj)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
         cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache, decref_arrays=True)
         start_obj = c.pyapi.long_from_ssize_t(listproxy.start)
         stop_obj = c.pyapi.long_from_ssize_t(listproxy.stop)
         step_obj = c.pyapi.long_from_ssize_t(listproxy.step)
 
-        slice_fcn = c.pyapi.object_getattr_string(class_obj, "_slice")
-        out = c.pyapi.call_function_objargs(slice_fcn, (arrays_obj, cache_obj, start_obj, stop_obj, step_obj))
+        listproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.ListProxy))
+        generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
 
-        c.pyapi.decref(class_obj)
-        # c.pyapi.decref(arrays_obj)   # not this one
-        # c.pyapi.decref(cache_obj)    # not this one
+        out = c.pyapi.call_function_objargs(listproxy_cls, (generator_obj, arrays_obj, cache_obj, start_obj, stop_obj, step_obj))
+
+        c.pyapi.decref(listproxy_cls)
+        # c.pyapi.decref(generator_obj)   # not this one
+        # c.pyapi.decref(arrays_obj)      # not this one
+        # c.pyapi.decref(cache_obj)       # not this one
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
-        # c.pyapi.decref(slice_fcn)    # not this one
+        # c.pyapi.decref(slice_fcn)       # not this one
         return out

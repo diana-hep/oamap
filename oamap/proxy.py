@@ -39,13 +39,12 @@ class Proxy(object): pass
 ################################################################ Lists
 
 class ListProxy(Proxy):
-    __slots__ = ["_generator", "_arrays", "_cache", "_content", "_start", "_stop", "_step"]
+    __slots__ = ["_generator", "_arrays", "_cache", "_start", "_stop", "_step"]
 
-    def __init__(self, generator, arrays, cache, content, start, stop, step):
+    def __init__(self, generator, arrays, cache, start, stop, step):
         self._generator = generator
         self._arrays = arrays
         self._cache = cache
-        self._content = content
         self._start = start
         self._stop = stop
         self._step = step
@@ -53,7 +52,7 @@ class ListProxy(Proxy):
     def __repr__(self, memo=None):
         if memo is None:
             memo = set()
-        key = (id(self._content), self._start, self._stop, self._step)
+        key = (id(self._generator), self._start, self._stop, self._step)
         if key in memo:
             return "[...]"
         memo.add(key)
@@ -63,8 +62,7 @@ class ListProxy(Proxy):
             return "[{0}, ..., {1}".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in before),
                                            ", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in after))
         else:
-            contents = list(self)
-            return "[{0}]".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in contents))
+            return "[{0}]".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in self))
 
     def __len__(self):
         return (self._stop - self._start) // self._step
@@ -88,17 +86,17 @@ class ListProxy(Proxy):
             if step == 0:
                 raise ValueError("slice step cannot be zero")
             else:
-                return ListProxy(self._generator, self._arrays, self._cache, self._content, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                return ListProxy(self._generator, self._arrays, self._cache, self._start + self._step*start, self._start + self._step*stop, self._step*step)
 
         else:
             lenself = len(self)
             normalindex = index if index >= 0 else index + lenself
             if not 0 <= normalindex < lenself:
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
-            return self._content._generate(self._arrays, self._start + self._step*normalindex, self._cache)
+            return self._generator.content._generate(self._arrays, self._start + self._step*normalindex, self._cache)
 
     def __iter__(self):
-        return (self._content._generate(self._arrays, i, self._cache) for i in xrange(self._start, self._stop, self._step))
+        return (self._generator.content._generate(self._arrays, i, self._cache) for i in xrange(self._start, self._stop, self._step))
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
@@ -161,11 +159,10 @@ class ListProxy(Proxy):
 ################################################################ Records
 
 class RecordProxy(Proxy):
-    __slots__ = ["_generator", "_fields", "_arrays", "_cache", "_index"]
+    __slots__ = ["_generator", "_arrays", "_cache", "_index"]
 
-    def __init__(self, generator, fields, arrays, cache, index):
+    def __init__(self, generator, arrays, cache, index):
         self._generator = generator
-        self._fields = fields
         self._arrays = arrays
         self._cache = cache
         self._index = index
@@ -178,21 +175,21 @@ class RecordProxy(Proxy):
             return super(RecordProxy, self).__getattr__(field)
         else:
             try:
-                generator = self._fields[field]
+                generator = self._generator.fields[field]
             except KeyError:
                 raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
             else:
                 return generator._generate(self._arrays, self._index, self._cache)
 
     def __hash__(self):
-        return hash((RecordProxy, self._generator.name) + tuple(self._fields.items()))
+        return hash((RecordProxy, self._generator.name) + tuple(self._generator.fields.items()))
 
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._fields) == set(other._fields) and all(self.__getattr__(n) for n in self._fields)
+        return isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._generator.fields) == set(other._generator.fields) and all(self.__getattr__(n) for n in self._generator.fields)
 
     def __lt__(self, other):
-        if isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._fields) == set(other._fields):
-            return [self.__getattr__(n) for n in self._fields] < [other.__getattr__(n) for n in self._fields]
+        if isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._generator.fields) == set(other._generator.fields):
+            return [self.__getattr__(n) for n in self._generator.fields] < [other.__getattr__(n) for n in self._generator.fields]
         else:
             raise TypeError("unorderable types: {0}() < {1}()".format("<type 'Record'>" if self._generator.name is None else "<type {0}>".format(repr(self._generator.name)), other.__class__))
 
@@ -204,11 +201,10 @@ class RecordProxy(Proxy):
 ################################################################ Tuples
 
 class TupleProxy(Proxy):
-    __slots__ = ["_generator", "_types", "_arrays", "_cache", "_index"]
+    __slots__ = ["_generator", "_arrays", "_cache", "_index"]
 
-    def __init__(self, generator, types, arrays, cache, index):
+    def __init__(self, generator, arrays, cache, index):
         self._generator = generator
-        self._types = types
         self._arrays = arrays
         self._cache = cache
         self._index = index
@@ -216,15 +212,14 @@ class TupleProxy(Proxy):
     def __repr__(self, memo=None):
         if memo is None:
             memo = set()
-        key = (self._index,) + tuple(id(x) for x in self._types)
+        key = (self._index,) + tuple(id(x) for x in self._generator.types)
         if key in memo:
             return "(...)"
         memo.add(key)
-        contents = list(self)
-        return "({0}{1})".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in contents), "," if len(self) == 1 else "")
+        return "({0}{1})".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in self), "," if len(self) == 1 else "")
 
     def __len__(self):
-        return len(self._types)
+        return len(self._generator.types)
 
     def __getslice__(self, start, stop):
         # for old-Python compatibility
@@ -239,10 +234,10 @@ class TupleProxy(Proxy):
             return tuple(self[i] for i in range(start, stop, step))
 
         else:
-            return self._types[index]._generate(self._arrays, self._index, self._cache)
+            return self._generator.types[index]._generate(self._arrays, self._index, self._cache)
 
     def __iter__(self):
-        return (t._generate(self._arrays, self._index, self._cache) for t in self._types)
+        return (t._generate(self._arrays, self._index, self._cache) for t in self._generator.types)
 
     def __hash__(self):
         return hash(tuple(self))

@@ -61,6 +61,7 @@ except ImportError:
 import numpy
 
 import oamap.generator
+import oamap.compiler
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -68,6 +69,9 @@ if sys.version_info[0] > 2:
 # The "PLURTP" type system: Primitives, Lists, Unions, Records, Tuples, and Pointers
 
 class Schema(object):
+    _identifier = re.compile("[a-zA-Z][a-zA-Z_0-9]*")   # forbid starting with underscore in field names
+    _baddelimiter = re.compile("[a-zA-Z_0-9]")          # could be confused with field names or integers
+
     def __init__(self, *args, **kwds):
         raise TypeError("Kind cannot be instantiated directly")
 
@@ -214,6 +218,8 @@ class Primitive(Schema):
             labels.append(self)
 
     def generator(self, prefix="object", delimiter="-"):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -323,6 +329,8 @@ class List(Schema):
             labels.append(self)
 
     def generator(self, prefix="object", delimiter="-"):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -469,6 +477,8 @@ class Union(Schema):
             labels.append(self)
 
     def generator(self, prefix="object", delimiter="-"):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -524,8 +534,6 @@ class Record(Schema):
     def fields(self, value):
         self._extend(value, [])
 
-    _identifier = re.compile("[a-zA-Z][a-zA-Z_0-9]*")   # don't allow starting with underscore
-
     def _extend(self, fields, start):
         trial = []
         try:
@@ -579,6 +587,8 @@ class Record(Schema):
             labels.append(self)
 
     def generator(self, prefix="object", delimiter="-"):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -684,6 +694,8 @@ class Tuple(Schema):
             labels.append(self)
 
     def generator(self, prefix="object", delimiter="-"):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
@@ -773,6 +785,8 @@ class Pointer(Schema):
             labels.append(self)
 
     def generator(self, prefix="object", delimiter="-"):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
