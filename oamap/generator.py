@@ -49,6 +49,7 @@ class Cache(object):
                     raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
                 self.ptr[i] = x.ctypes.data
                 self.len[i] = x.shape[0]
+        return self.ptr.ctypes.data, self.len.ctypes.data
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
