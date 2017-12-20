@@ -63,20 +63,24 @@ if numba is not None:
         c.pyapi.call_function_objargs(entercompiled_fcn, ())
         ptr_obj = c.pyapi.object_getattr_string(cache_obj, "ptr")
         len_obj = c.pyapi.object_getattr_string(cache_obj, "len")
-
+        
         cache = numba.cgutils.create_struct_proxy(cachetype)(c.context, c.builder)
         cache.cache = c.builder.ptrtoint(cache_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         cache.ptr = numba.targets.boxing.unbox_array(numba.types.intp[:], ptr_obj, c).value
         cache.len = numba.targets.boxing.unbox_array(numba.types.intp[:], len_obj, c).value
 
+        cachesize = constint(c.context.get_abi_sizeof(c.context.get_data_type(cachetype)))
+        cachebuffer = c.builder.bitcast(c.context.nrt.allocate(c.builder, cachesize), llvmlite.llvmpy.core.Type.pointer(c.context.get_value_type(cachetype)))
+        c.builder.store(cache._getvalue(), cachebuffer)
+
         c.pyapi.decref(cache_obj)
         c.pyapi.decref(ptr_obj)
         c.pyapi.decref(len_obj)
-
-        return cache._getvalue()
+        
+        return cachebuffer
 
     def box_cache(context, builder, pyapi, cache_val, decref_arrays=False):
-        cache = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache_val)
+        cache = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=builder.load(cache_val))
         cache_obj = builder.inttoptr(cache.cache, pyapi.pyobj)
         if decref_arrays:
             ptr_obj = pyapi.object_getattr_string(cache_obj, "ptr")
@@ -196,50 +200,70 @@ if numba is not None:
             return builder.bitcast(val, llvmlite.llvmpy.core.Type.int(bits))
 
     def generate(context, builder, pyapi, arrays, cache, generator, at):
-        cacheproxy = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache)
-        ptrarray = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=cacheproxy.ptr)
-        lenarray = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=cacheproxy.len)
+        # cacheproxy = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache)
+        # ptrarray = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=cacheproxy.ptr)
+        # lenarray = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=cacheproxy.len)
 
         if isinstance(generator, oamap.generator.MaskedPrimitiveGenerator):
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.PrimitiveGenerator):
-            dataidx = constint(generator.dataidx)
-            dataptr = atidx(context, builder, ptrarray, dataidx)
-            ensure(context, builder, pyapi, dataptr, arrays, generator.data, cache, dataidx, generator.dtype, generator.dims)
+            # dataidx = constint(generator.dataidx)
+            # dataptr = atidx(context, builder, ptrarray, dataidx)
+            # ensure(context, builder, pyapi, dataptr, arrays, generator.data, cache, dataidx, generator.dtype, generator.dims)
 
-            dataptr = atidx(context, builder, ptrarray, dataidx)
-            datalen = atidx(context, builder, lenarray, dataidx)
-            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, datalen), "PrimitiveProxy data array index out of range")
+            # dataptr = atidx(context, builder, ptrarray, dataidx)
+            # datalen = atidx(context, builder, lenarray, dataidx)
+            # runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, datalen), "PrimitiveProxy data array index out of range")
 
-            return arrayitem(context, builder, dataptr, at, generator.dtype)
+            # return arrayitem(context, builder, dataptr, at, generator.dtype)
+
+            return llvmlite.llvmpy.core.Constant.real(llvmlite.llvmpy.core.Type.double(), 3.14)
 
         elif isinstance(generator, oamap.generator.MaskedListGenerator):
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ListGenerator):
-            startsidx = constint(generator.startsidx)
-            startsptr = atidx(context, builder, ptrarray, startsidx)
-            ensure(context, builder, pyapi, startsptr, arrays, generator.starts, cache, startsidx, generator.dtype, ())
+            # startsidx = constint(generator.startsidx)
+            # startsptr = atidx(context, builder, ptrarray, startsidx)
+            # ensure(context, builder, pyapi, startsptr, arrays, generator.starts, cache, startsidx, generator.dtype, ())
 
-            stopsidx = constint(generator.stopsidx)
-            stopsptr = atidx(context, builder, ptrarray, stopsidx)
-            ensure(context, builder, pyapi, stopsptr, arrays, generator.stops, cache, stopsidx, generator.dtype, ())
+            # stopsidx = constint(generator.stopsidx)
+            # stopsptr = atidx(context, builder, ptrarray, stopsidx)
+            # ensure(context, builder, pyapi, stopsptr, arrays, generator.stops, cache, stopsidx, generator.dtype, ())
 
-            startsptr = atidx(context, builder, ptrarray, startsidx)
-            startslen = atidx(context, builder, lenarray, startsidx)
-            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, startslen), "ListProxy starts array index out of range")
+            # startsptr = atidx(context, builder, ptrarray, startsidx)
+            # startslen = atidx(context, builder, lenarray, startsidx)
+            # runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, startslen), "ListProxy starts array index out of range")
 
-            stopsptr = atidx(context, builder, ptrarray, stopsidx)
-            stopslen = atidx(context, builder, lenarray, stopsidx)
-            runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
+            # stopsptr = atidx(context, builder, ptrarray, stopsidx)
+            # stopslen = atidx(context, builder, lenarray, stopsidx)
+            # runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
 
-            listproxy = numba.cgutils.create_struct_proxy(typeof_generator(generator))(context, builder)
+            # listproxytype = typeof_generator(generator)
+            # listproxysize = constint(context.get_abi_sizeof(context.get_data_type(listproxytype)))
+            # listproxybuffer = builder.bitcast(context.nrt.allocate(builder, listproxysize), llvmlite.llvmpy.core.Type.pointer(context.get_value_type(listproxytype)))
+
+            # listproxy = numba.cgutils.create_struct_proxy(listproxytype)(context, builder)
+            # listproxy.arrays = arrays
+            # listproxy.cache = cache
+            # listproxy.start = castint(builder, arrayitem(context, builder, startsptr, at, generator.dtype))
+            # listproxy.stop  = castint(builder, arrayitem(context, builder, stopsptr,  at, generator.dtype))
+            # listproxy.step  = constint(1)
+
+            # builder.store(listproxy._getvalue(), listproxybuffer)
+
+            # numba.cgutils.printf(builder, "AFTER\n")
+
+            # return builder.load(listproxybuffer)
+
+            listproxytype = typeof_generator(generator)
+            listproxy = numba.cgutils.create_struct_proxy(listproxytype)(context, builder)
             listproxy.arrays = arrays
             listproxy.cache = cache
-            listproxy.start = castint(builder, arrayitem(context, builder, startsptr, at, generator.dtype))
-            listproxy.stop  = castint(builder, arrayitem(context, builder, stopsptr,  at, generator.dtype))
-            listproxy.step  = constint(1)
+            listproxy.start = constint(0)
+            listproxy.stop = constint(0)
+            listproxy.step = constint(1)
             return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
@@ -280,7 +304,7 @@ if numba is not None:
     class ListProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
             members = [("arrays", numba.types.intp),
-                       ("cache", cachetype),
+                       ("cache", numba.types.CPointer(cachetype)),
                        ("start", numba.types.intp),
                        ("stop", numba.types.intp),
                        ("step", numba.types.intp)]
@@ -297,6 +321,8 @@ if numba is not None:
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
+        numba.cgutils.printf(builder, "listproxy_getitem\n")
+
         listtpe, indextpe = sig.args
         listval, indexval = args
 
@@ -320,6 +346,8 @@ if numba is not None:
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
+        numba.cgutils.printf(c.builder, "unbox_listproxy\n")
+
         arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         start_obj = c.pyapi.object_getattr_string(obj, "_start")
@@ -344,6 +372,8 @@ if numba is not None:
 
     @numba.extending.box(ListProxyNumbaType)
     def box_listproxy(typ, val, c):
+        numba.cgutils.printf(c.builder, "box_listproxy\n")
+
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
         cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache, decref_arrays=True)
