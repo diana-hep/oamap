@@ -199,9 +199,13 @@ else:
         builder.store(indexval, normptr)
         with builder.if_then(builder.icmp_signed("<", indexval, zero)):
             builder.store(builder.add(indexval, lenself), normptr)
-        normval = builder.load(normptr)
-        at = builder.add(listproxy.start, builder.mul(listproxy.step, normval))
 
+        normval = builder.load(normptr)
+        with builder.if_then(builder.or_(builder.icmp_signed("<", normval, zero),
+                                         builder.icmp_signed(">=", normval, lenself)), likely=False):
+            context.call_conv.return_user_exc(builder, IndexError, ("index out of bounds",))
+
+        at = builder.add(listproxy.start, builder.mul(listproxy.step, normval))
         return new(context, builder, pyapi, listproxy.arrays, listproxy.cache, listtpe.proxytype._content, at)
 
     @numba.extending.unbox(ListProxyNumbaType)
