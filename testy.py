@@ -16,7 +16,7 @@ def do(x, i):
 for j in range(5):
     for i in range(5):
         print do(x, i)
-
+    print
 
 
 
