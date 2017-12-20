@@ -38,19 +38,19 @@ if sys.version_info[0] > 2:
 class ArrayCache(object):
     def __init__(self, cachelen):
         self.arraylist = [None] * cachelen
-        self.data = numpy.zeros(cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
-        self.size = numpy.zeros(cachelen, dtype=numpy.intp)
+        self.ptr = numpy.zeros(cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
+        self.len = numpy.zeros(cachelen, dtype=numpy.intp)
 
     def entercompiled(self):
         for i, x in enumerate(self.arraylist):
             if x is None:
-                self.data[i] = 0
-                self.size[i] = 0
+                self.ptr[i] = 0
+                self.len[i] = 0
             else:
                 if not isinstance(x, numpy.ndarray):
                     raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
-                self.data[i] = x.ctypes.data
-                self.size[i] = x.shape[0]
+                self.ptr[i] = x.ctypes.data
+                self.len[i] = x.shape[0]
 
 # superclass of all proxies
 class Proxy(object):

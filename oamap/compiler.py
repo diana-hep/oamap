@@ -53,24 +53,24 @@ else:
     class ArrayCacheModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
             members = [("cache", numba.types.intp),
-                       ("data", numba.types.intp[:]),
-                       ("size", numba.types.intp[:])]
+                       ("ptr", numba.types.intp[:]),
+                       ("len", numba.types.intp[:])]
             super(ArrayCacheModel, self).__init__(dmm, fe_type, members)
 
     def unbox_arraycache(cache_obj, c):
         entercompiled_fcn = c.pyapi.object_getattr_string(cache_obj, "entercompiled")
         c.pyapi.call_function_objargs(entercompiled_fcn, ())
-        data_obj = c.pyapi.object_getattr_string(cache_obj, "data")
-        size_obj = c.pyapi.object_getattr_string(cache_obj, "size")
+        ptr_obj = c.pyapi.object_getattr_string(cache_obj, "ptr")
+        len_obj = c.pyapi.object_getattr_string(cache_obj, "len")
 
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(c.context, c.builder)
         arraycache.cache = c.builder.ptrtoint(cache_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
-        arraycache.data = numba.targets.boxing.unbox_array(numba.types.intp[:], data_obj, c).value
-        arraycache.size = numba.targets.boxing.unbox_array(numba.types.intp[:], size_obj, c).value
+        arraycache.ptr = numba.targets.boxing.unbox_array(numba.types.intp[:], ptr_obj, c).value
+        arraycache.len = numba.targets.boxing.unbox_array(numba.types.intp[:], len_obj, c).value
 
         c.pyapi.decref(cache_obj)
-        c.pyapi.decref(data_obj)
-        c.pyapi.decref(size_obj)
+        c.pyapi.decref(ptr_obj)
+        c.pyapi.decref(len_obj)
 
         return arraycache._getvalue()
 
@@ -78,11 +78,10 @@ else:
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(context, builder, value=arraycache_val)
         cache_obj = builder.inttoptr(arraycache.cache, pyapi.pyobj)
         if decref_arrays:
-            data_obj = pyapi.object_getattr_string(cache_obj, "data")
-            size_obj = pyapi.object_getattr_string(cache_obj, "size")
-            pyapi.decref(data_obj); pyapi.decref(data_obj)
-            pyapi.decref(size_obj); pyapi.decref(size_obj)
-
+            ptr_obj = pyapi.object_getattr_string(cache_obj, "ptr")
+            len_obj = pyapi.object_getattr_string(cache_obj, "len")
+            pyapi.decref(ptr_obj); pyapi.decref(ptr_obj)
+            pyapi.decref(len_obj); pyapi.decref(len_obj)
         return cache_obj
 
     class ListProxyNumbaType(numba.types.Type):
@@ -140,15 +139,23 @@ else:
         if array.shape[1:] != dims:
             raise TypeError("arrays[{0}] returned an array with shape[1:] {1} instead of {2}".format(repr(name), array.shape[1:], dims))
         cache.arraylist[cacheidx] = array
-        cache.data[cacheidx] = array.ctypes.data
-        cache.size[cacheidx] = array.shape[0]
+        cache.ptr[cacheidx] = array.ctypes.data
+        cache.len[cacheidx] = array.shape[0]
 
     # def new(context, builder, pyapi, proxytype, arraycache, at):
-    #     if issubclass(proxytype, PrimitiveProxy):
+    #     if issubclass(proxytype, Masked) and issubclass(proxytype, PrimitiveProxy):
+    #         raise NotImplementedError
+
+    #     elif issubclass(proxytype, PrimitiveProxy):
     #         dataidx = llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(32), proxytype._dataidx)
 
+    #         data = numba.cgutils.create_struct_proxy(numba.types.intp
 
 
+
+
+    #     else:
+    #         raise NotImplementedError
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
@@ -161,10 +168,10 @@ else:
         
         cacheidx = llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), listtpe.proxytype._content._dataidx)
 
-        data = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.data)
-        data_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], data, [cacheidx]))
+        ptr_val = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.ptr)
+        ptr_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], ptr_val, [cacheidx]))
 
-        with numba.cgutils.if_unlikely(builder, builder.not_(context.is_true(builder, numba.types.int8, data_intp))):
+        with numba.cgutils.if_unlikely(builder, builder.not_(context.is_true(builder, numba.types.int8, ptr_intp))):
             getarray_fcn = pyapi.unserialize(pyapi.serialize_object(getarray))
             arrays_obj = builder.inttoptr(listproxy.arrays, pyapi.pyobj)
             name_obj = pyapi.unserialize(pyapi.serialize_object(listtpe.proxytype._content._data))
@@ -177,12 +184,12 @@ else:
             pyapi.decref(dtype_obj)
             pyapi.decref(dims_obj)
 
-        data = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.data)
-        data_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], data, [cacheidx]))
-        size = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.size)
-        size_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], size, [cacheidx]))
+        ptr_val = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.ptr)
+        ptr_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], ptr_val, [cacheidx]))
+        len_val = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.len)
+        len_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], len_val, [cacheidx]))
 
-        shifted = builder.add(data_intp, builder.mul(idxval, llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), listtpe.proxytype._content._dtype.itemsize)))
+        shifted = builder.add(ptr_intp, builder.mul(idxval, llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), listtpe.proxytype._content._dtype.itemsize)))
         ptr = builder.inttoptr(shifted, llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.double()))
         return numba.targets.arrayobj.load_item(context, builder, numba.types.float64[:], ptr)
 
