@@ -53,7 +53,6 @@ else:
     class ArrayCacheModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
             members = [("cache", numba.types.intp),
-                       ("load", numba.types.int8[:]),
                        ("data", numba.types.intp[:]),
                        ("size", numba.types.intp[:])]
             super(ArrayCacheModel, self).__init__(dmm, fe_type, members)
@@ -61,18 +60,15 @@ else:
     def unbox_arraycache(cache_obj, c):
         entercompiled_fcn = c.pyapi.object_getattr_string(cache_obj, "entercompiled")
         c.pyapi.call_function_objargs(entercompiled_fcn, ())
-        load_obj = c.pyapi.object_getattr_string(cache_obj, "load")
         data_obj = c.pyapi.object_getattr_string(cache_obj, "data")
         size_obj = c.pyapi.object_getattr_string(cache_obj, "size")
 
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(c.context, c.builder)
         arraycache.cache = c.builder.ptrtoint(cache_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
-        arraycache.load = numba.targets.boxing.unbox_array(numba.types.int8[:], load_obj,  c).value
         arraycache.data = numba.targets.boxing.unbox_array(numba.types.intp[:], data_obj, c).value
         arraycache.size = numba.targets.boxing.unbox_array(numba.types.intp[:], size_obj, c).value
 
         c.pyapi.decref(cache_obj)
-        c.pyapi.decref(load_obj)
         c.pyapi.decref(data_obj)
         c.pyapi.decref(size_obj)
 
@@ -82,10 +78,8 @@ else:
         arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(context, builder, value=arraycache_val)
         cache_obj = builder.inttoptr(arraycache.cache, pyapi.pyobj)
         if decref_arrays:
-            load_obj = pyapi.object_getattr_string(cache_obj, "load")
             data_obj = pyapi.object_getattr_string(cache_obj, "data")
             size_obj = pyapi.object_getattr_string(cache_obj, "size")
-            pyapi.decref(load_obj); pyapi.decref(load_obj)
             pyapi.decref(data_obj); pyapi.decref(data_obj)
             pyapi.decref(size_obj); pyapi.decref(size_obj)
 
@@ -136,6 +130,8 @@ else:
     import sys
 
     def getarray(arrays, name, cache, cacheidx, dtype, dims):
+        print "getarray"
+
         array = arrays[name]
         if not isinstance(array, numpy.ndarray):
             raise TypeError("arrays[{0}] returned a {1} ({2}) instead of a Numpy array".format(repr(name), type(array), repr(array)))
@@ -144,9 +140,15 @@ else:
         if array.shape[1:] != dims:
             raise TypeError("arrays[{0}] returned an array with shape[1:] {1} instead of {2}".format(repr(name), array.shape[1:], dims))
         cache.arraylist[cacheidx] = array
-        cache.load[cacheidx] = 0
         cache.data[cacheidx] = array.ctypes.data
         cache.size[cacheidx] = array.shape[0]
+
+    # def new(context, builder, pyapi, proxytype, arraycache, at):
+    #     if issubclass(proxytype, PrimitiveProxy):
+    #         dataidx = llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(32), proxytype._dataidx)
+
+
+
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
@@ -155,14 +157,14 @@ else:
 
         pyapi = context.get_python_api(builder)
         listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
+        arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(context, builder, value=listproxy.arraycache)
         
         cacheidx = llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), listtpe.proxytype._content._dataidx)
-        arraycache = numba.cgutils.create_struct_proxy(arraycachetype)(context, builder, value=listproxy.arraycache)
 
-        load = numba.cgutils.create_struct_proxy(numba.types.int8[:])(context, builder, value=arraycache.load)
-        load_int8 = numba.targets.arrayobj.load_item(context, builder, numba.types.int8[:], numba.cgutils.get_item_pointer(builder, numba.types.int8[:], load, [cacheidx]))
+        data = numba.cgutils.create_struct_proxy(numba.types.intp[:])(context, builder, value=arraycache.data)
+        data_intp = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], numba.cgutils.get_item_pointer(builder, numba.types.intp[:], data, [cacheidx]))
 
-        with numba.cgutils.if_unlikely(builder, context.is_true(builder, numba.types.int8, load_int8)):
+        with numba.cgutils.if_unlikely(builder, builder.not_(context.is_true(builder, numba.types.int8, data_intp))):
             getarray_fcn = pyapi.unserialize(pyapi.serialize_object(getarray))
             arrays_obj = builder.inttoptr(listproxy.arrays, pyapi.pyobj)
             name_obj = pyapi.unserialize(pyapi.serialize_object(listtpe.proxytype._content._data))
@@ -171,7 +173,6 @@ else:
             dtype_obj = pyapi.unserialize(pyapi.serialize_object(listtpe.proxytype._content._dtype))
             dims_obj = pyapi.unserialize(pyapi.serialize_object(listtpe.proxytype._content._dims))
             pyapi.call_function_objargs(getarray_fcn, (arrays_obj, name_obj, cache_obj, cacheidx_obj, dtype_obj, dims_obj))
-
             pyapi.decref(cacheidx_obj)
             pyapi.decref(dtype_obj)
             pyapi.decref(dims_obj)
