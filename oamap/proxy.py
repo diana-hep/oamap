@@ -30,88 +30,30 @@
 
 import sys
 
-import numpy
-
 if sys.version_info[0] > 2:
     xrange = range
 
-class Cache(object):
-    def __init__(self, cachelen):
-        self.arraylist = [None] * cachelen
-        self.ptr = numpy.zeros(cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
-        self.len = numpy.zeros(cachelen, dtype=numpy.intp)
-
-    def entercompiled(self):
-        for i, x in enumerate(self.arraylist):
-            if x is None:
-                self.ptr[i] = 0
-                self.len[i] = 0
-            else:
-                if not isinstance(x, numpy.ndarray):
-                    raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
-                self.ptr[i] = x.ctypes.data
-                self.len[i] = x.shape[0]
-
-# superclass of all proxies
-class Proxy(object):
-    @classmethod
-    def _getarray(cls, arrays, name, cache, cacheidx, dtype, dims=()):
-        if cache.arraylist[cacheidx] is None:
-            cache.arraylist[cacheidx] = arrays[name]
-            if getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
-                raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].dtype, dtype))
-            if getattr(cache.arraylist[cacheidx], "shape", (0,) + dims)[1:] != dims:
-                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
-        return cache.arraylist[cacheidx]
-
-# mix-in for masked proxies
-class Masked(object):
-    _dtype = numpy.dtype(numpy.bool_)
-
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        if cls._getarray(arrays, cls._mask, cache, cls._maskidx, Masked._dtype)[index]:
-            return None
-        else:
-            return cls.__bases__[1].__new__(cls, arrays, index=index, cache=cache)
-
-################################################################ Primitives
-
-class PrimitiveProxy(Proxy):
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        return cls._getarray(arrays, cls._data, cache, cls._dataidx, cls._dtype, cls._dims)[index]
+# base class of all runtime types that require proxies: List, Record, and Tuple
+class Proxy(object): pass
 
 ################################################################ Lists
 
 class ListProxy(Proxy):
-    __slots__ = ["_arrays", "_cache", "_start", "_stop", "_step"]
+    __slots__ = ["_name", "_arrays", "_cache", "_content", "_start", "_stop", "_step"]
 
-    _dtype = numpy.dtype(numpy.int32)
-
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        starts = cls._getarray(arrays, cls._starts, cache, cls._startsidx, ListProxy._dtype)
-        stops = cls._getarray(arrays, cls._stops, cache, cls._stopsidx, ListProxy._dtype)
-        return cls._slice(arrays, cache, starts[index], stops[index], 1)
-
-    @classmethod
-    def _slice(cls, arrays, cache, start, stop, step):
-        out = Proxy.__new__(cls)
-        out._arrays = arrays
-        out._cache = cache
-        out._start = start
-        out._stop = stop
-        out._step = step
-        return out
+    def __init__(self, name, arrays, cache, content, start, stop, step):
+        self._name = name
+        self._arrays = arrays
+        self._cache = cache
+        self._content = content
+        self._start = start
+        self._stop = stop
+        self._step = step
 
     def __repr__(self, memo=None):
         if memo is None:
             memo = set()
-        key = (self._starts, self._stops, self._start, self._stop, self._step)
+        key = (id(self._content), self._start, self._stop, self._step)
         if key in memo:
             return "[...]"
         memo.add(key)
@@ -146,17 +88,17 @@ class ListProxy(Proxy):
             if step == 0:
                 raise ValueError("slice step cannot be zero")
             else:
-                return self.__class__._slice(self._arrays, self._cache, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                return ListProxy(self._name, self._arrays, self._cache, self._content, self._start + self._step*start, self._start + self._step*stop, self._step*step)
 
         else:
             lenself = len(self)
             normalindex = index if index >= 0 else index + lenself
             if not 0 <= normalindex < lenself:
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
-            return self._content(self._arrays, index=(self._start + self._step*normalindex), cache=self._cache)
+            return self._content._generate(self._arrays, self._start + self._step*normalindex, self._cache)
 
     def __iter__(self):
-        return (self._content(self._arrays, index=i, cache=self._cache) for i in xrange(self._start, self._stop, self._step))
+        return (self._content._generate(self._arrays, i, self._cache) for i in xrange(self._start, self._stop, self._step))
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
@@ -216,48 +158,43 @@ class ListProxy(Proxy):
                 return True
         return False
 
-################################################################ Unions
-
-class UnionProxy(Proxy):
-    _tagdtype = numpy.dtype(numpy.int8)
-    _offsetdtype = numpy.dtype(numpy.int32)
-
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        tags = cls._getarray(arrays, cls._tags, cache, cls._tagsidx, UnionProxy._tagdtype)
-        offsets = cls._getarray(arrays, cls._offsets, cache, cls._offsetsidx, UnionProxy._offsetdtype)
-        return cls._possibilities[tags[index]](arrays, index=offsets[index], cache=cache)
-
 ################################################################ Records
 
 class RecordProxy(Proxy):
-    __slots__ = ["_arrays", "_cache", "_index"]
+    __slots__ = ["_fields", "_name", "_arrays", "_cache", "_index"]
 
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        out = Proxy.__new__(cls)
-        out._arrays = arrays
-        out._cache = cache
-        out._index = index
-        return out
+    def __init__(self, fields, name, arrays, cache, index):
+        self._fields = fields
+        self._name = name
+        self._arrays = arrays
+        self._cache = cache
+        self._index = index
 
     def __repr__(self):
-        return "<{0} at index {1}>".format(self.__class__.__name__, self._index)
+        return "<{0} at index {1}>".format("Record" if self._name is None else self._name, self._index)
+
+    def __getattr__(self, field):
+        if field.startswith("_"):
+            return super(RecordProxy, self).__getattr__(field)
+        else:
+            try:
+                generator = self._fields[field]
+            except KeyError:
+                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._name is None else self._name), repr(field)))
+            else:
+                return generator._generate(self._arrays, self._index, self._cache)
 
     def __hash__(self):
-        return hash((RecordProxy, self.__class__.__name__) + self._fields + tuple(getattr(self, n) for n in self._fields))
+        return hash((RecordProxy, self._name) + tuple(self._fields.items()))
 
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and self.__class__.__name__ == other.__class__.__name__ and self._fields == other._fields and all(getattr(self, n) == getattr(other, n) for n in self._fields)
+        return isinstance(other, RecordProxy) and self._name == other._name and set(self._fields) == set(other._fields) and all(self.__getattr__(n) for n in self._fields)
 
     def __lt__(self, other):
-        if isinstance(other, RecordProxy) and self.__class__.__name__ == other.__class__.__name__ and self._fields == other._fields:
-            return [getattr(self, n) for n in self._fields] < [getattr(other, n) for n in self._fields]
+        if isinstance(other, RecordProxy) and self._name == other._name and set(self._fields) == set(other._fields):
+            return [self.__getattr__(n) for n in self._fields] < [other.__getattr__(n) for n in self._fields]
         else:
-            name = self.__class__.__name__
-            raise TypeError("unorderable types: {0}() < {1}()".format(repr("type <'Anonymous ({0} fields)'>".format(len(self._fields))) if name == "" else self.__class__, other.__class__))
+            raise TypeError("unorderable types: {0}() < {1}()".format("<type 'Record'>" if self._name is None else "<type {0}>".format(repr(self._name)), other.__class__))
 
     def __ne__(self, other): return not self.__eq__(other)
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
@@ -267,16 +204,14 @@ class RecordProxy(Proxy):
 ################################################################ Tuples
 
 class TupleProxy(Proxy):
-    __slots__ = ["_arrays", "_cache", "_index"]
+    __slots__ = ["_types", "_name", "_arrays", "_cache", "_index"]
 
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        out = Proxy.__new__(cls)
-        out._arrays = arrays
-        out._cache = cache
-        out._index = index
-        return out
+    def __init__(self, types, name, arrays, cache, index):
+        self._types = types
+        self._name = name
+        self._arrays = arrays
+        self._cache = cache
+        self._index = index
 
     def __repr__(self, memo=None):
         if memo is None:
@@ -304,10 +239,10 @@ class TupleProxy(Proxy):
             return tuple(self[i] for i in range(start, stop, step))
 
         else:
-            return self._types[index](self._arrays, index=self._index, cache=self._cache)
+            return self._types[index]._generate(self._arrays, self._index, self._cache)
 
     def __iter__(self):
-        return (t(self._arrays, self._index) for t in self._types)
+        return (t._generate(self._arrays, self._index, self._cache) for t in self._types)
 
     def __hash__(self):
         return hash(tuple(self))
@@ -362,100 +297,3 @@ class TupleProxy(Proxy):
             if x == value:
                 return True
         return False
-
-################################################################ Pointers
-
-class PointerProxy(Proxy):
-    _dtype = numpy.dtype(numpy.int32)
-
-    def __new__(cls, arrays, index=0, cache=None):
-        if cache is None:
-            cache = Cache(cls._cachelen)
-        positions = cls._getarray(arrays, cls._positions, cache, cls._positionsidx, PointerProxy._dtype)
-        return cls._target(arrays, index=positions[index], cache=cache)
-
-################################################################ for assigning unique names to types
-
-def _firstindex(t):
-    if issubclass(t, PrimitiveProxy):
-        return t._dataidx
-    elif issubclass(t, ListProxy):
-        return t._startsidx
-    elif issubclass(t, UnionProxy):
-        return t._tagsidx
-    elif issubclass(t, Masked) and issubclass(t, RecordProxy):
-        return t._maskidx
-    elif issubclass(t, RecordProxy):
-        for tt in t._fieldtypes:
-            return _firstindex(tt)
-        return -1
-    elif issubclass(t, Masked) and issubclass(t, TupleProxy):
-        return t._maskidx
-    elif issubclass(t, TupleProxy):
-        for tt in t._types:
-            return _firstindex(tt)
-        return -1
-    elif issubclass(t, PointerProxy):
-        return t._positionsidx
-    else:
-        raise AssertionError("unrecognized proxy type: {0}".format(t))
-
-def _uniquestr(cls, memo):
-    if id(cls) not in memo:
-        memo.add(id(cls))
-        givenname = "nil" if cls._name is None else repr(cls._name)
-
-        if issubclass(cls, Masked) and issubclass(cls, PrimitiveProxy):
-            cls._uniquestr = "(P {0} {1} ({2}) {3} {4} {5} {6})".format(givenname, repr(str(cls._dtype)), " ".join(map(repr, cls._dims)), cls._dataidx, repr(cls._data), cls._maskidx, repr(cls._mask))
-
-        elif issubclass(cls, PrimitiveProxy):
-            cls._uniquestr = "(P {0} {1} ({2}) {3} {4})".format(givenname, repr(str(cls._dtype)), " ".join(map(repr, cls._dims)), cls._dataidx, repr(cls._data))
-
-        elif issubclass(cls, Masked) and issubclass(cls, ListProxy):
-            _uniquestr(cls._content, memo)
-            cls._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6} {7})".format(givenname, cls._startsidx, repr(cls._starts), cls._stopsidx, repr(cls._stops), cls._maskidx, repr(cls._mask), cls._content._uniquestr)
-
-        elif issubclass(cls, ListProxy):
-            _uniquestr(cls._content, memo)
-            cls._uniquestr = "(L {0} {1} {2} {3} {4} {5})".format(givenname, cls._startsidx, repr(cls._starts), cls._stopsidx, repr(cls._stops), cls._content._uniquestr)
-
-        elif issubclass(cls, Masked) and issubclass(cls, UnionProxy):
-            for t in cls._possibilities:
-                _uniquestr(t, memo)
-            cls._uniquestr = "(U {0} {1} {2} {3} {4} {5} {6} ({7}))".format(givenname, cls._tagsidx, repr(cls._tags), cls._offsetsidx, repr(cls._offsets), cls._maskidx, repr(cls._mask), " ".join(x._uniquestr for x in cls._possibilities))
-
-        elif issubclass(cls, UnionProxy):
-            for t in cls._possibilities:
-                _uniquestr(t, memo)
-            cls._uniquestr = "(U {0} {1} {2} {3} {4} ({5}))".format(givenname, cls._tagsidx, repr(cls._tags), cls._offsetsidx, repr(cls._offsets), " ".join(x._uniquestr for x in cls._possibilities))
-
-        elif issubclass(cls, Masked) and issubclass(cls, RecordProxy):
-            for t in cls._fieldtypes:
-                _uniquestr(t, memo)
-            cls._uniquestr = "(R {0} {1} {2} ({3}))".format(givenname, cls._maskidx, repr(cls._mask), " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in zip(cls._fields, cls._fieldtypes)))
-
-        elif issubclass(cls, RecordProxy):
-            for t in cls._fieldtypes:
-                _uniquestr(t, memo)
-            cls._uniquestr = "(R {0} ({1}))".format(givenname, " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in zip(cls._fields, cls._fieldtypes)))
-
-        elif issubclass(cls, Masked) and issubclass(cls, TupleProxy):
-            for t in cls._types:
-                _uniquestr(t, memo)
-            cls._uniquestr = "(T {0} {1} {2} ({3}))".format(givenname, cls._maskidx, repr(cls._mask), " ".join(t._uniquestr for t in cls._types))
-
-        elif issubclass(cls, TupleProxy):
-            for t in cls._types:
-                _uniquestr(t, memo)
-            cls._uniquestr = "(T {0} ({1}))".format(givenname, " ".join(t._uniquestr for t in cls._types))
-
-        elif issubclass(cls, Masked) and issubclass(cls, PointerProxy):
-            _uniquestr(cls._target, memo)
-            cls._uniquestr = "(X {0} {1} {2} {3} {4} {5})".format(givenname, cls._positionsidx, repr(cls._positions), cls._maskidx, repr(cls._mask), _firstindex(cls._target))
-
-        elif issubclass(cls, PointerProxy):
-            _uniquestr(cls._target, memo)
-            cls._uniquestr = "(X {0} {1} {2} {3})".format(givenname, cls._positionsidx, repr(cls._positions), _firstindex(cls._target))
-
-        else:
-            AssertionError("unrecognized proxy type: {0}".format(cls))

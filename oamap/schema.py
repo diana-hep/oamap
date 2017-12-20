@@ -60,8 +60,7 @@ except ImportError:
 
 import numpy
 
-import oamap.proxy
-import oamap.compiler
+import oamap.generator
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -113,30 +112,28 @@ class Schema(object):
                 return "#{0}".format(index)
         return None
 
-    def _finalizetype(self, out, cacheidx, memo):
-        alltypes = []
-        for proxytype in memo.values():
-            if issubclass(proxytype, oamap.proxy.PointerProxy):
+    def _finalizegenerator(self, out, cacheidx, memo):
+        allgenerators = list(memo.values())
+        for generator in memo.values():
+            if isinstance(generator, oamap.generator.PointerGenerator):
                 # only assign pointer targets after all other types have been resolved
-                target, prefix, delimiter = proxytype._target
+                target, prefix, delimiter = generator.target
                 if id(target) in memo:
                     # the target points elsewhere in the type tree: link to that
-                    proxytype._target = memo[id(target)]
+                    generator._referenceonly = True
+                    generator.target = memo[id(target)]
                 else:
-                    # the target is not in the type tree: resolve it (including cases that might contain a type already seen; they're considered to be different types at different positions)
-                    memo2 = {}
-                    proxytype._target = target._finalizetype(target._totype(prefix + delimiter + "X", delimiter, cacheidx, memo2), cacheidx, memo2)
+                    # the target is not in the type tree: resolve it now
+                    memo2 = OrderedDict()   # new memo, but same cacheidx
+                    generator._referenceonly = False
+                    generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2), cacheidx, memo2)
+                    for generator2 in memo2.values():
+                        allgenerators.append(generator2)
 
-                    for proxytype2 in memo2.values():
-                        alltypes.append(proxytype2)
+        for generator in allgenerators:
+            generator._cachelen = cacheidx[0]
 
-            alltypes.append(proxytype)
-
-        for proxytype in alltypes:
-            proxytype._cachelen = cacheidx[0]
-            oamap.compiler.exposetype(proxytype)
-
-        oamap.proxy._uniquestr(out, set())
+        oamap.generator._uniquestr(out, set())
         return out
 
 ################################################################ Primitives can be any Numpy type
@@ -215,33 +212,36 @@ class Primitive(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
-        memo = {}
-        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        memo = OrderedDict()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
-    def _totype(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [oamap.proxy.PrimitiveProxy]
-        attributes = {"_dtype": self._dtype, "_dims": self._dims}
-        
-        if self._data is None:
-            attributes["_data"] = prefix
-        else:
-            attributes["_data"] = self._data
-        attributes["_dataidx"] = cacheidx[0]; cacheidx[0] += 1
+        args = []
 
         if self._nullable:
-            bases.insert(0, oamap.proxy.Masked)
+            cls = oamap.generator.MaskedPrimitiveGenerator
             if self._mask is None:
-                attributes["_mask"] = prefix + delimiter + "M"
+                args.append(prefix + delimiter + "M")
             else:
-                attributes["_mask"] = self._mask
-            attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
+                args.append(self._mask)
+            args.append(cacheidx[0]); cacheidx[0] += 1
+        else:
+            cls = oamap.generator.PrimitiveGenerator
 
-        attributes["_name"] = self._name
+        if self._data is None:
+            args.append(prefix)
+        else:
+            args.append(self._data)
+        args.append(cacheidx[0]); cacheidx[0] += 1
 
-        memo[id(self)] = type("SpecificPrimitiveProxy" if self._name is None else self._name, tuple(bases), attributes)
+        args.append(self._dtype)
+        args.append(self._dims)
+        args.append(self._name)
+
+        memo[id(self)] = cls(*args)
         return memo[id(self)]
 
 ################################################################ Lists may have arbitrary length
@@ -321,40 +321,41 @@ class List(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
-        memo = {}
-        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        memo = OrderedDict()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
-    def _totype(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [oamap.proxy.ListProxy]
-        attributes = {}
-        
-        if self._starts is None:
-            attributes["_starts"] = prefix + delimiter + "B"
-        else:
-            attributes["_starts"] = self._starts
-        attributes["_startsidx"] = cacheidx[0]; cacheidx[0] += 1
-
-        if self._stops is None:
-            attributes["_stops"] = prefix + delimiter + "E"
-        else:
-            attributes["_stops"] = self._stops
-        attributes["_stopsidx"] = cacheidx[0]; cacheidx[0] += 1
+        args = []
 
         if self._nullable:
-            bases.insert(0, oamap.proxy.Masked)
+            cls = oamap.generator.MaskedListGenerator
             if self._mask is None:
-                attributes["_mask"] = prefix + delimiter + "M"
+                args.append(prefix + delimiter + "M")
             else:
-                attributes["_mask"] = self._mask
-            attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
+                args.append(self._mask)
+            args.append(cacheidx[0]); cacheidx[0] += 1
+        else:
+            cls = oamap.generator.ListGenerator
 
-        attributes["_name"] = self._name
-        attributes["_content"] = self._content._totype(prefix + delimiter + "L", delimiter, cacheidx, memo)
+        if self._starts is None:
+            args.append(prefix + delimiter + "B")
+        else:
+            args.append(self._starts)
+        args.append(cacheidx[0]); cacheidx[0] += 1
 
-        memo[id(self)] = type("SpecificListProxy" if self._name is None else self._name, tuple(bases), attributes)
+        if self._stops is None:
+            args.append(prefix + delimiter + "E")
+        else:
+            args.append(self._stops)
+        args.append(cacheidx[0]); cacheidx[0] += 1
+
+        args.append(self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo))
+        args.append(self._name)
+
+        memo[id(self)] = cls(*args)
         return memo[id(self)]
 
 ################################################################ Unions may be one of several types
@@ -466,40 +467,41 @@ class Union(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
-        memo = {}
-        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        memo = OrderedDict()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
-    def _totype(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [oamap.proxy.UnionProxy]
-        attributes = {}
-        
-        if self._tags is None:
-            attributes["_tags"] = prefix + delimiter + "G"
-        else:
-            attributes["_tags"] = self._tags
-        attributes["_tagsidx"] = cacheidx[0]; cacheidx[0] += 1
-
-        if self._offsets is None:
-            attributes["_offsets"] = prefix + delimiter + "O"
-        else:
-            attributes["_offsets"] = self._offsets
-        attributes["_offsetsidx"] = cacheidx[0]; cacheidx[0] += 1
+        args = []
 
         if self._nullable:
-            bases.insert(0, oamap.proxy.Masked)
+            cls = oamap.generator.MaskedUnionGenerator
             if self._mask is None:
-                attributes["_mask"] = prefix + delimiter + "M"
+                args.append(prefix + delimiter + "M")
             else:
-                attributes["_mask"] = self._mask
-            attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
+                args.append(self._mask)
+            args.append(cacheidx[0]); cacheidx[0] += 1
+        else:
+            cls = oamap.generator.UnionGenerator
 
-        attributes["_name"] = self._name
-        attributes["_possibilities"] = [x._totype(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._possibilities)]
+        if self._tags is None:
+            args.append(prefix + delimiter + "G")
+        else:
+            args.append(self._tags)
+        args.append(cacheidx[0]); cacheidx[0] += 1
 
-        memo[id(self)] = type("SpecificUnionProxy" if self._name is None else self._name, tuple(bases), attributes)
+        if self._offsets is None:
+            args.append(prefix + delimiter + "O")
+        else:
+            args.append(self._offsets)
+        args.append(cacheidx[0]); cacheidx[0] += 1
+        
+        args.append([x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._possibilities)])
+        args.append(self._name)
+
+        memo[id(self)] = cls(*args)
         return memo[id(self)]
 
 ################################################################ Records contain fields of known types
@@ -575,34 +577,29 @@ class Record(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
-        memo = {}
-        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        memo = OrderedDict()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
-    def _totype(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [oamap.proxy.RecordProxy]
-        attributes = {}
+        args = []
 
         if self._nullable:
-            bases.insert(0, oamap.proxy.Masked)
+            cls = oamap.generator.MaskedRecordGenerator
             if self._mask is None:
-                attributes["_mask"] = prefix + delimiter + "M"
+                args.append(prefix + delimiter + "M")
             else:
-                attributes["_mask"] = self._mask
-            attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
+                args.append(self._mask)
+            args.append(cacheidx[0]); cacheidx[0] += 1
+        else:
+            cls = oamap.generator.RecordGenerator
 
-        def wrap_for_python_scope(t):
-            return lambda self: t(self._arrays, index=self._index, cache=self._cache)
+        args.append(OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo)) for n in sorted(self._fields)]))
+        args.append(self._name)
 
-        attributes["_name"] = self._name
-        attributes["_fields"] = tuple(sorted(self._fields))
-        attributes["_fieldtypes"] = tuple(self._fields[n]._totype(prefix + delimiter + "F" + n, delimiter, cacheidx, memo) for n in attributes["_fields"])
-        for n, t in zip(attributes["_fields"], attributes["_fieldtypes"]):
-            attributes[n] = property(wrap_for_python_scope(t))
-
-        memo[id(self)] = type("SpecificRecordProxy" if self._name is None else self._name, tuple(bases), attributes)
+        memo[id(self)] = cls(*args)
         return memo[id(self)]
 
 ################################################################ Tuples are like records but with an order instead of field names
@@ -685,28 +682,29 @@ class Tuple(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
-        memo = {}
-        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        memo = OrderedDict()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
-    def _totype(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
-        bases = [oamap.proxy.TupleProxy]
-        attributes = {}
+        args = []
 
         if self._nullable:
-            bases.insert(0, oamap.proxy.Masked)
+            cls = oamap.generator.MaskedTupleGenerator
             if self._mask is None:
-                attributes["_mask"] = prefix + delimiter + "M"
+                args.append(prefix + delimiter + "M")
             else:
-                attributes["_mask"] = self._mask
-            attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
+                args.append(self._mask)
+            args.append(cacheidx[0]); cacheidx[0] += 1
+        else:
+            cls = oamap.generator.TupleGenerator
 
-        attributes["_name"] = self._name
-        attributes["_types"] = tuple(x._totype(prefix + delimiter + "T" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types))
+        args.append([x._generator(prefix + delimiter + "T" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types)])
+        args.append(self._name)
 
-        memo[id(self)] = type("SpecificTupleProxy" if self._name is None else self._name, tuple(bases), attributes)
+        memo[id(self)] = cls(*args)
         return memo[id(self)]
 
 ################################################################ Pointers redirect to the contents of other types
@@ -773,33 +771,34 @@ class Pointer(Schema):
 
     def __call__(self, prefix="object", delimiter="-"):
         cacheidx = [0]
-        memo = {}
-        return self._finalizetype(self._totype(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        memo = OrderedDict()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
-    def _totype(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
 
         memo[id(self)] = None
-        bases = [oamap.proxy.PointerProxy]
-        attributes = {}
-        
-        if self._positions is None:
-            attributes["_positions"] = prefix + delimiter + "P"
-        else:
-            attributes["_positions"] = self._positions
-        attributes["_positionsidx"] = cacheidx[0]; cacheidx[0] += 1
+        args = []
 
         if self._nullable:
-            bases.insert(0, oamap.proxy.Masked)
+            cls = oamap.generator.MaskedPointerGenerator
             if self._mask is None:
-                attributes["_mask"] = prefix + delimiter + "M"
+                args.append(prefix + delimiter + "M")
             else:
-                attributes["_mask"] = self._mask
-            attributes["_maskidx"] = cacheidx[0]; cacheidx[0] += 1
+                args.append(self._mask)
+            args.append(cacheidx[0]); cacheidx[0] += 1
+        else:
+            cls = oamap.generator.PointerGenerator
 
-        attributes["_name"] = self._name
-        attributes["_target"] = (self._target, prefix, delimiter)   # placeholder! see _finalizetype!
+        if self._positions is None:
+            args.append(prefix + delimiter + "P")
+        else:
+            args.append(self._positions)
+        args.append(cacheidx[0]); cacheidx[0] += 1
 
-        memo[id(self)] = type("SpecificPointerProxy" if self._name is None else self._name, tuple(bases), attributes)
+        args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
+        args.append(self._name)
+
+        memo[id(self)] = cls(*args)
         return memo[id(self)]
