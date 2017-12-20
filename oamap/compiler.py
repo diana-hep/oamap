@@ -79,15 +79,9 @@ if numba is not None:
         
         return cachebuffer
 
-    def box_cache(context, builder, pyapi, cache_val, decref_arrays=False):
+    def box_cache(context, builder, pyapi, cache_val):
         cache = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=builder.load(cache_val))
-        cache_obj = builder.inttoptr(cache.cache, pyapi.pyobj)
-        if decref_arrays:
-            ptr_obj = pyapi.object_getattr_string(cache_obj, "ptr")
-            len_obj = pyapi.object_getattr_string(cache_obj, "len")
-            pyapi.decref(ptr_obj); pyapi.decref(ptr_obj)
-            pyapi.decref(len_obj); pyapi.decref(len_obj)
-        return cache_obj
+        return builder.inttoptr(cache.cache, pyapi.pyobj)
 
     ################################################################ general routines for all types
 
@@ -138,8 +132,9 @@ if numba is not None:
     def typeof_proxy(val, c):
         return typeof_generator(val._generator)
 
+    import sys
+
     def getarray(arrays, name, cache, cacheidx, dtype, dims):
-        print "getarray", name, cacheidx
         try:
             array = arrays[name]
             if not isinstance(array, numpy.ndarray):
@@ -151,6 +146,9 @@ if numba is not None:
             cache.arraylist[cacheidx] = array
             cache.ptr[cacheidx] = array.ctypes.data
             cache.len[cacheidx] = array.shape[0]
+
+            print sys.getrefcount(cache), sys.getrefcount(cache.arraylist), sys.getrefcount(cache.ptr), sys.getrefcount(cache.len)
+
         except:
             return False
         else:
@@ -170,11 +168,12 @@ if numba is not None:
             builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
     def ensure(context, builder, pyapi, ptr, arrays, name, cache, cacheidx, dtype, dims):
-        with builder.if_then(builder.not_(context.is_true(builder, numba.types.int8, ptr)), likely=False):
+        # with builder.if_then(builder.not_(context.is_true(builder, numba.types.int8, ptr)), likely=False):
+        if True:
             getarray_fcn = pyapi.unserialize(pyapi.serialize_object(getarray))
             arrays_obj = builder.inttoptr(arrays, pyapi.pyobj)
             name_obj = pyapi.unserialize(pyapi.serialize_object(name))
-            cache_obj = box_cache(context, builder, pyapi, cache, decref_arrays=False)
+            cache_obj = box_cache(context, builder, pyapi, cache)
             cacheidx_obj = pyapi.long_from_long(cacheidx)
             dtype_obj = pyapi.unserialize(pyapi.serialize_object(dtype))
             dims_obj = pyapi.unserialize(pyapi.serialize_object(dims))
@@ -306,8 +305,6 @@ if numba is not None:
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
-        numba.cgutils.printf(builder, "listproxy_getitem\n")
-
         listtpe, indextpe = sig.args
         listval, indexval = args
 
@@ -331,8 +328,6 @@ if numba is not None:
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
-        numba.cgutils.printf(c.builder, "unbox_listproxy\n")
-
         arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         start_obj = c.pyapi.object_getattr_string(obj, "_start")
@@ -347,7 +342,7 @@ if numba is not None:
         listproxy.step = c.pyapi.number_as_ssize_t(step_obj)
 
         c.pyapi.decref(arrays_obj)
-        c.pyapi.decref(cache_obj)
+        # c.pyapi.decref(cache_obj)       # not this one
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
@@ -357,11 +352,9 @@ if numba is not None:
 
     @numba.extending.box(ListProxyNumbaType)
     def box_listproxy(typ, val, c):
-        numba.cgutils.printf(c.builder, "box_listproxy\n")
-
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
-        cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache, decref_arrays=True)
+        cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache)
         start_obj = c.pyapi.long_from_ssize_t(listproxy.start)
         stop_obj = c.pyapi.long_from_ssize_t(listproxy.stop)
         step_obj = c.pyapi.long_from_ssize_t(listproxy.step)
@@ -378,5 +371,4 @@ if numba is not None:
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
-        # c.pyapi.decref(slice_fcn)       # not this one
         return out
