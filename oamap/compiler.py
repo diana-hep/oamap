@@ -75,8 +75,10 @@ if numba is not None:
         cachebuffer = c.builder.bitcast(c.context.nrt.allocate(c.builder, cachesize), llvmlite.llvmpy.core.Type.pointer(c.context.get_value_type(cachetype)))
         c.builder.store(cache._getvalue(), cachebuffer)
 
-        # c.pyapi.decref(cache_obj)
-        # c.pyapi.decref(pair_obj)
+        c.pyapi.decref(cache_obj)       # not this one: this one is decrefed by the calling function
+        c.pyapi.decref(pair_obj)
+        c.pyapi.decref(ptr_obj)
+        c.pyapi.decref(len_obj)
         
         return cachebuffer
 
@@ -289,9 +291,9 @@ if numba is not None:
         def __init__(self, dmm, fe_type):
             members = [("arrays", numba.types.intp),
                        ("cache", numba.types.CPointer(cachetype)),
-                       ("start", numba.types.intp),
-                       ("stop", numba.types.intp),
-                       ("step", numba.types.intp)]
+                       ("start", numba.types.int64),
+                       ("stop", numba.types.int64),
+                       ("step", numba.types.int64)]
             super(ListProxyModel, self).__init__(dmm, fe_type, members)
 
     @numba.typing.templates.infer
@@ -342,7 +344,7 @@ if numba is not None:
         listproxy.step = c.pyapi.long_as_longlong(step_obj)
 
         c.pyapi.decref(arrays_obj)
-        # c.pyapi.decref(cache_obj)       # not this one
+        c.pyapi.decref(cache_obj)
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
@@ -364,11 +366,11 @@ if numba is not None:
 
         out = c.pyapi.call_function_objargs(listproxy_cls, (generator_obj, arrays_obj, cache_obj, start_obj, stop_obj, step_obj))
 
-        c.pyapi.decref(listproxy_cls)
-        # c.pyapi.decref(generator_obj)   # not this one
-        # c.pyapi.decref(arrays_obj)      # not this one
-        # c.pyapi.decref(cache_obj)       # not this one
+        # c.pyapi.decref(arrays_obj)      # this reference is exported
+        # c.pyapi.decref(cache_obj)       # this reference is exported
         c.pyapi.decref(start_obj)
         c.pyapi.decref(stop_obj)
         c.pyapi.decref(step_obj)
+        c.pyapi.decref(listproxy_cls)
+        # c.pyapi.decref(generator_obj)   # this reference is exported
         return out
