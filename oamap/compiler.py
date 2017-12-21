@@ -110,7 +110,7 @@ if numba is not None:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
-            raise NotImplementedError
+            return RecordProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.MaskedTupleGenerator):
             raise NotImplementedError
@@ -367,3 +367,69 @@ if numba is not None:
         return out
 
     ################################################################ RecordProxy
+
+    class RecordProxyNumbaType(numba.types.Type):
+        def __init__(self, generator):
+            self.generator = generator
+            super(RecordProxyNumbaType, self).__init__(name=self.generator._uniquestr)
+
+    @numba.extending.register_model(RecordProxyNumbaType)
+    class RecordProxyModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("arrays", numba.types.intp),
+                       ("cache", cachetype),
+                       ("index", numba.types.int64)]
+            super(RecordProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.infer_getattr
+    class StructAttribute(numba.typing.templates.AttributeTemplate):
+        key = RecordProxyNumbaType
+        def generic_resolve(self, typ, attr):
+            fieldgenerator = typ.generator.fields.get(attr, None)
+            if fieldgenerator is not None:
+                return typeof_generator(fieldgenerator)
+            else:
+                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if typ.generator.name is None else typ.generator.name), repr(attr)))
+
+    @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
+    def recordproxy_getattr(context, builder, typ, val, attr):
+        pyapi = context.get_python_api(builder)
+        recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
+        return generate(context, builder, pyapi, recordproxy.arrays, recordproxy.cache, typ.generator.fields[attr], recordproxy.index)
+
+    @numba.extending.unbox(RecordProxyNumbaType)
+    def unbox_recordproxy(typ, obj, c):
+        arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
+        cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
+        index_obj = c.pyapi.object_getattr_string(obj, "_index")
+
+        recordproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        recordproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
+        recordproxy.cache = unbox_cache(cache_obj, c)
+        recordproxy.index = c.pyapi.long_as_longlong(index_obj)
+
+        c.pyapi.decref(arrays_obj)
+        c.pyapi.decref(cache_obj)
+        c.pyapi.decref(index_obj)
+
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(recordproxy._getvalue(), is_error=is_error)
+
+    @numba.extending.box(RecordProxyNumbaType)
+    def box_recordproxy(typ, val, c):
+        recordproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        arrays_obj = c.builder.inttoptr(recordproxy.arrays, c.pyapi.pyobj)
+        cache_obj = box_cache(c.context, c.builder, c.pyapi, recordproxy.cache)
+        index_obj = c.pyapi.long_from_longlong(recordproxy.index)
+
+        recordproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.RecordProxy))
+        generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
+
+        out = c.pyapi.call_function_objargs(recordproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
+
+        # c.pyapi.decref(arrays_obj)      # this reference is exported
+        # c.pyapi.decref(cache_obj)       # this reference is exported
+        c.pyapi.decref(index_obj)
+        c.pyapi.decref(recordproxy_cls)
+        # c.pyapi.decref(generator_obj)   # this reference is exported
+        return out
