@@ -26,12 +26,15 @@ from oamap.schema import *
 #     for j in (0, 1, -1, -2):
 #         print do2(x, i, j), sys.getrefcount(x._arrays), sys.getrefcount(x._cache)
 
-schema = Record({"a": Primitive("i8"), "b": Primitive("f8")})
-x = schema({"object-Fa": numpy.array([999]), "object-Fb": numpy.array([3.14])})
-print x.a, x.b
+schema = List(Record({"a": Primitive("i8"), "b": Primitive("f8")}))
+x = schema({"object-B": numpy.array([0], dtype=numpy.int32), "object-E": numpy.array([5], dtype=numpy.int32), "object-L-Fa": numpy.array([5, 4, 3, 2, 1]), "object-L-Fb": numpy.array([1.1, 2.2, 3.3, 4.4, 5.5])})
 
 @numba.njit
-def do(x):
-    return x.a, x.b
+def do(x, i):
+    return x[i].a, x[i].b
 
-print do(x)
+print do(x, 0)
+print do(x, 1)
+print do(x, 2)
+print do(x, 3)
+print do(x, 4)

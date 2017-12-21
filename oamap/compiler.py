@@ -230,12 +230,7 @@ if numba is not None:
             stopslen = atidx(context, builder, cachestruct.len, stopsidx)
             runtimeerror(context, builder, pyapi, builder.icmp_unsigned(">=", at, stopslen), "ListProxy stops array index out of range")
 
-            listproxytype = typeof_generator(generator)
-            listproxysize = constint(context.get_abi_sizeof(context.get_data_type(listproxytype)))
-            listproxybuffer = builder.bitcast(context.nrt.allocate(builder, listproxysize), llvmlite.llvmpy.core.Type.pointer(context.get_value_type(listproxytype)))
-
-            listproxytype = typeof_generator(generator)
-            listproxy = numba.cgutils.create_struct_proxy(listproxytype)(context, builder)
+            listproxy = numba.cgutils.create_struct_proxy(typeof_generator(generator))(context, builder)
             listproxy.arrays = arrays
             listproxy.cache = cache
             listproxy.start = castint(builder, arrayitem(context, builder, startsptr, at, generator.dtype))
@@ -253,7 +248,11 @@ if numba is not None:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
-            raise NotImplementedError
+            recordproxy = numba.cgutils.create_struct_proxy(typeof_generator(generator))(context, builder)
+            recordproxy.arrays = arrays
+            recordproxy.cache = cache
+            recordproxy.index = at
+            return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.MaskedTupleGenerator):
             raise NotImplementedError
