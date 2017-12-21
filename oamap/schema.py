@@ -160,7 +160,7 @@ class Primitive(Schema):
 
     @dtype.setter
     def dtype(self, value):
-        if not isinstance(value, numpy.dtype):
+        if value is not None and not isinstance(value, numpy.dtype):
             value = numpy.dtype(value)
         self._dtype = value
 
@@ -170,8 +170,8 @@ class Primitive(Schema):
 
     @dims.setter
     def dims(self, value):
-        if not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value):
-            raise TypeError("dims must be a tuple of non-negative integers, not {0}".format(repr(value)))
+        if value is not None and (not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value)):
+            raise TypeError("dims must be None or a tuple of non-negative integers, not {0}".format(repr(value)))
         self._dims = value
 
     @property

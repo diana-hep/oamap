@@ -136,9 +136,9 @@ if numba is not None:
             array = arrays[name]
             if not isinstance(array, numpy.ndarray):
                 raise TypeError("arrays[{0}] returned a {1} ({2}) instead of a Numpy array".format(repr(name), type(array), repr(array)))
-            if array.dtype != dtype:
+            if dtype is not None and array.dtype != dtype:
                 raise TypeError("arrays[{0}] returned an array of type {1} instead of {2}".format(repr(name), array.dtype, dtype))
-            if array.shape[1:] != dims:
+            if dims is not None and array.shape[1:] != dims:
                 raise TypeError("arrays[{0}] returned an array with shape[1:] {1} instead of {2}".format(repr(name), array.shape[1:], dims))
             cache.arraylist[cacheidx] = array
             cache.ptr[cacheidx] = array.ctypes.data

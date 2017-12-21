@@ -57,9 +57,9 @@ class Generator(object):
     def _getarray(arrays, name, cache, cacheidx, dtype, dims=()):
         if cache.arraylist[cacheidx] is None:
             cache.arraylist[cacheidx] = arrays[name]
-            if getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
+            if dtype is not None and getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
                 raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].dtype, dtype))
-            if getattr(cache.arraylist[cacheidx], "shape", (0,) + dims)[1:] != dims:
+            if dims is not None and getattr(cache.arraylist[cacheidx], "shape", (0,) + dims)[1:] != dims:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
         return cache.arraylist[cacheidx]
 
