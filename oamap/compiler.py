@@ -147,10 +147,6 @@ if numba is not None:
             cache.arraylist[cacheidx] = array
             cache.ptr[cacheidx] = array.ctypes.data
             cache.len[cacheidx] = array.shape[0]
-
-            import sys
-            print "getarray", sys.getrefcount(cache), sys.getrefcount(cache.arraylist), sys.getrefcount(cache.ptr), sys.getrefcount(cache.len)
-
         except:
             return False
         else:
@@ -172,8 +168,7 @@ if numba is not None:
             builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
     def ensure(context, builder, pyapi, ptr, arrays, name, cache, cacheidx, dtype, dims):
-        # with builder.if_then(builder.not_(context.is_true(builder, numba.types.int8, ptr)), likely=False):
-        if True:
+        with builder.if_then(builder.not_(context.is_true(builder, numba.types.int8, ptr)), likely=False):
             getarray_fcn = pyapi.unserialize(pyapi.serialize_object(getarray))
             arrays_obj = builder.inttoptr(arrays, pyapi.pyobj)
             name_obj = pyapi.unserialize(pyapi.serialize_object(name))
