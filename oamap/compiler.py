@@ -71,20 +71,14 @@ if numba is not None:
         cache.ptr = c.builder.ptrtoint(ptr_val, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         cache.len = c.builder.ptrtoint(len_val, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
 
-        # cachesize = constint(c.context.get_abi_sizeof(c.context.get_data_type(cachetype)))
-        # cachebuffer = c.builder.bitcast(c.context.nrt.allocate(c.builder, cachesize), llvmlite.llvmpy.core.Type.pointer(c.context.get_value_type(cachetype)))
-        # c.builder.store(cache._getvalue(), cachebuffer)
-
         c.pyapi.decref(cache_obj)       # not this one: this one is decrefed by the calling function
         c.pyapi.decref(pair_obj)
         c.pyapi.decref(ptr_obj)
         c.pyapi.decref(len_obj)
         
-        # return cachebuffer
         return cache._getvalue()
 
     def box_cache(context, builder, pyapi, cache_val):
-        # cache = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=builder.load(cache_val))
         cache = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache_val)
         return builder.inttoptr(cache.cache, pyapi.pyobj)
 
@@ -200,7 +194,6 @@ if numba is not None:
             return builder.bitcast(val, llvmlite.llvmpy.core.Type.int(bits))
 
     def generate(context, builder, pyapi, arrays, cache, generator, at):
-        # cachestruct = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=builder.load(cache))
         cachestruct = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache)
 
         if isinstance(generator, oamap.generator.MaskedPrimitiveGenerator):
@@ -288,7 +281,6 @@ if numba is not None:
     class ListProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
             members = [("arrays", numba.types.intp),
-                       # ("cache", numba.types.CPointer(cachetype)),
                        ("cache", cachetype),
                        ("start", numba.types.int64),
                        ("stop", numba.types.int64),
