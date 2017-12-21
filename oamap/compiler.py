@@ -352,9 +352,9 @@ if numba is not None:
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
         cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache)
-        start_obj = c.pyapi.long_from_ssize_t(listproxy.start)
-        stop_obj = c.pyapi.long_from_ssize_t(listproxy.stop)
-        step_obj = c.pyapi.long_from_ssize_t(listproxy.step)
+        start_obj = c.pyapi.long_from_longlong(listproxy.start)
+        stop_obj = c.pyapi.long_from_longlong(listproxy.stop)
+        step_obj = c.pyapi.long_from_longlong(listproxy.step)
 
         listproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.ListProxy))
         generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
