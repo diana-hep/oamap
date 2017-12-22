@@ -267,7 +267,7 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
     def filter(arraynames, prefix):
         return [x for x in arraynames if x.startswith(prefix)]
 
-    def recurse(arraynames, prefix, memo):
+    def recurse(arraynames, prefix, byname, internalpointers):
         prefixdelimiter = prefix + delimiter
         mask      = prefixdelimiter + "M"
         starts    = prefixdelimiter + "B"
@@ -278,17 +278,18 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
         uniondata = prefixdelimiter + "U"
         fields    = prefixdelimiter + "F"
         positions = prefixdelimiter + "P"
+        external  = prefixdelimiter + "X"
 
         nullable = mask in arraynames
         if not nullable:
             mask = None
 
         if prefix in arraynames:
-            memo[prefix] = oamap.schema.Primitive(None, dims=None, nullable=nullable, data=prefix, mask=mask, name=None)
+            byname[prefix] = oamap.schema.Primitive(None, dims=None, nullable=nullable, data=prefix, mask=mask, name=None)
 
         elif starts in arraynames and stops in arraynames:
-            memo[prefix] = None
-            memo[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, memo), nullable=nullable, starts=starts, stops=stops, mask=mask, name=None)
+            byname[prefix] = None
+            byname[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, byname, internalpointers), nullable=nullable, starts=starts, stops=stops, mask=mask, name=None)
 
         elif tags in arraynames and offsets in arraynames:
             possibilities = []
@@ -298,18 +299,18 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
                     possibilities.append(possibility)
                 else:
                     break
-            memo[prefix] = None
-            memo[prefix] = oamap.schema.Union([recurse(filter(arraynames, x), x, memo) for x in possibilities], nullable=nullable, tags=tags, offsets=offsets, mask=mask, name=None)
+            byname[prefix] = None
+            byname[prefix] = oamap.schema.Union([recurse(filter(arraynames, x), x, byname, internalpointers) for x in possibilities], nullable=nullable, tags=tags, offsets=offsets, mask=mask, name=None)
 
         elif any(x.startswith(fields) for x in arraynames):
             pattern = re.compile("^" + fields + "(" + oamap.schema.Schema._identifier.pattern + ")")
             fields = {}
             for x in arraynames:
-                m = pattern.match(x)
-                if m is not None:
-                    if m.group(1) not in fields:
-                        fields[m.group(1)] = []
-                    fields[m.group(1)].append(x)
+                matches = pattern.match(x)
+                if matches is not None:
+                    if matches.group(1) not in fields:
+                        fields[matches.group(1)] = []
+                    fields[matches.group(1)].append(x)
 
             types = []
             while True:
@@ -320,20 +321,42 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
                     break
 
             if len(fields) >= 0 and len(types) == 0:
-                return oamap.schema.Record(oamap.schema.OrderedDict([(n, fields[n]) for n in sorted(fields)]), nullable=nullable, mask=mask, name=None)
+                byname[prefix] = oamap.schema.Record(oamap.schema.OrderedDict([(n, recurse(fields[n], fields + n, byname, internalpointers)) for n in sorted(fields)]), nullable=nullable, mask=mask, name=None)
             elif len(fields) == 0 and len(types) > 0:
-                return oamap.schema.Tuple(types, nullable=nullable, mask=mask, name=None)
+                byname[prefix] = oamap.schema.Tuple([recurse(filter(arraynames, n), n, byname, internalpointers) for n in types], nullable=nullable, mask=mask, name=None)
             else:
                 raise KeyError("ambiguous set of array names: may be Record or Tuple at {0}".format(repr(prefix)))
 
         elif any(x.startswith(positions) for x in arraynames):
-            pass
+            if positions in arraynames:
+                # external
+                byname2 = {}
+                internalpointers2 = []
+                target = finalize(recurse(filter(arraynames, external), external, byname2, internalpointers2), byname2, internalpointers2)
+                byname[prefix] = oamap.schema.Pointer(target, nullable=nullable, positions=positions, mask=mask, name=None)
 
+            else:
+                # internal
+                matches = [x for x in arraynames if x.startswith(positions)]
+                if len(matches) != 1:
+                    raise KeyError("ambiguous set of array names: more than one internal Pointer at {0}".format(repr(prefix)))
+                target = None   # placeholder! see finalize
+                byname[prefix] = oamap.schema.Pointer(target, nullable=nullable, positions=matches[0], mask=mask, name=None)
+                internalpointers.append((byname[prefix], matches[0][len(positions) + 1:]))
 
+        else:
+            raise KeyError("missing array names: nothing found as {0} contents".format(repr(prefix)))
 
+        return byname[prefix]
 
-        return memo[prefix]
+    def finalize(out, byname, internalpointers):
+        for pointer, targetname in internalpointers:
+            if targetname in byname:
+                pointer.target = byname[targetname]
+            else:
+                raise KeyError("Pointer's internal target is {0}, but there is no object with that prefix".format(repr(targetname)))
+        return out
 
-
-    memo = {}
-    return finalize(recurse(filter(arraynames, prefix), prefix, memo), memo)
+    byname = {}
+    internalpointers = []
+    return finalize(recurse(filter(arraynames, prefix), prefix, byname, internalpointers), byname, internalpointers)
