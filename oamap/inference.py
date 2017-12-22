@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import re
 import numbers
 
 import numpy
@@ -262,6 +263,77 @@ def fromdata(obj, limititems=None):
 
 ################################################################ inferring schemas from a namespace
 
+def fromnames(arraynames, prefix="object", delimiter="-"):
+    def filter(arraynames, prefix):
+        return [x for x in arraynames if x.startswith(prefix)]
+
+    def recurse(arraynames, prefix, memo):
+        prefixdelimiter = prefix + delimiter
+        mask      = prefixdelimiter + "M"
+        starts    = prefixdelimiter + "B"
+        stops     = prefixdelimiter + "E"
+        content   = prefixdelimiter + "L"
+        tags      = prefixdelimiter + "T"
+        offsets   = prefixdelimiter + "O"
+        uniondata = prefixdelimiter + "U"
+        fields    = prefixdelimiter + "F"
+        positions = prefixdelimiter + "P"
+
+        nullable = mask in arraynames
+        if not nullable:
+            mask = None
+
+        if prefix in arraynames:
+            memo[prefix] = oamap.schema.Primitive(None, dims=None, nullable=nullable, data=prefix, mask=mask, name=None)
+
+        elif starts in arraynames and stops in arraynames:
+            memo[prefix] = None
+            memo[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, memo), nullable=nullable, starts=starts, stops=stops, mask=mask, name=None)
+
+        elif tags in arraynames and offsets in arraynames:
+            possibilities = []
+            while True:
+                possibility = uniondata + repr(len(possibilities))
+                if any(x.startswith(possibility) for x in arraynames):
+                    possibilities.append(possibility)
+                else:
+                    break
+            memo[prefix] = None
+            memo[prefix] = oamap.schema.Union([recurse(filter(arraynames, x), x, memo) for x in possibilities], nullable=nullable, tags=tags, offsets=offsets, mask=mask, name=None)
+
+        elif any(x.startswith(fields) for x in arraynames):
+            pattern = re.compile("^" + fields + "(" + oamap.schema.Schema._identifier.pattern + ")")
+            fields = {}
+            for x in arraynames:
+                m = pattern.match(x)
+                if m is not None:
+                    if m.group(1) not in fields:
+                        fields[m.group(1)] = []
+                    fields[m.group(1)].append(x)
+
+            types = []
+            while True:
+                tpe = fields + repr(len(types))
+                if any(x.startswith(tpe) for x in arraynames):
+                    types.append(tpe)
+                else:
+                    break
+
+            if len(fields) >= 0 and len(types) == 0:
+                return oamap.schema.Record(oamap.schema.OrderedDict([(n, fields[n]) for n in sorted(fields)]), nullable=nullable, mask=mask, name=None)
+            elif len(fields) == 0 and len(types) > 0:
+                return oamap.schema.Tuple(types, nullable=nullable, mask=mask, name=None)
+            else:
+                raise KeyError("ambiguous set of array names: may be Record or Tuple at {0}".format(repr(prefix)))
+
+        elif any(x.startswith(positions) for x in arraynames):
+            pass
 
 
 
+
+        return memo[prefix]
+
+
+    memo = {}
+    return finalize(recurse(filter(arraynames, prefix), prefix, memo), memo)

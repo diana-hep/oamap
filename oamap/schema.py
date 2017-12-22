@@ -503,7 +503,7 @@ class Union(Schema):
             cls = oamap.generator.UnionGenerator
 
         if self._tags is None:
-            args.append(prefix + delimiter + "G")
+            args.append(prefix + delimiter + "T")
         else:
             args.append(self._tags)
         args.append(cacheidx[0]); cacheidx[0] += 1
@@ -721,7 +721,7 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        args.append([x._generator(prefix + delimiter + "T" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types)])
+        args.append([x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types)])
         args.append(self._name)
 
         memo[id(self)] = cls(*args)

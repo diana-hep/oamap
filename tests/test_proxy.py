@@ -101,12 +101,12 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[1::2], [None])
 
     def test_Union(self):
-        self.assertEqual(Union([Primitive("i8"), Primitive("f8")])({"object-G": [0], "object-O": [0], "object-U0": [1], "object-U1": []}), 1)
-        self.assertEqual(List(Union([Primitive("i8"), Primitive("f8")]))({"object-B": [0], "object-E": [7], "object-L-G": [0, 0, 1, 1, 1, 0, 0], "object-L-O": [0, 1, 0, 1, 2, 2, 3], "object-L-U0": [1, 2, 3, 4], "object-L-U1": [1.1, 2.2, 3.3]}), [1, 2, 1.1, 2.2, 3.3, 3, 4])
-        self.assertEqual(list(List(Union([Primitive("i8"), Primitive("f8")], nullable=True))({"object-B": [0], "object-E": [7], "object-L-G": [0, 0, 1, 1, 1, 0, 0], "object-L-O": [0, 1, 0, 1, 2, 2, 3], "object-L-M": [False, True, False, True, False, False, True], "object-L-U0": [1, 2, 3, 4], "object-L-U1": [1.1, 2.2, 3.3]})), [1, None, 1.1, None, 3.3, 3, None])
-        self.assertEqual(List(Union([Primitive("i8", nullable=True), Primitive("f8")]))({"object-B": [0], "object-E": [7], "object-L-G": [0, 0, 1, 1, 1, 0, 0], "object-L-O": [0, 1, 0, 1, 2, 2, 3], "object-L-U0": [1, 2, 3, 4], "object-L-U0-M": [False, True, False, True], "object-L-U1": [1.1, 2.2, 3.3]}), [1, None, 1.1, 2.2, 3.3, 3, None])
+        self.assertEqual(Union([Primitive("i8"), Primitive("f8")])({"object-T": [0], "object-O": [0], "object-U0": [1], "object-U1": []}), 1)
+        self.assertEqual(List(Union([Primitive("i8"), Primitive("f8")]))({"object-B": [0], "object-E": [7], "object-L-T": [0, 0, 1, 1, 1, 0, 0], "object-L-O": [0, 1, 0, 1, 2, 2, 3], "object-L-U0": [1, 2, 3, 4], "object-L-U1": [1.1, 2.2, 3.3]}), [1, 2, 1.1, 2.2, 3.3, 3, 4])
+        self.assertEqual(list(List(Union([Primitive("i8"), Primitive("f8")], nullable=True))({"object-B": [0], "object-E": [7], "object-L-T": [0, 0, 1, 1, 1, 0, 0], "object-L-O": [0, 1, 0, 1, 2, 2, 3], "object-L-M": [False, True, False, True, False, False, True], "object-L-U0": [1, 2, 3, 4], "object-L-U1": [1.1, 2.2, 3.3]})), [1, None, 1.1, None, 3.3, 3, None])
+        self.assertEqual(List(Union([Primitive("i8", nullable=True), Primitive("f8")]))({"object-B": [0], "object-E": [7], "object-L-T": [0, 0, 1, 1, 1, 0, 0], "object-L-O": [0, 1, 0, 1, 2, 2, 3], "object-L-U0": [1, 2, 3, 4], "object-L-U0-M": [False, True, False, True], "object-L-U1": [1.1, 2.2, 3.3]}), [1, None, 1.1, 2.2, 3.3, 3, None])
 
-        self.assertEqual(List(Union([Primitive("i8"), List(Primitive("f8"))]))({"object-B": [0], "object-E": [2], "object-L-G": [0, 1], "object-L-O": [0, 0], "object-L-U0": [3], "object-L-U1-B": [0], "object-L-U1-E": [3], "object-L-U1-L": [1.1, 2.2, 3.3]}), [3, [1.1, 2.2, 3.3]])
+        self.assertEqual(List(Union([Primitive("i8"), List(Primitive("f8"))]))({"object-B": [0], "object-E": [2], "object-L-T": [0, 1], "object-L-O": [0, 0], "object-L-U0": [3], "object-L-U1-B": [0], "object-L-U1-E": [3], "object-L-U1-L": [1.1, 2.2, 3.3]}), [3, [1.1, 2.2, 3.3]])
 
     def test_Record(self):
         x = Record({"x": Primitive("i8"), "y": Primitive("f8")})({"object-Fx": [3], "object-Fy": [3.14]})
@@ -141,15 +141,15 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x.x, 3)
         self.assertEqual(x.y, [1.1, 2.2, 3.3])
 
-        x = Record({"x": Primitive("i8"), "y": Union([Primitive("i8"), Primitive("f8")])})({"object-Fx": [3], "object-Fy-G": [0], "object-Fy-O": [0], "object-Fy-U0": [1], "object-Fy-U1": [1.1]})
+        x = Record({"x": Primitive("i8"), "y": Union([Primitive("i8"), Primitive("f8")])})({"object-Fx": [3], "object-Fy-T": [0], "object-Fy-O": [0], "object-Fy-U0": [1], "object-Fy-U1": [1.1]})
         self.assertEqual(x.x, 3)
         self.assertEqual(x.y, 1)
 
-        x = Record({"x": Primitive("i8"), "y": List(Union([Primitive("i8"), Primitive("f8")]))})({"object-Fx": [3], "object-Fy-B": [0], "object-Fy-E": [3], "object-Fy-L-G": [0, 1, 1], "object-Fy-L-O": [0, 0, 1], "object-Fy-L-U0": [1], "object-Fy-L-U1": [1.1, 2.2]})
+        x = Record({"x": Primitive("i8"), "y": List(Union([Primitive("i8"), Primitive("f8")]))})({"object-Fx": [3], "object-Fy-B": [0], "object-Fy-E": [3], "object-Fy-L-T": [0, 1, 1], "object-Fy-L-O": [0, 0, 1], "object-Fy-L-U0": [1], "object-Fy-L-U1": [1.1, 2.2]})
         self.assertEqual(x.x, 3)
         self.assertEqual(x.y, [1, 1.1, 2.2])
 
-        x = List(Union([Primitive("i8"), Record({"x": Primitive("i8"), "y": Primitive("f8")})]))({"object-B": [0], "object-E": [4], "object-L-G": [0, 1, 1, 0], "object-L-O": [0, 0, 1, 1], "object-L-U0": [99, 98], "object-L-U1-Fx": [1, 2], "object-L-U1-Fy": [1.1, 2.2]})
+        x = List(Union([Primitive("i8"), Record({"x": Primitive("i8"), "y": Primitive("f8")})]))({"object-B": [0], "object-E": [4], "object-L-T": [0, 1, 1, 0], "object-L-O": [0, 0, 1, 1], "object-L-U0": [99, 98], "object-L-U1-Fx": [1, 2], "object-L-U1-Fy": [1.1, 2.2]})
         self.assertEqual(x[0], 99)
         self.assertEqual(x[1].x, 1)
         self.assertEqual(x[1].y, 1.1)
@@ -158,11 +158,11 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[3], 98)
 
     def test_Tuple(self):
-        x = Tuple((Primitive("i8"), Primitive("f8")))({"object-T0": [3], "object-T1": [3.14]})
+        x = Tuple((Primitive("i8"), Primitive("f8")))({"object-F0": [3], "object-F1": [3.14]})
         self.assertEqual(x[0], 3)
         self.assertEqual(x[1], 3.14)
 
-        x = List(Tuple((Primitive("i8"), Primitive("f8"))))({"object-B": [0], "object-E": [3], "object-L-T0": [1, 2, 3], "object-L-T1": [1.1, 2.2, 3.3]})
+        x = List(Tuple((Primitive("i8"), Primitive("f8"))))({"object-B": [0], "object-E": [3], "object-L-F0": [1, 2, 3], "object-L-F1": [1.1, 2.2, 3.3]})
         self.assertEqual(x[0][0], 1)
         self.assertEqual(x[1][0], 2)
         self.assertEqual(x[2][0], 3)
@@ -170,7 +170,7 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[1][1], 2.2)
         self.assertEqual(x[2][1], 3.3)
 
-        x = List(Tuple((Primitive("i8"), Primitive("f8", nullable=True))))({"object-B": [0], "object-E": [3], "object-L-T0": [1, 2, 3], "object-L-T1": [1.1, 2.2, 3.3], "object-L-T1-M": [True, False, True]})
+        x = List(Tuple((Primitive("i8"), Primitive("f8", nullable=True))))({"object-B": [0], "object-E": [3], "object-L-F0": [1, 2, 3], "object-L-F1": [1.1, 2.2, 3.3], "object-L-F1-M": [True, False, True]})
         self.assertEqual(x[0][0], 1)
         self.assertEqual(x[1][0], 2)
         self.assertEqual(x[2][0], 3)
@@ -178,7 +178,7 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[1][1], 2.2)
         self.assertEqual(x[2][1], None)
 
-        x = List(Tuple((Primitive("i8"), Primitive("f8")), nullable=True))({"object-B": [0], "object-E": [3], "object-L-M": [False, True, False], "object-L-T0": [1, 2, 3], "object-L-T1": [1.1, 2.2, 3.3]})
+        x = List(Tuple((Primitive("i8"), Primitive("f8")), nullable=True))({"object-B": [0], "object-E": [3], "object-L-M": [False, True, False], "object-L-F0": [1, 2, 3], "object-L-F1": [1.1, 2.2, 3.3]})
         self.assertEqual(x[0][0], 1)
         self.assertEqual(x[1], None)
         self.assertEqual(x[2][0], 3)
@@ -186,19 +186,19 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(x[1], None)
         self.assertEqual(x[2][1], 3.3)
 
-        x = Tuple((Primitive("i8"), List(Primitive("f8"))))({"object-T0": [3], "object-T1-B": [0], "object-T1-E": [3], "object-T1-L": [1.1, 2.2, 3.3]})
+        x = Tuple((Primitive("i8"), List(Primitive("f8"))))({"object-F0": [3], "object-F1-B": [0], "object-F1-E": [3], "object-F1-L": [1.1, 2.2, 3.3]})
         self.assertEqual(x[0], 3)
         self.assertEqual(x[1], [1.1, 2.2, 3.3])
 
-        x = Tuple((Primitive("i8"), Union([Primitive("i8"), Primitive("f8")])))({"object-T0": [3], "object-T1-G": [0], "object-T1-O": [0], "object-T1-U0": [1], "object-T1-U1": [1.1]})
+        x = Tuple((Primitive("i8"), Union([Primitive("i8"), Primitive("f8")])))({"object-F0": [3], "object-F1-T": [0], "object-F1-O": [0], "object-F1-U0": [1], "object-F1-U1": [1.1]})
         self.assertEqual(x[0], 3)
         self.assertEqual(x[1], 1)
 
-        x = Tuple((Primitive("i8"), List(Union([Primitive("i8"), Primitive("f8")]))))({"object-T0": [3], "object-T1-B": [0], "object-T1-E": [3], "object-T1-L-G": [0, 1, 1], "object-T1-L-O": [0, 0, 1], "object-T1-L-U0": [1], "object-T1-L-U1": [1.1, 2.2]})
+        x = Tuple((Primitive("i8"), List(Union([Primitive("i8"), Primitive("f8")]))))({"object-F0": [3], "object-F1-B": [0], "object-F1-E": [3], "object-F1-L-T": [0, 1, 1], "object-F1-L-O": [0, 0, 1], "object-F1-L-U0": [1], "object-F1-L-U1": [1.1, 2.2]})
         self.assertEqual(x[0], 3)
         self.assertEqual(x[1], [1, 1.1, 2.2])
 
-        x = List(Union([Primitive("i8"), Tuple((Primitive("i8"), Primitive("f8")))]))({"object-B": [0], "object-E": [4], "object-L-G": [0, 1, 1, 0], "object-L-O": [0, 0, 1, 1], "object-L-U0": [99, 98], "object-L-U1-T0": [1, 2], "object-L-U1-T1": [1.1, 2.2]})
+        x = List(Union([Primitive("i8"), Tuple((Primitive("i8"), Primitive("f8")))]))({"object-B": [0], "object-E": [4], "object-L-T": [0, 1, 1, 0], "object-L-O": [0, 0, 1, 1], "object-L-U0": [99, 98], "object-L-U1-F0": [1, 2], "object-L-U1-F1": [1.1, 2.2]})
         self.assertEqual(x[0], 99)
         self.assertEqual(x[1][0], 1)
         self.assertEqual(x[1][1], 1.1)
