@@ -211,16 +211,16 @@ class TestProxy(unittest.TestCase):
 
         tree = Pointer(None)
         tree.target = List(tree)
-        self.assertEqual(tree({"object-P": [0], "object-X-B": [0], "object-X-E": [0], "object-X-L-P": []}), [])
+        self.assertEqual(tree({"object-P": [0], "object-X-B": [0], "object-X-E": [0], "object-X-L-P-object-X": []}), [])
 
-        self.assertEqual(repr(tree({"object-P": [0], "object-X-B": [0], "object-X-E": [1], "object-X-L-P": [0]})), "[[...]]")
+        self.assertEqual(repr(tree({"object-P": [0], "object-X-B": [0], "object-X-E": [1], "object-X-L-P-object-X": [0]})), "[[...]]")
 
-        self.assertEqual(tree({"object-P": [0, 1], "object-X-B": [0, 1], "object-X-E": [1, 1], "object-X-L-P": [1]}), [[]])
-        self.assertEqual(tree({"object-P": [0, 1], "object-X-B": [0, 2], "object-X-E": [2, 2], "object-X-L-P": [1, 1]}), [[], []])
+        self.assertEqual(tree({"object-P": [0, 1], "object-X-B": [0, 1], "object-X-E": [1, 1], "object-X-L-P-object-X": [1]}), [[]])
+        self.assertEqual(tree({"object-P": [0, 1], "object-X-B": [0, 2], "object-X-E": [2, 2], "object-X-L-P-object-X": [1, 1]}), [[], []])
 
         linkedlist = Record({"label": Primitive("i8")})
         linkedlist["next"] = Pointer(linkedlist)
-        x = linkedlist({"object-Flabel": [0, 1, 2], "object-Fnext-P": [1, 2, 0]})
+        x = linkedlist({"object-Flabel": [0, 1, 2], "object-Fnext-P-object": [1, 2, 0]})
         self.assertEqual(x.label, 0)
         self.assertEqual(x.next.label, 1)
         self.assertEqual(x.next.next.label, 2)
@@ -228,7 +228,7 @@ class TestProxy(unittest.TestCase):
 
         linkedlist = Record({"label": Primitive("i8")})
         linkedlist["next"] = Pointer(linkedlist, nullable=True)
-        x = linkedlist({"object-Flabel": [0, 1, 2], "object-Fnext-P": [1, 2, 0], "object-Fnext-M": [False, False, True]})
+        x = linkedlist({"object-Flabel": [0, 1, 2], "object-Fnext-P-object": [1, 2, 0], "object-Fnext-M": [False, False, True]})
         self.assertEqual(x.label, 0)
         self.assertEqual(x.next.label, 1)
         self.assertEqual(x.next.next.label, 2)

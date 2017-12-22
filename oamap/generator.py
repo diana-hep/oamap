@@ -272,7 +272,7 @@ def _uniquestr(generator, memo):
 
         elif isinstance(generator, PointerGenerator):
             _uniquestr(generator.target, memo)
-            if generator._referenceonly:
+            if generator._internal:
                 target = _firstindex(generator.target)
             else:
                 target = generator.target._uniquestr
@@ -280,7 +280,7 @@ def _uniquestr(generator, memo):
 
         elif isinstance(generator, MaskedPointerGenerator):
             _uniquestr(generator.target, memo)
-            if generator._referenceonly:
+            if generator._internal:
                 target = _firstindex(generator.target)
             else:
                 target = generator.target._uniquestr

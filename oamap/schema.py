@@ -127,12 +127,13 @@ class Schema(object):
                 target, prefix, delimiter = generator.target
                 if id(target) in memo:
                     # the target points elsewhere in the type tree: link to that
-                    generator._referenceonly = True
+                    generator._internal = True
+                    generator.positions = generator.positions + delimiter + memo[id(target)]._derivedname
                     generator.target = memo[id(target)]
                 else:
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
-                    generator._referenceonly = False
+                    generator._internal = False
                     generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2), cacheidx, memo2)
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
@@ -251,6 +252,7 @@ class Primitive(Schema):
         args.append(self._name)
 
         memo[id(self)] = cls(*args)
+        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Lists may have arbitrary length
@@ -367,6 +369,7 @@ class List(Schema):
         args.append(self._name)
 
         memo[id(self)] = cls(*args)
+        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Unions may be one of several types
@@ -515,6 +518,7 @@ class Union(Schema):
         args.append(self._name)
 
         memo[id(self)] = cls(*args)
+        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Records contain fields of known types
@@ -613,6 +617,7 @@ class Record(Schema):
         args.append(self._name)
 
         memo[id(self)] = cls(*args)
+        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Tuples are like records but with an order instead of field names
@@ -720,6 +725,7 @@ class Tuple(Schema):
         args.append(self._name)
 
         memo[id(self)] = cls(*args)
+        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Pointers redirect to the contents of other types
@@ -818,4 +824,5 @@ class Pointer(Schema):
         args.append(self._name)
 
         memo[id(self)] = cls(*args)
+        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
