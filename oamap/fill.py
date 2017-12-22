@@ -28,3 +28,14 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import oamap.schema
+import oamap.inference
+
+################################################################ Python data, possibly made with json.load
+
+def fromdata(obj, schema=None):
+    if schema is None:
+        schema = oamap.inference.fromdata(obj)
+
+    
+
