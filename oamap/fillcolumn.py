@@ -379,7 +379,10 @@ class FillableFile(Fillable):
 
         if isinstance(value, slice):
             array = numpy.memmap(self._filename, self.dtype, "r", self._datapos, (len(self),) + self.dims, "C")
-            return array[value]
+            if value.start is None and value.stop is None and value.step is None:
+                return array
+            else:
+                return array[value]
 
         else:
             lenself = len(self)
