@@ -31,7 +31,6 @@
 import math
 import struct
 import sys
-import os
 
 import numpy
 
@@ -42,6 +41,8 @@ class FillColumn(object):
     def __init__(self, dtype, dims):
         raise NotImplementedError
     def append(self, value):
+        raise NotImplementedError
+    def extend(self, values):
         raise NotImplementedError
     def flush(self):
         pass
@@ -58,16 +59,27 @@ class FillList(FillColumn):
     def __init__(self, dtype, dims):
         self.dtype = dtype
         self.dims = dims
-        self._array = []
+        self._data = []
         self._index = 0
 
     def append(self, value):
-        if self._index < len(self._array): self._array[self._index] = value
-        else: self._array.append(value)
+        # possibly correct for a previous exception (to ensure same semantics as FillArray, FillFile)
+        if self._index < len(self._data):
+            del self._data[self._index:]
+
+        self._data.append(value)
 
         # no exceptions? acknowledge the new data point
         self._index += 1
 
+    def extend(self, values):
+        if self._index < len(self._data):
+            del self._data[self._index:]
+
+        self._data.extend(values)
+
+        self._index += len(values)
+        
     def __len__(self):
         return self._index
 
@@ -90,11 +102,11 @@ class FillList(FillColumn):
             else:
                 length = (stop - start) // step
                 out = numpy.empty((length,) + self.dims, dtype=self.dtype)
-                out[:] = self._array[start:stop:step]
+                out[:] = self._data[start:stop:step]
                 return out
 
         else:
-            return self._array[index]
+            return self._data[index]
         
 ################################################################ FillArray
 
@@ -105,18 +117,41 @@ class FillArray(FillColumn):
         self.dtype = dtype
         self.dims = dims
         self.chunksize = chunksize
-        self._arrays = [numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype)]
+        self._data = [numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype)]
         self._indexinchunk = 0
         self._chunkindex = 0
 
     def append(self, value):
-        if self._indexinchunk >= len(self._arrays[self._chunkindex]):
-            self._arrays.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
+        # possibly add a new chunk
+        if self._indexinchunk >= len(self._data[self._chunkindex]):
+            while len(self._data) <= self._chunkindex + 1:
+                self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
             self._indexinchunk = 0
             self._chunkindex += 1
-                
-        self._arrays[self._chunkindex][self._indexinchunk] = value
+
+        self._data[self._chunkindex][self._indexinchunk] = value
+
+        # no exceptions? acknowledge the new data point
         self._indexinchunk += 1
+
+    def extend(self, values):
+        chunkindex = self._chunkindex
+        indexinchunk = self._indexinchunk
+
+        while len(values) > 0:
+            if indexinchunk >= len(self._data[chunkindex]):
+                while len(self._data) <= chunkindex + 1:
+                    self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
+                indexinchunk = 0
+                chunkindex += 1
+
+            tofill = min(len(values), self.chunksize - indexinchunk)
+            self._data[chunkindex][indexinchunk : indexinchunk + tofill] = values[:tofill]
+            indexinchunk += tofill
+            values = values[tofill:]
+
+        self._chunkindex = chunkindex
+        self._indexinchunk = indexinchunk
 
     def __len__(self):
         return max(0, self._chunkindex - 1)*self.chunksize + self._indexinchunk
@@ -168,7 +203,7 @@ class FillArray(FillColumn):
                         else:
                             begin, end = 0, self.chunksize - offset
 
-                    array = self._arrays[chunkindex][begin:end:step]
+                    array = self._data[chunkindex][begin:end:step]
                     offset = (end - begin) % step
                     out[outi : outi + len(array)] = array
                     outi += len(array)
@@ -182,20 +217,23 @@ class FillArray(FillColumn):
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
 
             chunkindex, indexinchunk = divmod(index, self.chunksize)
-            return self._arrays[chunkindex][indexinchunk]
+            return self._data[chunkindex][indexinchunk]
 
 ################################################################ FillFile
 
 class FillFile(FillColumn):
     def __init__(self, dtype, dims, filename, flushsize=8192, lendigits=16):
-        self._array = numpy.empty((self.flushsize,) + dims, dtype=dtype)
+        if not isinstance(dtype, numpy.dtype):
+            dtype = numpy.dtype(dtype)
+        self._data = numpy.empty((flushsize,) + dims, dtype=dtype)
         self._index = 0
         self._indexinchunk = 0
+        self._indexflushed = 0
         self._filename = filename
 
         magic = b"\x93NUMPY\x01\x00"
         header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(self.dtype)).encode("ascii")
-        header2 = "{1}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
+        header2 = "{0}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
 
         unpaddedlen = len(magic) + 2 + len(header1) + len(header2)
         paddedlen = int(math.ceil(float(unpaddedlen) / dtype.itemsize)) * dtype.itemsize
@@ -205,6 +243,7 @@ class FillFile(FillColumn):
         assert self._datapos % dtype.itemsize == 0
 
         self._file = open(filename, "r+b", 0)
+        self._file.truncate(0)
         self._formatter = "{0:%dd}" % lendigits
         self._file.write(magic)
         self._file.write(struct.pack("<H", len(header1) + len(header2)))
@@ -214,25 +253,53 @@ class FillFile(FillColumn):
         
     @property
     def dtype(self):
-        return self._array.dtype
+        return self._data.dtype
 
     @property
     def dims(self):
-        return self._array.shape[1:]
+        return self._data.shape[1:]
 
     def append(self, value):
-        self._array[self._indexinchunk] = value
+        self._data[self._indexinchunk] = value
+
+        # no exceptions? acknowledge the new data point
         self._index += 1
         self._indexinchunk += 1
-        if self._indexinchunk >= len(self._array):
+
+        # possibly flush to file
+        if self._indexinchunk >= len(self._data):
             self.flush()
 
+    def extend(self, values):
+        index = self._index
+        indexinchunk = self._indexinchunk
+        indexflushed = self._indexflushed
+
+        while len(values) > 0:
+            tofill = min(len(values), len(self._data) - indexinchunk)
+            self._data[indexinchunk : indexinchunk + tofill] = values[:tofill]
+            index += tofill
+            indexinchunk += tofill
+            values = values[tofill:]
+
+            self._file.seek(self._datapos + indexflushed*self.dtype.itemsize)
+            self._file.write(self._data[:indexinchunk].tostring())
+            indexinchunk = 0
+            indexflushed = index
+            
+        self._file.seek(self._lenpos)
+        self._file.write(self._formatter.format(index).encode("ascii"))
+        self._index = index
+        self._indexinchunk = 0
+        self._indexflushed = indexflushed
+            
     def flush(self):
-        self._file.seek(0, os.SEEK_END)
-        self._file.write(self._array.tostring())
-        self._file.seek(self._lenpos, os.SEEK_SET)
+        self._file.seek(self._datapos + self._indexflushed*self.dtype.itemsize)
+        self._file.write(self._data[:self._indexinchunk].tostring())
+        self._file.seek(self._lenpos)
         self._file.write(self._formatter.format(self._index).encode("ascii"))
         self._indexinchunk = 0
+        self._indexflushed = self._index
 
     def __len__(self):
         return self._index
@@ -250,14 +317,15 @@ class FillFile(FillColumn):
 
             if not self._file.closed:
                 itemsize = self.dtype.itemsize
-                self._file.seek(self._datapos + normalindex*itemsize, os.SEEK_SET)
+                self._file.seek(self._datapos + normalindex*itemsize)
                 return numpy.fromstring(self._file.read(itemsize), self.dtype)[0]
             else:
                 return self[normalindex : normalindex + 1][0]
 
     def close(self):
-        self.flush()
-        self._file.close()
+        if hasattr(self, "_file"):
+            self.flush()
+            self._file.close()
 
     def __del__(self):
         self.close()
