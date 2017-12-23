@@ -238,26 +238,14 @@ class FillFile(FillColumn):
         self._indexflushed = 0
         self._filename = filename
 
-        magic = b"\x93NUMPY\x01\x00"
-        header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(self.dtype)).encode("ascii")
-        header2 = "{0}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
+        self._openfile(lendigits)
 
-        unpaddedlen = len(magic) + 2 + len(header1) + len(header2)
-        paddedlen = int(math.ceil(float(unpaddedlen) / dtype.itemsize)) * dtype.itemsize
-        header2 = header2 + b" " * (paddedlen - unpaddedlen)
-        self._lenpos = len(magic) + 2 + len(header1)
-        self._datapos = len(magic) + 2 + len(header1) + len(header2)
-        assert self._datapos % dtype.itemsize == 0
+    def _openfile(self, lendigits):
+        open(self._filename, "wb", 0).close()
+        self._file = open(self._filename, "r+b", 0)
+        self._datapos = 0
+        # a plain file has no header
 
-        self._file = open(filename, "r+b", 0)
-        self._file.truncate(0)
-        self._formatter = "{0:%dd}" % lendigits
-        self._file.write(magic)
-        self._file.write(struct.pack("<H", len(header1) + len(header2)))
-        self._file.write(header1)
-        self._file.write(self._formatter.format(self._index).encode("ascii"))
-        self._file.write(header2[lendigits:])
-        
     @property
     def dtype(self):
         return self._data.dtype
@@ -278,6 +266,7 @@ class FillFile(FillColumn):
             self.flush()
 
     def extend(self, values):
+        # extend flushes as much as it has to during write
         index = self._index
         indexinchunk = self._indexinchunk
         indexflushed = self._indexflushed
@@ -289,22 +278,18 @@ class FillFile(FillColumn):
             indexinchunk += tofill
             values = values[tofill:]
 
-            self._file.seek(self._datapos + indexflushed*self.dtype.itemsize)
-            self._file.write(self._data[:indexinchunk].tostring())
-            indexinchunk = 0
-            indexflushed = index
+            if len(values) > 0:
+                self._file.seek(self._datapos + indexflushed*self.dtype.itemsize)
+                self._file.write(self._data[:indexinchunk].tostring())
+                indexinchunk = 0
+                indexflushed = index
             
-        self._file.seek(self._lenpos)
-        self._file.write(self._formatter.format(index).encode("ascii"))
         self._index = index
-        self._indexinchunk = 0
+        self._indexinchunk = indexinchunk
         self._indexflushed = indexflushed
-            
+
     def flush(self):
-        self._file.seek(self._datapos + self._indexflushed*self.dtype.itemsize)
         self._file.write(self._data[:self._indexinchunk].tostring())
-        self._file.seek(self._lenpos)
-        self._file.write(self._formatter.format(self._index).encode("ascii"))
         self._indexinchunk = 0
         self._indexflushed = self._index
 
@@ -312,6 +297,9 @@ class FillFile(FillColumn):
         return self._index
 
     def __getitem__(self, value):
+        if not self._file.closed:
+            self.flush()
+
         if isinstance(value, slice):
             array = numpy.memmap(self._filename, self.dtype, "r", self._datapos, (len(self),) + self.dims, "C")
             return array[value]
@@ -323,11 +311,18 @@ class FillFile(FillColumn):
                 raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
 
             if not self._file.closed:
+                # since the file's still open, get it from here instead of making a new filehandle
                 itemsize = self.dtype.itemsize
-                self._file.seek(self._datapos + normalindex*itemsize)
-                return numpy.fromstring(self._file.read(itemsize), self.dtype)[0]
+                try:
+                    self._file.seek(self._datapos + normalindex*itemsize)
+                    return numpy.fromstring(self._file.read(itemsize), self.dtype)[0]
+                finally:
+                    self._file.seek(self._datapos + self._indexflushed*self.dtype.itemsize)
             else:
-                return self[normalindex : normalindex + 1][0]
+                # otherwise, you have to open a new file
+                with open(self._filename, "rb") as file:
+                    file.seek(self._datapos + normalindex*itemsize)
+                    return numpy.fromstring(file.read(itemsize), self.dtype)[0]
 
     def close(self):
         if hasattr(self, "_file"):
@@ -342,3 +337,35 @@ class FillFile(FillColumn):
 
     def __exit__(self, *args, **kwds):
         self.close()
+
+################################################################ FillNumpyFile (FillFile with a self-describing header)
+
+class FillNumpyFile(FillFile):
+    def _openfile(self, lendigits):
+        magic = b"\x93NUMPY\x01\x00"
+        header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(str(self.dtype))).encode("ascii")
+        header2 = "{0}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
+
+        unpaddedlen = len(magic) + 2 + len(header1) + len(header2)
+        paddedlen = int(math.ceil(float(unpaddedlen) / self.dtype.itemsize)) * self.dtype.itemsize
+        header2 = header2 + b" " * (paddedlen - unpaddedlen)
+        self._lenpos = len(magic) + 2 + len(header1)
+        self._datapos = len(magic) + 2 + len(header1) + len(header2)
+        assert self._datapos % self.dtype.itemsize == 0
+
+        open(self._filename, "wb", 0).close()
+        self._file = open(self._filename, "r+b", 0)
+        self._formatter = "{0:%dd}" % lendigits
+        self._file.write(magic)
+        self._file.write(struct.pack("<H", len(header1) + len(header2)))
+        self._file.write(header1)
+        self._file.write(self._formatter.format(self._index).encode("ascii"))
+        self._file.write(header2[lendigits:])
+
+    def flush(self):
+        self._file.seek(self._datapos + self._indexflushed*self.dtype.itemsize)
+        self._file.write(self._data[:self._indexinchunk].tostring())
+        self._file.seek(self._lenpos)
+        self._file.write(self._formatter.format(self._index).encode("ascii"))
+        self._indexinchunk = 0
+        self._indexflushed = self._index
