@@ -28,7 +28,10 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import math
+import struct
 import sys
+import os
 
 import numpy
 
@@ -36,23 +39,23 @@ if sys.version_info[0] > 2:
     xrange = range
 
 class FillColumn(object):
-    def __init__(self, dtype, dims=()):
+    def __init__(self, dtype, dims):
         raise NotImplementedError
     def append(self, value):
         raise NotImplementedError
+    def flush(self):
+        pass
     def __len__(self):
         raise NotImplementedError
     def __getitem__(self, index):
         raise NotImplementedError
-    def flush(self):
-        pass
     def close(self):
         pass
 
 ################################################################ FillList
 
 class FillList(FillColumn):
-    def __init__(self, dtype, dims=()):
+    def __init__(self, dtype, dims):
         self.dtype = dtype
         self.dims = dims
         self._array = []
@@ -98,7 +101,7 @@ class FillList(FillColumn):
 class FillArray(FillColumn):
     # Numpy arrays and list items have 96+8 byte (80+8 byte) overhead in Python 2 (Python 3)
     # compared to 8192 1-byte values (8-byte values), this is 1% overhead (0.1% overhead)
-    def __init__(self, dtype, dims=(), chunksize=8192):
+    def __init__(self, dtype, dims, chunksize=8192):
         self.dtype = dtype
         self.dims = dims
         self.chunksize = chunksize
@@ -184,4 +187,83 @@ class FillArray(FillColumn):
 ################################################################ FillFile
 
 class FillFile(FillColumn):
-    pass
+    def __init__(self, dtype, dims, filename, flushsize=8192, lendigits=16):
+        self._array = numpy.empty((self.flushsize,) + dims, dtype=dtype)
+        self._index = 0
+        self._indexinchunk = 0
+        self._filename = filename
+
+        magic = b"\x93NUMPY\x01\x00"
+        header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(self.dtype)).encode("ascii")
+        header2 = "{1}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
+
+        unpaddedlen = len(magic) + 2 + len(header1) + len(header2)
+        paddedlen = int(math.ceil(float(unpaddedlen) / dtype.itemsize)) * dtype.itemsize
+        header2 = header2 + b" " * (paddedlen - unpaddedlen)
+        self._lenpos = len(magic) + 2 + len(header1)
+        self._datapos = len(magic) + 2 + len(header1) + len(header2)
+        assert self._datapos % dtype.itemsize == 0
+
+        self._file = open(filename, "r+b", 0)
+        self._formatter = "{0:%dd}" % lendigits
+        self._file.write(magic)
+        self._file.write(struct.pack("<H", len(header1) + len(header2)))
+        self._file.write(header1)
+        self._file.write(self._formatter.format(self._index).encode("ascii"))
+        self._file.write(header2[lendigits:])
+        
+    @property
+    def dtype(self):
+        return self._array.dtype
+
+    @property
+    def dims(self):
+        return self._array.shape[1:]
+
+    def append(self, value):
+        self._array[self._indexinchunk] = value
+        self._index += 1
+        self._indexinchunk += 1
+        if self._indexinchunk >= len(self._array):
+            self.flush()
+
+    def flush(self):
+        self._file.seek(0, os.SEEK_END)
+        self._file.write(self._array.tostring())
+        self._file.seek(self._lenpos, os.SEEK_SET)
+        self._file.write(self._formatter.format(self._index).encode("ascii"))
+        self._indexinchunk = 0
+
+    def __len__(self):
+        return self._index
+
+    def __getitem__(self, value):
+        if isinstance(value, slice):
+            array = numpy.memmap(self._filename, self.dtype, "r", self._datapos, (len(self),) + self.dims, "C")
+            return array[value]
+
+        else:
+            lenself = len(self)
+            normalindex = index if index >= 0 else index + lenself
+            if not 0 <= normalindex < lenself:
+                raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
+
+            if not self._file.closed:
+                itemsize = self.dtype.itemsize
+                self._file.seek(self._datapos + normalindex*itemsize, os.SEEK_SET)
+                return numpy.fromstring(self._file.read(itemsize), self.dtype)[0]
+            else:
+                return self[normalindex : normalindex + 1][0]
+
+    def close(self):
+        self.flush()
+        self._file.close()
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self, *args, **kwds):
+        return self
+
+    def __exit__(self, *args, **kwds):
+        self.close()
