@@ -63,7 +63,9 @@ class Generator(object):
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
         return cache.arraylist[cacheidx]
 
-    def __init__(self, name):
+    def __init__(self, name, derivedname, schema):
+        self.derivedname = derivedname
+        self.schema = schema
         self.name = name
 
     def __call__(self, arrays):
@@ -86,33 +88,33 @@ class Masked(object):
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
-    def __init__(self, data, dataidx, dtype, dims, name):
+    def __init__(self, data, dataidx, dtype, dims, name, derivedname, schema):
         self.data = data
         self.dataidx = dataidx
         self.dtype = dtype
         self.dims = dims
-        Generator.__init__(self, name)
+        Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         return self._getarray(arrays, self.data, cache, self.dataidx, self.dtype, self.dims)[index]
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
-    def __init__(self, mask, maskidx, data, dataidx, dtype, dims, name):
+    def __init__(self, mask, maskidx, data, dataidx, dtype, dims, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, name)
+        PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, name, derivedname, schema)
 
 ################################################################ Lists
 
 class ListGenerator(Generator):
     dtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, starts, startsidx, stops, stopsidx, content, name):
+    def __init__(self, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):
         self.starts = starts
         self.startsidx = startsidx
         self.stops = stops
         self.stopsidx = stopsidx
         self.content = content
-        Generator.__init__(self, name)
+        Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         starts = self._getarray(arrays, self.starts, cache, self.startsidx, ListGenerator.dtype)
@@ -120,22 +122,22 @@ class ListGenerator(Generator):
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], stops[index], 1)
 
 class MaskedListGenerator(Masked, ListGenerator):
-    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, name):
+    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, name)
+        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, name, derivedname, schema)
 
 ################################################################ Unions
 
 class UnionGenerator(Generator):
     dtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name):
+    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
         self.tags = tags
         self.tagsidx = tagsidx
         self.offsets = offsets
         self.offsetsidx = offsetsidx
         self.possibilities = possibilities
-        Generator.__init__(self, name)
+        Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         tags    = self._getarray(arrays, self.tags,    cache, self.tagsidx,    UnionGenerator.dtype)
@@ -143,59 +145,59 @@ class UnionGenerator(Generator):
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
-    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, name):
+    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name)
+        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema)
 
 ################################################################ Records
 
 class RecordGenerator(Generator):
-    def __init__(self, fields, name):
+    def __init__(self, fields, name, derivedname, schema):
         self.fields = fields
-        Generator.__init__(self, name)
+        Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
 class MaskedRecordGenerator(Masked, RecordGenerator):
-    def __init__(self, mask, maskidx, fields, name):
+    def __init__(self, mask, maskidx, fields, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        RecordGenerator.__init__(self, fields, name)
+        RecordGenerator.__init__(self, fields, name, derivedname, schema)
 
 ################################################################ Tuples
 
 class TupleGenerator(Generator):
-    def __init__(self, types, name):
+    def __init__(self, types, name, derivedname, schema):
         self.types = types
-        Generator.__init__(self, name)
+        Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
-    def __init__(self, mask, maskidx, types, name):
+    def __init__(self, mask, maskidx, types, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        TupleGenerator.__init__(self, types, name)
+        TupleGenerator.__init__(self, types, name, derivedname, schema)
 
 ################################################################ Pointers
 
 class PointerGenerator(Generator):
     dtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, positions, positionsidx, target, name):
+    def __init__(self, positions, positionsidx, target, name, derivedname, schema):
         self.positions = positions
         self.positionsidx = positionsidx
         self.target = target
-        Generator.__init__(self, name)
+        Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         positions = self._getarray(arrays, self.positions, cache, self.positionsidx, PointerGenerator.dtype)
         return self.target._generate(arrays, positions[index], cache)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
-    def __init__(self, mask, maskidx, positions, positionsidx, target, name):
+    def __init__(self, mask, maskidx, positions, positionsidx, target, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PointerGenerator.__init__(self, positions, positionsidx, target, name)
+        PointerGenerator.__init__(self, positions, positionsidx, target, name, derivedname, schema)
 
 ################################################################ for assigning unique strings to types (used to distinguish Numba types)
 

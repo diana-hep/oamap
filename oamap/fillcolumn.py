@@ -58,7 +58,7 @@ class Fillable(object):
 
 ################################################################ make fillables
 
-def _makefillables(generator, fillables, makefillable, liststarts, unionoffsets):
+def _makefillables(generator, fillables, makefillable):
     if isinstance(generator, oamap.generator.Masked):
         fillables[generator.mask] = makefillable(generator.mask, numpy.bool_, ())
 
@@ -70,64 +70,62 @@ def _makefillables(generator, fillables, makefillable, liststarts, unionoffsets)
         fillables[generator.data] = makefillable(generator.data, generator.dtype, generator.dims)
 
     elif isinstance(generator, oamap.generator.ListGenerator):
-        if liststarts:
-            fillables[generator.starts] = makefillable(generator.starts, generator.dtype, ())
+        fillables[generator.starts] = makefillable(generator.starts, generator.dtype, ())
         fillables[generator.stops] = makefillable(generator.stops, generator.dtype, ())
-        _makefillables(generator.content, fillables, makefillable, liststarts, unionoffsets)
+        _makefillables(generator.content, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.UnionGenerator):
         fillables[generator.tags] = makefillable(generator.tags, generator.dtype, ())
-        if unionoffsets:
-            fillables[generator.offsets] = makefillable(generator.offsets, generator.dtype, ())
+        fillables[generator.offsets] = makefillable(generator.offsets, generator.dtype, ())
         for possibility in generator.possibilities:
-            _makefillables(possibility, fillables, makefillable, liststarts, unionoffsets)
+            _makefillables(possibility, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.RecordGenerator):
         for field in generator.fields.values():
-            _makefillables(field, fillables, makefillable, liststarts, unionoffsets)
+            _makefillables(field, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.TupleGenerator):
         for field in generator.types:
-            _makefillables(field, fillables, makefillable, liststarts, unionoffsets)
+            _makefillables(field, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.PointerGenerator):
         fillables[generator.positions] = makefillable(generator.positions, generator.dtype, ())
         if not generator._internal:
-            _makefillables(generator.target, fillables, makefillable, liststarts, unionoffsets)
+            _makefillables(generator.target, fillables, makefillable)
 
     else:
         raise AssertionError("unrecognized generator type: {0}".format(generator))
 
-def fillablelists(generator, liststarts=False, unionoffsets=False):
+def fillablelists(generator):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableList(dtype, dims=dims), liststarts, unionoffsets)
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableList(dtype, dims=dims))
     return fillables
 
-def fillablearrays(generator, liststarts=False, unionoffsets=False, chunksize=8192):
+def fillablearrays(generator, chunksize=8192):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableArray(dtype, dims=dims, chunksize=chunksize), liststarts, unionoffsets)
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableArray(dtype, dims=dims, chunksize=chunksize))
     return fillables
 
-def fillablefiles(generator, directory, liststarts=False, unionoffsets=False, flushsize=8192, lendigits=16):
+def fillablefiles(generator, directory, flushsize=8192, lendigits=16):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     if not os.path.exists(directory):
         os.mkdir(directory)
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits), liststarts, unionoffsets)
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits))
     return fillables
 
-def fillablenumpyfiles(generator, directory, liststarts=False, unionoffsets=False, flushsize=8192, lendigits=16):
+def fillablenumpyfiles(generator, directory, flushsize=8192, lendigits=16):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     if not os.path.exists(directory):
         os.mkdir(directory)
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableNumpyFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits), liststarts, unionoffsets)
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableNumpyFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits))
     return fillables
     
 ################################################################ FillableList

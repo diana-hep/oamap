@@ -128,7 +128,7 @@ class Schema(object):
                 if id(target) in memo:
                     # the target points elsewhere in the type tree: link to that
                     generator._internal = True
-                    generator.positions = generator.positions + delimiter + memo[id(target)]._derivedname
+                    generator.positions = generator.positions + delimiter + memo[id(target)].derivedname
                     generator.target = memo[id(target)]
                 else:
                     # the target is not in the type tree: resolve it now
@@ -218,6 +218,43 @@ class Primitive(Schema):
         else:
             labels.append(self)
 
+    def __contains__(self, value):
+        if self.dtype is None:
+            raise TypeError("cannot determine if {0} is in {1}: no dtype specified".format(repr(value), self))
+        if self.dims is None:
+            raise TypeError("cannot determine if {0} is in {1}: no dims specified".format(repr(value), self))
+        if value is None:
+            return self.nullable
+
+        def recurse(value, dims):
+            if dims == ():
+                if issubclass(self.dtype.type, (numpy.bool_, numpy.bool)):
+                    return value is True or value is False
+
+                elif issubclass(self.dtype.type, numpy.integer):
+                    iinfo = numpy.iinfo(dtype.type)
+                    return isinstance(value, numbers.Integral) and iinfo.min <= value <= iinfo.max
+
+                elif issubclass(self.dtype.type, numpy.floating):
+                    return isinstance(value, numbers.Real)
+
+                elif issubclass(self.dtype.type, numpy.complex):
+                    return isinstance(value, numbers.Complex)
+
+                else:
+                    raise TypeError("unexpected dtype: {0}".format(self.dtype))
+
+            else:
+                try:
+                    iter(value)
+                    len(value)
+                except TypeError:
+                    return False
+                else:
+                    return len(value) == dims[0] and all(recurse(x, dims[1:]) for x in value)
+
+        return recurse(value, self.dims)
+
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
@@ -250,9 +287,10 @@ class Primitive(Schema):
         args.append(self._dtype)
         args.append(self._dims)
         args.append(self._name)
+        args.append(prefix)
+        args.append(self)
 
         memo[id(self)] = cls(*args)
-        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Lists may have arbitrary length
@@ -330,6 +368,16 @@ class List(Schema):
         else:
             labels.append(self)
 
+    def __contains__(self, value):
+        if value is None:
+            return self.nullable
+        try:
+            iter(value)
+        except TypeError:
+            return False
+        else:
+            return all(x in self.content for x in value)
+
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
@@ -367,9 +415,10 @@ class List(Schema):
 
         args.append(self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo))
         args.append(self._name)
+        args.append(prefix)
+        args.append(self)
 
         memo[id(self)] = cls(*args)
-        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Unions may be one of several types
@@ -479,6 +528,11 @@ class Union(Schema):
         else:
             labels.append(self)
 
+    def __contains__(self, value):
+        if value is None:
+            return self.nullable
+        return any(value in x for x in self.possibilities)
+
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
@@ -516,9 +570,10 @@ class Union(Schema):
         
         args.append([x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._possibilities)])
         args.append(self._name)
+        args.append(prefix)
+        args.append(self)
 
         memo[id(self)] = cls(*args)
-        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Records contain fields of known types
@@ -590,6 +645,18 @@ class Record(Schema):
         else:
             labels.append(self)
 
+    def __contains__(self, value):
+        if value is None:
+            return self.nullable
+        if isinstance(value, dict):
+            return all(n in value and value[n] in x for n, x in self.fields.items())
+        elif isinstance(value, tuple) and hasattr(value, "_fields"):
+            return all(n in value._fields and getattr(value, n) in x for n, x in self.fields.items())
+        elif isinstance(value, (list, tuple)):
+            return False
+        else:
+            return all(hasattr(value, n) and getattr(value, n) in x for n, x in self.fields.items())
+
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
@@ -603,6 +670,9 @@ class Record(Schema):
         memo[id(self)] = None
         args = []
 
+        if len(self.fields) == 0:
+            raise TypeError("Record has no fields")
+
         if self._nullable:
             cls = oamap.generator.MaskedRecordGenerator
             if self._mask is None:
@@ -615,9 +685,10 @@ class Record(Schema):
 
         args.append(OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo)) for n in sorted(self._fields)]))
         args.append(self._name)
+        args.append(prefix)
+        args.append(self)
 
         memo[id(self)] = cls(*args)
-        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Tuples are like records but with an order instead of field names
@@ -698,6 +769,14 @@ class Tuple(Schema):
         else:
             labels.append(self)
 
+    def __contains__(self, value):
+        if value is None:
+            return self.nullable
+        if isinstance(value, tuple) and len(value) == len(self.types):
+            return all(v in x for v, x in zip(value, self.types))
+        else:
+            return False
+
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
@@ -711,6 +790,9 @@ class Tuple(Schema):
         memo[id(self)] = None
         args = []
 
+        if len(self.types) == 0:
+            raise TypeError("Tuple has no types")
+
         if self._nullable:
             cls = oamap.generator.MaskedTupleGenerator
             if self._mask is None:
@@ -723,9 +805,10 @@ class Tuple(Schema):
 
         args.append([x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types)])
         args.append(self._name)
+        args.append(prefix)
+        args.append(self)
 
         memo[id(self)] = cls(*args)
-        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
 
 ################################################################ Pointers redirect to the contents of other types
@@ -746,6 +829,8 @@ class Pointer(Schema):
     def target(self, value):
         if not (value is None or isinstance(value, Schema)):
             raise TypeError("target must be None or a Schema, not {0}".format(repr(value)))
+        if target is self:
+            raise TypeError("Pointer may not point directly at itself (it would never resolve to a value)")
         self._target = value
 
     @property
@@ -790,6 +875,11 @@ class Pointer(Schema):
         else:
             labels.append(self)
 
+    def __contains__(self, value):
+        if value is None:
+            return self.nullable
+        return value in self.target
+
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
@@ -822,7 +912,8 @@ class Pointer(Schema):
 
         args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
         args.append(self._name)
+        args.append(prefix)
+        args.append(self)
 
         memo[id(self)] = cls(*args)
-        memo[id(self)]._derivedname = prefix
         return memo[id(self)]
