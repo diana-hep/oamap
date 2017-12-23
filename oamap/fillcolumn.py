@@ -154,7 +154,7 @@ class FillArray(FillColumn):
         self._indexinchunk = indexinchunk
 
     def __len__(self):
-        return max(0, self._chunkindex - 1)*self.chunksize + self._indexinchunk
+        return self._chunkindex*self.chunksize + self._indexinchunk
 
     def __getitem__(self, index):
         if isinstance(index, slice):
@@ -187,26 +187,33 @@ class FillArray(FillColumn):
 
                 offset = 0
                 for chunkindex in xrange(start_chunkindex, stop_chunkindex, 1 if step > 0 else -1):
-                    if chunkindex == start_chunkindex:
-                        if step > 0:
-                            begin, end = start_indexinchunk, self.chunksize
+                    if step > 0:
+                        if chunkindex == start_chunkindex:
+                            begin = start_indexinchunk
                         else:
-                            begin, end = start_indexinchunk, self.chunksize - offset
-                    elif chunkindex == stop_chunkindex:
-                        if step > 0:
-                            begin, end = offset, stop_indexinchunk
+                            begin = offset
+                        if chunkindex == stop_chunkindex - 1:
+                            end = stop_indexinchunk
                         else:
-                            begin, end = 0, stop_indexinchunk
+                            end = self.chunksize
+
                     else:
-                        if step > 0:
-                            begin, end = offset, self.chunksize
+                        if chunkindex == start_chunkindex:
+                            begin = start_indexinchunk
                         else:
-                            begin, end = 0, self.chunksize - offset
+                            begin = self.chunksize - offset
+                        if chunkindex == stop_chunkindex + 1:
+                            end = stop_indexinchunk
+                        else:
+                            end = 0
 
                     array = self._data[chunkindex][begin:end:step]
+
                     offset = (end - begin) % step
                     out[outi : outi + len(array)] = array
                     outi += len(array)
+                    if outi >= len(out):
+                        break
 
                 return out
 
