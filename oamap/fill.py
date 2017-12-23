@@ -30,12 +30,14 @@
 
 import oamap.schema
 import oamap.inference
+import oamap.fillcolumn
 
 ################################################################ Python data, possibly made with json.load
 
-def fromdata(obj, schema=None):
+def fromdata(obj, schema=None, fillables=None, fillableclass=oamap.fillcolumn.FillArray):
     if schema is None:
         schema = oamap.inference.fromdata(obj)
 
-    
+    if fillables is None:
+        fillables = {}
 
