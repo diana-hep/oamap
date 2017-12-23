@@ -77,11 +77,13 @@ class ListProxy(Proxy):
             start = 0       if index.start is None else index.start
             stop  = lenself if index.stop  is None else index.stop
             step  = 1       if index.step  is None else index.step
+            if start < 0:
+                start += lenself
+            if stop < 0:
+                stop += lenself
 
             start = min(lenself, max(0, start))
             stop  = min(lenself, max(0, stop))
-            if stop < start:
-                stop = start
 
             if step == 0:
                 raise ValueError("slice step cannot be zero")
