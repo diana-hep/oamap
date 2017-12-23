@@ -28,16 +28,19 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
 import math
 import struct
 import sys
 
 import numpy
 
+import oamap.generator
+
 if sys.version_info[0] > 2:
     xrange = range
 
-class FillColumn(object):
+class Fillable(object):
     def __init__(self, dtype, dims):
         raise NotImplementedError
     def append(self, value):
@@ -53,17 +56,91 @@ class FillColumn(object):
     def close(self):
         pass
 
-################################################################ FillList
+################################################################ make fillables
 
-class FillList(FillColumn):
-    def __init__(self, dtype, dims):
+def _makefillables(generator, fillables, makefillable, liststarts, unionoffsets):
+    if isinstance(generator, oamap.generator.Masked):
+        fillables[generator.mask] = makefillable(generator.mask, numpy.bool_, ())
+
+    if isinstance(generator, oamap.generator.PrimitiveGenerator):
+        if generator.dtype is None:
+            raise ValueError("dtype is unknown (None) for Primitive generator at {0}".format(repr(generator.data)))
+        if generator.dims is None:
+            raise ValueError("dims is unknown (None) for Primitive generator at {0}".format(repr(generator.data)))
+        fillables[generator.data] = makefillable(generator.data, generator.dtype, generator.dims)
+
+    elif isinstance(generator, oamap.generator.ListGenerator):
+        if liststarts:
+            fillables[generator.starts] = makefillable(generator.starts, generator.dtype, ())
+        fillables[generator.stops] = makefillable(generator.stops, generator.dtype, ())
+        _makefillables(generator.content, fillables, makefillable, liststarts, unionoffsets)
+
+    elif isinstance(generator, oamap.generator.UnionGenerator):
+        fillables[generator.tags] = makefillable(generator.tags, generator.dtype, ())
+        if unionoffsets:
+            fillables[generator.offsets] = makefillable(generator.offsets, generator.dtype, ())
+        for possibility in generator.possibilities:
+            _makefillables(possibility, fillables, makefillable, liststarts, unionoffsets)
+
+    elif isinstance(generator, oamap.generator.RecordGenerator):
+        for field in generator.fields.values():
+            _makefillables(field, fillables, makefillable, liststarts, unionoffsets)
+
+    elif isinstance(generator, oamap.generator.TupleGenerator):
+        for field in generator.types:
+            _makefillables(field, fillables, makefillable, liststarts, unionoffsets)
+
+    elif isinstance(generator, oamap.generator.PointerGenerator):
+        fillables[generator.positions] = makefillable(generator.positions, generator.dtype, ())
+        if not generator._internal:
+            _makefillables(generator.target, fillables, makefillable, liststarts, unionoffsets)
+
+    else:
+        raise AssertionError("unrecognized generator type: {0}".format(generator))
+
+def fillablelists(generator, liststarts=False, unionoffsets=False):
+    if not isinstance(generator, oamap.generator.Generator):
+        generator = generator.generator()
+    fillables = {}
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableList(dtype, dims=dims), liststarts, unionoffsets)
+    return fillables
+
+def fillablearrays(generator, liststarts=False, unionoffsets=False, chunksize=8192):
+    if not isinstance(generator, oamap.generator.Generator):
+        generator = generator.generator()
+    fillables = {}
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableArray(dtype, dims=dims, chunksize=chunksize), liststarts, unionoffsets)
+    return fillables
+
+def fillablefiles(generator, directory, liststarts=False, unionoffsets=False, flushsize=8192, lendigits=16):
+    if not isinstance(generator, oamap.generator.Generator):
+        generator = generator.generator()
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+    fillables = {}
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits), liststarts, unionoffsets)
+    return fillables
+
+def fillablenumpyfiles(generator, directory, liststarts=False, unionoffsets=False, flushsize=8192, lendigits=16):
+    if not isinstance(generator, oamap.generator.Generator):
+        generator = generator.generator()
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+    fillables = {}
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableNumpyFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits), liststarts, unionoffsets)
+    return fillables
+    
+################################################################ FillableList
+
+class FillableList(Fillable):
+    def __init__(self, dtype, dims=()):
         self.dtype = dtype
         self.dims = dims
         self._data = []
         self._index = 0
 
     def append(self, value):
-        # possibly correct for a previous exception (to ensure same semantics as FillArray, FillFile)
+        # possibly correct for a previous exception (to ensure same semantics as FillableArray, FillableFile)
         if self._index < len(self._data):
             del self._data[self._index:]
 
@@ -108,12 +185,12 @@ class FillList(FillColumn):
         else:
             return self._data[index]
         
-################################################################ FillArray
+################################################################ FillableArray
 
-class FillArray(FillColumn):
+class FillableArray(Fillable):
     # Numpy arrays and list items have 96+8 byte (80+8 byte) overhead in Python 2 (Python 3)
     # compared to 8192 1-byte values (8-byte values), this is 1% overhead (0.1% overhead)
-    def __init__(self, dtype, dims, chunksize=8192):
+    def __init__(self, dtype, dims=(), chunksize=8192):
         self.dtype = dtype
         self.dims = dims
         self.chunksize = chunksize
@@ -226,10 +303,10 @@ class FillArray(FillColumn):
             chunkindex, indexinchunk = divmod(index, self.chunksize)
             return self._data[chunkindex][indexinchunk]
 
-################################################################ FillFile
+################################################################ FillableFile
 
-class FillFile(FillColumn):
-    def __init__(self, dtype, dims, filename, flushsize=8192, lendigits=16):
+class FillableFile(Fillable):
+    def __init__(self, filename, dtype, dims=(), flushsize=8192, lendigits=16):
         if not isinstance(dtype, numpy.dtype):
             dtype = numpy.dtype(dtype)
         self._data = numpy.empty((flushsize,) + dims, dtype=dtype)
@@ -338,9 +415,9 @@ class FillFile(FillColumn):
     def __exit__(self, *args, **kwds):
         self.close()
 
-################################################################ FillNumpyFile (FillFile with a self-describing header)
+################################################################ FillableNumpyFile (FillableFile with a self-describing header)
 
-class FillNumpyFile(FillFile):
+class FillableNumpyFile(FillableFile):
     def _openfile(self, lendigits):
         magic = b"\x93NUMPY\x01\x00"
         header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(str(self.dtype))).encode("ascii")

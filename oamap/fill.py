@@ -28,16 +28,25 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import oamap.schema
+import oamap.generator
 import oamap.inference
 import oamap.fillcolumn
 
 ################################################################ Python data, possibly made with json.load
 
-def fromdata(obj, schema=None, fillables=None, fillableclass=oamap.fillcolumn.FillArray):
-    if schema is None:
-        schema = oamap.inference.fromdata(obj)
+def fromdata(obj, generator=None, fillables=None):
+    if generator is None:
+        generator = oamap.inference.fromdata(obj).generator()
+
+    if not isinstance(generator, oamap.generator.Generator):
+        generator = generator.generator()
 
     if fillables is None:
-        fillables = {}
+        fillables = oamap.fillcolumn.fillablearrays(generator)
 
+    HERE
+
+
+
+
+    return dict((n, x[:]) for n, x in fillables.items())
