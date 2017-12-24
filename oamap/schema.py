@@ -230,7 +230,7 @@ class Primitive(Schema):
     def __eq__(self, other, memo=None):
         return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.name == other.name
 
-    def __contains__(self, value):
+    def __contains__(self, value, memo=None):
         if self.dtype is None:
             raise TypeError("cannot determine if {0} is in {1}: no dtype specified".format(repr(value), self))
         if self.dims is None:
@@ -392,7 +392,12 @@ class List(Schema):
         memo[id(self)] = id(other)
         return self.content.__eq__(other.content, memo)
 
-    def __contains__(self, value):
+    def __contains__(self, value, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(value)
+        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
         try:
@@ -400,7 +405,11 @@ class List(Schema):
         except TypeError:
             return False
         else:
-            return all(x in self.content for x in value)
+            for x in value:
+                memo2 = dict(memo)
+                if not self.content.__contains__(x, memo2):
+                    return False
+            return True
 
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
@@ -564,10 +573,15 @@ class Union(Schema):
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self.possibilities, other.possibilities))
 
-    def __contains__(self, value):
+    def __contains__(self, value, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(value)
+        memo[id(self)] = id(value)
         if value is None:
             return self.nullable or any(x.nullable for x in self.possibilities)
-        return any(value in x for x in self.possibilities)
+        return any(x.__contains__(value, memo) for x in self.possibilities)
 
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
@@ -693,13 +707,18 @@ class Record(Schema):
         memo[id(self)] = id(other)
         return all(self._fields[n].__eq__(other._fields[n], memo) for n in self._fields)
 
-    def __contains__(self, value):
+    def __contains__(self, value, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(value)
+        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
         if isinstance(value, dict):
-            return all(n in value and value[n] in x for n, x in self.fields.items())
+            return all(n in value and x.__contains__(value[n], memo) for n, x in self.fields.items())
         elif isinstance(value, tuple) and hasattr(value, "_fields"):
-            return all(n in value._fields and getattr(value, n) in x for n, x in self.fields.items())
+            return all(n in value._fields and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
         elif isinstance(value, (list, tuple)):
             return False
         else:
@@ -829,11 +848,16 @@ class Tuple(Schema):
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self._types, other._types))
 
-    def __contains__(self, value):
+    def __contains__(self, value, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(value)
+        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
         if isinstance(value, tuple) and len(value) == len(self.types):
-            return all(v in x for v, x in zip(value, self.types))
+            return all(x.__contains__(v, memo) for v, x in zip(value, self.types))
         else:
             return False
 
@@ -947,10 +971,15 @@ class Pointer(Schema):
         memo[id(self)] = id(other)
         return self.target.__eq__(other.target, memo)
 
-    def __contains__(self, value):
+    def __contains__(self, value, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(value)
+        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
-        return value in self.target
+        return self.target.__contains__(value, memo)
 
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
