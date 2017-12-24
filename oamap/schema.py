@@ -119,6 +119,14 @@ class Schema(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def show(self, stream=sys.stdout):
+        out = self.__repr__(indent="")
+        if stream is None:
+            return out
+        else:
+            stream.write(out)
+            stream.write("\n")
+
     def __call__(self, arrays, prefix="object", delimiter="-"):
         return self.generator(prefix=prefix, delimiter=delimiter)(arrays)
 
@@ -193,7 +201,7 @@ class Primitive(Schema):
         self._data = value
 
     def __repr__(self, labels=None, shown=None, indent=None):
-        eq = "=" if indent is None else " = "
+        eq = "="   #  if indent is None else " = "
 
         if labels is None:
             labels = self._labels()
