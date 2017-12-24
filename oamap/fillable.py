@@ -197,7 +197,7 @@ class FillableArray(Fillable):
                     start_indexinchunk = start - start_chunkindex*self.chunksize
                     stop_indexinchunk = stop - (stop_chunkindex - 1)*self.chunksize
                 else:
-                    start_chunkindex = int(math.ceil(float(start) / self.chunksize)) - 1
+                    start_chunkindex = int(math.floor(float(start) / self.chunksize))
                     stop_chunkindex = int(math.floor(float(stop) / self.chunksize)) - 1
                     start_indexinchunk = start - start_chunkindex*self.chunksize
                     stop_indexinchunk = stop - (stop_chunkindex + 1)*self.chunksize
