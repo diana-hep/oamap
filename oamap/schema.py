@@ -566,7 +566,7 @@ class Union(Schema):
 
     def __contains__(self, value):
         if value is None:
-            return self.nullable
+            return self.nullable or any(x.nullable for x in self.possibilities)
         return any(value in x for x in self.possibilities)
 
     def generator(self, prefix="object", delimiter="-"):

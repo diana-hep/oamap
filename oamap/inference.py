@@ -237,7 +237,7 @@ def fromdata(obj, limititems=None):
         elif isinstance(obj, dict):
             return IntermediateRecord(False, dict((n, buildintermediate(x, limititems, memo)) for n, x in obj.items()), None)
 
-        elif isinstance(obj, tuple) and hasattr("_fields"):
+        elif isinstance(obj, tuple) and hasattr(obj, "_fields"):
             # this is a namedtuple; interpret it as a Record, rather than a Tuple
             return IntermediateRecord(False, dict((n, buildintermediate(getattr(obj, n), limititems, memo)) for n in obj._fields), obj.__class__.__name__)
 
