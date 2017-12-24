@@ -829,7 +829,7 @@ class Pointer(Schema):
     def target(self, value):
         if not (value is None or isinstance(value, Schema)):
             raise TypeError("target must be None or a Schema, not {0}".format(repr(value)))
-        if target is self:
+        if value is self:
             raise TypeError("Pointer may not point directly at itself (it would never resolve to a value)")
         self._target = value
 
