@@ -30,7 +30,7 @@
 
 import oamap.generator
 import oamap.inference
-import oamap.fillcolumn
+import oamap.fillable
 
 def toarrays(fillables):
     return dict((n, x[:]) for n, x in fillables.items())
@@ -45,7 +45,7 @@ def fromdata(value, generator=None, fillables=None, pointer_equality_search=True
         generator = generator.generator()
 
     if fillables is None:
-        fillables = oamap.fillcolumn.fillablearrays(generator)
+        fillables = oamap.fillable.arrays(generator)
 
     # get a list of generators (innermost outward) and make sure they're all starting at the last good entry
     gens = []

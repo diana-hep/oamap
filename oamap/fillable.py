@@ -108,14 +108,14 @@ def _makefillables(generator, fillables, makefillable):
     else:
         raise AssertionError("unrecognized generator type: {0}".format(generator))
 
-def fillablearrays(generator, chunksize=8192):
+def arrays(generator, chunksize=8192):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     fillables = {}
     _makefillables(generator, fillables, lambda name, dtype, dims: FillableArray(dtype, dims=dims, chunksize=chunksize))
     return fillables
 
-def fillablefiles(generator, directory, chunksize=8192, lendigits=16):
+def files(generator, directory, chunksize=8192, lendigits=16):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     if not os.path.exists(directory):
@@ -124,7 +124,7 @@ def fillablefiles(generator, directory, chunksize=8192, lendigits=16):
     _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, chunksize=chunksize, lendigits=lendigits))
     return fillables
 
-def fillablenumpyfiles(generator, directory, chunksize=8192, lendigits=16):
+def numpyfiles(generator, directory, chunksize=8192, lendigits=16):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     if not os.path.exists(directory):
@@ -171,9 +171,14 @@ class FillableArray(Fillable):
     def __getitem__(self, index):
         if isinstance(index, slice):
             lenself = len(self)
-            start = 0       if index.start is None else index.start
-            stop  = lenself if index.stop  is None else index.stop
-            step  = 1       if index.step  is None else index.step
+            step  = 1 if index.step is None else index.step
+            if step > 0:
+                start = 0       if index.start is None else index.start
+                stop  = lenself if index.stop  is None else index.stop
+            else:
+                start = lenself if index.start is None else index.start
+                stop  = 0       if index.stop  is None else index.stop
+                
             if start < 0:
                 start += lenself
             if stop < 0:
@@ -186,16 +191,50 @@ class FillableArray(Fillable):
                 raise ValueError("slice step cannot be zero")
 
             else:
-                length = (stop - start) // step
+                if step > 0:
+                    start_chunkindex = int(math.floor(float(start) / self.chunksize))
+                    stop_chunkindex = int(math.ceil(float(stop) / self.chunksize))
+                    start_indexinchunk = start - start_chunkindex*self.chunksize
+                    stop_indexinchunk = stop - (stop_chunkindex - 1)*self.chunksize
+                else:
+                    start_chunkindex = int(math.ceil(float(start) / self.chunksize)) - 1
+                    stop_chunkindex = int(math.floor(float(stop) / self.chunksize)) - 1
+                    start_indexinchunk = start - start_chunkindex*self.chunksize
+                    stop_indexinchunk = stop - (stop_chunkindex + 1)*self.chunksize
+
+                length = 0
+                for chunkindex in xrange(start_chunkindex, stop_chunkindex, 1 if step > 0 else -1):
+                    if step > 0:
+                        if chunkindex == start_chunkindex:
+                            begin = start_indexinchunk
+                        else:
+                            begin = offset
+                        if chunkindex == stop_chunkindex - 1:
+                            end = stop_indexinchunk
+                        else:
+                            end = self.chunksize
+
+                        length += int(math.ceil(float(end - begin) / step))
+
+                    else:
+                        if chunkindex == start_chunkindex:
+                            begin = start_indexinchunk
+                        else:
+                            begin = self.chunksize - offset
+                        if chunkindex == stop_chunkindex + 1 and index.stop is not None:
+                            end = stop_indexinchunk
+                        else:
+                            end = None
+                        if end is None:
+                            print "HERE"
+                            length += int(math.ceil(-float(begin) / step))
+                        else:
+                            length += int(math.ceil(-float(begin - end) / step))
+
+                print "length", length
+
                 out = numpy.empty((length,) + self.dims, dtype=self.dtype)
                 outi = 0
-
-                start_chunkindex, start_indexinchunk = divmod(start, self.chunksize)
-                stop_chunkindex,  stop_indexinchunk  = divmod(stop,  self.chunksize)
-                if step > 0:
-                    stop_chunkindex += 1
-                else:
-                    stop_chunkindex -= 1
 
                 offset = 0
                 for chunkindex in xrange(start_chunkindex, stop_chunkindex, 1 if step > 0 else -1):
@@ -214,14 +253,15 @@ class FillableArray(Fillable):
                             begin = start_indexinchunk
                         else:
                             begin = self.chunksize - offset
-                        if chunkindex == stop_chunkindex + 1:
+                        if chunkindex == stop_chunkindex + 1 and index.stop is not None:
                             end = stop_indexinchunk
                         else:
-                            end = 0
+                            end = None
 
                     array = self._data[chunkindex][begin:end:step]
 
-                    offset = (end - begin) % step
+                    # offset = (end - begin) % step
+
                     out[outi : outi + len(array)] = array
                     outi += len(array)
                     if outi >= len(out):
