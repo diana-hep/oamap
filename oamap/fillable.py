@@ -176,8 +176,8 @@ class FillableArray(Fillable):
                 start = 0       if index.start is None else index.start
                 stop  = lenself if index.stop  is None else index.stop
             else:
-                start = lenself if index.start is None else index.start
-                stop  = 0       if index.stop  is None else index.stop
+                start = lenself - 1 if index.start is None else index.start
+                stop  = 0           if index.stop  is None else index.stop
                 
             if start < 0:
                 start += lenself
@@ -226,12 +226,9 @@ class FillableArray(Fillable):
                         else:
                             end = None
                         if end is None:
-                            print "HERE"
-                            length += int(math.ceil(-float(begin) / step))
+                            length += int(math.ceil(-float(begin + 1) / step))
                         else:
                             length += int(math.ceil(-float(begin - end) / step))
-
-                print "length", length
 
                 out = numpy.empty((length,) + self.dims, dtype=self.dtype)
                 outi = 0
