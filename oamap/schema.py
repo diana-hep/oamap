@@ -192,7 +192,9 @@ class Primitive(Schema):
             raise TypeError("data must be None or an array name (string), not {0}".format(repr(value)))
         self._data = value
 
-    def __repr__(self, labels=None, shown=None):
+    def __repr__(self, labels=None, shown=None, indent=None):
+        eq = "=" if indent is None else " = "
+
         if labels is None:
             labels = self._labels()
             shown = set()
@@ -203,15 +205,15 @@ class Primitive(Schema):
 
             args = [repr(self._dtype)]
             if self._dims != ():
-                args.append("dims=" + repr(self._dims))
+                args.append("dims" + eq + repr(self._dims))
             if self._nullable is not False:
-                args.append("nullable=" + repr(self._nullable))
+                args.append("nullable" + eq + repr(self._nullable))
             if self._data is not None:
-                args.append("data=" + repr(self._data))
+                args.append("data" + eq + repr(self._data))
             if self._mask is not None:
-                args.append("mask=" + repr(self._mask))
+                args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
-                args.append("name=" + repr(self._name))
+                args.append("name" + eq + repr(self._name))
 
             if label is None:
                 return "Primitive(" + ", ".join(args) + ")"
@@ -346,7 +348,9 @@ class List(Schema):
             raise TypeError("stops must be None or an array name (string), not {0}".format(repr(value)))
         self._stops = value
 
-    def __repr__(self, labels=None, shown=None):
+    def __repr__(self, labels=None, shown=None, indent=None):
+        eq = "=" if indent is None else " = "
+
         if labels is None:
             labels = self._labels()
             shown = set()
@@ -355,17 +359,23 @@ class List(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = [self._content.__repr__(labels, shown)]
+            args = []
+            if indent is None:
+                args.append(self._content.__repr__(labels, shown, indent))
             if self._nullable is not False:
-                args.append("nullable=" + repr(self._nullable))
+                args.append("nullable" + eq + repr(self._nullable))
             if self._starts is not None:
-                args.append("starts=" + repr(self._starts))
+                args.append("starts" + eq + repr(self._starts))
             if self._stops is not None:
-                args.append("stops=" + repr(self._stops))
+                args.append("stops" + eq + repr(self._stops))
             if self._mask is not None:
-                args.append("mask=" + repr(self._mask))
+                args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
-                args.append("name=" + repr(self._name))
+                args.append("name" + eq + repr(self._name))
+            if indent is not None:
+                if len(args) > 0:
+                    args[0] = "\n" + indent + "  " + args[0]
+                args.append("\n" + indent + "  content" + eq + self._content.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
 
             if label is None:
                 return "List(" + ", ".join(args) + ")"
@@ -523,7 +533,9 @@ class Union(Schema):
             raise TypeError("possibilities must be Schemas, not {0}".format(repr(value)))
         self._possibilities[index] = value
 
-    def __repr__(self, labels=None, shown=None):
+    def __repr__(self, labels=None, shown=None, indent=None):
+        eq = "=" if indent is None else " = "
+
         if labels is None:
             labels = self._labels()
             shown = set()
@@ -532,17 +544,23 @@ class Union(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self._possibilities) + "]"]
+            args = []
+            if indent is None:
+                args.append("[" + ", ".join(x.__repr__(labels, shown, indent) for x in self._possibilities) + "]")
             if self._nullable is not False:
-                args.append("nullable=" + repr(self._nullable))
+                args.append("nullable" + eq + repr(self._nullable))
             if self._tags is not None:
-                args.append("tags=" + repr(self._tags))
+                args.append("tags" + eq + repr(self._tags))
             if self._offsets is not None:
-                args.append("offsets=" + repr(self._offsets))
+                args.append("offsets" + eq + repr(self._offsets))
             if self._mask is not None:
-                args.append("mask=" + repr(self._mask))
+                args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
-                args.append("name=" + repr(self._name))
+                args.append("name" + eq + repr(self._name))
+            if indent is not None:
+                if len(args) > 0:
+                    args[0] = "\n" + indent + "  " + args[0]
+                args.append("\n" + indent + "  possibilities" + eq + "[\n" + indent + "    " + (",\n" + indent + "    ").join(x.__repr__(labels, shown, indent + "    ").lstrip() for x in self._possibilities) + "\n" + indent + "  ]")
 
             if label is None:
                 return "Union(" + ", ".join(args) + ")"
@@ -658,7 +676,9 @@ class Record(Schema):
             raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
         self._fields[index] = value
 
-    def __repr__(self, labels=None, shown=None):
+    def __repr__(self, labels=None, shown=None, indent=None):
+        eq = "=" if indent is None else " = "
+
         if labels is None:
             labels = self._labels()
             shown = set()
@@ -667,13 +687,19 @@ class Record(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["{" + ", ".join("{0}: {1}".format(repr(n), x.__repr__(labels, shown)) for n, x in self._fields.items()) + "}"]
+            args = []
+            if indent is None:
+                args.append("{" + ", ".join("{0}: {1}".format(repr(n), x.__repr__(labels, shown, indent)) for n, x in self._fields.items()) + "}")
             if self._nullable is not False:
-                args.append("nullable=" + repr(self._nullable))
+                args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
-                args.append("mask=" + repr(self._mask))
+                args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
-                args.append("name=" + repr(self._name))
+                args.append("name" + eq + repr(self._name))
+            if indent is not None:
+                if len(args) > 0:
+                    args[0] = "\n" + indent + "  " + args[0]
+                args.append("\n" + indent + "  fields" + eq + "{\n" + indent + "    " + (",\n" + indent + "    ").join("{0}: {1}".format(repr(n), x.__repr__(labels, shown, indent + "    ").lstrip()) for n, x in self._fields.items()) + "\n" + indent + "  }")
 
             if label is None:
                 return "Record(" + ", ".join(args) + ")"
@@ -799,7 +825,9 @@ class Tuple(Schema):
             raise TypeError("types must be Schemas, not {0}".format(repr(value)))
         self._types[index] = value
 
-    def __repr__(self, labels=None, shown=None):
+    def __repr__(self, labels=None, shown=None, indent=None):
+        eq = "=" if indent is None else " = "
+
         if labels is None:
             labels = self._labels()
             shown = set()
@@ -808,13 +836,19 @@ class Tuple(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["[" + ", ".join(x.__repr__(labels, shown) for x in self._types) + "]"]
+            args = []
+            if indent is None:
+                args.append("[" + ", ".join(x.__repr__(labels, shown) for x in self._types) + "]")
             if self._nullable is not False:
-                args.append("nullable=" + repr(self._nullable))
+                args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
-                args.append("mask=" + repr(self._mask))
+                args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
-                args.append("name=" + repr(self._name))
+                args.append("name" + eq + repr(self._name))
+            if indent is not None:
+                if len(args) > 0:
+                    args[0] = "\n" + indent + "  " + args[0]
+                args.append("\n" + indent + "  types" + eq + "[\n" + indent + "    " + (",\n" + indent + "    ").join(x.__repr__(labels, shown, indent + "    ").lstrip() for x in self._types) + "\n" + indent + "  ]")
 
             if label is None:
                 return "Tuple(" + ", ".join(args) + ")"
@@ -915,7 +949,9 @@ class Pointer(Schema):
             raise TypeError("positions must be None or an array name (string), not {0}".format(repr(value)))
         self._positions = value
 
-    def __repr__(self, labels=None, shown=None):
+    def __repr__(self, labels=None, shown=None, indent=None):
+        eq = "=" if indent is None else " = "
+
         if labels is None:
             labels = self._labels()
             shown = set()
@@ -924,16 +960,22 @@ class Pointer(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = [self._target.__repr__(labels, shown)]
+            args = []
+            if indent is None:
+                args.append(self._target.__repr__(labels, shown, indent))
             if self._nullable is not False:
-                args.append("nullable=" + repr(self._nullable))
+                args.append("nullable" + eq + repr(self._nullable))
             if self._positions is not None:
-                args.append("positions=" + repr(self._positions))
+                args.append("positions" + eq + repr(self._positions))
             if self._mask is not None:
-                args.append("mask=" + repr(self._mask))
+                args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
-                args.append("name=" + repr(self._name))
-
+                args.append("name" + eq + repr(self._name))
+            if indent is not None:
+                if len(args) > 0:
+                    args[0] = "\n" + indent + "  " + args[0]
+                args.append("\n" + indent + "  target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+                
             if label is None:
                 return "Pointer(" + ", ".join(args) + ")"
             else:
