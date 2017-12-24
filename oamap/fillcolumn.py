@@ -43,18 +43,30 @@ if sys.version_info[0] > 2:
 class Fillable(object):
     def __init__(self, dtype, dims):
         raise NotImplementedError
+
+    def __len__(self):
+        return self._len
+
+    def forefront(self):
+        return self._chunkindex*self.chunksize + self._indexinchunk
+
     def append(self, value):
         raise NotImplementedError
-    def extend(self, values):
-        raise NotImplementedError
+
+    def update(self):
+        self._len = self.forefront()
+
+    def revert(self):
+        self._chunkindex, self._indexinchunk = divmod(self._len, self.chunksize)
+
     def flush(self):
         pass
-    def __len__(self):
-        raise NotImplementedError
-    def __getitem__(self, index):
-        raise NotImplementedError
+
     def close(self):
         pass
+
+    def __getitem__(self, index):
+        raise NotImplementedError
 
 ################################################################ make fillables
 
@@ -96,13 +108,6 @@ def _makefillables(generator, fillables, makefillable):
     else:
         raise AssertionError("unrecognized generator type: {0}".format(generator))
 
-def fillablelists(generator):
-    if not isinstance(generator, oamap.generator.Generator):
-        generator = generator.generator()
-    fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableList(dtype, dims=dims))
-    return fillables
-
 def fillablearrays(generator, chunksize=8192):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
@@ -110,94 +115,50 @@ def fillablearrays(generator, chunksize=8192):
     _makefillables(generator, fillables, lambda name, dtype, dims: FillableArray(dtype, dims=dims, chunksize=chunksize))
     return fillables
 
-def fillablefiles(generator, directory, flushsize=8192, lendigits=16):
+def fillablefiles(generator, directory, chunksize=8192, lendigits=16):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     if not os.path.exists(directory):
         os.mkdir(directory)
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits))
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, chunksize=chunksize, lendigits=lendigits))
     return fillables
 
-def fillablenumpyfiles(generator, directory, flushsize=8192, lendigits=16):
+def fillablenumpyfiles(generator, directory, chunksize=8192, lendigits=16):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     if not os.path.exists(directory):
         os.mkdir(directory)
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableNumpyFile(os.path.join(directory, name), dtype, dims=dims, flushsize=flushsize, lendigits=lendigits))
+    _makefillables(generator, fillables, lambda name, dtype, dims: FillableNumpyFile(os.path.join(directory, name), dtype, dims=dims, chunksize=chunksize, lendigits=lendigits))
     return fillables
-    
-################################################################ FillableList
 
-class FillableList(Fillable):
-    def __init__(self, dtype, dims=()):
-        self.dtype = dtype
-        self.dims = dims
-        self._data = []
-        self._index = 0
-
-    def append(self, value):
-        # possibly correct for a previous exception (to ensure same semantics as FillableArray, FillableFile)
-        if self._index < len(self._data):
-            del self._data[self._index:]
-
-        self._data.append(value)
-
-        # no exceptions? acknowledge the new data point
-        self._index += 1
-
-    def extend(self, values):
-        if self._index < len(self._data):
-            del self._data[self._index:]
-
-        self._data.extend(values)
-
-        self._index += len(values)
-        
-    def __len__(self):
-        return self._index
-
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            lenself = len(self)
-            start = 0       if index.start is None else index.start
-            stop  = lenself if index.stop  is None else index.stop
-            step  = 1       if index.step  is None else index.step
-            if start < 0:
-                start += lenself
-            if stop < 0:
-                stop += lenself
-                
-            start = min(lenself, max(0, start))
-            stop  = min(lenself, max(0, stop))
-
-            if step == 0:
-                raise ValueError("slice step cannot be zero")
-            else:
-                length = (stop - start) // step
-                out = numpy.empty((length,) + self.dims, dtype=self.dtype)
-                out[:] = self._data[start:stop:step]
-                return out
-
-        else:
-            return self._data[index]
-        
 ################################################################ FillableArray
 
 class FillableArray(Fillable):
     # Numpy arrays and list items have 96+8 byte (80+8 byte) overhead in Python 2 (Python 3)
     # compared to 8192 1-byte values (8-byte values), this is 1% overhead (0.1% overhead)
     def __init__(self, dtype, dims=(), chunksize=8192):
-        self.dtype = dtype
-        self.dims = dims
-        self.chunksize = chunksize
-        self._data = [numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype)]
+        if not isinstance(dtype, numpy.dtype):
+            dtype = numpy.dtype(dtype)
+        self._data = [numpy.empty((chunksize,) + dims, dtype=dtype)]
+        self._len = 0
         self._indexinchunk = 0
         self._chunkindex = 0
 
+    @property
+    def dtype(self):
+        return self._data[0].dtype
+
+    @property
+    def dims(self):
+        return self._data[0].shape[1:]
+
+    @property
+    def chunksize(self):
+        return self._data[0].shape[0]
+
     def append(self, value):
-        # possibly add a new chunk
         if self._indexinchunk >= len(self._data[self._chunkindex]):
             while len(self._data) <= self._chunkindex + 1:
                 self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
@@ -205,31 +166,7 @@ class FillableArray(Fillable):
             self._chunkindex += 1
 
         self._data[self._chunkindex][self._indexinchunk] = value
-
-        # no exceptions? acknowledge the new data point
         self._indexinchunk += 1
-
-    def extend(self, values):
-        chunkindex = self._chunkindex
-        indexinchunk = self._indexinchunk
-
-        while len(values) > 0:
-            if indexinchunk >= len(self._data[chunkindex]):
-                while len(self._data) <= chunkindex + 1:
-                    self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
-                indexinchunk = 0
-                chunkindex += 1
-
-            tofill = min(len(values), self.chunksize - indexinchunk)
-            self._data[chunkindex][indexinchunk : indexinchunk + tofill] = values[:tofill]
-            indexinchunk += tofill
-            values = values[tofill:]
-
-        self._chunkindex = chunkindex
-        self._indexinchunk = indexinchunk
-
-    def __len__(self):
-        return self._chunkindex*self.chunksize + self._indexinchunk
 
     def __getitem__(self, index):
         if isinstance(index, slice):
@@ -304,22 +241,25 @@ class FillableArray(Fillable):
 ################################################################ FillableFile
 
 class FillableFile(Fillable):
-    def __init__(self, filename, dtype, dims=(), flushsize=8192, lendigits=16):
+    def __init__(self, filename, dtype, dims=(), chunksize=8192, lendigits=16):
         if not isinstance(dtype, numpy.dtype):
             dtype = numpy.dtype(dtype)
-        self._data = numpy.empty((flushsize,) + dims, dtype=dtype)
-        self._index = 0
+        self._data = numpy.empty((chunksize,) + dims, dtype=dtype)
+        self._len = 0
         self._indexinchunk = 0
-        self._indexflushed = 0
+        self._chunkindex = 0
         self._filename = filename
+        self._openfile(filename, lendigits)
 
-        self._openfile(lendigits)
-
-    def _openfile(self, lendigits):
-        open(self._filename, "wb", 0).close()
-        self._file = open(self._filename, "r+b", 0)
+    def _openfile(self, filename, lendigits):
+        open(filename, "wb", 0).close()
+        self._file = open(filename, "r+b", 0)
         self._datapos = 0
         # a plain file has no header
+
+    @property
+    def filename(self):
+        return self._file.name
 
     @property
     def dtype(self):
@@ -329,54 +269,43 @@ class FillableFile(Fillable):
     def dims(self):
         return self._data.shape[1:]
 
+    @property
+    def chunksize(self):
+        return self._data.shape[0]
+
     def append(self, value):
         self._data[self._indexinchunk] = value
-
-        # no exceptions? acknowledge the new data point
-        self._index += 1
         self._indexinchunk += 1
 
-        # possibly flush to file
         if self._indexinchunk >= len(self._data):
             self.flush()
 
-    def extend(self, values):
-        # extend flushes as much as it has to during write
-        index = self._index
-        indexinchunk = self._indexinchunk
-        indexflushed = self._indexflushed
-
-        while len(values) > 0:
-            tofill = min(len(values), len(self._data) - indexinchunk)
-            self._data[indexinchunk : indexinchunk + tofill] = values[:tofill]
-            index += tofill
-            indexinchunk += tofill
-            values = values[tofill:]
-
-            if len(values) > 0:
-                self._file.seek(self._datapos + indexflushed*self.dtype.itemsize)
-                self._file.write(self._data[:indexinchunk].tostring())
-                indexinchunk = 0
-                indexflushed = index
-            
-        self._index = index
-        self._indexinchunk = indexinchunk
-        self._indexflushed = indexflushed
-
     def flush(self):
         self._file.write(self._data[:self._indexinchunk].tostring())
-        self._indexinchunk = 0
-        self._indexflushed = self._index
+        if self._indexinchunk == self.chunksize:
+            self._indexinchunk = 0
+            self._chunkindex += 1
 
-    def __len__(self):
-        return self._index
+    def close(self):
+        if hasattr(self, "_file"):
+            self.flush()
+            self._file.close()
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self, *args, **kwds):
+        return self
+
+    def __exit__(self, *args, **kwds):
+        self.close()
 
     def __getitem__(self, value):
         if not self._file.closed:
             self.flush()
 
         if isinstance(value, slice):
-            array = numpy.memmap(self._filename, self.dtype, "r", self._datapos, (len(self),) + self.dims, "C")
+            array = numpy.memmap(self.filename, self.dtype, "r", self._datapos, (len(self),) + self.dims, "C")
             if value.start is None and value.stop is None and value.step is None:
                 return array
             else:
@@ -395,31 +324,17 @@ class FillableFile(Fillable):
                     self._file.seek(self._datapos + normalindex*itemsize)
                     return numpy.fromstring(self._file.read(itemsize), self.dtype)[0]
                 finally:
-                    self._file.seek(self._datapos + self._indexflushed*self.dtype.itemsize)
+                    self._file.seek(self._datapos + self._chunkindex*self.chunksize*self.dtype.itemsize)
             else:
                 # otherwise, you have to open a new file
-                with open(self._filename, "rb") as file:
+                with open(self.filename, "rb") as file:
                     file.seek(self._datapos + normalindex*itemsize)
                     return numpy.fromstring(file.read(itemsize), self.dtype)[0]
-
-    def close(self):
-        if hasattr(self, "_file"):
-            self.flush()
-            self._file.close()
-
-    def __del__(self):
-        self.close()
-
-    def __enter__(self, *args, **kwds):
-        return self
-
-    def __exit__(self, *args, **kwds):
-        self.close()
 
 ################################################################ FillableNumpyFile (FillableFile with a self-describing header)
 
 class FillableNumpyFile(FillableFile):
-    def _openfile(self, lendigits):
+    def _openfile(self, filename, lendigits):
         magic = b"\x93NUMPY\x01\x00"
         header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(str(self.dtype))).encode("ascii")
         header2 = "{0}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
@@ -431,19 +346,20 @@ class FillableNumpyFile(FillableFile):
         self._datapos = len(magic) + 2 + len(header1) + len(header2)
         assert self._datapos % self.dtype.itemsize == 0
 
-        open(self._filename, "wb", 0).close()
-        self._file = open(self._filename, "r+b", 0)
+        open(filename, "wb", 0).close()
+        self._file = open(filename, "r+b", 0)
         self._formatter = "{0:%dd}" % lendigits
         self._file.write(magic)
         self._file.write(struct.pack("<H", len(header1) + len(header2)))
         self._file.write(header1)
-        self._file.write(self._formatter.format(self._index).encode("ascii"))
+        self._file.write(self._formatter.format(len(self)).encode("ascii"))
         self._file.write(header2[lendigits:])
 
     def flush(self):
-        self._file.seek(self._datapos + self._indexflushed*self.dtype.itemsize)
+        self._file.seek(self._datapos + self._chunkindex*self.chunksize*self.dtype.itemsize)
         self._file.write(self._data[:self._indexinchunk].tostring())
         self._file.seek(self._lenpos)
-        self._file.write(self._formatter.format(self._index).encode("ascii"))
-        self._indexinchunk = 0
-        self._indexflushed = self._index
+        self._file.write(self._formatter.format(len(self)).encode("ascii"))
+        if self._indexinchunk == self.chunksize:
+            self._indexinchunk = 0
+            self._chunkindex += 1

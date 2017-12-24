@@ -47,72 +47,80 @@ def fromdata(value, generator=None, fillables=None):
     if fillables is None:
         fillables = oamap.fillcolumn.fillablearrays(generator)
 
-    lastindex = {}
-    def update(gen, recurse):
+    gens = []
+    def sync(gen):
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
-            lastindex[id(gen)] = len(fillables[gen.data])
+            fillables[gen.data].revert()
+            forefront = len(fillables[gen.data])
+
         elif isinstance(gen, oamap.generator.ListGenerator):
-            if recurse:
-                update(gen.content, True)
-            assert fillables[gen.starts] == fillables[gen.stops]
-            lastindex[id(gen)] = len(fillables[gen.stops])
+            sync(gen.content)
+            fillables[gen.starts].revert()
+            fillables[gen.stops].revert()
+            assert len(fillables[gen.starts]) == len(fillables[gen.stops])
+            forefront = len(fillables[gen.stops])
+
         elif isinstance(gen, oamap.generator.UnionGenerator):
-            if recurse:
-                for x in gen.possibilities:
-                    update(x, True)
-            assert fillables[gen.tags] == fillables[gen.offsets]
-            lastindex[id(gen)] = len(fillables[gen.tags])
+            for x in gen.possibilities:
+                sync(x)
+            fillables[gen.tags].revert()
+            fillables[gen.offsets].revert()
+            assert len(fillables[gen.tags]) == len(fillables[gen.offsets])
+            forefront = len(fillables[gen.tags])
+
         elif isinstance(gen, oamap.generator.RecordGenerator):
-            if recurse:
-                uniques = set(update(x, True) for x in gen.fields.values())
-                assert len(uniques) == 1
-                lastindex[id(gen)] = list(uniques)[0]
-            else:
-                lastindex[id(gen)] = update(list(gen.fields.values())[0], False)
+            uniques = set(sync(x) for x in gen.fields.values())
+            assert len(uniques) == 1
+            forefront = list(uniques)[0]
+
         elif isinstance(gen, oamap.generator.TupleGenerator):
-            if recurse:
-                uniques = set(update(x, True) for x in gen.types)
-                assert len(uniques) == 1
-                lastindex[id(gen)] = list(uniques)[0]
-            else:
-                lastindex[id(gen)] = update(gen.types[0], False)
+            uniques = set(sync(x) for x in gen.types)
+            assert len(uniques) == 1
+            forefront = list(uniques)[0]
+
         elif isinstance(gen, oamap.generator.PointerGenerator):
-            if recurse and not gen._internal:
-                update(gen.target, True)
-            lastindex[id(gen)] = len(fillables[gen.positions])
-            if recurse and gen.target is generator and isinstance(generator, ListGenerator) and lastindex[id(generator)] != 0:
-                raise TypeError("oamap.fill.fromdata can only be called multiple times on the same fillables if there are no Pointers to the top-level List")
+            if not gen._internal:
+                sync(gen.target)
+            fillables[gen.positions].revert()
+            forefront = len(fillables[gen.positions])
+
         else:
             raise TypeError("unrecognized generator: {0}".format(repr(gen)))
+
         if isinstance(gen, Masked):
-            assert lastindex[id(gen)] == fillables[gen.mask]
-        return lastindex[id(gen)]
+            fillables[gen.mask].revert()
+            assert forefront == len(fillables[gen.mask])
 
-    update(generator, True)
+        gens.append(gen)
+        return forefront
 
-    initindex = dict(lastindex)
-    def revert(gen):
-        if isinstance(gen, oamap.generator.PrimitiveGenerator):
-            fillables[gen.data].revert(initindex[id(gen)])
+    sync(generator)
+
+    def forefront(gen):
+        if isinstance(gen, oamap.generator.Masked):
+            return fillables[gen.mask].forefront()
+
+        elif isinstance(gen, oamap.generator.PrimitiveGenerator):
+            return fillables[gen.data].forefront()
+
         elif isinstance(gen, oamap.generator.ListGenerator):
-            revert(gen.content)
-            fillables[gen.starts].revert(initindex[id(gen)])
-            fillables[gen.stops].revert(initindex[id(gen)])
-        elif isinstance(gen, oamap.generator.UnionGenerator):
-            for x in gen.possibilities: revert(x)
-            fillables[gen.tags].revert(initindex[id(gen)])
-            fillables[gen.offsets].revert(initindex[id(gen)])
-        elif isinstance(gen, oamap.generator.RecordGenerator):
-            for x in gen.fields.values(): revert(x)
-        elif isinstance(gen, oamap.generator.TupleGenerator):
-            for x in gen.types: revert(x)
-        elif isinstance(gen, oamap.generator.PointerGenerator):
-            if not gen._internal: revert(x.target)
-            fillables[gen.positions].revert(initindex[id(gen)])
-        if isinstance(gen, Masked):
-            fillables[gen.mask].revert(initindex[id(gen)])
+            return fillables[gen.stops].forefront()
 
-    def recurse(obj, gen):
+        elif isinstance(gen, oamap.generator.UnionGenerator):
+            return fillables[gen.tags].forefront()
+
+        elif isinstance(gen, oamap.generator.RecordGenerator):
+            for x in gen.fields.values():
+                return forefront(x)
+
+        elif isinstance(gen, oamap.generator.TupleGenerator):
+            for x in gen.types:
+                return forefront(x)
+
+        elif isinstance(gen, oamap.generator.PointerGenerator):
+            return fillables[gen.positions].forefront()
+
+    def fill(obj, gen):
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
             fillables[gen.data].append(0 if obj is None else obj)
 
@@ -120,7 +128,7 @@ def fromdata(value, generator=None, fillables=None):
             if obj is None:
                 start = stop = -1
             else:
-                start = stop = lastindex[id(gen.content)]
+                start = stop = forefront(gen.content)
                 try:
                     if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
                         raise TypeError
@@ -129,9 +137,8 @@ def fromdata(value, generator=None, fillables=None):
                     raise TypeError("cannot fill {0} where expecting type {1}".format(repr(obj), gen.schema))
                 else:
                     for x in obj:
-                        recurse(x, gen.content)
+                        fill(x, gen.content)
                         stop += 1
-                    update(gen.content, False)
 
             fillables[gen.starts].append(start)
             fillables[gen.stops].append(stop)
@@ -148,9 +155,8 @@ def fromdata(value, generator=None, fillables=None):
                 if tag is None:
                     raise TypeError("cannot fill {0} where expecting type {1}".format(repr(obj), gen.schema))
                 
-                offset = lastindex[id(possibility)]
-                recurse(obj, possibility)
-                update(possibility, False)
+                offset = forefront(possibility)
+                fill(obj, possibility)
 
             fillables[gen.tags].append(tag)
             fillables[gen.offsets].append(offset)
@@ -162,12 +168,12 @@ def fromdata(value, generator=None, fillables=None):
                 for n, x in gen.fields.items():
                     if n not in obj:
                         raise TypeError("cannot fill {0} because its {1} field is missing".format(repr(obj), repr(n)))
-                    recurse(obj[n], x)
+                    fill(obj[n], x)
             else:
                 for n, x in gen.fields.items():
                     if not hasattr(obj, n):
                         raise TypeError("cannot fill {0} because its {1} field is missing".format(repr(obj), repr(n)))
-                    recurse(getattr(obj, n), x)
+                    fill(getattr(obj, n), x)
 
         elif isinstance(gen, oamap.generator.TupleGenerator):
             if obj is None:
@@ -179,7 +185,7 @@ def fromdata(value, generator=None, fillables=None):
                     except (TypeError, IndexError):
                         raise TypeError("cannot fill {0} because it does not have a field {1}".format(repr(obj), i))
                     else:
-                        recurse(v, x)
+                        fill(v, x)
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
             raise NotImplementedError
@@ -190,13 +196,15 @@ def fromdata(value, generator=None, fillables=None):
             else:
                 fillables[gen.mask].append(False)
 
-    if lastindex[id(generator)] != 0 and not isinstance(generator, ListGenerator):
-        raise TypeError("oamap.fill.fromdata can only be called multiple times on the same fillables if the data type is a List (to append to the List)")
+    if forefront(generator) != 0 and not isinstance(generator, ListGenerator):
+        raise TypeError("only call oamap.fill.fromdata multiple times on objects with List schema (to append to the List)")
 
-    try:
-        recurse(value, generator)
-    except:
-        revert(generator)
-        raise
-    else:
-        return fillables
+    # attempt to fill (fillables won't update their 'len' until we 'update')
+    fill(value, generator)
+
+    # success! (we're still here)
+    for gen in gens:
+        gen.update()  # updates from innermost outward, so even an exception here would leave it in a good state
+
+    # return fillables, which can be evaluated to become arrays
+    return fillables
