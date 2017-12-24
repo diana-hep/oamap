@@ -37,7 +37,7 @@ def toarrays(fillables):
 
 ################################################################ Python data, possibly made with json.load
 
-def fromdata(value, generator=None, fillables=None):
+def fromdata(value, generator=None, fillables=None, pointer_equality_search=True):
     if generator is None:
         generator = oamap.inference.fromdata(value).generator()
 
@@ -47,14 +47,17 @@ def fromdata(value, generator=None, fillables=None):
     if fillables is None:
         fillables = oamap.fillcolumn.fillablearrays(generator)
 
+    # get a list of generators (innermost outward) and make sure they're all starting at the last good entry
     gens = []
-    def sync(gen):
+    pointerobjs = {}
+    targetids = {}
+    def initialize(gen):
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
             fillables[gen.data].revert()
             forefront = len(fillables[gen.data])
 
         elif isinstance(gen, oamap.generator.ListGenerator):
-            sync(gen.content)
+            initialize(gen.content)
             fillables[gen.starts].revert()
             fillables[gen.stops].revert()
             assert len(fillables[gen.starts]) == len(fillables[gen.stops])
@@ -62,25 +65,31 @@ def fromdata(value, generator=None, fillables=None):
 
         elif isinstance(gen, oamap.generator.UnionGenerator):
             for x in gen.possibilities:
-                sync(x)
+                initialize(x)
             fillables[gen.tags].revert()
             fillables[gen.offsets].revert()
             assert len(fillables[gen.tags]) == len(fillables[gen.offsets])
             forefront = len(fillables[gen.tags])
 
         elif isinstance(gen, oamap.generator.RecordGenerator):
-            uniques = set(sync(x) for x in gen.fields.values())
+            uniques = set(initialize(x) for x in gen.fields.values())
             assert len(uniques) == 1
             forefront = list(uniques)[0]
 
         elif isinstance(gen, oamap.generator.TupleGenerator):
-            uniques = set(sync(x) for x in gen.types)
+            uniques = set(initialize(x) for x in gen.types)
             assert len(uniques) == 1
             forefront = list(uniques)[0]
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
+            if gen._internal and gen.target is generator and len(generator) != 0:
+                raise TypeError("the root of a Schema may be the target of a Pointer, but if so, it can only be filled from data once")
+
+            pointerobjs[id(gen)] = []
+            targetids[id(gen.target)] = {}
+
             if not gen._internal:
-                sync(gen.target)
+                initialize(gen.target)
             fillables[gen.positions].revert()
             forefront = len(fillables[gen.positions])
 
@@ -94,8 +103,10 @@ def fromdata(value, generator=None, fillables=None):
         gens.append(gen)
         return forefront
 
-    sync(generator)
+    # do the initialize
+    initialize(generator)
 
+    # how to get the forefront of various objects (used in 'fill')
     def forefront(gen):
         if isinstance(gen, oamap.generator.Masked):
             return fillables[gen.mask].forefront()
@@ -120,7 +131,14 @@ def fromdata(value, generator=None, fillables=None):
         elif isinstance(gen, oamap.generator.PointerGenerator):
             return fillables[gen.positions].forefront()
 
+    if forefront(generator) != 0 and not isinstance(generator, ListGenerator):
+        raise TypeError("non-Lists can only be filled from data once")
+
+    # the fill function (recursive)
     def fill(obj, gen):
+        if id(gen) in targetids:
+            targetids[id(gen)][id(obj)] = (forefront(gen), obj)
+
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
             fillables[gen.data].append(0 if obj is None else obj)
 
@@ -188,7 +206,8 @@ def fromdata(value, generator=None, fillables=None):
                         fill(v, x)
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
-            raise NotImplementedError
+            # Pointers will be set after we see all the target values
+            pointerobjs[id(gen)].append(obj)
         
         if isinstance(gen, oamap.generator.Masked):
             if obj is None:
@@ -196,11 +215,39 @@ def fromdata(value, generator=None, fillables=None):
             else:
                 fillables[gen.mask].append(False)
 
-    if forefront(generator) != 0 and not isinstance(generator, ListGenerator):
-        raise TypeError("only call oamap.fill.fromdata multiple times on objects with List schema (to append to the List)")
-
     # attempt to fill (fillables won't update their 'len' until we 'update')
     fill(value, generator)
+
+    # do the pointers after everything else
+    for gen in gens:
+        if isinstance(gen, oamap.generator.PointerGenerator):
+            for obj in pointerobjs[id(gen)]:
+                if id(obj) in targetids[id(gen.target)] and targetids[id(gen.target)][id(obj)] == obj:
+                    # case 1: an object in the target *is* the object in the pointer (same ids)
+                    position, _ = targetids[id(gen.target)][id(obj)]
+                    del targetids[id(gen.target)][id(obj)]
+
+                else:
+                    position = None
+                    if pointer_equality_search:
+                        # fallback to quadratic complexity search
+                        for key, (pos, obj2) in targetids[id(gen.target)].items():
+                            if obj == obj2:
+                                position = pos
+                                break
+
+                    if position is not None:
+                        # case 2: an object in the target *is equal to* the object in the pointer
+                        del targetids[id(gen.target)][key]
+
+                    else:
+                        # case 3: the object was not found; it must be added to the target (beyond indexes where it can be found)
+                        fill(obj, gen.target)
+                        position, _ = targetids[id(gen.target)][id(obj)]
+                        del targetids[id(gen.target)][id(obj)]
+
+                # every obj in pointerobjs[id(gen)] gets *one* append
+                fillables[gen.positions].append(position)
 
     # success! (we're still here)
     for gen in gens:
