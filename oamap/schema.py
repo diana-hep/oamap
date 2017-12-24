@@ -116,6 +116,9 @@ class Schema(object):
                 return "#{0}".format(index)
         return None
 
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def __call__(self, arrays, prefix="object", delimiter="-"):
         return self.generator(prefix=prefix, delimiter=delimiter)(arrays)
 
@@ -203,6 +206,8 @@ class Primitive(Schema):
                 args.append("data=" + repr(self._data))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
+            if self._name is not None:
+                args.append("name=" + repr(self._name))
 
             if label is None:
                 return "Primitive(" + ", ".join(args) + ")"
@@ -217,6 +222,9 @@ class Primitive(Schema):
             collection.add(id(self))
         else:
             labels.append(self)
+
+    def __eq__(self, other, memo=None):
+        return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.name == other.name
 
     def __contains__(self, value):
         if self.dtype is None:
@@ -352,6 +360,8 @@ class List(Schema):
                 args.append("stops=" + repr(self._stops))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
+            if self._name is not None:
+                args.append("name=" + repr(self._name))
 
             if label is None:
                 return "List(" + ", ".join(args) + ")"
@@ -367,6 +377,16 @@ class List(Schema):
             self._content._collectlabels(collection, labels)
         else:
             labels.append(self)
+
+    def __eq__(self, other, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(other)
+        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.mask == other.mask and self.name == other.name):
+            return False
+        memo[id(self)] = id(other)
+        return self.content.__eq__(other.content, memo)
 
     def __contains__(self, value):
         if value is None:
@@ -511,6 +531,8 @@ class Union(Schema):
                 args.append("offsets=" + repr(self._offsets))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
+            if self._name is not None:
+                args.append("name=" + repr(self._name))
 
             if label is None:
                 return "Union(" + ", ".join(args) + ")"
@@ -527,6 +549,16 @@ class Union(Schema):
                 possibility._collectlabels(collection, labels)
         else:
             labels.append(self)
+
+    def __eq__(self, other, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(other)
+        if not (isinstance(other, Union) and len(self.possibilities) == len(other.possibilities) and self.nullable == other.nullable and self.tags == other.tags and self.offsets == other.offsets and self.mask == other.mask and self.name == other.name):
+            return False
+        memo[id(self)] = id(other)
+        return all(x.__eq__(y, memo) for x, y in zip(self.possibilities, other.possibilities))
 
     def __contains__(self, value):
         if value is None:
@@ -628,6 +660,8 @@ class Record(Schema):
                 args.append("nullable=" + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
+            if self._name is not None:
+                args.append("name=" + repr(self._name))
 
             if label is None:
                 return "Record(" + ", ".join(args) + ")"
@@ -644,6 +678,16 @@ class Record(Schema):
                 field._collectlabels(collection, labels)
         else:
             labels.append(self)
+
+    def __eq__(self, other, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(other)
+        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self.nullable == other.nullable and self.mask == other.mask and self.name == other.name):
+            return False
+        memo[id(self)] = id(other)
+        return all(self._fields[n].__eq__(other._fields[n], memo) for n in self._fields)
 
     def __contains__(self, value):
         if value is None:
@@ -755,6 +799,8 @@ class Tuple(Schema):
                 args.append("nullable=" + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
+            if self._name is not None:
+                args.append("name=" + repr(self._name))
 
             if label is None:
                 return "Tuple(" + ", ".join(args) + ")"
@@ -768,6 +814,16 @@ class Tuple(Schema):
                 item._collectlabels(collection, labels)
         else:
             labels.append(self)
+
+    def __eq__(self, other, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(other)
+        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self.nullable == other.nullable and self.mask == other.mask and self.name == other.name):
+            return False
+        memo[id(self)] = id(other)
+        return all(x.__eq__(y, memo) for x, y in zip(self._types, other._types))
 
     def __contains__(self, value):
         if value is None:
@@ -859,6 +915,8 @@ class Pointer(Schema):
                 args.append("positions=" + repr(self._positions))
             if self._mask is not None:
                 args.append("mask=" + repr(self._mask))
+            if self._name is not None:
+                args.append("name=" + repr(self._name))
 
             if label is None:
                 return "Pointer(" + ", ".join(args) + ")"
@@ -874,6 +932,16 @@ class Pointer(Schema):
             self._target._collectlabels(collection, labels)
         else:
             labels.append(self)
+
+    def __eq__(self, other, memo=None):
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)] == id(other)
+        if not (isinstance(other, Pointer) and self.nullable == other.nullable and self.positions == other.positions and self.mask == other.mask and self.name == other.name):
+            return False
+        memo[id(self)] = id(other)
+        return self.target.__eq__(other.target, memo)
 
     def __contains__(self, value):
         if value is None:
