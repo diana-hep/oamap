@@ -174,6 +174,10 @@ class Primitive(Schema):
 
     @dims.setter
     def dims(self, value):
+        try:
+            value = tuple(value)
+        except TypeError:
+            pass
         if value is not None and (not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value)):
             raise TypeError("dims must be None or a tuple of non-negative integers, not {0}".format(repr(value)))
         self._dims = value
@@ -240,7 +244,7 @@ class Primitive(Schema):
                     return value is True or value is False
 
                 elif issubclass(self.dtype.type, numpy.integer):
-                    iinfo = numpy.iinfo(dtype.type)
+                    iinfo = numpy.iinfo(self.dtype.type)
                     return isinstance(value, numbers.Integral) and iinfo.min <= value <= iinfo.max
 
                 elif issubclass(self.dtype.type, numpy.floating):
