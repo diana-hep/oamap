@@ -463,3 +463,12 @@ class TestInference(unittest.TestCase):
         self.checkdata([None, ([0], float("inf"))], List(Tuple([List(Primitive("u1")), Primitive("f8")], nullable=True)))
         self.checkdata([None, ([0], float("nan"))], List(Tuple([List(Primitive("u1")), Primitive("f8")], nullable=True)))
         self.checkdata([None, ([0], 1+1j)], List(Tuple([List(Primitive("u1")), Primitive("c16")], nullable=True)))
+
+    def test_Pointer(self):
+        linkedlist = Record({"label": Primitive("i8")})
+        linkedlist["next"] = Pointer(linkedlist)
+
+        value = {"label": 0, "next": {"label": 1, "next": {"label": 2, "next": None}}}
+        value["next"]["next"]["next"] = value
+
+        self.assertTrue(value in linkedlist)        

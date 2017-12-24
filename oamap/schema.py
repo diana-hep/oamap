@@ -395,9 +395,6 @@ class List(Schema):
     def __contains__(self, value, memo=None):
         if memo is None:
             memo = {}
-        if id(self) in memo:
-            return memo[id(self)] == id(value)
-        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
         try:
@@ -406,7 +403,7 @@ class List(Schema):
             return False
         else:
             for x in value:
-                memo2 = dict(memo)
+                memo2 = dict(memo) if len(memo) > 0 else memo
                 if not self.content.__contains__(x, memo2):
                     return False
             return True
@@ -576,9 +573,6 @@ class Union(Schema):
     def __contains__(self, value, memo=None):
         if memo is None:
             memo = {}
-        if id(self) in memo:
-            return memo[id(self)] == id(value)
-        memo[id(self)] = id(value)
         if value is None:
             return self.nullable or any(x.nullable for x in self.possibilities)
         return any(x.__contains__(value, memo) for x in self.possibilities)
@@ -673,7 +667,7 @@ class Record(Schema):
         if label is None or id(self) not in shown:
             shown.add(id(self))
 
-            args = ["{" + ", ".join("{0}: {1}".format(repr(n), repr(x)) for n, x in self._fields.items()) + "}"]
+            args = ["{" + ", ".join("{0}: {1}".format(repr(n), x.__repr__(labels, shown)) for n, x in self._fields.items()) + "}"]
             if self._nullable is not False:
                 args.append("nullable=" + repr(self._nullable))
             if self._mask is not None:
@@ -710,9 +704,6 @@ class Record(Schema):
     def __contains__(self, value, memo=None):
         if memo is None:
             memo = {}
-        if id(self) in memo:
-            return memo[id(self)] == id(value)
-        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
         if isinstance(value, dict):
@@ -722,7 +713,7 @@ class Record(Schema):
         elif isinstance(value, (list, tuple)):
             return False
         else:
-            return all(hasattr(value, n) and getattr(value, n) in x for n, x in self.fields.items())
+            return all(hasattr(value, n) and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
 
     def generator(self, prefix="object", delimiter="-"):
         if self._baddelimiter.match(delimiter) is not None:
@@ -851,9 +842,6 @@ class Tuple(Schema):
     def __contains__(self, value, memo=None):
         if memo is None:
             memo = {}
-        if id(self) in memo:
-            return memo[id(self)] == id(value)
-        memo[id(self)] = id(value)
         if value is None:
             return self.nullable
         if isinstance(value, tuple) and len(value) == len(self.types):
@@ -974,9 +962,9 @@ class Pointer(Schema):
     def __contains__(self, value, memo=None):
         if memo is None:
             memo = {}
-        if id(self) in memo:
-            return memo[id(self)] == id(value)
-        memo[id(self)] = id(value)
+        if id(value) in memo:
+            return memo[id(value)] == id(self)
+        memo[id(value)] = id(self)
         if value is None:
             return self.nullable
         return self.target.__contains__(value, memo)
