@@ -53,14 +53,14 @@ class Fillable(object):
     def append(self, value):
         raise NotImplementedError
 
+    def extend(self, values):
+        raise NotImplementedError
+
     def update(self):
         self._len = self.forefront()
 
     def revert(self):
         self._chunkindex, self._indexinchunk = divmod(self._len, self.chunksize)
-
-    def flush(self):
-        pass
 
     def close(self):
         pass
@@ -168,6 +168,25 @@ class FillableArray(Fillable):
         self._data[self._chunkindex][self._indexinchunk] = value
         self._indexinchunk += 1
 
+    def extend(self, values):
+        chunkindex = self._chunkindex
+        indexinchunk = self._indexinchunk
+
+        while len(values) > 0:
+            if indexinchunk >= len(self._data[chunkindex]):
+                while len(self._data) <= chunkindex + 1:
+                    self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
+                indexinchunk = 0
+                chunkindex += 1
+
+            tofill = min(len(values), self.chunksize - indexinchunk)
+            self._data[chunkindex][indexinchunk : indexinchunk + tofill] = values[:tofill]
+            indexinchunk += tofill
+            values = values[tofill:]
+
+        self._chunkindex = chunkindex
+        self._indexinchunk = indexinchunk
+
     def __getitem__(self, index):
         if isinstance(index, slice):
             lenself = len(self)
@@ -264,7 +283,7 @@ class FillableFile(Fillable):
     def __init__(self, filename, dtype, dims=(), chunksize=8192, lendigits=16):
         if not isinstance(dtype, numpy.dtype):
             dtype = numpy.dtype(dtype)
-        self._data = numpy.empty((chunksize,) + dims, dtype=dtype)
+        self._data = numpy.zeros((chunksize,) + dims, dtype=dtype)  # 'zeros', not 'empty' for security
         self._len = 0
         self._indexinchunk = 0
         self._chunkindex = 0
@@ -297,18 +316,46 @@ class FillableFile(Fillable):
         self._data[self._indexinchunk] = value
         self._indexinchunk += 1
 
-        if self._indexinchunk >= len(self._data):
-            self.flush()
-
-    def flush(self):
-        self._file.write(self._data[:self._indexinchunk].tostring())
         if self._indexinchunk == self.chunksize:
+            self._flush()
             self._indexinchunk = 0
             self._chunkindex += 1
 
+    def _flush(self):
+        self._file.seek(self._datapos + self._chunkindex*self.chunksize*self.dtype.itemsize)
+        self._file.write(self._data.tostring())
+        
+    def extend(self, values):
+        chunkindex = self._chunkindex
+        indexinchunk = self._indexinchunk
+
+        while len(values) > 0:
+            tofill = min(len(values), self.chunksize - indexinchunk)
+            self._data[indexinchunk : indexinchunk + tofill] = values[:tofill]
+            indexinchunk += tofill
+            values = values[tofill:]
+
+            if indexinchunk == self.chunksize:
+                self._file.seek(self._datapos + chunkindex*self.chunksize*self.dtype.itemsize)
+                self._file.write(self._data.tostring())
+                indexinchunk = 0
+                chunkindex += 1
+
+        self._chunkindex = chunkindex
+        self._indexinchunk = indexinchunk
+
+    def revert(self):
+        chunkindex, self._indexinchunk = divmod(self._len, self.chunksize)
+        if self._chunkindex != chunkindex:
+            self._file.seek(self._datapos + chunkindex*self.chunksize*self.dtype.itemsize)
+            olddata = numpy.fromstring(self._file.read(self.chunksize*self.dtype.itemsize), dtype=self.dtype)
+            self._data[:len(olddata)] = olddata
+
+        self._chunkindex = chunkindex
+
     def close(self):
         if hasattr(self, "_file"):
-            self.flush()
+            self._flush()
             self._file.close()
 
     def __del__(self):
@@ -322,10 +369,14 @@ class FillableFile(Fillable):
 
     def __getitem__(self, value):
         if not self._file.closed:
-            self.flush()
+            self._flush()
 
         if isinstance(value, slice):
-            array = numpy.memmap(self.filename, self.dtype, "r", self._datapos, (len(self),) + self.dims, "C")
+            lenself = len(self)
+            if lenself == 0:
+                array = numpy.empty((lenself,) + self.dims, dtype=self.dtype)
+            else:
+                array = numpy.memmap(self.filename, self.dtype, "r", self._datapos, (lenself,) + self.dims, "C")
             if value.start is None and value.stop is None and value.step is None:
                 return array
             else:
@@ -375,11 +426,7 @@ class FillableNumpyFile(FillableFile):
         self._file.write(self._formatter.format(len(self)).encode("ascii"))
         self._file.write(header2[lendigits:])
 
-    def flush(self):
-        self._file.seek(self._datapos + self._chunkindex*self.chunksize*self.dtype.itemsize)
-        self._file.write(self._data[:self._indexinchunk].tostring())
+    def _flush(self):
+        super(FillableNumpyFile, self)._flush()
         self._file.seek(self._lenpos)
         self._file.write(self._formatter.format(len(self)).encode("ascii"))
-        if self._indexinchunk == self.chunksize:
-            self._indexinchunk = 0
-            self._chunkindex += 1
