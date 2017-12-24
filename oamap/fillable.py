@@ -202,62 +202,45 @@ class FillableArray(Fillable):
                     start_indexinchunk = start - start_chunkindex*self.chunksize
                     stop_indexinchunk = stop - (stop_chunkindex + 1)*self.chunksize
 
+                def beginend():
+                    offset = 0
+                    for chunkindex in xrange(start_chunkindex, stop_chunkindex, 1 if step > 0 else -1):
+                        if step > 0:
+                            if chunkindex == start_chunkindex:
+                                begin = start_indexinchunk
+                            else:
+                                begin = offset
+                            if chunkindex == stop_chunkindex - 1:
+                                end = stop_indexinchunk
+                            else:
+                                end = self.chunksize
+                                offset = (begin - self.chunksize) % step
+                        else:
+                            if chunkindex == start_chunkindex:
+                                begin = start_indexinchunk
+                            else:
+                                begin = self.chunksize - 1 - offset
+                            if chunkindex == stop_chunkindex + 1 and index.stop is not None:
+                                end = stop_indexinchunk
+                            else:
+                                end = None
+                                offset = (begin - -1) % -step
+                        yield chunkindex, begin, end
+
                 length = 0
-                for chunkindex in xrange(start_chunkindex, stop_chunkindex, 1 if step > 0 else -1):
+                for chunkindex, begin, end in beginend():
                     if step > 0:
-                        if chunkindex == start_chunkindex:
-                            begin = start_indexinchunk
-                        else:
-                            begin = offset
-                        if chunkindex == stop_chunkindex - 1:
-                            end = stop_indexinchunk
-                        else:
-                            end = self.chunksize
-
                         length += int(math.ceil(float(end - begin) / step))
-
+                    elif end is None:
+                        length += int(math.ceil(-float(begin + 1) / step))
                     else:
-                        if chunkindex == start_chunkindex:
-                            begin = start_indexinchunk
-                        else:
-                            begin = self.chunksize - offset
-                        if chunkindex == stop_chunkindex + 1 and index.stop is not None:
-                            end = stop_indexinchunk
-                        else:
-                            end = None
-                        if end is None:
-                            length += int(math.ceil(-float(begin + 1) / step))
-                        else:
-                            length += int(math.ceil(-float(begin - end) / step))
+                        length += int(math.ceil(-float(begin - end) / step))
 
                 out = numpy.empty((length,) + self.dims, dtype=self.dtype)
                 outi = 0
 
-                offset = 0
-                for chunkindex in xrange(start_chunkindex, stop_chunkindex, 1 if step > 0 else -1):
-                    if step > 0:
-                        if chunkindex == start_chunkindex:
-                            begin = start_indexinchunk
-                        else:
-                            begin = offset
-                        if chunkindex == stop_chunkindex - 1:
-                            end = stop_indexinchunk
-                        else:
-                            end = self.chunksize
-
-                    else:
-                        if chunkindex == start_chunkindex:
-                            begin = start_indexinchunk
-                        else:
-                            begin = self.chunksize - offset
-                        if chunkindex == stop_chunkindex + 1 and index.stop is not None:
-                            end = stop_indexinchunk
-                        else:
-                            end = None
-
+                for chunkindex, begin, end in beginend():
                     array = self._data[chunkindex][begin:end:step]
-
-                    # offset = (end - begin) % step
 
                     out[outi : outi + len(array)] = array
                     outi += len(array)
