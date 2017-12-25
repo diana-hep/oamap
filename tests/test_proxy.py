@@ -211,8 +211,6 @@ class TestProxy(unittest.TestCase):
 
         tree = Pointer(None)
         tree.target = List(tree)
-        tree.show()
-        print tree.toJsonString()
 
         self.assertEqual(tree({"object-P": [0], "object-X-B": [0], "object-X-E": [0], "object-X-L-P-object-X": []}), [])
 
@@ -223,8 +221,6 @@ class TestProxy(unittest.TestCase):
 
         linkedlist = Record({"label": Primitive("i8")})
         linkedlist["next"] = Pointer(linkedlist)
-        linkedlist.show()
-        print linkedlist.toJsonString()
 
         x = linkedlist({"object-Flabel": [0, 1, 2], "object-Fnext-P-object": [1, 2, 0]})
         self.assertEqual(x.label, 0)
@@ -234,8 +230,6 @@ class TestProxy(unittest.TestCase):
 
         linkedlist = Record({"label": Primitive("i8")})
         linkedlist["next"] = Pointer(linkedlist, nullable=True)
-        linkedlist.show()
-        print linkedlist.toJsonString()
 
         x = linkedlist({"object-Flabel": [0, 1, 2], "object-Fnext-P-object": [1, 2, 0], "object-Fnext-M": [False, False, True]})
         self.assertEqual(x.label, 0)

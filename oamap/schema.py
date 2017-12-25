@@ -148,11 +148,11 @@ class Schema(object):
     @staticmethod
     def fromJson(data):
         labels = {}
-        out = Schema._fromJson(labels)
-        if isinstance(out, Schema):
-            return out._finalizeFromJson(labels)
-        else:
+        out = Schema._fromJson(data, labels)
+        if not isinstance(out, Schema):
             raise TypeError("unresolved label: {0}".format(repr(out)))
+        out._finalizeFromJson(labels)
+        return out
 
     @staticmethod
     def _fromJson(data, labels):
@@ -160,28 +160,24 @@ class Schema(object):
             return data
 
         elif isinstance(data, basestring):
-            return Primitive.fromJson(data)
+            return Primitive._fromJson(data, labels)
 
         elif isinstance(data, dict):
             tpe = data.get("type", "primitive")
             if tpe == "primitive":
-                out = Primitive._fromJson(data, labels)
+                return Primitive._fromJson(data, labels)
             elif tpe == "list":
-                out = List._fromJson(data, labels)
+                return List._fromJson(data, labels)
             elif tpe == "union":
-                out = Union._fromJson(data, labels)
+                return Union._fromJson(data, labels)
             elif tpe == "record":
-                out = Record._fromJson(data, labels)
+                return Record._fromJson(data, labels)
             elif tpe == "tuple":
-                out = Tuple._fromJson(data, labels)
+                return Tuple._fromJson(data, labels)
             elif tpe == "pointer":
-                out = Pointer._fromJson(data, labels)
+                return Pointer._fromJson(data, labels)
             else:
                 raise TypeError("unrecognized type argument for Schema from JSON: {0}".format(repr(tpe)))
-
-            if "labels" in data:
-                labels[data["labels"]] = out
-            return out
 
         else:
             raise TypeError("unrecognized type for Schema from JSON: {0}".format(repr(data)))
@@ -328,10 +324,13 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            return Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), name=data.get("name", None))
+            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), name=data.get("name", None))
+            if "label" in data:
+                labels[data["label"]] = out
+            return out
 
     def _finalizeFromJson(self, labels):
-        return self
+        pass
 
     def __eq__(self, other, memo=None):
         return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.name == other.name
@@ -522,15 +521,17 @@ class List(Schema):
         out.stops = data.get("stops", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        if "label" in data:
+            labels[data["label"]] = out
         return out
 
     def _finalizeFromJson(self, labels):
         if isinstance(self._content, basestring):
-            if self._content in labels:
-                self._content = labels[self._content]
-            else:
+            if self._content not in labels:
                 raise TypeError("unresolved label: {0}".format(repr(self._content)))
-        return self
+            self._content = labels[self._content]
+        else:
+            self._content._finalizeFromJson(labels)
 
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
@@ -752,16 +753,18 @@ class Union(Schema):
         out.offsets = data.get("offsets", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        if "label" in data:
+            labels[data["label"]] = out
         return out
 
     def _finalizeFromJson(self, labels):
         for i in range(len(self._possibilities)):
             if isinstance(self._possibilities[i], basestring):
-                if self._possibilities[i] in labels:
-                    self._possibilities[i] = labels[self._possibilities[i]]
-                else:
+                if self._possibilities[i] not in labels:
                     raise TypeError("unresolved label: {0}".format(repr(self._possibilities[i])))
-        return self
+                self._possibilities[i] = labels[self._possibilities[i]]
+            else:
+                self._possibilities[i]._finalizeFromJson(labels)
 
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
@@ -934,16 +937,18 @@ class Record(Schema):
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        if "label" in data:
+            labels[data["label"]] = out
         return out
 
     def _finalizeFromJson(self, labels):
         for n in list(self._fields.keys()):
             if isinstance(self._fields[n], basestring):
-                if self._fields[n] in labels:
-                    self._fields[n] = labels[self._fields[n]]
-                else:
+                if self._fields[n] not in labels:
                     raise TypeError("unresolved label: {0}".format(repr(self._fields[n])))
-        return self
+                self._fields[n] = labels[self._fields[n]]
+            else:
+                self._fields[n]._finalizeFromJson(labels)
 
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
@@ -1120,16 +1125,18 @@ class Tuple(Schema):
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        if "label" in data:
+            labels[data["label"]] = out
         return out
 
     def _finalizeFromJson(self, labels):
         for i in range(len(self._types)):
             if isinstance(self._types[i], basestring):
-                if self._types[i] in labels:
-                    self._types[i] = labels[self._types[i]]
-                else:
+                if self._types[i] not in labels:
                     raise TypeError("unresolved label: {0}".format(repr(self._types[i])))
-        return self
+                self._types[i] = labels[self._types[i]]
+            else:
+                self._types[i]._finalizeFromJson(labels)
 
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
@@ -1290,15 +1297,17 @@ class Pointer(Schema):
         out.positions = data.get("positions", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        if "label" in data:
+            labels[data["label"]] = out
         return out
 
     def _finalizeFromJson(self, labels):
         if isinstance(self._target, basestring):
-            if self._target in labels:
-                self._target = labels[self._target]
-            else:
+            if self._target not in labels:
                 raise TypeError("unresolved label: {0}".format(repr(self._target)))
-        return self
+            self._target = labels[self._target]
+        else:
+            self._target._finalizeFromJson(labels)
 
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
