@@ -30,11 +30,11 @@
 
 import unittest
 
-import oamap.inference
+import oamap.fill
 
 class TestFill(unittest.TestCase):
     def runTest(self):
         pass
 
     def test_Primitive(self):
-        pass
+        oamap.fill.toarrays(oamap.fill.fromdata(3.14))

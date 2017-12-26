@@ -109,13 +109,15 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
         fillables = oamap.fillable.arrays(generator)
 
     # get a list of generators (innermost outward) and make sure they're all starting at the last good entry
-    gens = []
+    pointers = []
     pointerobjs = {}
     targetids = {}
+    fillables_leaf_to_root = []
     def initialize(gen):
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
             fillables[gen.data].revert()
             forefront = len(fillables[gen.data])
+            fillables_leaf_to_root.append(fillables[gen.data])
 
         elif isinstance(gen, oamap.generator.ListGenerator):
             initialize(gen.content)
@@ -123,6 +125,8 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             fillables[gen.stops].revert()
             assert len(fillables[gen.starts]) == len(fillables[gen.stops])
             forefront = len(fillables[gen.stops])
+            fillables_leaf_to_root.append(fillables[gen.starts])
+            fillables_leaf_to_root.append(fillables[gen.stops])
 
         elif isinstance(gen, oamap.generator.UnionGenerator):
             for x in gen.possibilities:
@@ -131,6 +135,8 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             fillables[gen.offsets].revert()
             assert len(fillables[gen.tags]) == len(fillables[gen.offsets])
             forefront = len(fillables[gen.tags])
+            fillables_leaf_to_root.append(fillables[gen.tags])
+            fillables_leaf_to_root.append(fillables[gen.offsets])
 
         elif isinstance(gen, oamap.generator.RecordGenerator):
             uniques = set(initialize(x) for x in gen.fields.values())
@@ -146,6 +152,8 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             if gen._internal and gen.target is generator and len(generator) != 0:
                 raise TypeError("the root of a Schema may be the target of a Pointer, but if so, it can only be filled from data once")
 
+            if gen not in pointers:
+                pointers.append(gen)
             pointerobjs[id(gen)] = []
             targetids[id(gen.target)] = {}
 
@@ -153,15 +161,16 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                 initialize(gen.target)
             fillables[gen.positions].revert()
             forefront = len(fillables[gen.positions])
+            fillables_leaf_to_root.append(fillables[gen.positions])
 
         else:
             raise TypeError("unrecognized generator: {0}".format(repr(gen)))
 
-        if isinstance(gen, Masked):
+        if isinstance(gen, oamap.generator.Masked):
             fillables[gen.mask].revert()
             assert forefront == len(fillables[gen.mask])
+            fillables_leaf_to_root.append(fillables[gen.mask])
 
-        gens.append(gen)
         return forefront
 
     # do the initialize
@@ -280,39 +289,38 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
     fill(value, generator)
 
     # do the pointers after everything else
-    for gen in gens:
-        if isinstance(gen, oamap.generator.PointerGenerator):
-            for obj in pointerobjs[id(gen)]:
-                if id(obj) in targetids[id(gen.target)] and targetids[id(gen.target)][id(obj)] == obj:
+    for pointer in pointers:
+            for obj in pointerobjs[id(pointer)]:
+                if id(obj) in targetids[id(pointer.target)] and targetids[id(pointer.target)][id(obj)] == obj:
                     # case 1: an object in the target *is* the object in the pointer (same ids)
-                    position, _ = targetids[id(gen.target)][id(obj)]
-                    del targetids[id(gen.target)][id(obj)]
+                    position, _ = targetids[id(pointer.target)][id(obj)]
+                    del targetids[id(pointer.target)][id(obj)]
 
                 else:
                     position = None
                     if pointer_fromequal:
                         # fallback to quadratic complexity search
-                        for key, (pos, obj2) in targetids[id(gen.target)].items():
+                        for key, (pos, obj2) in targetids[id(pointer.target)].items():
                             if obj == obj2:
                                 position = pos
                                 break
 
                     if position is not None:
                         # case 2: an object in the target *is equal to* the object in the pointer
-                        del targetids[id(gen.target)][key]
+                        del targetids[id(pointer.target)][key]
 
                     else:
                         # case 3: the object was not found; it must be added to the target (beyond indexes where it can be found)
-                        fill(obj, gen.target)
-                        position, _ = targetids[id(gen.target)][id(obj)]
-                        del targetids[id(gen.target)][id(obj)]
+                        fill(obj, pointer.target)
+                        position, _ = targetids[id(pointer.target)][id(obj)]
+                        del targetids[id(pointer.target)][id(obj)]
 
-                # every obj in pointerobjs[id(gen)] gets *one* append
-                fillables[gen.positions].append(position)
+                # every obj in pointerobjs[id(pointer)] gets *one* append
+                fillables[pointer.positions].append(position)
 
     # success! (we're still here)
-    for gen in gens:
-        gen.update()  # updates from innermost outward, so even an exception here would leave it in a good state
+    for fillable in fillables_leaf_to_root:
+        fillable.update()
 
     # return fillables, which can be evaluated to become arrays
     return fillables
