@@ -119,7 +119,7 @@ class ListGenerator(Generator):
     def _generate(self, arrays, index, cache):
         starts = self._getarray(arrays, self.starts, cache, self.startsidx, ListGenerator.dtype)
         stops  = self._getarray(arrays, self.stops,  cache, self.stopsidx,  ListGenerator.dtype)
-        return oamap.proxy.ListProxy(self, arrays, cache, starts[index], stops[index], 1)
+        return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):

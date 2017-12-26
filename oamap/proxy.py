@@ -39,20 +39,22 @@ class Proxy(object): pass
 ################################################################ Lists
 
 class ListProxy(Proxy):
-    __slots__ = ["_generator", "_arrays", "_cache", "_start", "_stop", "_step"]
+    __slots__ = ["_generator", "_arrays", "_cache", "_whence", "_stride", "_length"]
 
-    def __init__(self, generator, arrays, cache, start, stop, step):
+    def __init__(self, generator, arrays, cache, whence, stride, length):
+        assert stride != 0
+        assert length >= 0
         self._generator = generator
         self._arrays = arrays
         self._cache = cache
-        self._start = start
-        self._stop = stop
-        self._step = step
+        self._whence = whence
+        self._stride = stride
+        self._length = length
 
     def __repr__(self, memo=None):
         if memo is None:
             memo = set()
-        key = (id(self._generator), self._start, self._stop, self._step)
+        key = (id(self._generator), self._whence, self._stride, self._length)
         if key in memo:
             return "[...]"
         memo.add(key)
@@ -65,40 +67,63 @@ class ListProxy(Proxy):
             return "[{0}]".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in self))
 
     def __len__(self):
-        return (self._stop - self._start) // self._step
+        return self._length
 
     def __getslice__(self, start, stop):
-        # for old-Python compatibility
         return self.__getitem__(slice(start, stop))
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            lenself = len(self)
-            start = 0       if index.start is None else index.start
-            stop  = lenself if index.stop  is None else index.stop
-            step  = 1       if index.step  is None else index.step
-            if start < 0:
-                start += lenself
-            if stop < 0:
-                stop += lenself
-
-            start = min(lenself, max(0, start))
-            stop  = min(lenself, max(0, stop))
+            step = 1 if index.step is None else index.step
 
             if step == 0:
                 raise ValueError("slice step cannot be zero")
+
+            elif step > 0:
+                if index.start is None:
+                    start = 0                                     # valid
+                elif index.start >= 0:
+                    start = min(index.start, self._length)        # valid or self._length
+                else:
+                    start = max(0, index.start + self._length)    # valid
+
+                if index.stop is None:
+                    stop = self._length
+                elif index.stop >= 0:
+                    stop = max(start, min(self._length, index.stop))
+                else:
+                    stop = max(start, index.stop + self._length)
+
             else:
-                return ListProxy(self._generator, self._arrays, self._cache, self._start + self._step*start, self._start + self._step*stop, self._step*step)
+                if index.start is None:
+                    start = self._length - 1                      # valid
+                elif index.start >= 0:
+                    start = min(index.start, self._length - 1)    # valid
+                else:
+                    start = max(index.start + self._length, -1)   # valid or -1
+
+                if index.stop is None:
+                    stop = -1
+                elif index.stop >= 0:
+                    stop = min(start, index.stop)
+                else:
+                    stop = min(start, max(-1, index.stop + self._length))
+
+            whence = self._whence + self._stride*start
+            stride = self._stride*step
+            # length = int(math.ceil(float(abs(stop - start)) / abs(step)))
+            d, m = divmod(abs(start - stop), abs(step))
+            length = d + (1 if m != 0 else 0)
+            return ListProxy(self._generator, self._arrays, self._cache, whence, stride, length)
 
         else:
-            lenself = len(self)
-            normalindex = index if index >= 0 else index + lenself
-            if not 0 <= normalindex < lenself:
-                raise IndexError("index {0} is out of bounds for size {1}".format(index, lenself))
-            return self._generator.content._generate(self._arrays, self._start + self._step*normalindex, self._cache)
+            normalindex = index if index >= 0 else index + self._length
+            if not 0 <= normalindex < self._length:
+                raise IndexError("index {0} is out of bounds for size {1}".format(index, self._length))
+            return self._generator.content._generate(self._arrays, self._whence + self._stride*normalindex, self._cache)
 
     def __iter__(self):
-        return (self._generator.content._generate(self._arrays, i, self._cache) for i in xrange(self._start, self._stop, self._step))
+        return (self._generator.content._generate(self._arrays, i, self._cache) for i in xrange(self._whence, self._whence + self._stride*self._length, self._stride))
 
     def __hash__(self):
         # lists aren't usually hashable, but since ListProxy is immutable, we can add this feature
