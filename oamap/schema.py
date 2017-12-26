@@ -1101,7 +1101,7 @@ class Tuple(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "tuple", "types": [x._toJson(labels, shown) for x in self._type]}
+            out = {"type": "tuple", "types": [x._toJson(labels, shown) for x in self._types]}
             if self._nullable is not False:
                 out["nullable"] = self._nullable
             if self._mask is not None:

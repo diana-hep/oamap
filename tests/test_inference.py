@@ -31,6 +31,9 @@
 import unittest
 from collections import namedtuple
 
+import numpy
+
+import oamap.schema
 from oamap.schema import *
 from oamap.inference import fromdata
 from oamap.inference import fromnames
@@ -39,9 +42,15 @@ class TestInference(unittest.TestCase):
     def runTest(self):
         pass
 
+    env = dict(oamap.schema.__dict__)
+    env["dtype"] = numpy.dtype
+
     def checkdata(self, data, schema):
         self.assertEqual(fromdata(data), schema)
         self.assertTrue(data in schema)
+        self.assertEqual(schema, eval(repr(schema), self.env))
+        self.assertEqual(schema, eval(schema.show(stream=None), self.env))
+        self.assertEqual(schema, Schema.fromJsonString(schema.toJsonString()))
 
     def test_infer_Unknown(self):
         with self.assertRaises(TypeError):
