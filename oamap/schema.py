@@ -102,9 +102,15 @@ class Schema(object):
 
     @name.setter
     def name(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("name must be None or a string, not {0}".format(repr(value)))
-        self._name = value
+        if value is None:
+            self._name = value
+            return
+        if isinstance(value, basestring):
+            match = self._identifier.match(value)
+            if match is not None and len(match.group(0)) == len(value):
+                self._name = value
+                return
+        raise TypeError("name must be None or a string matching /{0}/, not {1}".format(repr(value), self._identifier.pattern))
 
     def _labels(self):
         labels = []
@@ -332,6 +338,24 @@ class Primitive(Schema):
     def _finalizeFromJson(self, labels):
         pass
 
+    def copy(self, **replacements):
+        if "dtype" not in replacements:
+            replacements["dtype"] = self._dtype
+        if "dims" not in replacements:
+            replacements["dims"] = self._dims
+        if "nullable" not in replacements:
+            replacements["nullable"] = self._nullable
+        if "data" not in replacements:
+            replacements["data"] = self._data
+        if "mask" not in replacements:
+            replacements["mask"] = self._mask
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        return Primitive(**replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(Primitive(self._dtype, dims=self._dims, nullable=self._nullable, data=self._data, mask=self._mask, name=self._name), *args, **kwds)
+
     def __eq__(self, other, memo=None):
         return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.name == other.name
 
@@ -384,6 +408,9 @@ class Primitive(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
         args = []
+
+        if self._name is not None:
+            prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedPrimitiveGenerator
@@ -540,6 +567,24 @@ class List(Schema):
         else:
             labels.append(self)
 
+    def copy(self, **replacements):
+        if "content" not in replacements:
+            replacements["content"] = self._content
+        if "nullable" not in replacements:
+            replacements["nullable"] = self._nullable
+        if "starts" not in replacements:
+            replacements["starts"] = self._starts
+        if "stops" not in replacements:
+            replacements["stops"] = self._stops
+        if "mask" not in replacements:
+            replacements["mask"] = self._mask
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        return List(**replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, name=self._name), *args, **kwds)
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
@@ -578,6 +623,9 @@ class List(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
         args = []
+
+        if self._name is not None:
+            prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedListGenerator
@@ -774,6 +822,24 @@ class Union(Schema):
         else:
             labels.append(self)
 
+    def copy(self, **replacements):
+        if "possibilities" not in replacements:
+            replacements["possibilities"] = self._possibilities
+        if "nullable" not in replacements:
+            replacements["nullable"] = self._nullable
+        if "tags" not in replacements:
+            replacements["tags"] = self._tags
+        if "offsets" not in replacements:
+            replacements["offsets"] = self._offsets
+        if "mask" not in replacements:
+            replacements["mask"] = self._mask
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        return Union(**replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, name=self._name), *args, **kwds)
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
@@ -803,6 +869,9 @@ class Union(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
         args = []
+
+        if self._name is not None:
+            prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedUnionGenerator
@@ -855,7 +924,9 @@ class Record(Schema):
         trial = []
         try:
             for n, x in fields.items():
-                assert isinstance(n, basestring) and self._identifier.match(n) is not None, "fields must be a dict from identifier strings to Schemas; the key {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern)
+                assert isinstance(n, basestring), "fields must be a dict from identifier strings to Schemas; the key {0} is not a string".format(repr(n))
+                matches = self._identifier.match(n)
+                assert matches is not None and len(matches.group(0)) == len(n), "fields must be a dict from identifier strings to Schemas; the key {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern)
                 assert isinstance(x, Schema), "fields must be a dict from identifier strings to Schemas; the value at key {0} is {1}".format(repr(n), repr(x))
                 trial.append((n, x))
         except AttributeError:
@@ -958,6 +1029,20 @@ class Record(Schema):
         else:
             labels.append(self)
 
+    def copy(self, **replacements):
+        if "fields" not in replacements:
+            replacements["fields"] = self._fields
+        if "nullable" not in replacements:
+            replacements["nullable"] = self._nullable
+        if "mask" not in replacements:
+            replacements["mask"] = self._mask
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        return Record(**replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, name=self._name), *args, **kwds)
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
@@ -990,13 +1075,15 @@ class Record(Schema):
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _generator(self, prefix, delimiter, cacheidx, memo):
+        if len(self.fields) == 0:
+            raise TypeError("Record has no fields")
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
         args = []
 
-        if len(self.fields) == 0:
-            raise TypeError("Record has no fields")
+        if self._name is not None:
+            prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedRecordGenerator
@@ -1146,6 +1233,20 @@ class Tuple(Schema):
         else:
             labels.append(self)
 
+    def copy(self, **replacements):
+        if "types" not in replacements:
+            replacements["types"] = self._types
+        if "nullable" not in replacements:
+            replacements["nullable"] = self._nullable
+        if "mask" not in replacements:
+            replacements["mask"] = self._mask
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        return Tuple(**replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, name=self._name), *args, **kwds)
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
@@ -1174,13 +1275,15 @@ class Tuple(Schema):
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _generator(self, prefix, delimiter, cacheidx, memo):
+        if len(self.types) == 0:
+            raise TypeError("Tuple has no types")
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
         args = []
 
-        if len(self.types) == 0:
-            raise TypeError("Tuple has no types")
+        if self._name is not None:
+            prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedTupleGenerator
@@ -1316,6 +1419,22 @@ class Pointer(Schema):
         else:
             labels.append(self)
 
+    def copy(self, **replacements):
+        if "target" not in replacements:
+            replacements["target"] = self._target
+        if "nullable" not in replacements:
+            replacements["nullable"] = self._nullable
+        if "positions" not in replacements:
+            replacements["positions"] = self._positions
+        if "mask" not in replacements:
+            replacements["mask"] = self._mask
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        return Pointer(**replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, name=self._name), *args, **kwds)
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
@@ -1349,6 +1468,9 @@ class Pointer(Schema):
 
         memo[id(self)] = None
         args = []
+
+        if self._name is not None:
+            prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedPointerGenerator

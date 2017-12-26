@@ -34,9 +34,31 @@ from collections import namedtuple
 import numpy
 
 import oamap.schema
+import oamap.inference
+import oamap.fillable
 from oamap.schema import *
-from oamap.inference import fromdata
-from oamap.inference import fromnames
+
+def dropdtype(x):
+    if isinstance(x, Primitive):
+        return x.copy(dtype=None, dims=None)
+    else:
+        return x
+
+def dropnames(x):
+    if isinstance(x, Primitive):
+        return x.copy(data=None, mask=None)
+    elif isinstance(x, List):
+        return x.copy(starts=None, stops=None, mask=None)
+    elif isinstance(x, Union):
+        return x.copy(tags=None, offsets=None, mask=None)
+    elif isinstance(x, Record):
+        return x.copy(mask=None)
+    elif isinstance(x, Tuple):
+        return x.copy(mask=None)
+    elif isinstance(x, Pointer):
+        return x.copy(positions=None, mask=None)
+    else:
+        return x
 
 class TestInference(unittest.TestCase):
     def runTest(self):
@@ -46,15 +68,18 @@ class TestInference(unittest.TestCase):
     env["dtype"] = numpy.dtype
 
     def checkdata(self, data, schema):
-        self.assertEqual(fromdata(data), schema)
+        self.assertEqual(oamap.inference.fromdata(data), schema)
         self.assertTrue(data in schema)
         self.assertEqual(schema, eval(repr(schema), self.env))
         self.assertEqual(schema, eval(schema.show(stream=None), self.env))
         self.assertEqual(schema, Schema.fromJsonString(schema.toJsonString()))
 
+        fromnames = oamap.inference.fromnames(oamap.fillable.arrays(schema).keys())
+        self.assertEqual(schema.replace(dropdtype), fromnames.replace(dropnames))
+
     def test_infer_Unknown(self):
         with self.assertRaises(TypeError):
-            fromdata(None)
+            oamap.inference.fromdata(None)
 
     def test_infer_Primitive(self):
         self.checkdata(False, Primitive("bool_"))
@@ -168,13 +193,13 @@ class TestInference(unittest.TestCase):
 
     def test_infer_List0(self):
         with self.assertRaises(TypeError):
-            fromdata([])
+            oamap.inference.fromdata([])
 
         with self.assertRaises(TypeError):
-            fromdata([None])
+            oamap.inference.fromdata([None])
 
         with self.assertRaises(TypeError):
-            fromdata([None, None, None])
+            oamap.inference.fromdata([None, None, None])
 
     def test_infer_List1(self):
         self.checkdata([False], List(Primitive("bool_")))
