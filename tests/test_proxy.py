@@ -36,6 +36,27 @@ class TestProxy(unittest.TestCase):
     def runTest(self):
         pass
 
+    def test_ListProxy_slicing(self):
+        range100 = list(range(100))
+        proxy100 = List(Primitive("i8"))({"object-B": [0], "object-E": [100], "object-L": range100})
+        self.assertEqual(range100, proxy100)
+        for start1 in [None, 0, 5, 95, 110, -1, -5, -95, -110]:
+            for stop1 in [None, 0, 5, 95, 110, -1, -5, -95, -110]:
+                for step1 in [None, 1, 2, 5, 90, 110, -1, -2, -5, -90, -110]:
+                    sliced_range100 = range100[start1:stop1:step1]
+                    sliced_proxy100 = proxy100[start1:stop1:step1]
+                    self.assertEqual(sliced_range100, sliced_proxy100)
+                    if len(sliced_range100) > 0:
+                        for start2 in [None, 0, 5, -1, -5]:
+                            for stop2 in [None, 0, 5, -1, -5]:
+                                for step2 in [None, 1, 3, -1, -3]:
+                                    self.assertEqual(sliced_range100[start2:stop2:step2], sliced_proxy100[start2:stop2:step2])
+
+
+
+
+
+
     def test_Primitive(self):
         self.assertEqual(Primitive("f8")({"object": [3.14]}), 3.14)
         self.assertEqual(Primitive("f8")({"object": [[[1, 2], [3, 4]]]}), [[1, 2], [3, 4]])

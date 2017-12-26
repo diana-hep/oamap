@@ -36,5 +36,5 @@ class TestFill(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_fill(self):
+    def test_Primitive(self):
         pass
