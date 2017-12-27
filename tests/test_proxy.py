@@ -52,11 +52,6 @@ class TestProxy(unittest.TestCase):
                                 for step2 in [None, 1, 3, -1, -3]:
                                     self.assertEqual(sliced_range100[start2:stop2:step2], sliced_proxy100[start2:stop2:step2])
 
-
-
-
-
-
     def test_Primitive(self):
         self.assertEqual(Primitive("f8")({"object": [3.14]}), 3.14)
         self.assertEqual(Primitive("f8")({"object": [[[1, 2], [3, 4]]]}), [[1, 2], [3, 4]])
