@@ -38,48 +38,7 @@ import oamap.fillable
 def toarrays(fillables):
     return dict((n, x[:]) for n, x in fillables.items())
 
-################################################################ helper functions for JSON-derived data and iterables
-
-def fromjson(value, generator=None, fillables=None, pointer_fromequal=False):
-    if hasattr(value, "read"):
-        data = json.load(value)
-    else:
-        data = json.loads(value)
-    return fromdata(value, generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
-
-def fromjsons(values, generator=None, fillables=None, pointer_fromequal=False):
-    if hasattr(values, "read"):
-        def iterator():
-            j = json.JSONDecoder()
-            buf = ""
-            while True:
-                try:
-                    obj, i = j.raw_decode(buf)
-                except ValueError:
-                    extra = values.read(8192)
-                    if len(extra) == 0:
-                        break
-                    else:
-                        buf = buf.lstrip() + extra
-                else:
-                    yield obj
-                    buf = buf[i:].lstrip()
-
-    else:
-        def iterator():
-            j = json.JSONDecoder()
-            index = 0
-            while True:
-                try:
-                    obj, i = j.raw_decode(values[index:])
-                except ValueError:
-                    break
-                yield obj
-                _, index = fromjsons._pattern.match(values, index + i).span()
-
-    return fromiterdata(iterator(), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
-
-fromjsons._pattern = re.compile("\s*")
+################################################################ Python data, possibly made by json.load
 
 def fromiterdata(values, generator=None, fillables=None, pointer_fromequal=False):
     for value in values:
@@ -95,8 +54,6 @@ def fromiterdata(values, generator=None, fillables=None, pointer_fromequal=False
         fromdata(value, generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
 
     return fillables
-
-################################################################ Python data, possibly made by json.load
 
 def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
     if generator is None:
@@ -324,3 +281,49 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
 
     # return fillables, which can be evaluated to become arrays
     return fillables
+
+################################################################ helper functions for JSON-derived data and iterables
+
+def fromjson(value, generator=None, fillables=None, pointer_fromequal=False):
+    return fromdata(oamap.inference.jsonconventions(value), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+
+def fromjsonfile(value, generator=None, fillables=None, pointer_fromequal=False):
+    return fromdata(oamap.inference.jsonconventions(json.load(value)), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+
+def fromjsonstring(value, generator=None, fillables=None, pointer_fromequal=False):
+    return fromdata(oamap.inference.jsonconventions(json.loads(value)), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+
+def fromjsonfilestream(values, generator=None, fillables=None, pointer_fromequal=False):
+    def iterator():
+        j = json.JSONDecoder()
+        buf = ""
+        while True:
+            try:
+                obj, i = j.raw_decode(buf)
+            except ValueError:
+                extra = values.read(8192)
+                if len(extra) == 0:
+                    break
+                else:
+                    buf = buf.lstrip() + extra
+            else:
+                yield oamap.inference.jsonconventions(obj)
+                buf = buf[i:].lstrip()
+
+    return fromiterdata(iterator(), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+
+def fromjsonstream(values, generator=None, fillables=None, pointer_fromequal=False):
+    def iterator():
+        j = json.JSONDecoder()
+        index = 0
+        while True:
+            try:
+                obj, i = j.raw_decode(values[index:])
+            except ValueError:
+                break
+            yield oamap.inference.jsonconventions(obj)
+            _, index = fromjsonstream._pattern.match(values, index + i).span()
+
+    return fromiterdata(iterator(), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+
+fromjsonstream._pattern = re.compile("\s*")

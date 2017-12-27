@@ -72,7 +72,7 @@ class TestInference(unittest.TestCase):
         self.assertTrue(data in schema)
         self.assertEqual(schema, eval(repr(schema), self.env))
         self.assertEqual(schema, eval(schema.show(stream=None), self.env))
-        self.assertEqual(schema, Schema.fromJsonString(schema.toJsonString()))
+        self.assertEqual(schema, Schema.fromjsonstring(schema.tojsonstring()))
 
         fromnames = oamap.inference.fromnames(oamap.fillable.arrays(schema).keys())
         self.assertEqual(schema.replace(dropdtype), fromnames.replace(dropnames))

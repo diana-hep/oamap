@@ -30,11 +30,37 @@
 
 import unittest
 
+import oamap.inference
 import oamap.fill
+import oamap.proxy
+from oamap.schema import *
 
 class TestFill(unittest.TestCase):
     def runTest(self):
         pass
 
+    def check(self, value, schema=None, debug=False):
+        if schema is None:
+            schema = oamap.inference.fromjson(value)
+        if debug:
+            print("schema: {0}".format(schema))
+        arrays = oamap.fill.toarrays(oamap.fill.fromjson(value, schema))
+        if debug:
+            print("arrays: {0}".format(arrays))
+        columnar = schema(arrays)
+        if debug:
+            print("columnar: {0}".format(columnar))
+        value2 = oamap.proxy.tojson(columnar)
+        self.assertEqual(value, value2)
+
     def test_Primitive(self):
-        oamap.fill.toarrays(oamap.fill.fromdata(3.14))
+        self.check(3)
+        self.check(3.14)
+        self.check({"real": 3, "imag": 4})
+        self.check("inf")
+        self.check("-inf")
+        self.check("nan")
+        self.check([[1, 2], [3, 4]], Primitive("i8", (2, 2)))
+
+    def test_List(self):
+        self.check([1, 2, 3])

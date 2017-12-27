@@ -28,13 +28,49 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import json
+import numbers
 import sys
+import math
+
+import numpy
 
 if sys.version_info[0] > 2:
     xrange = range
 
 # base class of all runtime types that require proxies: List, Record, and Tuple
 class Proxy(object): pass
+
+def tojson(value):
+    if isinstance(value, ListProxy):
+        return [tojson(x) for x in value]
+    elif isinstance(value, RecordProxy):
+        return dict((n, tojson(getattr(n))) for n in value._fields)
+    elif isinstance(value, TupleProxy):
+        return [tojson(x) for x in value]
+    elif isinstance(value, numbers.Integral):
+        return int(value)
+    elif isinstance(value, numbers.Real):
+        if math.isnan(value):
+            return "nan"
+        elif value == float("-inf"):
+            return "-inf"
+        elif value == float("inf"):
+            return "inf"
+        else:
+            return float(value)
+    elif isinstance(value, numbers.Complex):
+        return {"real": tojson(value.real), "imag": tojson(value.imag)}
+    elif isinstance(value, numpy.ndarray):
+        return value.tolist()
+    else:
+        return value
+
+def tojsonstring(value, *args, **kwds):
+    return json.dumps(tojson(value), *args, **kwds)
+
+def tojsonfile(file, value, *args, **kwds):
+    json.dump(file, tojson(value), *args, **kwds)
 
 ################################################################ Lists
 
