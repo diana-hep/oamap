@@ -45,7 +45,7 @@ def tojson(value):
     if isinstance(value, ListProxy):
         return [tojson(x) for x in value]
     elif isinstance(value, RecordProxy):
-        return dict((n, tojson(getattr(n))) for n in value._fields)
+        return dict((n, tojson(getattr(value, n))) for n in value._fields)
     elif isinstance(value, TupleProxy):
         return [tojson(x) for x in value]
     elif isinstance(value, numbers.Integral):
@@ -233,9 +233,13 @@ class RecordProxy(Proxy):
     def __repr__(self):
         return "<{0} at index {1}>".format("Record" if self._generator.name is None else self._generator.name, self._index)
 
+    @property
+    def _fields(self):
+        return list(self._generator.fields)
+
     def __getattr__(self, field):
         if field.startswith("_"):
-            return super(RecordProxy, self).__getattr__(field)
+            return self.__dict__[field]
         else:
             try:
                 generator = self._generator.fields[field]
@@ -248,7 +252,7 @@ class RecordProxy(Proxy):
         return hash((RecordProxy, self._generator.name) + tuple(self._generator.fields.items()))
 
     def __eq__(self, other):
-        return isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._generator.fields) == set(other._generator.fields) and all(self.__getattr__(n) for n in self._generator.fields)
+        return isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._generator.fields) == set(other._generator.fields) and all(self.__getattr__(n) == other.__getattr__(n) for n in self._generator.fields)
 
     def __lt__(self, other):
         if isinstance(other, RecordProxy) and self._generator.name == other._generator.name and set(self._generator.fields) == set(other._generator.fields):

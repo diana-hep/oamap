@@ -67,8 +67,8 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
 
     # get a list of generators (innermost outward) and make sure they're all starting at the last good entry
     pointers = []
-    pointerobjs = {}
-    targetids = {}
+    pointerobjs_keys = []
+    targetids_keys = []
     fillables_leaf_to_root = []
     def initialize(gen):
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
@@ -106,13 +106,13 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             forefront = list(uniques)[0]
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
-            if gen._internal and gen.target is generator and len(generator) != 0:
+            if gen._internal and gen.target is generator and len(fillables[gen.positions]) != 0:
                 raise TypeError("the root of a Schema may be the target of a Pointer, but if so, it can only be filled from data once")
 
             if gen not in pointers:
                 pointers.append(gen)
-            pointerobjs[id(gen)] = []
-            targetids[id(gen.target)] = {}
+            pointerobjs_keys.append(id(gen))
+            targetids_keys.append(id(gen.target))
 
             if not gen._internal:
                 initialize(gen.target)
@@ -162,7 +162,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
         raise TypeError("non-Lists can only be filled from data once")
 
     # the fill function (recursive)
-    def fill(obj, gen):
+    def fill(obj, gen, targetids, pointerobjs):
         if id(gen) in targetids:
             targetids[id(gen)][id(obj)] = (forefront(gen), obj)
 
@@ -182,7 +182,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                     raise TypeError("cannot fill {0} where expecting type {1}".format(repr(obj), gen.schema))
                 else:
                     for x in obj:
-                        fill(x, gen.content)
+                        fill(x, gen.content, targetids, pointerobjs)
                         stop += 1
 
             fillables[gen.starts].append(start)
@@ -193,15 +193,15 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                 tag = offset = -1
             else:
                 tag = None
-                for i, possibility in gen.possibilities:
-                    if obj in possibility:
+                for i, possibility in enumerate(gen.possibilities):
+                    if obj in possibility.schema:
                         tag = i
                         break
                 if tag is None:
                     raise TypeError("cannot fill {0} where expecting type {1}".format(repr(obj), gen.schema))
                 
                 offset = forefront(possibility)
-                fill(obj, possibility)
+                fill(obj, possibility, targetids, pointerobjs)
 
             fillables[gen.tags].append(tag)
             fillables[gen.offsets].append(offset)
@@ -213,12 +213,12 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                 for n, x in gen.fields.items():
                     if n not in obj:
                         raise TypeError("cannot fill {0} because its {1} field is missing".format(repr(obj), repr(n)))
-                    fill(obj[n], x)
+                    fill(obj[n], x, targetids, pointerobjs)
             else:
                 for n, x in gen.fields.items():
                     if not hasattr(obj, n):
                         raise TypeError("cannot fill {0} because its {1} field is missing".format(repr(obj), repr(n)))
-                    fill(getattr(obj, n), x)
+                    fill(getattr(obj, n), x, targetids, pointerobjs)
 
         elif isinstance(gen, oamap.generator.TupleGenerator):
             if obj is None:
@@ -230,12 +230,12 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                     except (TypeError, IndexError):
                         raise TypeError("cannot fill {0} because it does not have a field {1}".format(repr(obj), i))
                     else:
-                        fill(v, x)
+                        fill(v, x, targetids, pointerobjs)
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
             # Pointers will be set after we see all the target values
             pointerobjs[id(gen)].append(obj)
-        
+
         if isinstance(gen, oamap.generator.Masked):
             if obj is None:
                 fillables[gen.mask].append(True)
@@ -243,15 +243,18 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                 fillables[gen.mask].append(False)
 
     # attempt to fill (fillables won't update their 'len' until we 'update')
-    fill(value, generator)
+    targetids = dict((x, {}) for x in targetids_keys)
+    pointerobjs = dict((x, []) for x in pointerobjs_keys)
+    fill(value, generator, targetids, pointerobjs)
 
     # do the pointers after everything else
     for pointer in pointers:
+        while len(pointerobjs[id(pointer)]) > 0:
+            pointerobjs2 = {id(pointer): []}
             for obj in pointerobjs[id(pointer)]:
-                if id(obj) in targetids[id(pointer.target)] and targetids[id(pointer.target)][id(obj)] == obj:
+                if id(obj) in targetids[id(pointer.target)] and targetids[id(pointer.target)][id(obj)][1] == obj:
                     # case 1: an object in the target *is* the object in the pointer (same ids)
                     position, _ = targetids[id(pointer.target)][id(obj)]
-                    del targetids[id(pointer.target)][id(obj)]
 
                 else:
                     position = None
@@ -263,17 +266,18 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                                 break
 
                     if position is not None:
-                        # case 2: an object in the target *is equal to* the object in the pointer
-                        del targetids[id(pointer.target)][key]
+                        # case 2: an object in the target *is equal to* the object in the pointer (only check if pointer_fromequal)
+                        pass
 
                     else:
                         # case 3: the object was not found; it must be added to the target (beyond indexes where it can be found)
-                        fill(obj, pointer.target)
+                        fill(obj, pointer.target, targetids, pointerobjs2)
                         position, _ = targetids[id(pointer.target)][id(obj)]
-                        del targetids[id(pointer.target)][id(obj)]
 
                 # every obj in pointerobjs[id(pointer)] gets *one* append
                 fillables[pointer.positions].append(position)
+
+            pointerobjs[id(pointer)] = pointerobjs2[id(pointer)]
 
     # success! (we're still here)
     for fillable in fillables_leaf_to_root:

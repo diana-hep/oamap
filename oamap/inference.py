@@ -39,20 +39,27 @@ from oamap.schema import OrderedDict
 ################################################################ inferring schemas from data
 
 def jsonconventions(value):
-    if isinstance(value, dict) and len(value) == 2 and set(value.keys()) == set(["real", "imag"]) and all(isinstance(x, (int, float)) for x in value.values()):
-        return value["real"] + value["imag"]*1j
-    elif value == "inf":
-        return float("inf")
-    elif value == "-inf":
-        return float("-inf")
-    elif value == "nan":
-        return float("nan")
-    elif isinstance(value, list):
-        return [jsonconventions(x) for x in value]
-    elif isinstance(value, dict):
-        return dict((n, jsonconventions(x)) for n, x in value.items())
-    else:
-        return value
+    def recurse(value, memo):
+        if id(value) in memo:
+            return memo[id(value)]
+        memo[id(value)] = value
+
+        if isinstance(value, dict) and len(value) == 2 and set(value.keys()) == set(["real", "imag"]) and all(isinstance(x, (int, float)) for x in value.values()):
+            return value["real"] + value["imag"]*1j
+        elif value == "inf":
+            return float("inf")
+        elif value == "-inf":
+            return float("-inf")
+        elif value == "nan":
+            return float("nan")
+        elif isinstance(value, list):
+            return [recurse(x, memo) for x in value]
+        elif isinstance(value, dict):
+            return dict((n, recurse(x, memo)) for n, x in value.items())
+        else:
+            return value
+
+    return recurse(value, {})
 
 def fromjson(obj, limititems=None):
     return fromdata(jsonconventions(obj), limititems=limititems)

@@ -63,4 +63,45 @@ class TestFill(unittest.TestCase):
         self.check([[1, 2], [3, 4]], Primitive("i8", (2, 2)))
 
     def test_List(self):
+        self.check([], schema=List(Primitive("i8")))
+        self.check([], schema=List(List(List(List(Primitive("i8"))))))
+        self.check([[[[]]]], schema=List(List(List(List(Primitive("i8"))))))
         self.check([1, 2, 3])
+        self.check([[1, 2, 3], [], [4, 5]])
+
+    def test_Union(self):
+        self.check([1, 2, 3, 4.4, 5.5, 6.6], schema=List(Union([Primitive("i8"), Primitive("f8")])))
+        self.check([3.14, [], 1.1, 2.2, [1, 2, 3]])
+
+    def test_Record(self):
+        self.check({"one": 1, "two": 2.2})
+        self.check({"one": {"uno": 1, "dos": 2}, "two": 2.2})
+        self.check({"one": {"uno": 1, "dos": [2]}, "two": 2.2})
+        self.check([{"one": 1, "two": 2.2}, {"one": 1.1, "two": 2.2}])         # two of same Record
+        self.check([{"one": 1, "two": 2.2}, {"one": [1, 2, 3], "two": 2.2}])   # Union of attribute
+        self.check([{"one": 1, "two": 2.2}, {"two": 2.2}])                     # Union of Records
+
+    def test_Tuple(self):
+        self.check([1, [2, 3], [[4, 5], [6]]], schema=Tuple([Primitive("i8"), List(Primitive("i8")), List(List(Primitive("i8")))]))
+
+    def test_Pointer(self):
+        class Node(object):
+            def __init__(self, label, next):
+                self.label = label
+                self.next = next
+
+        schema = Record({"label": Primitive("i8")}, name="Node")
+        schema["next"] = Pointer(schema)
+        value = Node(0, Node(1, Node(2, None)))
+        value.next.next.next = value
+
+        arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, schema))
+        columnar = schema(arrays)
+
+        self.assertEqual(value.label, columnar.label)
+        self.assertEqual(value.next.label, columnar.next.label)
+        self.assertEqual(value.next.next.label, columnar.next.next.label)
+        self.assertEqual(value.next.next.next.label, columnar.next.next.next.label)
+        self.assertEqual(value.next.next.next.next.label, columnar.next.next.next.next.label)
+        self.assertEqual(value.next.next.next.next.next.label, columnar.next.next.next.next.next.label)
+        self.assertEqual(value.next.next.next.next.next.next.label, columnar.next.next.next.next.next.next.label)

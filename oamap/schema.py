@@ -1075,7 +1075,7 @@ class Record(Schema):
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _generator(self, prefix, delimiter, cacheidx, memo):
-        if len(self.fields) == 0:
+        if len(self._fields) == 0:
             raise TypeError("Record has no fields")
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
@@ -1275,7 +1275,7 @@ class Tuple(Schema):
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
 
     def _generator(self, prefix, delimiter, cacheidx, memo):
-        if len(self.types) == 0:
+        if len(self._types) == 0:
             raise TypeError("Tuple has no types")
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
