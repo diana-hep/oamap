@@ -189,7 +189,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             fillables[gen.stops].append(stop)
 
         elif isinstance(gen, oamap.generator.UnionGenerator):
-            if obj is None:
+            if obj is None and isinstance(gen, oamap.generator.Masked):
                 tag = offset = -1
             else:
                 tag = None

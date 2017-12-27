@@ -46,7 +46,9 @@ class TestFill(unittest.TestCase):
             print("schema: {0}".format(schema))
         arrays = oamap.fill.toarrays(oamap.fill.fromjson(value, schema))
         if debug:
-            print("arrays: {0}".format(arrays))
+            print("arrays:")
+            for n in sorted(arrays):
+                print("  {0}: {1}".format(repr(n), arrays[n]))
         columnar = schema(arrays)
         if debug:
             print("columnar: {0}".format(columnar))
@@ -68,10 +70,12 @@ class TestFill(unittest.TestCase):
         self.check([[[[]]]], schema=List(List(List(List(Primitive("i8"))))))
         self.check([1, 2, 3])
         self.check([[1, 2, 3], [], [4, 5]])
+        self.check([[1, 2, None], [], [4, 5]])
 
     def test_Union(self):
         self.check([1, 2, 3, 4.4, 5.5, 6.6], schema=List(Union([Primitive("i8"), Primitive("f8")])))
         self.check([3.14, [], 1.1, 2.2, [1, 2, 3]])
+        self.check([3.14, [], 1.1, None, [1, 2, 3]])
 
     def test_Record(self):
         self.check({"one": 1, "two": 2.2})
@@ -80,9 +84,11 @@ class TestFill(unittest.TestCase):
         self.check([{"one": 1, "two": 2.2}, {"one": 1.1, "two": 2.2}])         # two of same Record
         self.check([{"one": 1, "two": 2.2}, {"one": [1, 2, 3], "two": 2.2}])   # Union of attribute
         self.check([{"one": 1, "two": 2.2}, {"two": 2.2}])                     # Union of Records
+        self.check([{"one": 1, "two": 2.2}, None])                             # nullable Record
 
     def test_Tuple(self):
         self.check([1, [2, 3], [[4, 5], [6]]], schema=Tuple([Primitive("i8"), List(Primitive("i8")), List(List(Primitive("i8")))]))
+        self.check([1, [2, 3], None], schema=Tuple([Primitive("i8"), List(Primitive("i8")), List(List(Primitive("i8")), nullable=True)]))
 
     def test_Pointer(self):
         class Node(object):
