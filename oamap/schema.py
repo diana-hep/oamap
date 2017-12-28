@@ -113,6 +113,16 @@ class Schema(object):
                 return
         raise TypeError("name must be None or a string matching /{0}/, not {1}".format(repr(value), self._identifier.pattern))
 
+    @property
+    def doc(self):
+        return self._doc
+
+    @doc.setter
+    def doc(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("doc must be None or a string, not {0}".format(repr(value)))
+        self._doc = value
+
     def _labels(self):
         labels = []
         self._collectlabels(set(), labels)
@@ -245,13 +255,14 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, name=None):
+    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, name=None, doc=None):
         self.dtype = dtype
         self.dims = dims
         self.nullable = nullable
         self.data = data
         self.mask = mask
         self.name = name
+        self.doc = doc
 
     @property
     def dtype(self):
@@ -343,6 +354,8 @@ class Primitive(Schema):
                     out["mask"] = self._mask
                 if explicit or self._name is not None:
                     out["name"] = self._name
+                if explicit or self._doc is not None:
+                    out["doc"] = self._doc
                 if explicit or label is not None:
                     out["label"] = label
                 return out
@@ -356,7 +369,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), name=data.get("name", None))
+            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), name=data.get("name", None), doc=data.get("doc", None))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -473,13 +486,14 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, name=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, name=None, doc=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
         self.stops = stops
         self.mask = mask
         self.name = name
+        self.doc = doc
 
     @property
     def content(self):
@@ -566,6 +580,8 @@ class List(Schema):
                 out["mask"] = self._mask
             if explicit or self._name is not None:
                 out["name"] = self._name
+            if explicit or self._doc is not None:
+                out["doc"] = self._doc
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -583,6 +599,7 @@ class List(Schema):
         out.stops = data.get("stops", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        out.doc = data.get("doc", None)
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -703,13 +720,14 @@ class List(Schema):
 ################################################################ Unions may be one of several types
 
 class Union(Schema):
-    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, name=None):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, name=None, doc=None):
         self.possibilities = possibilities
         self.nullable = nullable
         self.tags = tags
         self.offsets = offsets
         self.mask = mask
         self.name = name
+        self.doc = doc
 
     @property
     def possibilities(self):
@@ -833,6 +851,8 @@ class Union(Schema):
                 out["mask"] = self._mask
             if explicit or self._name is not None:
                 out["name"] = self._name
+            if explicit or self._doc is not None:
+                out["doc"] = self._doc
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -852,6 +872,7 @@ class Union(Schema):
         out.offsets = data.get("offsets", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        out.doc = data.get("doc", None)
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -965,11 +986,12 @@ class Union(Schema):
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
-    def __init__(self, fields, nullable=False, mask=None, name=None):
+    def __init__(self, fields, nullable=False, mask=None, name=None, doc=None):
         self.fields = fields
         self.nullable = nullable
         self.mask = mask
         self.name = name
+        self.doc = doc
 
     @property
     def fields(self):
@@ -1051,6 +1073,8 @@ class Record(Schema):
                 out["mask"] = self._mask
             if explicit or self._name is not None:
                 out["name"] = self._name
+            if explicit or self._doc is not None:
+                out["doc"] = self._doc
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1071,6 +1095,7 @@ class Record(Schema):
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        out.doc = data.get("doc", None)
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -1177,11 +1202,12 @@ class Record(Schema):
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, types, nullable=False, mask=None, name=None):
+    def __init__(self, types, nullable=False, mask=None, name=None, doc=None):
         self.types = types
         self.nullable = nullable
         self.mask = mask
         self.name = name
+        self.doc = doc
 
     @property
     def types(self):
@@ -1274,6 +1300,8 @@ class Tuple(Schema):
                 out["mask"] = self._mask
             if explicit or self._name is not None:
                 out["name"] = self._name
+            if explicit or self._doc is not None:
+                out["doc"] = self._doc
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1291,6 +1319,7 @@ class Tuple(Schema):
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        out.doc = data.get("doc", None)
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -1393,12 +1422,13 @@ class Tuple(Schema):
 ################################################################ Pointers redirect to the contents of other types
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None, name=None):
+    def __init__(self, target, nullable=False, positions=None, mask=None, name=None, doc=None):
         self.target = target
         self.nullable = nullable
         self.positions = positions
         self.mask = mask
         self.name = name
+        self.doc = doc
 
     @property
     def target(self):
@@ -1473,6 +1503,8 @@ class Pointer(Schema):
                 out["mask"] = self._mask
             if explicit or self._name is not None:
                 out["name"] = self._name
+            if explicit or self._doc is not None:
+                out["doc"] = self._doc
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1489,6 +1521,7 @@ class Pointer(Schema):
         out.positions = data.get("positions", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
+        out.doc = data.get("doc", None)
         if "label" in data:
             labels[data["label"]] = out
         return out
