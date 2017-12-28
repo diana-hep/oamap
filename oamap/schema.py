@@ -447,11 +447,6 @@ class Primitive(Schema):
         else:
             cls = oamap.generator.PrimitiveGenerator
 
-        for ext in extension:
-            if ext.matches(self):
-                cls = ext
-                break
-
         if self._data is None:
             args.append(prefix)
         else:
@@ -463,6 +458,12 @@ class Primitive(Schema):
         args.append(self._name)
         args.append(prefix)
         args.append(self)
+
+        for ext in extension:
+            if ext.matches(self):
+                args.insert(0, cls)
+                cls = ext
+                break
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
@@ -670,11 +671,6 @@ class List(Schema):
         else:
             cls = oamap.generator.ListGenerator
 
-        for ext in extension:
-            if ext.matches(self):
-                cls = ext
-                break
-
         if self._starts is None:
             args.append(prefix + delimiter + "B")
         else:
@@ -691,6 +687,12 @@ class List(Schema):
         args.append(self._name)
         args.append(prefix)
         args.append(self)
+
+        for ext in extension:
+            if ext.matches(self):
+                args.insert(0, cls)
+                cls = ext
+                break
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
@@ -930,11 +932,6 @@ class Union(Schema):
         else:
             cls = oamap.generator.UnionGenerator
 
-        for ext in extension:
-            if ext.matches(self):
-                cls = ext
-                break
-
         if self._tags is None:
             args.append(prefix + delimiter + "T")
         else:
@@ -951,6 +948,12 @@ class Union(Schema):
         args.append(self._name)
         args.append(prefix)
         args.append(self)
+
+        for ext in extension:
+            if ext.matches(self):
+                args.insert(0, cls)
+                cls = ext
+                break
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
@@ -1152,15 +1155,16 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        for ext in extension:
-            if ext.matches(self):
-                cls = ext
-                break
-
         args.append(OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, extension)) for n in sorted(self._fields)]))
         args.append(self._name)
         args.append(prefix)
         args.append(self)
+
+        for ext in extension:
+            if ext.matches(self):
+                args.insert(0, cls)
+                cls = ext
+                break
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
@@ -1366,15 +1370,16 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        for ext in extension:
-            if ext.matches(self):
-                cls = ext
-                break
-
         args.append([x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._types)])
         args.append(self._name)
         args.append(prefix)
         args.append(self)
+
+        for ext in extension:
+            if ext.matches(self):
+                args.insert(0, cls)
+                cls = ext
+                break
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
@@ -1561,11 +1566,6 @@ class Pointer(Schema):
         else:
             cls = oamap.generator.PointerGenerator
 
-        for ext in extension:
-            if ext.matches(self):
-                cls = ext
-                break
-
         if self._positions is None:
             args.append(prefix + delimiter + "P")
         else:
@@ -1576,6 +1576,12 @@ class Pointer(Schema):
         args.append(self._name)
         args.append(prefix)
         args.append(self)
+
+        for ext in extension:
+            if ext.matches(self):
+                args.insert(0, cls)
+                cls = ext
+                break
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]

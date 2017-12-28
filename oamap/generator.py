@@ -69,9 +69,9 @@ class Generator(object):
         return cache.arraylist[cacheidx]
 
     def __init__(self, name, derivedname, schema):
+        self.name = name
         self.derivedname = derivedname
         self.schema = schema
-        self.name = name
 
     def __call__(self, arrays):
         return self._generate(arrays, 0, Cache(self._cachelen))
@@ -207,47 +207,25 @@ class MaskedPointerGenerator(Masked, PointerGenerator):
 ################################################################ for extensions: domain-specific and user
 
 class ExtendedGenerator(Generator):
+    # extensions *must* override pattern and _generate, *may* override matches
     pattern = None
-    proxyclass = None
-
-    # extensions *must* override pattern and proxyclass, *may* override matches and _generate
-    # (some matches/_generate overrides could render pattern or proxyclass irrelevant)
-
-    def __init__(self, *args):
-        self.generic = self.genericclass(*args)
-
     def _generate(self, arrays, index, cache):
-        out = self.generic._generate(arrays, index, cache)
-        if isinstance(self.generic, Masked) and out is None:
-            return out
-        else:
-            return self.proxyclass(out)
+        raise NotImplementedError
+
+    def __init__(self, genericclass, *args):
+        self.generic = genericclass(*args)
 
     @property
     def name(self):
         return self.generic.name
 
     @property
-    def genericclass(self):
-        if isinstance(self.pattern, basestring):
-            return PrimitiveGenerator
-        else:
-            assert isinstance(self.pattern, dict) and "type" in self.pattern
-            nullable = self.pattern.get("nullable", False)
-            if self.pattern["type"] == "primitive":
-                return MaskedPrimitiveGenerator if nullable else PrimitiveGenerator
-            elif self.pattern["type"] == "list":
-                return MaskedListGenerator if nullable else ListGenerator
-            elif self.pattern["type"] == "union":
-                return MaskedUnionGenerator if nullable else UnionGenerator
-            elif self.pattern["type"] == "record":
-                return MaskedRecordGenerator if nullable else RecordGenerator
-            elif self.pattern["type"] == "tuple":
-                return MaskedTupleGenerator if nullable else TupleGenerator
-            elif self.pattern["type"] == "pointer":
-                return MaskedPointerGenerator if nullable else PointerGenerator
-            else:
-                assert self.pattern["type"] in ("primitive", "list", "union", "record", "tuple", "pointer")
+    def derivedname(self):
+        return self.generic.derivedname
+
+    @property
+    def schema(self):
+        return self.generic.schema
 
     @classmethod
     def matches(cls, schema):
