@@ -28,9 +28,14 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import sys
+
 import numpy
 
 import oamap.proxy
+
+if sys.version_info[0] > 2:
+    basestring = str
 
 # array cache, so that arrays are only loaded once (might be an expensive network operation)
 class Cache(object):
@@ -199,6 +204,106 @@ class MaskedPointerGenerator(Masked, PointerGenerator):
         Masked.__init__(self, mask, maskidx)
         PointerGenerator.__init__(self, positions, positionsidx, target, name, derivedname, schema)
 
+################################################################ for extensions: domain-specific and user
+
+class ExtendedGenerator(Generator):
+    pattern = None
+    proxyclass = None
+
+    # extensions *must* override pattern and proxyclass, *may* override matches and _generate
+    # (some matches/_generate overrides could render pattern or proxyclass irrelevant)
+
+    def __init__(self, *args):
+        self.generic = self.genericclass(*args)
+
+    def _generate(self, arrays, index, cache):
+        out = self.generic._generate(arrays, index, cache)
+        if isinstance(self.generic, Masked) and out is None:
+            return out
+        else:
+            return self.proxyclass(out)
+
+    @property
+    def name(self):
+        return self.generic.name
+
+    @property
+    def genericclass(self):
+        if isinstance(self.pattern, basestring):
+            return PrimitiveGenerator
+        else:
+            assert isinstance(self.pattern, dict) and "type" in self.pattern
+            nullable = self.pattern.get("nullable", False)
+            if self.pattern["type"] == "primitive":
+                return MaskedPrimitiveGenerator if nullable else PrimitiveGenerator
+            elif self.pattern["type"] == "list":
+                return MaskedListGenerator if nullable else ListGenerator
+            elif self.pattern["type"] == "union":
+                return MaskedUnionGenerator if nullable else UnionGenerator
+            elif self.pattern["type"] == "record":
+                return MaskedRecordGenerator if nullable else RecordGenerator
+            elif self.pattern["type"] == "tuple":
+                return MaskedTupleGenerator if nullable else TupleGenerator
+            elif self.pattern["type"] == "pointer":
+                return MaskedPointerGenerator if nullable else PointerGenerator
+            else:
+                assert self.pattern["type"] in ("primitive", "list", "union", "record", "tuple", "pointer")
+
+    @classmethod
+    def matches(cls, schema):
+        def recurse(pattern, schema):
+            if isinstance(pattern, basestring):
+                return schema["type"] == "primitive" and schema["dtype"] == pattern
+            else:
+                assert isinstance(pattern, dict) and "type" in pattern
+
+                if "nullable" in pattern and pattern["nullable"] != schema["nullable"]:
+                    return False
+                if "name" in pattern and pattern["name"] != schema["name"]:
+                    return False
+                if "label" in pattern and pattern["label"] != schema["label"]:
+                    return False
+
+                if pattern["type"] == "primitive":
+                    if "dtype" in pattern and pattern["dtype"] != schema["dtype"]:
+                        return False
+                    if "dims" in pattern and pattern["dims"] != schema["dims"]:
+                        return False
+                    return True
+
+                elif pattern["type"] == "list":
+                    if "content" in pattern:
+                        return recurse(pattern["content"], schema["content"])
+                    return True
+
+                elif pattern["type"] == "union":
+                    if "possibilities" in pattern:
+                        return len(pattern["possibilities"]) == len(schema["possibilities"]) and all(recurse(x, y) for x, y in zip(pattern["possibilities"], schema["possibilities"]))
+                    return True
+
+                elif pattern["type"] == "record":
+                    if "fields" in pattern:
+                        if isinstance(pattern["fields"], dict):
+                            return set(pattern["fields"].keys()).issubset(set(n for n, x in schema["fields"])) and all(recurse(px, [sx for sn, sx in schema["fields"] if pn == sn][0]) for pn, px in pattern["fields"].items())
+                        else:
+                            return len(pattern["fields"]) == len(schema["fields"]) and all(pn == sn and recurse(px, sx) for (pn, px), (sn, sx) in zip(pattern["fields"], schema["fields"]))
+                    return True
+
+                elif pattern["type"] == "tuple":
+                    if "types" in pattern:
+                        return len(pattern["types"]) == len(schema["types"]) and all(recurse(x, y) for x, y in zip(pattern["types"], schema["types"]))
+                    return True
+
+                elif pattern["type"] == "pointer":
+                    if "target" in pattern:
+                        return recurse(pattern["target"], schema["target"])
+                    return True
+
+                else:
+                    assert pattern["type"] in ("primitive", "list", "union", "record", "tuple", "pointer")
+
+        return recurse(cls.pattern, schema.tojson(explicit=True))
+        
 ################################################################ for assigning unique strings to types (used to distinguish Numba types)
 
 def _firstindex(generator):
@@ -287,6 +392,10 @@ def _uniquestr(generator, memo):
             else:
                 target = generator.target._uniquestr
             generator._uniquestr = "(X {0} {1} {2} {3} {4} {5})".format(givenname, generator.maskidx, repr(generator.mask), generator.positionsidx, repr(generator.positions), target)
+
+        elif isinstance(generator, ExtendedGenerator):
+            _uniquestr(generator.generic, memo)
+            generator._uniquestr = "({0} {1})".format(generator.__class__.__name__, generator.generic._uniquestr)
 
         else:
             raise AssertionError("unrecognized generator type: {0}".format(generator))

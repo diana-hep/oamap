@@ -102,6 +102,9 @@ class ListProxy(Proxy):
         else:
             return "[{0}]".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in self))
 
+    def __str__(self):
+        return repr(self)
+
     def __len__(self):
         return self._length
 
@@ -233,6 +236,9 @@ class RecordProxy(Proxy):
     def __repr__(self):
         return "<{0} at index {1}>".format("Record" if self._generator.name is None else self._generator.name, self._index)
 
+    def __str__(self):
+        return repr(self)
+
     @property
     def _fields(self):
         return list(self._generator.fields)
@@ -284,6 +290,9 @@ class TupleProxy(Proxy):
             return "(...)"
         memo.add(key)
         return "({0}{1})".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in self), "," if len(self) == 1 else "")
+
+    def __str__(self):
+        return repr(self)
 
     def __len__(self):
         return len(self._generator.types)

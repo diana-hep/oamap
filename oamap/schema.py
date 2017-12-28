@@ -32,7 +32,7 @@ import re
 import sys
 import numbers
 import json
-from types import MethodType
+from types import ModuleType
 try:
     from collections import OrderedDict
 except ImportError:
@@ -63,6 +63,7 @@ import numpy
 
 import oamap.generator
 import oamap.compiler
+import oamap.extension.common
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -134,14 +135,14 @@ class Schema(object):
             stream.write(out)
             stream.write("\n")
 
-    def tojsonfile(self, file, *args, **kwds):
-        json.dump(file, self.tojson(), *args, **kwds)
+    def tojsonfile(self, file, explicit=False, *args, **kwds):
+        json.dump(file, self.tojson(explicit=explicit), *args, **kwds)
 
-    def tojsonstring(self, *args, **kwds):
-        return json.dumps(self.tojson(), *args, **kwds)
+    def tojsonstring(self, explicit=False, *args, **kwds):
+        return json.dumps(self.tojson(explicit=explicit), *args, **kwds)
 
-    def tojson(self):
-        return self._tojson(self._labels(), set())
+    def tojson(self, explicit=False):
+        return self._tojson(explicit, self._labels(), set())
 
     @staticmethod
     def fromjsonfile(file, *args, **kwds):
@@ -188,10 +189,33 @@ class Schema(object):
         else:
             raise TypeError("unrecognized type for Schema from JSON: {0}".format(repr(data)))
 
-    def __call__(self, arrays, prefix="object", delimiter="-"):
-        return self.generator(prefix=prefix, delimiter=delimiter)(arrays)
+    def _normalize_extension(self, extension):
+        if isinstance(extension, ModuleType):
+            recurse = False
+            extension = extension.__dict__
+        else:
+            recurse = True
 
-    def _finalizegenerator(self, out, cacheidx, memo):
+        if isinstance(extension, dict):
+            extension = [extension[n] for n in sorted(extension)]
+
+        try:
+            iter(extension)
+        except TypeError:
+            return []
+        else:
+            out = []
+            for x in extension:
+                if isinstance(x, type) and issubclass(x, oamap.generator.ExtendedGenerator):
+                    out.append(x)
+                elif recurse:
+                    out.extend(self._normalize_extension(x))
+            return out
+
+    def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
+        return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
+
+    def _finalizegenerator(self, out, cacheidx, memo, extension):
         allgenerators = list(memo.values())
         for generator in memo.values():
             if isinstance(generator, oamap.generator.PointerGenerator):
@@ -206,7 +230,7 @@ class Schema(object):
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
                     generator._internal = False
-                    generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2), cacheidx, memo2)
+                    generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2, extension), cacheidx, memo2, extension)
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
 
@@ -298,26 +322,26 @@ class Primitive(Schema):
         else:
             labels.append(self)
 
-    def _tojson(self, labels, shown):
+    def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if self._dtype is not None and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._name is None:
+            if not explicit and self._dtype is not None and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._name is None:
                 return str(self._dtype)
             else:
                 out = {"type": "primitive", "dtype": None if self._dtype is None else str(self._dtype)}
-                if self._dims != ():
+                if explicit or self._dims != ():
                     out["dims"] = None if self._dims is None else list(self._dims)
-                if self._nullable is not False:
+                if explicit or self._nullable is not False:
                     out["nullable"] = self._nullable
-                if self._data is not None:
+                if explicit or self._data is not None:
                     out["data"] = self._data
-                if self._mask is not None:
+                if explicit or self._mask is not None:
                     out["mask"] = self._mask
-                if self._name is not None:
+                if explicit or self._name is not None:
                     out["name"] = self._name
-                if label is not None:
+                if explicit or label is not None:
                     out["label"] = label
                 return out
         else:
@@ -396,14 +420,15 @@ class Primitive(Schema):
 
         return recurse(value, self.dims)
 
-    def generator(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
@@ -421,6 +446,11 @@ class Primitive(Schema):
             args.append(cacheidx[0]); cacheidx[0] += 1
         else:
             cls = oamap.generator.PrimitiveGenerator
+
+        for ext in extension:
+            if ext.matches(self):
+                cls = ext
+                break
 
         if self._data is None:
             args.append(prefix)
@@ -454,6 +484,8 @@ class List(Schema):
 
     @content.setter
     def content(self, value):
+        if isinstance(value, basestring):
+            value = Primitive(value)
         if not isinstance(value, Schema):
             raise TypeError("content must be a Schema, not {0}".format(repr(value)))
         self._content = value
@@ -515,23 +547,23 @@ class List(Schema):
         else:
             return label
 
-    def _tojson(self, labels, shown):
+    def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "list", "content": self._content._tojson(labels, shown)}
-            if self._nullable is not False:
+            out = {"type": "list", "content": self._content._tojson(explicit, labels, shown)}
+            if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
-            if self._starts is not None:
+            if explicit or self._starts is not None:
                 out["starts"] = self._starts
-            if self._stops is not None:
+            if explicit or self._stops is not None:
                 out["stops"] = self._stops
-            if self._mask is not None:
+            if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if self._name is not None:
+            if explicit or self._name is not None:
                 out["name"] = self._name
-            if label is not None:
+            if explicit or label is not None:
                 out["label"] = label
             return out
         else:
@@ -611,14 +643,15 @@ class List(Schema):
                     return False
             return True
 
-    def generator(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
@@ -637,6 +670,11 @@ class List(Schema):
         else:
             cls = oamap.generator.ListGenerator
 
+        for ext in extension:
+            if ext.matches(self):
+                cls = ext
+                break
+
         if self._starts is None:
             args.append(prefix + delimiter + "B")
         else:
@@ -649,7 +687,7 @@ class List(Schema):
             args.append(self._stops)
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        args.append(self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo))
+        args.append(self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, extension))
         args.append(self._name)
         args.append(prefix)
         args.append(self)
@@ -700,6 +738,8 @@ class Union(Schema):
         trial = []
         try:
             for i, x in enumerate(possibilities):
+                if isinstance(x, basestring):
+                    x = Primitive(x)
                 assert isinstance(x, Schema), "possibilities must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
                 trial.append(x)
         except TypeError:
@@ -709,11 +749,15 @@ class Union(Schema):
         self._possibilities = start + trial
 
     def append(self, possibility):
+        if isinstance(possibility, basestring):
+            possibility = Primitive(possibility)
         if not isinstance(possibility, Schema):
             raise TypeError("possibilities must be Schemas, not {0}".format(repr(possibility)))
         self._possibilities.append(possibility)
 
     def insert(self, index, possibility):
+        if isinstance(possibility, basestring):
+            possibility = Primitive(possibility)
         if not isinstance(possibility, Schema):
             raise TypeError("possibilities must be Schemas, not {0}".format(repr(possibility)))
         self._possibilities.insert(index, possibility)
@@ -725,6 +769,8 @@ class Union(Schema):
         return self._possibilities[index]
 
     def __setitem__(self, index, value):
+        if isinstance(value, basestring):
+            value = Primitive(value)
         if not isinstance(value, Schema):
             raise TypeError("possibilities must be Schemas, not {0}".format(repr(value)))
         self._possibilities[index] = value
@@ -766,23 +812,23 @@ class Union(Schema):
         else:
             return label
 
-    def _tojson(self, labels, shown):
+    def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "union", "possibilities": [x._tojson(labels, shown) for x in self._possibilities]}
-            if self._nullable is not False:
+            out = {"type": "union", "possibilities": [x._tojson(explicit, labels, shown) for x in self._possibilities]}
+            if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
-            if self._tags is not None:
+            if explicit or self._tags is not None:
                 out["tags"] = self._tags
-            if self._offsets is not None:
+            if explicit or self._offsets is not None:
                 out["offsets"] = self._offsets
-            if self._mask is not None:
+            if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if self._name is not None:
+            if explicit or self._name is not None:
                 out["name"] = self._name
-            if label is not None:
+            if explicit or label is not None:
                 out["label"] = label
             return out
         else:
@@ -857,14 +903,15 @@ class Union(Schema):
             return self.nullable or any(x.nullable for x in self.possibilities)
         return any(x.__contains__(value, memo) for x in self.possibilities)
 
-    def generator(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
         if id(self) in memo:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         memo[id(self)] = None
@@ -883,6 +930,11 @@ class Union(Schema):
         else:
             cls = oamap.generator.UnionGenerator
 
+        for ext in extension:
+            if ext.matches(self):
+                cls = ext
+                break
+
         if self._tags is None:
             args.append(prefix + delimiter + "T")
         else:
@@ -895,7 +947,7 @@ class Union(Schema):
             args.append(self._offsets)
         args.append(cacheidx[0]); cacheidx[0] += 1
         
-        args.append([x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._possibilities)])
+        args.append([x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._possibilities)])
         args.append(self._name)
         args.append(prefix)
         args.append(self)
@@ -927,6 +979,8 @@ class Record(Schema):
                 assert isinstance(n, basestring), "fields must be a dict from identifier strings to Schemas; the key {0} is not a string".format(repr(n))
                 matches = self._identifier.match(n)
                 assert matches is not None and len(matches.group(0)) == len(n), "fields must be a dict from identifier strings to Schemas; the key {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern)
+                if isinstance(x, basestring):
+                    x = Primitive(x)
                 assert isinstance(x, Schema), "fields must be a dict from identifier strings to Schemas; the value at key {0} is {1}".format(repr(n), repr(x))
                 trial.append((n, x))
         except AttributeError:
@@ -939,6 +993,8 @@ class Record(Schema):
         return self._fields[index]
 
     def __setitem__(self, index, value):
+        if isinstance(value, basestring):
+            value = Primitive(value)
         if not isinstance(value, Schema):
             raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
         self._fields[index] = value
@@ -976,19 +1032,19 @@ class Record(Schema):
         else:
             return label
 
-    def _tojson(self, labels, shown):
+    def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "record", "fields": [[n, x._tojson(labels, shown)] for n, x in self._fields.items()]}
-            if self._nullable is not False:
+            out = {"type": "record", "fields": [[n, x._tojson(explicit, labels, shown)] for n, x in self._fields.items()]}
+            if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
-            if self._mask is not None:
+            if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if self._name is not None:
+            if explicit or self._name is not None:
                 out["name"] = self._name
-            if label is not None:
+            if explicit or label is not None:
                 out["label"] = label
             return out
         else:
@@ -1067,14 +1123,15 @@ class Record(Schema):
         else:
             return all(hasattr(value, n) and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
 
-    def generator(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
         if len(self._fields) == 0:
             raise TypeError("Record has no fields")
         if id(self) in memo:
@@ -1095,7 +1152,12 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        args.append(OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo)) for n in sorted(self._fields)]))
+        for ext in extension:
+            if ext.matches(self):
+                cls = ext
+                break
+
+        args.append(OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, extension)) for n in sorted(self._fields)]))
         args.append(self._name)
         args.append(prefix)
         args.append(self)
@@ -1124,6 +1186,8 @@ class Tuple(Schema):
         trial = []
         try:
             for i, x in enumerate(types):
+                if isinstance(x, basestring):
+                    x = Primitive(x)
                 assert isinstance(x, Schema), "types must be an iterable of Schemas; item at {0} is {1}".format(i, repr(x))
                 trial.append(x)
         except TypeError:
@@ -1133,11 +1197,15 @@ class Tuple(Schema):
         self._types = start + trial
 
     def append(self, item):
+        if isinstance(item, basestring):
+            item = Primitive(item)
         if not isinstance(item, Schema):
             raise TypeError("types must be Schemas, not {0}".format(repr(item)))
         self._types.append(item)
 
     def insert(self, index, item):
+        if isinstance(item, basestring):
+            item = Primitive(item)
         if not isinstance(item, Schema):
             raise TypeError("types must be Schemas, not {0}".format(repr(item)))
         self._types.insert(index, item)
@@ -1149,6 +1217,8 @@ class Tuple(Schema):
         return self._types[index]
 
     def __setitem__(self, index, value):
+        if isinstance(value, basestring):
+            value = Primitive(value)
         if not isinstance(item, Schema):
             raise TypeError("types must be Schemas, not {0}".format(repr(value)))
         self._types[index] = value
@@ -1183,19 +1253,19 @@ class Tuple(Schema):
             else:
                 return label + ": Tuple(" + ", ".join(args) + ")"
 
-    def _tojson(self, labels, shown):
+    def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "tuple", "types": [x._tojson(labels, shown) for x in self._types]}
-            if self._nullable is not False:
+            out = {"type": "tuple", "types": [x._tojson(explicit, labels, shown) for x in self._types]}
+            if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
-            if self._mask is not None:
+            if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if self._name is not None:
+            if explicit or self._name is not None:
                 out["name"] = self._name
-            if label is not None:
+            if explicit or label is not None:
                 out["label"] = label
             return out
         else:
@@ -1267,14 +1337,15 @@ class Tuple(Schema):
         else:
             return False
 
-    def generator(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
         if id(self) in memo:
@@ -1295,7 +1366,12 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        args.append([x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo) for i, x in enumerate(self._types)])
+        for ext in extension:
+            if ext.matches(self):
+                cls = ext
+                break
+
+        args.append([x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._types)])
         args.append(self._name)
         args.append(prefix)
         args.append(self)
@@ -1319,6 +1395,8 @@ class Pointer(Schema):
 
     @target.setter
     def target(self, value):
+        if isinstance(value, basestring):
+            value = Primitive(value)
         if not (value is None or isinstance(value, Schema)):
             raise TypeError("target must be None or a Schema, not {0}".format(repr(value)))
         if value is self:
@@ -1370,21 +1448,21 @@ class Pointer(Schema):
         else:
             return label
 
-    def _tojson(self, labels, shown):
+    def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "pointer", "target": self._target._tojson(labels, shown)}
-            if self._nullable is not False:
+            out = {"type": "pointer", "target": self._target._tojson(explicit, labels, shown)}
+            if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
-            if self._positions is not None:
+            if explicit or self._positions is not None:
                 out["positions"] = self._positions
-            if self._mask is not None:
+            if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if self._name is not None:
+            if explicit or self._name is not None:
                 out["name"] = self._name
-            if label is not None:
+            if explicit or label is not None:
                 out["label"] = label
             return out
         else:
@@ -1455,14 +1533,15 @@ class Pointer(Schema):
             return self.nullable
         return self.target.__contains__(value, memo)
 
-    def generator(self, prefix="object", delimiter="-"):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
         cacheidx = [0]
         memo = OrderedDict()
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo), cacheidx, memo)
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo):
+    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
 
@@ -1481,6 +1560,11 @@ class Pointer(Schema):
             args.append(cacheidx[0]); cacheidx[0] += 1
         else:
             cls = oamap.generator.PointerGenerator
+
+        for ext in extension:
+            if ext.matches(self):
+                cls = ext
+                break
 
         if self._positions is None:
             args.append(prefix + delimiter + "P")
