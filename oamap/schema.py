@@ -226,11 +226,13 @@ class Schema(object):
                     generator._internal = True
                     generator.positions = generator.positions + delimiter + memo[id(target)].derivedname
                     generator.target = memo[id(target)]
+                    generator.schema.target = generator.target.schema
                 else:
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
                     generator._internal = False
                     generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2, extension), cacheidx, memo2, extension)
+                    generator.schema.target = generator.target.schema
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
 
@@ -457,7 +459,7 @@ class Primitive(Schema):
         args.append(self._dims)
         args.append(self._name)
         args.append(prefix)
-        args.append(self)
+        args.append(self.copy())
 
         for ext in extension:
             if ext.matches(self):
@@ -683,10 +685,11 @@ class List(Schema):
             args.append(self._stops)
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        args.append(self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, extension))
+        contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, extension)
+        args.append(contentgen)
         args.append(self._name)
         args.append(prefix)
-        args.append(self)
+        args.append(self.copy(content=contentgen.schema))
 
         for ext in extension:
             if ext.matches(self):
@@ -943,11 +946,12 @@ class Union(Schema):
         else:
             args.append(self._offsets)
         args.append(cacheidx[0]); cacheidx[0] += 1
-        
-        args.append([x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._possibilities)])
+
+        possibilitiesgen = [x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._possibilities)]
+        args.append(possibilitiesgen)
         args.append(self._name)
         args.append(prefix)
-        args.append(self)
+        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen]))
 
         for ext in extension:
             if ext.matches(self):
@@ -1155,10 +1159,11 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        args.append(OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, extension)) for n in sorted(self._fields)]))
+        fieldsgen = OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, extension)) for n in sorted(self._fields)])
+        args.append(fieldsgen)
         args.append(self._name)
         args.append(prefix)
-        args.append(self)
+        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items())))
 
         for ext in extension:
             if ext.matches(self):
@@ -1370,10 +1375,11 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        args.append([x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._types)])
+        typesgen = [x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._types)]
+        args.append(typesgen)
         args.append(self._name)
         args.append(prefix)
-        args.append(self)
+        args.append(self.copy(types=[x.schema for x in typesgen]))
 
         for ext in extension:
             if ext.matches(self):
@@ -1575,7 +1581,7 @@ class Pointer(Schema):
         args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
         args.append(self._name)
         args.append(prefix)
-        args.append(self)
+        args.append(self.copy())
 
         for ext in extension:
             if ext.matches(self):
