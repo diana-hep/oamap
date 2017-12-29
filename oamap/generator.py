@@ -78,17 +78,20 @@ class Generator(object):
 
 # mix-in for all generators of nullable types
 class Masked(object):
-    maskdtype = numpy.dtype(numpy.bool_)
+    maskdtype = numpy.dtype(numpy.int32)
+    maskedvalue = -1
 
     def __init__(self, mask, maskidx):
         self.mask = mask
         self.maskidx = maskidx
 
     def _generate(self, arrays, index, cache):
-        if self._getarray(arrays, self.mask, cache, self.maskidx, self.maskdtype)[index]:
+        value = self._getarray(arrays, self.mask, cache, self.maskidx, self.maskdtype)[index]
+        if value == self.maskedvalue:
             return None
         else:
-            return self.__class__.__bases__[1]._generate(self, arrays, index, cache)
+            # otherwise, the value is the index for packed data
+            return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
 
 ################################################################ Primitives
 

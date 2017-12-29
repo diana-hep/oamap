@@ -72,7 +72,7 @@ class Fillable(object):
 
 def _makefillables(generator, fillables, makefillable):
     if isinstance(generator, oamap.generator.Masked):
-        fillables[generator.mask] = makefillable(generator.mask, numpy.bool_, ())
+        fillables[generator.mask] = makefillable(generator.mask, generator.maskdtype, ())
 
     if isinstance(generator, oamap.generator.PrimitiveGenerator):
         if generator.dtype is None:

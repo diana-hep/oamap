@@ -128,7 +128,8 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
 
         if isinstance(gen, oamap.generator.Masked):
             fillables[gen.mask].revert()
-            assert forefront == len(fillables[gen.mask])
+            # mask forefront overrides any other arrays
+            forefront = len(fillables[gen.mask])
             fillables_leaf_to_root.append(fillables[gen.mask])
 
         return forefront
@@ -137,8 +138,9 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
     initialize(generator)
 
     # how to get the forefront of various objects (used in 'fill')
-    def forefront(gen):
-        if isinstance(gen, oamap.generator.Masked):
+    def forefront(gen, secondary=False):
+        if not secondary and isinstance(gen, oamap.generator.Masked):
+            # mask forefront overrides any other arrays
             return fillables[gen.mask].forefront()
 
         elif isinstance(gen, oamap.generator.PrimitiveGenerator):
@@ -159,7 +161,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
                 return forefront(x)
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
-            return fillables[gen.positions].forefront()
+            return len(pointerobjs[id(gen)])
 
         elif isinstance(gen, oamap.generator.ExtendedGenerator):
             return forefront(gen.generic)
@@ -168,93 +170,91 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
         raise TypeError("non-Lists can only be filled from data once")
 
     # the fill function (recursive)
-    def fill(obj, gen, targetids, pointerobjs):
+    pointerat = {}
+    def fill(obj, gen, targetids, pointerobjs, at):
         if id(gen) in targetids:
             targetids[id(gen)][id(obj)] = (forefront(gen), obj)
-        
-        if isinstance(gen, oamap.generator.PrimitiveGenerator):
-            fillables[gen.data].append(0 if obj is None else obj)
 
-        elif isinstance(gen, oamap.generator.ListGenerator):
-            if obj is None:
-                start = stop = -1
+        if obj is None:
+            if isinstance(gen, oamap.generator.Masked):
+                fillables[gen.mask].append(gen.maskedvalue)
+            elif isinstance(gen, oamap.generator.ExtendedGenerator) and isinstance(gen.generic, oamap.generator.Masked):
+                pass
             else:
+                raise TypeError("cannot fill None where expecting type {0} at {1}".format(gen.schema, at))
+
+        else:
+            if isinstance(gen, oamap.generator.Masked):
+                fillables[gen.mask].append(forefront(gen, secondary=True))
+
+            if isinstance(gen, oamap.generator.PrimitiveGenerator):
+                fillables[gen.data].append(obj)
+
+            elif isinstance(gen, oamap.generator.ListGenerator):
                 start = stop = forefront(gen.content)
                 try:
                     if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
                         raise TypeError
                     iter(obj)
                 except TypeError:
-                    raise TypeError("cannot fill {0} where expecting type {1}".format(repr(obj), gen.schema))
+                    raise TypeError("cannot fill {0} where expecting type {1} at {2}".format(repr(obj), gen.schema, at))
                 else:
                     for x in obj:
-                        fill(x, gen.content, targetids, pointerobjs)
+                        fill(x, gen.content, targetids, pointerobjs, at + (stop - start,))
                         stop += 1
 
-            fillables[gen.starts].append(start)
-            fillables[gen.stops].append(stop)
+                fillables[gen.starts].append(start)
+                fillables[gen.stops].append(stop)
 
-        elif isinstance(gen, oamap.generator.UnionGenerator):
-            if obj is None and isinstance(gen, oamap.generator.Masked):
-                tag = offset = -1
-            else:
+            elif isinstance(gen, oamap.generator.UnionGenerator):
                 tag = None
                 for i, possibility in enumerate(gen.possibilities):
                     if obj in possibility.schema:
                         tag = i
                         break
                 if tag is None:
-                    raise TypeError("cannot fill {0} where expecting type {1}".format(repr(obj), gen.schema))
-                
+                    raise TypeError("cannot fill {0} where expecting type {1} at {2}".format(repr(obj), gen.schema, at))
+
                 offset = forefront(possibility)
-                fill(obj, possibility, targetids, pointerobjs)
+                fill(obj, possibility, targetids, pointerobjs, at + ("tag" + repr(tag),))
 
-            fillables[gen.tags].append(tag)
-            fillables[gen.offsets].append(offset)
+                fillables[gen.tags].append(tag)
+                fillables[gen.offsets].append(offset)
 
-        elif isinstance(gen, oamap.generator.RecordGenerator):
-            if obj is None:
-                pass
-            elif isinstance(obj, dict):
-                for n, x in gen.fields.items():
-                    if n not in obj:
-                        raise TypeError("cannot fill {0} because its {1} field is missing".format(repr(obj), repr(n)))
-                    fill(obj[n], x, targetids, pointerobjs)
-            else:
-                for n, x in gen.fields.items():
-                    if not hasattr(obj, n):
-                        raise TypeError("cannot fill {0} because its {1} field is missing".format(repr(obj), repr(n)))
-                    fill(getattr(obj, n), x, targetids, pointerobjs)
+            elif isinstance(gen, oamap.generator.RecordGenerator):
+                if isinstance(obj, dict):
+                    for n, x in gen.fields.items():
+                        if n not in obj:
+                            raise TypeError("cannot fill {0} because its {1} field is missing at {2}".format(repr(obj), repr(n), at))
+                        fill(obj[n], x, targetids, pointerobjs, at + (n,))
+                else:
+                    for n, x in gen.fields.items():
+                        if not hasattr(obj, n):
+                            raise TypeError("cannot fill {0} because its {1} field is missing at {2}".format(repr(obj), repr(n), at))
+                        fill(getattr(obj, n), x, targetids, pointerobjs, at + (n,))
 
-        elif isinstance(gen, oamap.generator.TupleGenerator):
-            if obj is None:
-                pass
-            else:
+            elif isinstance(gen, oamap.generator.TupleGenerator):
                 for i, x in enumerate(gen.types):
                     try:
                         v = obj[i]
                     except (TypeError, IndexError):
-                        raise TypeError("cannot fill {0} because it does not have a field {1}".format(repr(obj), i))
+                        raise TypeError("cannot fill {0} because it does not have a field {1} at {2}".format(repr(obj), i, at))
                     else:
-                        fill(v, x, targetids, pointerobjs)
+                        fill(v, x, targetids, pointerobjs, at + (i,))
 
-        elif isinstance(gen, oamap.generator.PointerGenerator):
-            # Pointers will be set after we see all the target values
-            pointerobjs[id(gen)].append(obj)
+            elif isinstance(gen, oamap.generator.PointerGenerator):
+                # Pointers will be set after we see all the target values
+                pointerobjs[id(gen)].append(obj)
+                if id(gen) not in pointerat:
+                    pointerat[id(gen)] = at
 
-        elif isinstance(gen, oamap.generator.ExtendedGenerator):
-            fill(gen.degenerate(obj), gen.generic, targetids, pointerobjs)
-
-        if isinstance(gen, oamap.generator.Masked):
-            if obj is None:
-                fillables[gen.mask].append(True)
-            else:
-                fillables[gen.mask].append(False)
+            elif isinstance(gen, oamap.generator.ExtendedGenerator):
+                fill(gen.degenerate(obj), gen.generic, targetids, pointerobjs, at)
 
     # attempt to fill (fillables won't update their 'len' until we 'update')
     targetids = dict((x, {}) for x in targetids_keys)
     pointerobjs = dict((x, []) for x in pointerobjs_keys)
-    fill(value, generator, targetids, pointerobjs)
+    fill(value, generator, targetids, pointerobjs, ())
 
     # do the pointers after everything else
     for pointer in pointers:
@@ -280,7 +280,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
 
                     else:
                         # case 3: the object was not found; it must be added to the target (beyond indexes where it can be found)
-                        fill(obj, pointer.target, targetids, pointerobjs2)
+                        fill(obj, pointer.target, targetids, pointerobjs2, pointerat[id(pointer)])
                         position, _ = targetids[id(pointer.target)][id(obj)]
 
                 # every obj in pointerobjs[id(pointer)] gets *one* append

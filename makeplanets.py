@@ -172,7 +172,7 @@ schema = (
             hierr = real("Stellar Radius Upper Unc. [Solar radii]", nullable=True), # st_raderr1
             loerr = real("Stellar Radius Lower Unc. [Solar radii]", nullable=True), # st_raderr2
             lim = boolean("Stellar Radius Limit Flag", nullable=True),              # st_radlim
-            blend = boolean("Stellar Radius Blend Flag")                            # st_radblend
+            blend = boolean("Stellar Radius Blend Flag", nullable=True)              # st_radblend
           )
         ),
         galactic = Record(
@@ -192,7 +192,7 @@ schema = (
         parallax = Record(
           doc = "Difference in the angular position of a star as measured at two opposite positions within the Earth's orbit",
           fields = dict(
-            val = real("Parallax [mas]"),                                           # st_plx
+            val = real("Parallax [mas]", nullable=True),                            # st_plx
             hierr = real("Parallax Upper Unc. [mas]", nullable=True),               # st_plxerr1
             loerr = real("Parallax Lower Unc. [mas]", nullable=True),               # st_plxerr2
             lim = boolean("Parallax Limit Flag", nullable=True),                    # st_plxlim
