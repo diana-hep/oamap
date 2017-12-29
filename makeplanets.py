@@ -84,7 +84,7 @@ schema = (
         ),
         parallax = Record(
           doc = "Difference in the angular position of a star as measured at two opposite positions within the Earth's orbit",
-          fielcs = dict(
+          fields = dict(
             val = real("Parallax [mas]"),                                           # st_plx
             hierr = real("Parallax Upper Unc. [mas]", nullable=True),               # st_plxerr1
             loerr = real("Parallax Lower Unc. [mas]", nullable=True),               # st_plxerr2
@@ -98,7 +98,7 @@ schema = (
             val = real("Distance [pc]", nullable=True),                             # st_dist
             hierr = real("Distance Upper Unc. [pc]", nullable=True),                # st_disterr1
             loerr = real("Distance Lower Unc. [pc]", nullable=True),                # st_disterr2
-            distlim = boolean("Distance Limit Flag", nullable=True)                 # st_distlim (0: False, -1: True)
+            lim = boolean("Distance Limit Flag", nullable=True),                    # st_distlim (0: False, -1: True)
             blend = boolean("Optical Magnitude Blend Flag", nullable=True),         # st_optmagblend (0: False)
           )
         ),
@@ -275,7 +275,7 @@ schema = (
             sindex = Record(
               doc = "Chromospheric activity as measured by the S-index (ratio of the emission of the H and K Ca lines to that in nearby continuum)",
               fields = dict(
-                val = Record("Stellar Activity S-index", nullable=True),                         # st_acts
+                val = real("Stellar Activity S-index", nullable=True),                           # st_acts
                 err = real("Stellar Activity S-index Unc.", nullable=True),                      # st_actserr
                 lim = boolean("Stellar Activity S-index Limit Flag", nullable=True),             # st_actslim
                 blend = boolean("Stellar Activity S-index Blend Flag", nullable=True)            # st_actsblend
@@ -308,6 +308,317 @@ schema = (
         num_amateur_lightcurves = integer("Number of literature amateur light curves available for this star in the NASA Exoplanet Archive"), # st_naxa
         num_images = integer("Number of literature images available for this star in the NASA Exoplanet Archive"), # st_nimg
         num_spectra = integer("Number of literature of spectra available for this star in the NASA Exoplanet Archive"), # st_nspec
+        photometry = Record(
+          fields = dict(
+            uband = Record(
+              doc = "Brightness of the host star as measured using the U (Johnson) band in units of magnitudes",
+              fields = dict(
+                val = real("U-band (Johnson) [mag]", nullable=True),   # st_uj
+                err = real("U-band (Johnson) Unc. [mag]", nullable=True),   # st_ujerr
+                lim = boolean("U-band (Johnson) Limit Flag", nullable=True),   # st_ujlim
+                blend = boolean("U-band (Johnson) Blend Flag", nullable=True)   # st_ujblend
+              )
+            ),
+            vband = Record(
+              doc = "Brightness of the host star as measured using the V (Johnson) band in units of magnitudes",
+              fields = dict(
+                val = real("V-band (Johnson) [mag]", nullable=True),   # st_vj
+                err = real("V-band (Johnson) Unc. [mag]", nullable=True),   # st_vjerr
+                lim = boolean("V-band (Johnson) Limit Flag", nullable=True),   # st_vjlim
+                blend = boolean("V-band (Johnson) Blend Flag", nullable=True)   # st_vjblend
+              )
+            ),
+            bband = Record(
+              doc = "Brightness of the host star as measured using the B (Johnson) band in units of magnitudes",
+              fields = dict(
+                val = real("B-band (Johnson) [mag]", nullable=True),   # st_bj
+                err = real("B-band (Johnson) Unc. [mag]", nullable=True),   # st_bjerr
+                lim = boolean("B-band (Johnson) Limit Flag", nullable=True),        # st_bjlim
+                blend = boolean("B-band (Johnson) Blend Flag", nullable=True)   # st_bjblend
+              )
+            ),
+            rband = Record(
+              doc = "Brightness of the host star as measured using the R (Cousins) band in units of magnitudes",
+              fields = dict(
+                val = real("R-band (Cousins) [mag]", nullable=True),   # st_rc
+                err = real("R-band (Cousins) Unc. [mag]", nullable=True),        # st_rcerr
+                lim = boolean("R-band (Cousins) Limit Flag", nullable=True),        # st_rclim
+                blend = boolean("R-band (Cousins) Blend Flag", nullable=True)   # st_rcblend
+              )
+            ),
+            iband = Record(
+              doc = "Brightness of the host star as measured using the I (Cousins) band in units of magnitudes",
+              fields = dict(
+                val = real("I-band (Cousins) [mag]", nullable=True),   # st_ic
+                err = real("I-band (Cousins) Unc. [mag]", nullable=True),   # st_icerr
+                lim = boolean("I-band (Cousins) Limit Flag", nullable=True),   # st_iclim
+                blend = boolean("I-band (Cousins) Blend Flag", nullable=True)   # st_icblend
+              )
+            ),
+            jband = Record(
+              doc = "Brightness of the host star as measured using the J (2MASS) band in units of magnitudes",
+              fields = dict(
+                val = real("J-band (2MASS) [mag]", nullable=True),   # st_j
+                err = real("J-band (2MASS) Unc. [mag]", nullable=True),   # st_jerr
+                lim = boolean("J-band (2MASS) Limit Flag", nullable=True),   # st_jlim
+                blend = boolean("J-band (2MASS) Blend Flag", nullable=True)   # st_jblend
+              )
+            ),
+            hband = Record(
+              doc = "Brightness of the host star as measured using the H (2MASS) band in units of magnitudes",
+              fields = dict(
+                val = real("H-band (2MASS) [mag]", nullable=True),   # st_h
+                err = real("H-band (2MASS) Unc. [mag]", nullable=True),   # st_herr
+                lim = boolean("H-band (2MASS) Limit Flag", nullable=True),   # st_hlim
+                blend = boolean("H-band (2MASS) Blend Flag", nullable=True)   # st_hblend
+              )
+            ),
+            kband = Record(
+              doc = "Brightness of the host star as measured using the K (2MASS) band in units of magnitudes",
+              fields = dict(
+                val = real("Ks-band (2MASS) [mag]", nullable=True),   # st_k
+                err = real("Ks-band (2MASS) Unc. [mag]", nullable=True),        # st_kerr
+                lim = boolean("Ks-band (2MASS) Limit Flag", nullable=True),        # st_klim
+                blend = boolean("Ks-band (2MASS) Blend Flag", nullable=True)        # st_kblend
+              )
+            ),
+            wise1 = Record(
+              doc = "Brightness of the host star as measured using the 3.4um (WISE) band in units of magnitudes",
+              fields = dict(
+                val = real("WISE 3.4um [mag]", nullable=True),   # st_wise1
+                err = real("WISE 3.4um Unc. [mag]", nullable=True),        # st_wise1err
+                lim = boolean("WISE 3.4um Limit Flag", nullable=True),        # st_wise1lim
+                blend = boolean("WISE 3.4um Blend Flag", nullable=True)   # st_wise1blend
+              )
+            ),
+            wise2 = Record(
+              doc = "Brightness of the host star as measured using the 4.6um (WISE) band in units of magnitudes",
+              fields = dict(
+                val = real("WISE 4.6um [mag]", nullable=True),   # st_wise2
+                err = real("WISE 4.6um Unc. [mag]", nullable=True),        # st_wise2err
+                lim = boolean("WISE 4.6um Limit Flag", nullable=True),        # st_wise2lim
+                blend = boolean("WISE 4.6um Blend Flag", nullable=True)   # st_wise2blend
+              )
+            ),
+            wise3 = Record(
+              doc = "Brightness of the host star as measured using the 12.um (WISE) band in units of magnitudes",
+              fields = dict(
+                val = real("WISE 12.um [mag]", nullable=True),   # st_wise3
+                err = real("WISE 12.um Unc. [mag]", nullable=True),   # st_wise3err
+                lim = boolean("WISE 12.um Limit Flag", nullable=True),   # st_wise3lim
+                blend = boolean("WISE 12.um Blend Flag", nullable=True)   # st_wise3blend
+              )
+            ),
+            wise4 = Record(
+              doc = "Brightness of the host star as measured using the 22.um (WISE) band in units of magnitudes",
+              fields = dict(
+                val = real("WISE 22.um [mag]", nullable=True),   # st_wise4
+                err = real("WISE 22.um Unc. [mag]", nullable=True),   # st_wise4err
+                lim = boolean("WISE 22.um Limit Flag", nullable=True),   # st_wise4lim
+                blend = boolean("WISE 22.um Blend Flag", nullable=True)   # st_wise4blend
+              )
+            ),
+            irac1 = Record(
+              doc = "Brightness of the host star as measured using the 3.6um (IRAC) band in units of magnitudes",
+              fields = dict(
+                val = real("IRAC 3.6um [mag]", nullable=True),   # st_irac1
+                err = real("IRAC 3.6um Unc. [mag]", nullable=True),   # st_irac1err
+                lim = boolean("IRAC 3.6um Limit Flag", nullable=True),   # st_irac1lim
+                blend = boolean("IRAC 3.6um Blend Flag", nullable=True)   # st_irac1blend
+              )
+            ),
+            irac2 = Record(
+              doc = "Brightness of the host star as measured using the 4.5um (IRAC) band in units of magnitudes",
+              fields = dict(
+                val = real("IRAC 4.5um [mag]", nullable=True),   # st_irac2
+                err = real("IRAC 4.5um Unc. [mag]", nullable=True),        # st_irac2err
+                lim = boolean("IRAC 4.5um Limit Flag", nullable=True),        # st_irac2lim
+                blend = boolean("IRAC 4.5um Blend Flag", nullable=True)   # st_irac2blend
+              )
+            ),
+            irac3 = Record(
+              doc = "Brightness of the host star as measured using the 5.8um (IRAC) band in units of magnitudes",
+              fields = dict(
+                val = real("IRAC 5.8um [mag]", nullable=True),   # st_irac3
+                err = real("IRAC 5.8um Unc. [mag]", nullable=True),        # st_irac3err
+                lim = boolean("IRAC 5.8um Limit Flag", nullable=True),        # st_irac3lim
+                blend = boolean("IRAC 5.8um Blend Flag", nullable=True)   # st_irac3blend
+              )
+            ),
+            irac4 = Record(
+              doc = "Brightness of the host star as measured using the 8.0um (IRAC) band in units of magnitudes",
+              fields = dict(
+                val = real("IRAC 8.0um [mag]", nullable=True),   # st_irac4
+                err = real("IRAC 8.0um Unc. [mag]", nullable=True),   # st_irac4err
+                lim = boolean("IRAC 8.0um Limit Flag", nullable=True),   # st_irac4lim
+                blend = boolean("IRAC 8.0um Blend Flag", nullable=True)   # st_irac4blend
+              )
+            ),
+            mips1 = Record(
+              doc = "Brightness of the host star as measured using the 24um (MIPS) band in units of magnitudes",
+              fields = dict(
+                val = real("MIPS 24um [mag]", nullable=True),   # st_mips1
+                err = real("MIPS 24um Unc. [mag]", nullable=True),   # st_mips1err
+                lim = boolean("MIPS 24um Limit Flag", nullable=True),   # st_mips1lim
+                blend = boolean("MIPS 24um Blend Flag", nullable=True)   # st_mips1blend
+              )
+            ),
+            mips2 = Record(
+              doc = "Brightness of the host star as measured using the 70um (MIPS) band in units of magnitudes",
+              fields = dict(
+                val = real("MIPS 70um [mag]", nullable=True),   # st_mips2
+                err = real("MIPS 70um Unc. [mag]", nullable=True),   # st_mips2err
+                lim = boolean("MIPS 70um Limit Flag", nullable=True),   # st_mips2lim
+                blend = boolean("MIPS 70um Blend Flag", nullable=True)   # st_mips2blend
+              )
+            ),
+            mips3 = Record(
+              doc = "Brightness of the host star as measured using the 160um (MIPS) band in units of magnitudes",
+              fields = dict(
+                val = real("MIPS 160um [mag]", nullable=True),   # st_mips3
+                err = real("MIPS 160um Unc. [mag]", nullable=True),        # st_mips3err
+                lim = boolean("MIPS 160um Limit Flag", nullable=True),        # st_mips3lim
+                blend = boolean("MIPS 160um Blend Flag", nullable=True)   # st_mips3blend
+              )
+            ),
+            iras1 = Record(
+              doc = "Brightness of the host star as measured using the 12um (IRAS) band in units of Jy",
+              fields = dict(
+                val = real("IRAS 12um Flux [Jy]", nullable=True),   # st_iras1
+                err = real("IRAS 12um Flux Unc. [Jy]", nullable=True),        # st_iras1err
+                lim = boolean("IRAS 12um Flux Limit Flag", nullable=True),        # st_iras1lim
+                blend = boolean("IRAS 12um Flux Blend Flag", nullable=True)   # st_iras1blend
+              )
+            ),
+            iras2 = Record(
+              doc = "Brightness of the host star as measured using the 25um (IRAS) band in units of Jy",
+              fields = dict(
+                val = real("IRAS 25um Flux [Jy]", nullable=True),   # st_iras2
+                err = real("IRAS 25um Flux Unc. [Jy]", nullable=True),        # st_iras2err
+                lim = boolean("IRAS 25um Flux Limit Flag", nullable=True),        # st_iras2lim
+                blend = boolean("IRAS 25um Flux Blend Flag", nullable=True)        # st_iras2blend
+              )
+            ),
+            iras3 = Record(
+              doc = "Brightness of the host star as measured using the 60um (IRAS) band in units of Jy",
+              fields = dict(
+                val = real("IRAS 60um Flux [Jy]", nullable=True),        # st_iras3
+                err = real("IRAS 60um Flux Unc. [Jy]", nullable=True),        # st_iras3err
+                lim = boolean("IRAS 60um Flux Limit Flag", nullable=True),        # st_iras3lim
+                blend = boolean("IRAS 60um Flux Blend Flag", nullable=True)        # st_iras3blend
+              )
+            ),
+            iras4 = Record(
+              doc = "Brightness of the host star as measured using the 100um (IRAS) band in units of Jy",
+              fields = dict(
+                val = real("IRAS 100um Flux [Jy]", nullable=True),        # st_iras4
+                err = real("IRAS 100um Flux Unc. [Jy]", nullable=True),        # st_iras4err
+                lim = boolean("IRAS 100um Flux Limit Flag", nullable=True),        # st_iras4lim
+                blend = boolean("IRAS 100um Flux Blend Flag", nullable=True),        # st_iras4blend
+              )
+            ),
+            num_measurements = integer("Number of Photometry Measurements")        # st_photn
+          )
+        ),
+        color = Record(
+          fields = dict(
+            ub_diff = Record(
+              doc = "Color of the star as measured by the difference between U and B (Johnson) bands",
+              fields = dict(
+                val = real("U-B (Johnson) [mag]", nullable=True),        # st_umbj
+                err = real("U-B (Johnson) Unc. [mag]", nullable=True),        # st_umbjerr
+                lim = boolean("U-B (Johnson) Limit Flag", nullable=True),        # st_umbjlim
+                blend = boolean("U-B (Johnson) Blend Flag", nullable=True)   # st_umbjblend
+              )
+            ),
+            bv_diff = Record(
+              doc = "Color of the star as measured by the difference between B and V (Johnson) bands",
+              fields = dict(
+                val = real("B-V (Johnson) [mag]", nullable=True),  # st_bmvj
+                err = real("B-V (Johnson) Unc. [mag]", nullable=True),       # st_bmvjerr
+                lim = boolean("B-V (Johnson) Limit Flag", nullable=True),       # st_bmvjlim
+                blend = boolean("B-V (Johnson) Blend Flag", nullable=True)   # st_bmvjblend
+              )
+            ),
+            vi_diff = Record(
+              doc = "Color of the star as measured by the difference between V (Johnson) and I (Cousins) bands",
+              fields = dict(
+                val = real("V-I (Johnson-Cousins) [mag]", nullable=True),  # st_vjmic
+                err = real("V-I (Johnson-Cousins) Unc. [mag]", nullable=True),       # st_vjmicerr
+                lim = boolean("V-I (Johnson-Cousins) Limit Flag", nullable=True),       # st_vjmiclim
+                blend = boolean("V-I (Johnson-Cousins) Blend Flag", nullable=True)        # st_vjmicblend
+              )
+            ),
+            vr_diff = Record(
+              doc = "Color of the star as measured by the difference between V (Johnson) and R (Cousins) bands",
+              fields = dict(
+                val = real("V-R (Johnson-Cousins) [mag]", nullable=True),       # st_vjmrc
+                err = real("V-R (Johnson-Cousins) Unc. [mag]", nullable=True),       # st_vjmrcerr
+                lim = boolean("V-R (Johnson-Cousins) Limit Flag", nullable=True),       # st_vjmrclim
+                blend = boolean("V-R (Johnson-Cousins) Blend Flag", nullable=True)        # st_vjmrcblend
+              )
+            ),
+            jh_diff = Record(
+              doc = "Color of the star as measured by the difference between J and H (2MASS) bands",
+              fields = dict(
+                val = real("J-H (2MASS) [mag]", nullable=True),       # st_jmh2
+                err = real("J-H (2MASS) Unc. [mag]", nullable=True),       # st_jmh2err
+                lim = boolean("J-H (2MASS) Limit Flag", nullable=True),       # st_jmh2lim
+                blend = boolean("J-H (2MASS) Blend Flag", nullable=True)        # st_jmh2blend
+              )
+            ),
+            hk_diff = Record(
+              doc = "Color of the star as measured by the difference between H and K (2MASS) bands",
+              fields = dict(
+                val = real("H-Ks (2MASS) [mag]", nullable=True),  # st_hmk2
+                err = real("H-Ks (2MASS) Unc. [mag]", nullable=True),       # st_hmk2err
+                lim = boolean("H-Ks (2MASS) Limit Flag", nullable=True),       # st_hmk2lim
+                blend = boolean("H-Ks (2MASS) Blend Flag", nullable=True)        # st_hmk2blend
+              )
+            ),
+            jk_diff = Record(
+              doc = "Color of the star as measured by the difference between K and K (2MASS) bands",
+              fields = dict(
+                val = real("J-Ks (2MASS) [mag]", nullable=True),  # st_jmk2
+                err = real("J-Ks (2MASS) Unc. [mag]", nullable=True),       # st_jmk2err
+                lim = boolean("J-Ks (2MASS) Limit Flag", nullable=True),       # st_jmk2lim
+                blend = boolean("J-Ks (2MASS) Blend Flag", nullable=True)        # st_jmk2blend
+              )
+            ),
+            by_diff = Record(
+              doc = "Color of the star as measured by the difference between b and y (Stromgren) bands",
+              fields = dict(
+                val = real("b-y (Stromgren) [mag]", nullable=True),  # st_bmy
+                err = real("b-y (Stromgren) Unc. [mag]", nullable=True),       # st_bmyerr
+                lim = boolean("b-y (Stromgren) Limit Flag", nullable=True),       # st_bmylim
+                blend = boolean("b-y (Stromgren) Blend Flag", nullable=True)   # st_bmyblend
+              )
+            ),
+            m1_diff = Record(
+              doc = "Color of the star as measured by the m1 (Stromgren) system",
+              fields = dict(
+                val = real("m1 (Stromgren) [mag]", nullable=True),  # st_m1
+                err = real("m1 (Stromgren) Unc. [mag]", nullable=True),       # st_m1err
+                lim = boolean("m1 (Stromgren) Limit Flag", nullable=True),       # st_m1lim
+                blend = boolean("m1 (Stromgren) Blend Flag", nullable=True)   # st_m1blend
+              )
+            ),
+            c1_diff = Record(
+              doc = "Color of the star as measured by the c1 (Stromgren) system",
+              fields = dict(
+                val = real("c1 (Stromgren) [mag]", nullable=True),  # st_c1
+                err = real("c1 (Stromgren) Unc. [mag]", nullable=True),       # st_c1err
+                lim = boolean("c1 (Stromgren) Limit Flag", nullable=True),       # st_c1lim
+                blend = boolean("c1 (Stromgren) Blend Flag", nullable=True)   # st_c1blend
+              )
+            ),
+            num_measurements = integer("Number of Color Measurements")   # st_colorn
+          )
+        ),
+
+
+
+
         planets = List(
           Record(
             name = "Planet",
@@ -379,140 +690,8 @@ for line in csv.reader(open("/tmp/downloads/planets.csv")):
 
 
         
-        st_uj          "U-band (Johnson) [mag]"     set([bool])   # st_uj
-        st_ujerr       "U-band (Johnson) Unc. [mag]"     set([bool])   # st_ujerr
-        st_ujlim       "U-band (Johnson) Limit Flag"     set([bool])   # st_ujlim
-        st_ujblend     "U-band (Johnson) Blend Flag"     set([bool])   # st_ujblend
-        st_vj          "V-band (Johnson) [mag]"     set([bool])   # st_vj
-        st_vjerr       "V-band (Johnson) Unc. [mag]"     set([bool])   # st_vjerr
-        st_vjlim       "V-band (Johnson) Limit Flag"     set([bool])   # st_vjlim
-        st_vjblend     "V-band (Johnson) Blend Flag"     set([bool])   # st_vjblend
-        st_bj          "B-band (Johnson) [mag]"     set([bool])   # st_bj
-        st_bjerr       "B-band (Johnson) Unc. [mag]"     set([bool])   # st_bjerr
-        st_bjlim       real("B-band (Johnson) Limit Flag", nullable=True)        # st_bjlim
-        st_bjblend     "B-band (Johnson) Blend Flag"     set([None, bool])   # st_bjblend
-        st_rc          "R-band (Cousins) [mag]"     set([None, bool])   # st_rc
-        st_rcerr       real("R-band (Cousins) Unc. [mag]", nullable=True)        # st_rcerr
-        st_rclim       real("R-band (Cousins) Limit Flag", nullable=True)        # st_rclim
-        st_rcblend     "R-band (Cousins) Blend Flag"     set([None, bool])   # st_rcblend
-        st_ic          "I-band (Cousins) [mag]"     set([None])   # st_ic
-        st_icerr       "I-band (Cousins) Unc. [mag]"     set([None])   # st_icerr
-        st_iclim       "I-band (Cousins) Limit Flag"     set([None])   # st_iclim
-        st_icblend     "I-band (Cousins) Blend Flag"     set([None])   # st_icblend
-        st_j           "J-band (2MASS) [mag]"     set([None])   # st_j
-        st_jerr        "J-band (2MASS) Unc. [mag]"     set([None])   # st_jerr
-        st_jlim        "J-band (2MASS) Limit Flag"     set([None])   # st_jlim
-        st_jblend      "J-band (2MASS) Blend Flag"     set([None])   # st_jblend
-        st_h           "H-band (2MASS) [mag]"     set([None])   # st_h
-        st_herr        "H-band (2MASS) Unc. [mag]"     set([None])   # st_herr
-        st_hlim        "H-band (2MASS) Limit Flag"     set([None])   # st_hlim
-        st_hblend      "H-band (2MASS) Blend Flag"     set([None])   # st_hblend
-        st_k           "Ks-band (2MASS) [mag]"     set([None])   # st_k
-        st_kerr        real("Ks-band (2MASS) Unc. [mag]", nullable=True)        # st_kerr
-        st_klim        real("Ks-band (2MASS) Limit Flag", nullable=True)        # st_klim
-        st_kblend      integer("Ks-band (2MASS) Blend Flag", nullable=True)        # st_kblend
-        st_wise1       "WISE 3.4um [mag]"     set([None])   # st_wise1
-        st_wise1err    real("WISE 3.4um Unc. [mag]", nullable=True)        # st_wise1err
-        st_wise1lim    real("WISE 3.4um Limit Flag", nullable=True)        # st_wise1lim
-        st_wise1blend  "WISE 3.4um Blend Flag"     set([bool, int, None])   # st_wise1blend
-        st_wise2       "WISE 4.6um [mag]"     set([None])   # st_wise2
-        st_wise2err    real("WISE 4.6um Unc. [mag]", nullable=True)        # st_wise2err
-        st_wise2lim    real("WISE 4.6um Limit Flag", nullable=True)        # st_wise2lim
-        st_wise2blend  "WISE 4.6um Blend Flag"     set([bool, int, None])   # st_wise2blend
-        st_wise3       "WISE 12.um [mag]"     set([bool, int, None])   # st_wise3
-        st_wise3err    "WISE 12.um Unc. [mag]"     set([bool, int, None])   # st_wise3err
-        st_wise3lim    "WISE 12.um Limit Flag"     set([bool, int, None])   # st_wise3lim
-        st_wise3blend  "WISE 12.um Blend Flag"     set([bool, int, None])   # st_wise3blend
-        st_wise4       "WISE 22.um [mag]"     set([bool, int, None])   # st_wise4
-        st_wise4err    "WISE 22.um Unc. [mag]"     set([bool, int, None])   # st_wise4err
-        st_wise4lim    "WISE 22.um Limit Flag"     set([bool, int, None])   # st_wise4lim
-        st_wise4blend  "WISE 22.um Blend Flag"     set([bool, int, None])   # st_wise4blend
-        st_irac1       "IRAC 3.6um [mag]"     set([bool, int, None])   # st_irac1
-        st_irac1err    "IRAC 3.6um Unc. [mag]"     set([bool, int, None])   # st_irac1err
-        st_irac1lim    "IRAC 3.6um Limit Flag"     set([bool, int, None])   # st_irac1lim
-        st_irac1blend  "IRAC 3.6um Blend Flag"     set([bool, int, None])   # st_irac1blend
-        st_irac2       "IRAC 4.5um [mag]"     set([bool, int, None])   # st_irac2
-        st_irac2err    real("IRAC 4.5um Unc. [mag]", nullable=True)        # st_irac2err
-        st_irac2lim    real("IRAC 4.5um Limit Flag", nullable=True)        # st_irac2lim
-        st_irac2blend  "IRAC 4.5um Blend Flag"     set([None, bool])   # st_irac2blend
-        st_irac3       "IRAC 5.8um [mag]"     set([None])   # st_irac3
-        st_irac3err    real("IRAC 5.8um Unc. [mag]", nullable=True)        # st_irac3err
-        st_irac3lim    real("IRAC 5.8um Limit Flag", nullable=True)        # st_irac3lim
-        st_irac3blend  "IRAC 5.8um Blend Flag"     set([None, bool])   # st_irac3blend
-        st_irac4       "IRAC 8.0um [mag]"     set([None, bool])   # st_irac4
-        st_irac4err    "IRAC 8.0um Unc. [mag]"     set([None, bool])   # st_irac4err
-        st_irac4lim    "IRAC 8.0um Limit Flag"     set([None, bool])   # st_irac4lim
-        st_irac4blend  "IRAC 8.0um Blend Flag"     set([None, bool])   # st_irac4blend
-        st_mips1       "MIPS 24um [mag]"     set([None, bool])   # st_mips1
-        st_mips1err    "MIPS 24um Unc. [mag]"     set([None, bool])   # st_mips1err
-        st_mips1lim    "MIPS 24um Limit Flag"     set([None, bool])   # st_mips1lim
-        st_mips1blend  "MIPS 24um Blend Flag"     set([None, bool])   # st_mips1blend
-        st_mips2       "MIPS 70um [mag]"     set([None, bool])   # st_mips2
-        st_mips2err    "MIPS 70um Unc. [mag]"     set([None, bool])   # st_mips2err
-        st_mips2lim    "MIPS 70um Limit Flag"     set([None, bool])   # st_mips2lim
-        st_mips2blend  "MIPS 70um Blend Flag"     set([None, bool])   # st_mips2blend
-        st_mips3       "MIPS 160um [mag]"     set([None])   # st_mips3
-        st_mips3err    real("MIPS 160um Unc. [mag]", nullable=True)        # st_mips3err
-        st_mips3lim    real("MIPS 160um Limit Flag", nullable=True)        # st_mips3lim
-        st_mips3blend  "MIPS 160um Blend Flag"     set([None, bool])   # st_mips3blend
-        st_iras1       "IRAS 12um Flux [Jy]"     set([None])   # st_iras1
-        st_iras1err    real("IRAS 12um Flux Unc. [Jy]", nullable=True)        # st_iras1err
-        st_iras1lim    real("IRAS 12um Flux Limit Flag", nullable=True)        # st_iras1lim
-        st_iras1blend  "IRAS 12um Flux Blend Flag"     set([None, bool])   # st_iras1blend
-        st_iras2       "IRAS 25um Flux [Jy]"     set([None])   # st_iras2
-        st_iras2err    real("IRAS 25um Flux Unc. [Jy]", nullable=True)        # st_iras2err
-        st_iras2lim    real("IRAS 25um Flux Limit Flag", nullable=True)        # st_iras2lim
-        st_iras2blend  real("IRAS 25um Flux Blend Flag", nullable=True)        # st_iras2blend
-        st_iras3       real("IRAS 60um Flux [Jy]", nullable=True)        # st_iras3
-        st_iras3err    real("IRAS 60um Flux Unc. [Jy]", nullable=True)        # st_iras3err
-        st_iras3lim    real("IRAS 60um Flux Limit Flag", nullable=True)        # st_iras3lim
-        st_iras3blend  real("IRAS 60um Flux Blend Flag", nullable=True)        # st_iras3blend
-        st_iras4       real("IRAS 100um Flux [Jy]", nullable=True)        # st_iras4
-        st_iras4err    real("IRAS 100um Flux Unc. [Jy]", nullable=True)        # st_iras4err
-        st_iras4lim    real("IRAS 100um Flux Limit Flag", nullable=True)        # st_iras4lim
-        st_iras4blend  real("IRAS 100um Flux Blend Flag", nullable=True)        # st_iras4blend
-        st_photn       real("Number of Photometry Measurements", nullable=True)        # st_photn
-        st_umbj        real("U-B (Johnson) [mag]", nullable=True)        # st_umbj
-        st_umbjerr     real("U-B (Johnson) Unc. [mag]", nullable=True)        # st_umbjerr
-        st_umbjlim     real("U-B (Johnson) Limit Flag", nullable=True)        # st_umbjlim
-        st_umbjblend   "U-B (Johnson) Blend Flag"     set([None, bool])   # st_umbjblend
-        st_bmvj        "B-V (Johnson) [mag]"     set([None])   # st_bmvj
-        st_bmvjerr     real("B-V (Johnson) Unc. [mag]", nullable=True)        # st_bmvjerr
-        st_bmvjlim     real("B-V (Johnson) Limit Flag", nullable=True)        # st_bmvjlim
-        st_bmvjblend   "B-V (Johnson) Blend Flag"     set([None, bool])   # st_bmvjblend
-        st_vjmic       "V-I (Johnson-Cousins) [mag]"     set([None])   # st_vjmic
-        st_vjmicerr    real("V-I (Johnson-Cousins) Unc. [mag]", nullable=True)        # st_vjmicerr
-        st_vjmiclim    real("V-I (Johnson-Cousins) Limit Flag", nullable=True)        # st_vjmiclim
-        st_vjmicblend  real("V-I (Johnson-Cousins) Blend Flag", nullable=True)        # st_vjmicblend
-        st_vjmrc       real("V-R (Johnson-Cousins) [mag]", nullable=True)        # st_vjmrc
-        st_vjmrcerr    real("V-R (Johnson-Cousins) Unc. [mag]", nullable=True)        # st_vjmrcerr
-        st_vjmrclim    real("V-R (Johnson-Cousins) Limit Flag", nullable=True)        # st_vjmrclim
-        st_vjmrcblend  real("V-R (Johnson-Cousins) Blend Flag", nullable=True)        # st_vjmrcblend
-        st_jmh2        real("J-H (2MASS) [mag]", nullable=True)        # st_jmh2
-        st_jmh2err     real("J-H (2MASS) Unc. [mag]", nullable=True)        # st_jmh2err
-        st_jmh2lim     real("J-H (2MASS) Limit Flag", nullable=True)        # st_jmh2lim
-        st_jmh2blend   integer("J-H (2MASS) Blend Flag", nullable=True)        # st_jmh2blend
-        st_hmk2        "H-Ks (2MASS) [mag]"     set([None])   # st_hmk2
-        st_hmk2err     real("H-Ks (2MASS) Unc. [mag]", nullable=True)        # st_hmk2err
-        st_hmk2lim     real("H-Ks (2MASS) Limit Flag", nullable=True)        # st_hmk2lim
-        st_hmk2blend   integer("H-Ks (2MASS) Blend Flag", nullable=True)        # st_hmk2blend
-        st_jmk2        "J-Ks (2MASS) [mag]"     set([None])   # st_jmk2
-        st_jmk2err     real("J-Ks (2MASS) Unc. [mag]", nullable=True)        # st_jmk2err
-        st_jmk2lim     real("J-Ks (2MASS) Limit Flag", nullable=True)        # st_jmk2lim
-        st_jmk2blend   integer("J-Ks (2MASS) Blend Flag", nullable=True)        # st_jmk2blend
-        st_bmy         "b-y (Stromgren) [mag]"     set([None])   # st_bmy
-        st_bmyerr      real("b-y (Stromgren) Unc. [mag]", nullable=True)        # st_bmyerr
-        st_bmylim      real("b-y (Stromgren) Limit Flag", nullable=True)        # st_bmylim
-        st_bmyblend    "b-y (Stromgren) Blend Flag"     set([None, bool])   # st_bmyblend
-        st_m1          "m1 (Stromgren) [mag]"     set([None])   # st_m1
-        st_m1err       real("m1 (Stromgren) Unc. [mag]", nullable=True)        # st_m1err
-        st_m1lim       real("m1 (Stromgren) Limit Flag", nullable=True)        # st_m1lim
-        st_m1blend     "m1 (Stromgren) Blend Flag"     set([None, bool])   # st_m1blend
-        st_c1          "c1 (Stromgren) [mag]"     set([None])   # st_c1
-        st_c1err       real("c1 (Stromgren) Unc. [mag]", nullable=True)        # st_c1err
-        st_c1lim       real("c1 (Stromgren) Limit Flag", nullable=True)        # st_c1lim
-        st_c1blend     "c1 (Stromgren) Blend Flag"     set([None, bool])   # st_c1blend
-        st_colorn      "Number of Color Measurements"     set([None])   # st_colorn
+
+
 
 
 
