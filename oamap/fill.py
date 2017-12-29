@@ -120,6 +120,9 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             forefront = len(fillables[gen.positions])
             fillables_leaf_to_root.append(fillables[gen.positions])
 
+        elif isinstance(gen, oamap.generator.ExtendedGenerator):
+            forefront = initialize(gen.generic)
+
         else:
             raise TypeError("unrecognized generator: {0}".format(repr(gen)))
 
@@ -157,6 +160,9 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
 
         elif isinstance(gen, oamap.generator.PointerGenerator):
             return fillables[gen.positions].forefront()
+
+        elif isinstance(gen, oamap.generator.ExtendedGenerator):
+            return forefront(gen.generic)
 
     if forefront(generator) != 0 and not isinstance(generator, ListGenerator):
         raise TypeError("non-Lists can only be filled from data once")
@@ -235,6 +241,9 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
         elif isinstance(gen, oamap.generator.PointerGenerator):
             # Pointers will be set after we see all the target values
             pointerobjs[id(gen)].append(obj)
+
+        elif isinstance(gen, oamap.generator.ExtendedGenerator):
+            fill(gen.degenerate(obj), gen.generic, targetids, pointerobjs)
 
         if isinstance(gen, oamap.generator.Masked):
             if obj is None:

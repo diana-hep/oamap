@@ -105,6 +105,9 @@ def _makefillables(generator, fillables, makefillable):
         if not generator._internal:
             _makefillables(generator.target, fillables, makefillable)
 
+    elif isinstance(generator, oamap.generator.ExtendedGenerator):
+        _makefillables(generator.generic, fillables, makefillable)
+
     else:
         raise AssertionError("unrecognized generator type: {0}".format(generator))
 

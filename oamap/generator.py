@@ -78,14 +78,14 @@ class Generator(object):
 
 # mix-in for all generators of nullable types
 class Masked(object):
-    dtype = numpy.dtype(numpy.bool_)
+    maskdtype = numpy.dtype(numpy.bool_)
 
     def __init__(self, mask, maskidx):
         self.mask = mask
         self.maskidx = maskidx
 
     def _generate(self, arrays, index, cache):
-        if self._getarray(arrays, self.mask, cache, self.maskidx, Masked.dtype)[index]:
+        if self._getarray(arrays, self.mask, cache, self.maskidx, self.maskdtype)[index]:
             return None
         else:
             return self.__class__.__bases__[1]._generate(self, arrays, index, cache)
@@ -122,8 +122,8 @@ class ListGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        starts = self._getarray(arrays, self.starts, cache, self.startsidx, ListGenerator.dtype)
-        stops  = self._getarray(arrays, self.stops,  cache, self.stopsidx,  ListGenerator.dtype)
+        starts = self._getarray(arrays, self.starts, cache, self.startsidx, self.dtype)
+        stops  = self._getarray(arrays, self.stops,  cache, self.stopsidx,  self.dtype)
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
 class MaskedListGenerator(Masked, ListGenerator):
@@ -145,8 +145,8 @@ class UnionGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        tags    = self._getarray(arrays, self.tags,    cache, self.tagsidx,    UnionGenerator.dtype)
-        offsets = self._getarray(arrays, self.offsets, cache, self.offsetsidx, UnionGenerator.dtype)
+        tags    = self._getarray(arrays, self.tags,    cache, self.tagsidx,    self.dtype)
+        offsets = self._getarray(arrays, self.offsets, cache, self.offsetsidx, self.dtype)
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
@@ -196,7 +196,7 @@ class PointerGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        positions = self._getarray(arrays, self.positions, cache, self.positionsidx, PointerGenerator.dtype)
+        positions = self._getarray(arrays, self.positions, cache, self.positionsidx, self.dtype)
         return self.target._generate(arrays, positions[index], cache)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
@@ -207,10 +207,17 @@ class MaskedPointerGenerator(Masked, PointerGenerator):
 ################################################################ for extensions: domain-specific and user
 
 class ExtendedGenerator(Generator):
-    # extensions *must* override pattern and _generate, *may* override matches
+    # extensions *must* override pattern, _generate, and degenerate, *may* override matches
     pattern = None
+
+    # default implementation: generate a given type of proxy
+    proxyclass = None
     def _generate(self, arrays, index, cache):
-        raise NotImplementedError
+        return self.proxyclass(self, arrays, cache, index)
+
+    # default implementation: do nothing; generic type is the same as extended type
+    def degenerate(self, obj):
+        return obj
 
     def __init__(self, genericclass, *args):
         self.generic = genericclass(*args)

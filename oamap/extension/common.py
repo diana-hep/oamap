@@ -58,13 +58,29 @@ class _GenerateBytes(object):
             else:
                 return "".join(map(chr, array))
 
-class ByteStringGenerator(oamap.generator.ExtendedGenerator, _GenerateBytes):
+    def degenerate(self, obj):
+        if obj is None:
+            return obj
+
+        elif self.py3:
+            if isinstance(obj, bytes):
+                return obj
+            else:
+                return codecs.utf_8_encode(obj)[0]
+
+        else:
+            if isinstance(obj, str):
+                return map(ord, obj)
+            else:
+                return map(ord, codecs.utf_8_encode(obj)[0])
+
+class ByteStringGenerator(_GenerateBytes, oamap.generator.ExtendedGenerator):
     pattern = {"name": "ByteString", "type": "list", "content": {"type": "primitive", "dtype": "uint8", "dims": [], "nullable": False}}
 
     def _generate(self, arrays, index, cache):
         return self._generatebytes(arrays, index, cache)
-
-class UTF8StringGenerator(oamap.generator.ExtendedGenerator, _GenerateBytes):
+            
+class UTF8StringGenerator(_GenerateBytes, oamap.generator.ExtendedGenerator):
     pattern = {"name": "UTF8String", "type": "list", "content": {"type": "primitive", "dtype": "uint8", "dims": [], "nullable": False}}
 
     def _generate(self, arrays, index, cache):

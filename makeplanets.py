@@ -29,7 +29,7 @@ def string(x):
 stars = {}
 
 fields = None
-for line in csv.reader(open("/tmp/downloads/planets.csv")):
+for line in csv.reader(open("planets.csv")):
     if line[0][0] != "#":
         if fields is None:
             fields = line
@@ -50,7 +50,7 @@ for line in csv.reader(open("/tmp/downloads/planets.csv")):
                     "parallax": {"val": real(x["st_plx"]), "hierr": real(x["st_plxerr1"]), "loerr": real(x["st_plxerr2"]), "lim": boolean(x["st_plxlim"]), "blend": boolean(x["st_plxblend"])},
                     "distance": {"val": real(x["st_dist"]), "hierr": real(x["st_disterr1"]), "loerr": real(x["st_disterr2"]), "lim": boolean(x["st_distlim"]), "blend": boolean(x["st_optmagblend"])},
                     "propermotion": {"ra": {"val": real(x["st_pmra"]), "err": real(x["st_pmraerr"]), "lim": boolean(x["st_pmralim"])}, "dec": {"val": real(x["st_pmdec"]), "err": real(x["st_pmdecerr"]), "lim": boolean(x["st_pmdeclim"])}, "total": {"val": real(x["st_pm"]), "err": real(x["st_pmerr"]), "lim": boolean(x["st_pmlim"]), "blend": boolean(x["st_pmblend"])}},
-                    "gaia": {"gband": {"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "limit": real(x["gaia_gmaglim"])}, "parallax": {"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "limit": real(x["gaia_plxlim"])}, "distance": {"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "limit": real(x["gaia_distlim"])}, "propermotion": {"ra": {"val": real(x["gaia_pmra"]), "err ": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}, "dec": {"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}, "total": {"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])}}},
+                    "gaia": {"gband": {"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "limit": real(x["gaia_gmaglim"])}, "parallax": {"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "limit": real(x["gaia_plxlim"])}, "distance": {"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "limit": real(x["gaia_distlim"])}, "propermotion": {"ra": {"val": real(x["gaia_pmra"]), "err": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}, "dec": {"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}, "total": {"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])}}},
                     "radialvelocity": {"val": real(x["st_radv"]), "hierr": real(x["st_radverr1"]), "loerr": real(x["st_radverr2"]), "lim": boolean(x["st_radvlim"]), "blend": boolean(x["st_radvblend"])},
                     "spectraltype": {"val": real(x["st_sp"]), "str": string(x["st_spstr"]), "err": real(x["st_sperr"]), "lim": boolean(x["st_splim"]), "blend": boolean(x["st_spblend"])},
                     "surfacegravity": {"val": real(x["st_logg"]), "hierr": real(x["st_loggerr1"]), "loerr": real(x["st_loggerr2"]), "lim": boolean(x["st_logglim"]), "blend": boolean(x["st_loggblend"])},
@@ -68,7 +68,7 @@ for line in csv.reader(open("/tmp/downloads/planets.csv")):
                     "num_images": integer(x["st_nimg"]),
                     "num_spectra": integer(x["st_nspec"]),
                     "photometry": {"uband": {"val": real(x["st_uj"]), "err": real(x["st_ujerr"]), "lim": boolean(x["st_ujlim"]), "blend": boolean(x["st_ujblend"])}, "vband": {"val": real(x["st_vj"]), "err": real(x["st_vjerr"]), "lim": boolean(x["st_vjlim"]), "blend": boolean(x["st_vjblend"])}, "bband": {"val": real(x["st_bj"]), "err": real(x["st_bjerr"]), "lim": boolean(x["st_bjlim"]), "blend": boolean(x["st_bjblend"])}, "rband": {"val": real(x["st_rc"]), "err": real(x["st_rcerr"]), "lim": boolean(x["st_rclim"]), "blend": boolean(x["st_rcblend"])}, "iband": {"val": real(x["st_ic"]), "err": real(x["st_icerr"]), "lim": boolean(x["st_iclim"]), "blend": boolean(x["st_icblend"])}, "jband": {"val": real(x["st_j"]), "err": real(x["st_jerr"]), "lim": boolean(x["st_jlim"]), "blend": boolean(x["st_jblend"])}, "hband": {"val": real(x["st_h"]), "err": real(x["st_herr"]), "lim": boolean(x["st_hlim"]), "blend": boolean(x["st_hblend"])}, "kband": {"val": real(x["st_k"]), "err": real(x["st_kerr"]), "lim": boolean(x["st_klim"]), "blend": boolean(x["st_kblend"])}, "wise1": {"val": real(x["st_wise1"]), "err": real(x["st_wise1err"]), "lim": boolean(x["st_wise1lim"]), "blend": boolean(x["st_wise1blend"])}, "wise2": {"val": real(x["st_wise2"]), "err": real(x["st_wise2err"]), "lim": boolean(x["st_wise2lim"]), "blend": boolean(x["st_wise2blend"])}, "wise3": {"val": real(x["st_wise3"]), "err": real(x["st_wise3err"]), "lim": boolean(x["st_wise3lim"]), "blend": boolean(x["st_wise3blend"])}, "wise4": {"val": real(x["st_wise4"]), "err": real(x["st_wise4err"]), "lim": boolean(x["st_wise4lim"]), "blend": boolean(x["st_wise4blend"])}, "irac1": {"val": real(x["st_irac1"]), "err": real(x["st_irac1err"]), "lim": boolean(x["st_irac1lim"]), "blend": boolean(x["st_irac1blend"])}, "irac2": {"val": real(x["st_irac2"]), "err": real(x["st_irac2err"]), "lim": boolean(x["st_irac2lim"]), "blend": boolean(x["st_irac2blend"])}, "irac3": {"val": real(x["st_irac3"]), "err": real(x["st_irac3err"]), "lim": boolean(x["st_irac3lim"]), "blend": boolean(x["st_irac3blend"])}, "irac4": {"val": real(x["st_irac4"]), "err": real(x["st_irac4err"]), "lim": boolean(x["st_irac4lim"]), "blend": boolean(x["st_irac4blend"])}, "mips1": {"val": real(x["st_mips1"]), "err": real(x["st_mips1err"]), "lim": boolean(x["st_mips1lim"]), "blend": boolean(x["st_mips1blend"])}, "mips2": {"val": real(x["st_mips2"]), "err": real(x["st_mips2err"]), "lim": boolean(x["st_mips2lim"]), "blend": boolean(x["st_mips2blend"])}, "mips3": {"val": real(x["st_mips3"]), "err": real(x["st_mips3err"]), "lim": boolean(x["st_mips3lim"]), "blend": boolean(x["st_mips3blend"])}, "iras1": {"val": real(x["st_iras1"]), "err": real(x["st_iras1err"]), "lim": boolean(x["st_iras1lim"]), "blend": boolean(x["st_iras1blend"])}, "iras2": {"val": real(x["st_iras2"]), "err": real(x["st_iras2err"]), "lim": boolean(x["st_iras2lim"]), "blend": boolean(x["st_iras2blend"])}, "iras3": {"val": real(x["st_iras3"]), "err": real(x["st_iras3err"]), "lim": boolean(x["st_iras3lim"]), "blend": boolean(x["st_iras3blend"])}, "iras4": {"val": real(x["st_iras4"]), "err": real(x["st_iras4err"]), "lim": boolean(x["st_iras4lim"]), "blend": boolean(x["st_iras4blend"])}, "num_measurements": integer(x["st_photn"])},
-                    "color": {"ub_diff": {"val": real(x["st_umbj"]), "err": real(x["st_umbjerr"]), "lim": boolean(x["st_umbjlim"]), "blend": boolean(x["st_umbjblend"])}, "bf_diff": {"val": real(x["st_bmvj"]), "err": real(x["st_bmvjerr"]), "lim": boolean(x["st_bmvjlim"]), "blend": boolean(x["st_bmvjblend"])}, "vi_diff": {"val": real(x["st_vjmic"]), "err": real(x["st_vjmicerr"]), "lim": boolean(x["st_vjmiclim"]), "blend": boolean(x["st_vjmicblend"])}, "vr_diff": {"val": real(x["st_vjmrc"]), "err": real(x["st_vjmrcerr"]), "lim": boolean(x["st_vjmrclim"]), "blend": boolean(x["st_vjmrcblend"])}, "jh_diff": {"val": real(x["st_jmh2"]), "err": real(x["st_jmh2err"]), "lim": boolean(x["st_jmh2lim"]), "blend": boolean(x["st_jmh2blend"])}, "hk_diff": {"val": real(x["st_hmk2"]), "err": real(x["st_hmk2err"]), "lim": boolean(x["st_hmk2lim"]), "blend": boolean(x["st_hmk2blend"])}, "jk_diff": {"val": real(x["st_jmk2"]), "err": real(x["st_jmk2err"]), "lim": boolean(x["st_jmk2lim"]), "blend": boolean(x["st_jmk2blend"])}, "by_diff": {"val": real(x["st_bmy"]), "err": real(x["st_bmyerr"]), "lim": boolean(x["st_bmylim"]), "blend": boolean(x["st_bmyblend"])}, "m1_diff": {"val": real(x["st_m1"]), "err": real(x["st_m1err"]), "lim": boolean(x["st_m1lim"]), "blend": boolean(x["st_m1blend"])}, "c1_diff": {"val": real(x["st_c1"]), "err": real(x["st_c1err"]), "lim": boolean(x["st_c1lim"]), "blend": boolean(x["st_c1blend"])}, "num_measurements": integer(x["st_colorn"])},
+                    "color": {"ub_diff": {"val": real(x["st_umbj"]), "err": real(x["st_umbjerr"]), "lim": boolean(x["st_umbjlim"]), "blend": boolean(x["st_umbjblend"])}, "bv_diff": {"val": real(x["st_bmvj"]), "err": real(x["st_bmvjerr"]), "lim": boolean(x["st_bmvjlim"]), "blend": boolean(x["st_bmvjblend"])}, "vi_diff": {"val": real(x["st_vjmic"]), "err": real(x["st_vjmicerr"]), "lim": boolean(x["st_vjmiclim"]), "blend": boolean(x["st_vjmicblend"])}, "vr_diff": {"val": real(x["st_vjmrc"]), "err": real(x["st_vjmrcerr"]), "lim": boolean(x["st_vjmrclim"]), "blend": boolean(x["st_vjmrcblend"])}, "jh_diff": {"val": real(x["st_jmh2"]), "err": real(x["st_jmh2err"]), "lim": boolean(x["st_jmh2lim"]), "blend": boolean(x["st_jmh2blend"])}, "hk_diff": {"val": real(x["st_hmk2"]), "err": real(x["st_hmk2err"]), "lim": boolean(x["st_hmk2lim"]), "blend": boolean(x["st_hmk2blend"])}, "jk_diff": {"val": real(x["st_jmk2"]), "err": real(x["st_jmk2err"]), "lim": boolean(x["st_jmk2lim"]), "blend": boolean(x["st_jmk2blend"])}, "by_diff": {"val": real(x["st_bmy"]), "err": real(x["st_bmyerr"]), "lim": boolean(x["st_bmylim"]), "blend": boolean(x["st_bmyblend"])}, "m1_diff": {"val": real(x["st_m1"]), "err": real(x["st_m1err"]), "lim": boolean(x["st_m1lim"]), "blend": boolean(x["st_m1blend"])}, "c1_diff": {"val": real(x["st_c1"]), "err": real(x["st_c1err"]), "lim": boolean(x["st_c1lim"]), "blend": boolean(x["st_c1blend"])}, "num_measurements": integer(x["st_colorn"])},
                     "num_planets": integer(x["pl_pnum"]),
                     "planets": []
                     }
@@ -354,7 +354,7 @@ schema = (
             hierr = real("Stellar Metallicity Lower Unc. [dex]", nullable=True),    # st_metfeerr2
             lim = boolean("Stellar Metallicity Limit Flag", nullable=True),         # st_metfelim
             blend = boolean("Stellar Metallicity Blend Flag", nullable=True),       # st_metfeblend
-            ratio = string("Metallicity Ratio: ([Fe/H] denotes iron abundance, [M/H] refers to a general metal content)", nullable=True)   # st_metratio
+            ratio = Pointer(string(), doc="Metallicity Ratio: ([Fe/H] denotes iron abundance, [M/H] refers to a general metal content)", nullable=True)   # st_metratio
           )
         ),
         age = Record(
@@ -966,6 +966,22 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
   )
 )
 
+schema = (
+  List(
+    Record(
+      name = "Star",
+      fields = dict(
+        opticalband = Pointer(string(), doc="Optical Magnitude Band", nullable=True),   # st_optband
+      )
+    )
+  )
+)
+
 import oamap.fill
 
-fillables = oamap.fill.fromdata(stars.values(), generator=schema)
+one = stars.values()[0:10]
+
+fillables = oamap.fill.fromdata(one, generator=schema)
+arrays = oamap.fill.toarrays(fillables)
+
+two = schema(arrays)
