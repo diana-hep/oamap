@@ -171,7 +171,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
     def fill(obj, gen, targetids, pointerobjs):
         if id(gen) in targetids:
             targetids[id(gen)][id(obj)] = (forefront(gen), obj)
-
+        
         if isinstance(gen, oamap.generator.PrimitiveGenerator):
             fillables[gen.data].append(0 if obj is None else obj)
 

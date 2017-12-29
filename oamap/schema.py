@@ -146,7 +146,7 @@ class Schema(object):
             stream.write("\n")
 
     def tojsonfile(self, file, explicit=False, *args, **kwds):
-        json.dump(file, self.tojson(explicit=explicit), *args, **kwds)
+        json.dump(self.tojson(explicit=explicit), file, *args, **kwds)
 
     def tojsonstring(self, explicit=False, *args, **kwds):
         return json.dumps(self.tojson(explicit=explicit), *args, **kwds)
