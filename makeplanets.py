@@ -1,18 +1,125 @@
-import json
+import csv
 
-data = json.load(open("/tmp/downloads/planets.json"))
+def boolean(x):
+    if x == "":
+        return None
+    elif x == "0":
+        return False
+    else:
+        return True
 
-def whattype(field):
-    types = set()
-    for x in data:
-        types.add(type(x[field]))
-    return types
+def integer(x):
+    if x == "":
+        return None
+    else:
+        return int(x)
 
-def uniques(field):
-    out = set()
-    for x in data:
-        out.add(x[field])
-    return out
+def real(x):
+    if x == "":
+        return None
+    else:
+        return float(x)
+
+def string(x):
+    if x == "":
+        return None
+    else:
+        return x
+
+stars = {}
+
+fields = None
+for line in csv.reader(open("/tmp/downloads/planets.csv")):
+    if line[0][0] != "#":
+        if fields is None:
+            fields = line
+        else:
+            x = dict(zip(fields, line))
+            if x["pl_hostname"] not in stars:
+                stars[x["pl_hostname"]] = {
+                    "name": string(x["pl_hostname"]),
+                    "update": string(x["rowupdate"]),
+                    "ra": real(x["ra"]),
+                    "dec": real(x["dec"]),
+                    "opticalband": string(x["st_optband"]),
+                    "temperature": {"val": real(x["st_teff"]), "hierr": real(x["st_tefferr1"]), "loerr": real(x["st_tefferr2"]), "lim": boolean(x["st_tefflim"]), "blend": boolean(x["st_teffblend"])},
+                    "mass": {"val": real(x["st_mass"]), "hierr": real(x["st_masserr1"]), "loerr": real(x["st_masserr2"]), "lim": boolean(x["st_masslim"]), "blend": boolean(x["st_massblend"])},
+                    "radius": {"val": real(x["st_rad"]), "hierr": real(x["st_raderr1"]), "loerr": real(x["st_raderr2"]), "lim": boolean(x["st_radlim"]), "blend": boolean(x["st_radblend"])},
+                    "galactic": {"longitude": real(x["st_glon"]), "latitude": real(x["st_glat"])},
+                    "ecliptic": {"longitude": real(x["st_elon"]), "latitude": real(x["st_elat"])},
+                    "parallax": {"val": real(x["st_plx"]), "hierr": real(x["st_plxerr1"]), "loerr": real(x["st_plxerr2"]), "lim": boolean(x["st_plxlim"]), "blend": boolean(x["st_plxblend"])},
+                    "distance": {"val": real(x["st_dist"]), "hierr": real(x["st_disterr1"]), "loerr": real(x["st_disterr2"]), "lim": boolean(x["st_distlim"]), "blend": boolean(x["st_optmagblend"])},
+                    "propermotion": {"ra": {"val": real(x["st_pmra"]), "err": real(x["st_pmraerr"]), "lim": boolean(x["st_pmralim"])}, "dec": {"val": real(x["st_pmdec"]), "err": real(x["st_pmdecerr"]), "lim": boolean(x["st_pmdeclim"])}, "total": {"val": real(x["st_pm"]), "err": real(x["st_pmerr"]), "lim": boolean(x["st_pmlim"]), "blend": boolean(x["st_pmblend"])}},
+                    "gaia": {"gband": {"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "limit": real(x["gaia_gmaglim"])}, "parallax": {"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "limit": real(x["gaia_plxlim"])}, "distance": {"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "limit": real(x["gaia_distlim"])}, "propermotion": {"ra": {"val": real(x["gaia_pmra"]), "err ": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}, "dec": {"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}, "total": {"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])}}},
+                    "radialvelocity": {"val": real(x["st_radv"]), "hierr": real(x["st_radverr1"]), "loerr": real(x["st_radverr2"]), "lim": boolean(x["st_radvlim"]), "blend": boolean(x["st_radvblend"])},
+                    "spectraltype": {"val": real(x["st_sp"]), "str": string(x["st_spstr"]), "err": real(x["st_sperr"]), "lim": boolean(x["st_splim"]), "blend": boolean(x["st_spblend"])},
+                    "surfacegravity": {"val": real(x["st_logg"]), "hierr": real(x["st_loggerr1"]), "loerr": real(x["st_loggerr2"]), "lim": boolean(x["st_logglim"]), "blend": boolean(x["st_loggblend"])},
+                    "luminosity": {"val": real(x["st_lum"]), "hierr": real(x["st_lumerr1"]), "loerr": real(x["st_lumerr2"]), "lim": boolean(x["st_lumlim"]), "blend": boolean(x["st_lumblend"])},
+                    "density": {"val": real(x["st_dens"]), "hierr": real(x["st_denserr1"]), "loerr": real(x["st_denserr2"]), "lim": boolean(x["st_denslim"])},
+                    "metallicity": {"val": real(x["st_metfe"]), "loerr": real(x["st_metfeerr1"]), "hierr": real(x["st_metfeerr2"]), "lim": boolean(x["st_metfelim"]), "blend": boolean(x["st_metfeblend"]), "ratio": string(x["st_metratio"])},
+                    "age": {"val": real(x["st_age"]), "hierr": real(x["st_ageerr1"]), "loerr": real(x["st_ageerr2"]), "lim": boolean(x["st_agelim"])},
+                    "rotational_velocity": {"val": real(x["st_vsini"]), "hierr": real(x["st_vsinierr1"]), "loerr": real(x["st_vsinierr2"]), "lim": boolean(x["st_vsinilim"]), "blend": boolean(x["st_vsiniblend"])},
+                    "activity": {"sindex": {"val": real(x["st_acts"]), "err": real(x["st_actserr"]), "lim": boolean(x["st_actslim"]), "blend": boolean(x["st_actsblend"])}, "rindex": {"val": real(x["st_actr"]), "err": real(x["st_actrerr"]), "lim": boolean(x["st_actrlim"]), "blend": boolean(x["st_actrblend"])}, "xindex": {"val": real(x["st_actlx"]), "err": real(x["st_actlxerr"]), "lim": boolean(x["st_actlxlim"]), "blend": boolean(x["st_actlxblend"])}},
+                    "num_timeseries": integer(x["st_nts"]),
+                    "num_transit_lightcurves": integer(x["st_nplc"]),
+                    "num_general_lightcurves": integer(x["st_nglc"]),
+                    "num_radial_timeseries": integer(x["st_nrvc"]),
+                    "num_amateur_lightcurves": integer(x["st_naxa"]),
+                    "num_images": integer(x["st_nimg"]),
+                    "num_spectra": integer(x["st_nspec"]),
+                    "photometry": {"uband": {"val": real(x["st_uj"]), "err": real(x["st_ujerr"]), "lim": boolean(x["st_ujlim"]), "blend": boolean(x["st_ujblend"])}, "vband": {"val": real(x["st_vj"]), "err": real(x["st_vjerr"]), "lim": boolean(x["st_vjlim"]), "blend": boolean(x["st_vjblend"])}, "bband": {"val": real(x["st_bj"]), "err": real(x["st_bjerr"]), "lim": boolean(x["st_bjlim"]), "blend": boolean(x["st_bjblend"])}, "rband": {"val": real(x["st_rc"]), "err": real(x["st_rcerr"]), "lim": boolean(x["st_rclim"]), "blend": boolean(x["st_rcblend"])}, "iband": {"val": real(x["st_ic"]), "err": real(x["st_icerr"]), "lim": boolean(x["st_iclim"]), "blend": boolean(x["st_icblend"])}, "jband": {"val": real(x["st_j"]), "err": real(x["st_jerr"]), "lim": boolean(x["st_jlim"]), "blend": boolean(x["st_jblend"])}, "hband": {"val": real(x["st_h"]), "err": real(x["st_herr"]), "lim": boolean(x["st_hlim"]), "blend": boolean(x["st_hblend"])}, "kband": {"val": real(x["st_k"]), "err": real(x["st_kerr"]), "lim": boolean(x["st_klim"]), "blend": boolean(x["st_kblend"])}, "wise1": {"val": real(x["st_wise1"]), "err": real(x["st_wise1err"]), "lim": boolean(x["st_wise1lim"]), "blend": boolean(x["st_wise1blend"])}, "wise2": {"val": real(x["st_wise2"]), "err": real(x["st_wise2err"]), "lim": boolean(x["st_wise2lim"]), "blend": boolean(x["st_wise2blend"])}, "wise3": {"val": real(x["st_wise3"]), "err": real(x["st_wise3err"]), "lim": boolean(x["st_wise3lim"]), "blend": boolean(x["st_wise3blend"])}, "wise4": {"val": real(x["st_wise4"]), "err": real(x["st_wise4err"]), "lim": boolean(x["st_wise4lim"]), "blend": boolean(x["st_wise4blend"])}, "irac1": {"val": real(x["st_irac1"]), "err": real(x["st_irac1err"]), "lim": boolean(x["st_irac1lim"]), "blend": boolean(x["st_irac1blend"])}, "irac2": {"val": real(x["st_irac2"]), "err": real(x["st_irac2err"]), "lim": boolean(x["st_irac2lim"]), "blend": boolean(x["st_irac2blend"])}, "irac3": {"val": real(x["st_irac3"]), "err": real(x["st_irac3err"]), "lim": boolean(x["st_irac3lim"]), "blend": boolean(x["st_irac3blend"])}, "irac4": {"val": real(x["st_irac4"]), "err": real(x["st_irac4err"]), "lim": boolean(x["st_irac4lim"]), "blend": boolean(x["st_irac4blend"])}, "mips1": {"val": real(x["st_mips1"]), "err": real(x["st_mips1err"]), "lim": boolean(x["st_mips1lim"]), "blend": boolean(x["st_mips1blend"])}, "mips2": {"val": real(x["st_mips2"]), "err": real(x["st_mips2err"]), "lim": boolean(x["st_mips2lim"]), "blend": boolean(x["st_mips2blend"])}, "mips3": {"val": real(x["st_mips3"]), "err": real(x["st_mips3err"]), "lim": boolean(x["st_mips3lim"]), "blend": boolean(x["st_mips3blend"])}, "iras1": {"val": real(x["st_iras1"]), "err": real(x["st_iras1err"]), "lim": boolean(x["st_iras1lim"]), "blend": boolean(x["st_iras1blend"])}, "iras2": {"val": real(x["st_iras2"]), "err": real(x["st_iras2err"]), "lim": boolean(x["st_iras2lim"]), "blend": boolean(x["st_iras2blend"])}, "iras3": {"val": real(x["st_iras3"]), "err": real(x["st_iras3err"]), "lim": boolean(x["st_iras3lim"]), "blend": boolean(x["st_iras3blend"])}, "iras4": {"val": real(x["st_iras4"]), "err": real(x["st_iras4err"]), "lim": boolean(x["st_iras4lim"]), "blend": boolean(x["st_iras4blend"])}, "num_measurements": integer(x["st_photn"])},
+                    "color": {"ub_diff": {"val": real(x["st_umbj"]), "err": real(x["st_umbjerr"]), "lim": boolean(x["st_umbjlim"]), "blend": boolean(x["st_umbjblend"])}, "bf_diff": {"val": real(x["st_bmvj"]), "err": real(x["st_bmvjerr"]), "lim": boolean(x["st_bmvjlim"]), "blend": boolean(x["st_bmvjblend"])}, "vi_diff": {"val": real(x["st_vjmic"]), "err": real(x["st_vjmicerr"]), "lim": boolean(x["st_vjmiclim"]), "blend": boolean(x["st_vjmicblend"])}, "vr_diff": {"val": real(x["st_vjmrc"]), "err": real(x["st_vjmrcerr"]), "lim": boolean(x["st_vjmrclim"]), "blend": boolean(x["st_vjmrcblend"])}, "jh_diff": {"val": real(x["st_jmh2"]), "err": real(x["st_jmh2err"]), "lim": boolean(x["st_jmh2lim"]), "blend": boolean(x["st_jmh2blend"])}, "hk_diff": {"val": real(x["st_hmk2"]), "err": real(x["st_hmk2err"]), "lim": boolean(x["st_hmk2lim"]), "blend": boolean(x["st_hmk2blend"])}, "jk_diff": {"val": real(x["st_jmk2"]), "err": real(x["st_jmk2err"]), "lim": boolean(x["st_jmk2lim"]), "blend": boolean(x["st_jmk2blend"])}, "by_diff": {"val": real(x["st_bmy"]), "err": real(x["st_bmyerr"]), "lim": boolean(x["st_bmylim"]), "blend": boolean(x["st_bmyblend"])}, "m1_diff": {"val": real(x["st_m1"]), "err": real(x["st_m1err"]), "lim": boolean(x["st_m1lim"]), "blend": boolean(x["st_m1blend"])}, "c1_diff": {"val": real(x["st_c1"]), "err": real(x["st_c1err"]), "lim": boolean(x["st_c1lim"]), "blend": boolean(x["st_c1blend"])}, "num_measurements": integer(x["st_colorn"])},
+                    "num_planets": integer(x["pl_pnum"]),
+                    "planets": []
+                    }
+
+            else:
+                stars[x["pl_hostname"]]["planets"].append({
+                    "name": string(x["pl_name"]),
+                    "hd_name": string(x["hd_name"]),
+                    "hip_name": string(x["hip_name"]),
+                    "letter": string(x["pl_letter"]),
+                    "discovery_method": string(x["pl_discmethod"]),
+                    "orbital_period": {"val": real(x["pl_orbper"]), "hierr": real(x["pl_orbpererr1"]), "loerr": real(x["pl_orbpererr2"]), "lim": boolean(x["pl_orbperlim"])},
+                    "semimajor_axis": {"val": real(x["pl_orbsmax"]), "hierr": real(x["pl_orbsmaxerr1"]), "loerr": real(x["pl_orbsmaxerr2"]), "lim": boolean(x["pl_orbsmaxlim"])},
+                    "eccentricity": {"val": real(x["pl_orbeccen"]), "hierr": real(x["pl_orbeccenerr1"]), "loerr": real(x["pl_orbeccenerr2"]), "lim": boolean(x["pl_orbeccenlim"])},
+                    "inclination": {"val": real(x["pl_orbincl"]), "hierr": real(x["pl_orbinclerr1"]), "loerr": real(x["pl_orbinclerr2"]), "lim": boolean(x["pl_orbincllim"])},
+                    "mass": {"val": real(x["pl_massj"]), "hierr": real(x["pl_massjerr1"]), "loerr": real(x["pl_massjerr2"]), "lim": boolean(x["pl_massjlim"])},
+                    "mass_sini": {"val": real(x["pl_msinij"]), "hierr": real(x["pl_msinijerr1"]), "loerr": real(x["pl_msinijerr2"]), "lim": boolean(x["pl_msinijlim"])},
+                    "mass_best": {"val": real(x["pl_bmassj"]), "hierr": real(x["pl_bmassjerr1"]), "loerr": real(x["pl_bmassjerr2"]), "lim": boolean(x["pl_bmassjlim"]), "provenance": string(x["pl_bmassprov"])},
+                    "radius": {"val": real(x["pl_radj"]), "hierr": real(x["pl_radjerr1"]), "loerr": real(x["pl_radjerr2"]), "lim": boolean(x["pl_radjlim"])},
+                    "density": {"val": real(x["pl_dens"]), "hierr": real(x["pl_denserr1"]), "loerr": real(x["pl_denserr2"]), "lim": boolean(x["pl_denslim"])},
+                    "has_timing_variations": boolean(x["pl_ttvflag"]),
+                    "in_kepler_data": boolean(x["pl_kepflag"]),
+                    "in_k2_data": boolean(x["pl_k2flag"]),
+                    "num_notes": integer(x["pl_nnotes"]),
+                    "has_transits": boolean(x["pl_tranflag"]),
+                    "has_radial_velocity": boolean(x["pl_tranflag"]),
+                    "has_image": boolean(x["pl_imgflag"]),
+                    "has_astrometrical_variations": boolean(x["pl_astflag"]),
+                    "has_orbital_modulations": boolean(x["pl_omflag"]),
+                    "has_binary": boolean(x["pl_cbflag"]),
+                    "angular_separation": {"val": real(x["pl_angsep"]), "hierr": real(x["pl_angseperr1"]), "loerr": real(x["pl_angseperr2"])},
+                    "periastron": {"val": real(x["pl_orbtper"]), "hierr": real(x["pl_orbtpererr1"]), "loerr": real(x["pl_orbtpererr2"]), "lim": boolean(x["pl_orbtperlim"])},
+                    "longitude_periastron": {"val": real(x["pl_orblper"]), "hierr": real(x["pl_orblpererr1"]), "loerr": real(x["pl_orblpererr2"]), "lim": boolean(x["pl_orblperlim"])},
+                    "radial_velocity": {"val": real(x["pl_rvamp"]), "hierr": real(x["pl_rvamperr1"]), "loerr": real(x["pl_rvamperr2"]), "lim": boolean(x["pl_rvamplim"])},
+                    "equilibrium_temperature": {"val": real(x["pl_eqt"]), "hierr": real(x["pl_eqterr1"]), "loerr": real(x["pl_eqterr2"]), "lim": boolean(x["pl_eqtlim"])},
+                    "isolation_flux": {"val": real(x["pl_insol"]), "hierr": real(x["pl_insolerr1"]), "loerr": real(x["pl_insolerr2"]), "lim": boolean(x["pl_insollim"])},
+                    "transit_depth": {"val": real(x["pl_trandep"]), "hierr": real(x["pl_trandeperr1"]), "loerr": real(x["pl_trandeperr2"]), "lim": boolean(x["pl_trandeplim"])},
+                    "transit_duration": {"val": real(x["pl_trandur"]), "hierr": real(x["pl_trandurerr1"]), "loerr": real(x["pl_trandurerr2"]), "lim": boolean(x["pl_trandurlim"])},
+                    "transit_midpoint": {"val": real(x["pl_tranmid"]), "hierr": real(x["pl_tranmiderr1"]), "loerr": real(x["pl_tranmiderr2"]), "lim": boolean(x["pl_tranmidlim"])},
+                    "timesystem_reference": string(x["pl_tsystemref"]),
+                    "impact_parameter": {"val": real(x["pl_imppar"]), "hierr": real(x["pl_impparerr1"]), "loerr": real(x["pl_impparerr2"]), "lim": boolean(x["pl_impparlim"])},
+                    "occultation_depth": {"val": real(x["pl_occdep"]), "hierr": real(x["pl_occdeperr1"]), "loerr": real(x["pl_occdeperr2"]), "lim": boolean(x["pl_occdeplim"])},
+                    "ratio_planetdistance_starradius": {"val": real(x["pl_ratdor"]), "hierr": real(x["pl_ratdorerr1"]), "loerr": real(x["pl_ratdorerr2"]), "lim": boolean(x["pl_ratdorlim"])},
+                    "ratio_planetradius_starradius": {"val": real(x["pl_ratror"]), "hierr": real(x["pl_ratrorerr1"]), "loerr": real(x["pl_ratrorerr2"]), "lim": boolean(x["pl_ratrorlim"])},
+                    "reference_link": string(x["pl_def_reflink"]),
+                    "discovery": {"year": integer(x["pl_disc"]), "link": string(x["pl_disc_reflink"]), "locale": string(x["pl_locale"]), "facility": string(x["pl_facility"]), "telescope": string(x["pl_telescope"]), "instrument": string(x["pl_instrument"])},
+                    "num_parameters": integer(x["pl_st_npar"]),
+                    "encyclopedia_link": string(x["pl_pelink"]),
+                    "explorer_link": string(x["pl_edelink"]),
+                    "publication_date": string(x["pl_publ_date"])
+                    })
 
 from oamap.schema import *
 
@@ -37,8 +144,8 @@ schema = (
         update = string("Date of last update of the planet parameters"),            # rowupdate
         ra = real("Right Ascension of the planetary system in decimal degrees"),    # ra
         dec = real("Declination of the planetary system in decimal degrees"),       # dec
-        optband = Pointer(string(), doc="Optical Magnitude Band", nullable=True),   # st_optband
-        efftemperature = Record(
+        opticalband = Pointer(string(), doc="Optical Magnitude Band", nullable=True),   # st_optband
+        temperature = Record(
           doc = "Temperature of the star as modeled by a black body emitting the same total amount of electromagnetic radiation",
           fields = dict(
             val = real("Effective Temperature [K]", nullable=True),                 # st_teff
@@ -64,8 +171,8 @@ schema = (
             val = real("Stellar Radius [Solar radii]", nullable=True),              # st_rad
             hierr = real("Stellar Radius Upper Unc. [Solar radii]", nullable=True), # st_raderr1
             loerr = real("Stellar Radius Lower Unc. [Solar radii]", nullable=True), # st_raderr2
-            lim = boolean("Stellar Radius Limit Flag", nullable=True),              # st_radlim (0: False)
-            blend = boolean("Stellar Radius Blend Flag")                            # st_radblend (0: False)
+            lim = boolean("Stellar Radius Limit Flag", nullable=True),              # st_radlim
+            blend = boolean("Stellar Radius Blend Flag")                            # st_radblend
           )
         ),
         galactic = Record(
@@ -204,7 +311,7 @@ schema = (
           doc = "Classification of the star based on their spectral characteristics following the Morgan-Keenan system",
           fields = dict(
             val = real("Spectral Type", nullable=True),                             # st_sp
-            str = real("Spectral Type", nullable=True),                             # st_spstr
+            str = Pointer(string(), doc="Spectral Type", nullable=True),            # st_spstr
             err = real("Spectral Type Unc.", nullable=True),                        # st_sperr
             lim = boolean("Spectral Type Limit Flag", nullable=True),               # st_splim
             blend = boolean("Spectral Type Blend Flag", nullable=True)              # st_spblend
@@ -662,7 +769,25 @@ schema = (
                 )
               ),
               mass = Record(
-                doc = "Best planet mass measurement in units of masses of Jupiter. Either Mass, M*sin(i)/sin(i), or M*sin(i). See provenance for source of the measurement",
+                doc = "Amount of matter contained in the planet, measured in units of masses of Jupiter",
+                fields = dict(
+                  val = real("Planet Mass [Jupiter mass]", nullable=True),   # pl_massj
+                  hierr = real("Planet Mass Upper Unc. [Jupiter mass]", nullable=True),        # pl_massjerr1
+                  loerr = real("Planet Mass Lower Unc. [Jupiter mass]", nullable=True),        # pl_massjerr2
+                  lim = boolean("Planet Mass Limit Flag", nullable=True)        # pl_massjlim
+                )
+              ),
+              mass_sini = Record(
+                doc = "Minimum mass of a planet as measured by radial velocity, measured in units of masses of Jupiter",
+                fields = dict(
+                  val = real("Planet M*sin(i) [Jupiter mass]", nullable=True),        # pl_msinij
+                  hierr = real("Planet M*sin(i) Upper Unc. [Jupiter mass]", nullable=True),        # pl_msinijerr1
+                  loerr = real("Planet M*sin(i) Lower Unc. [Jupiter mass]", nullable=True),        # pl_msinijerr2
+                  lim = boolean("Planet M*sin(i) Limit Flag", nullable=True)        # pl_msinijlim
+                )
+              ),
+              mass_best = Record(
+                doc = "Best planet mass measurement in units of masses of Jupiter. Either Mass, M*sin(i)/sin(i), or M*sin(i). See provenance for source of the measurement.",
                 fields = dict(
                   val = real("Planet Mass or M*sin(i)[Jupiter mass]", nullable=True),                  # pl_bmassj
                   hierr = real("Planet Mass or M*sin(i)Upper Unc. [Jupiter mass]", nullable=True),     # pl_bmassjerr1
@@ -701,7 +826,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
               has_astrometrical_variations = boolean("Flag indicating if the planet host star exhibits astrometrical variations due to the planet", nullable=True), # pl_astflag
               has_orbital_modulations = boolean("Flag indicating whether the planet exhibits orbital modulations on the phase curve "), # pl_omflag
               has_binary = boolean("Flag indicating whether the planet orbits a binary system"), # pl_cbflag
-              angsep = Record(
+              angular_separation = Record(
                 doc = "The calculated angular separation (semi-major axis/distance) between the star and the planet. This value is only calculated for systems with both a semi-major axis and a distance value.",
                 fields = dict(
                   val = real("Calculated Angular Separation [mas]", nullable=True),   # pl_angsep
@@ -709,11 +834,130 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                   loerr = real("Calculated Angular Separation Lower Unc. [mas]", nullable=True)        # pl_angseperr2
                 )
               ),
-
-
-
-
-
+              periastron = Record(
+                doc = "The time at which the orbiting body is at its closest approach to the star it orbits (i.e. is at periastron)",
+                fields = dict(
+                  val = real("Time of Periastron [days]", nullable=True),        # pl_orbtper
+                  hierr = real("Time of Periastron Upper Unc. [days]", nullable=True),        # pl_orbtpererr1
+                  loerr = real("Time of Periastron Lower Unc. [days]", nullable=True),        # pl_orbtpererr2
+                  lim = boolean("Time of Periastron Limit Flag", nullable=True)        # pl_orbtperlim
+                )
+              ),
+              longitude_periastron = Record(
+                doc = "The angular separation between the ascending node of the orbit and the location in the orbit of periastron",
+                fields = dict(
+                  val = real("Long. of Periastron [deg]", nullable=True),   # pl_orblper
+                  hierr = real("Long. of Periastron Upper Unc. [deg]", nullable=True),        # pl_orblpererr1
+                  loerr = real("Long. of Periastron Lower Unc. [deg]", nullable=True),        # pl_orblpererr2
+                  lim = boolean("Long. of Periastron Limit Flag", nullable=True)        # pl_orblperlim
+                )
+              ),
+              radial_velocity = Record(
+                doc = "Half the peak-to-peak amplitude of variability in the stellar radial velocity",
+                fields = dict(
+                  val = real("Radial Velocity Amplitude [m/s]", nullable=True),   # pl_rvamp
+                  hierr = real("Radial Velocity Amplitude Upper Unc. [m/s]", nullable=True),        # pl_rvamperr1
+                  loerr = real("Radial Velocity Amplitude Lower Unc. [m/s]", nullable=True),        # pl_rvamperr2
+                  lim = boolean("Radial Velocity Amplitude Limit Flag", nullable=True)        # pl_rvamplim
+                )
+              ),
+              equilibrium_temperature = Record(
+                doc = "The equilibrium temperature of the planet as modeled by a black body heated only by its host star, or for directly imaged planets, the effective temperature of the planet required to match the measured luminosity if the planet were a black body",
+                fields = dict(
+                  val = real("Equilibrium Temperature [K]", nullable=True),        # pl_eqt
+                  hierr = real("Equilibrium Temperature Upper Unc. [K]", nullable=True),        # pl_eqterr1
+                  loerr = real("Equilibrium Temperature Lower Unc. [K]", nullable=True),        # pl_eqterr2
+                  lim = boolean("Equilibrium Temperature Limit Flag", nullable=True)        # pl_eqtlim
+                )
+              ),
+              isolation_flux = Record(
+                doc = "Insolation flux is another way to give the equilibrium temperature. It's given in units relative to those measured for the Earth from the Sun",
+                fields = dict(
+                  val = real("Insolation Flux [Earth flux]", nullable=True),   # pl_insol
+                  hierr = real("Insolation Flux Upper Unc. [Earth flux]", nullable=True),        # pl_insolerr1
+                  loerr = real("Insolation Flux Lower Unc. [Earth flux]", nullable=True),        # pl_insolerr2
+                  lim = boolean("Insolation Flux Limit Flag", nullable=True)        # pl_insollim
+                )
+              ),
+              transit_depth = Record(
+                doc = "The size of the relative flux decrement caused by the orbiting body transiting in front of the star",
+                fields = dict(
+                  val = real("Transit Depth [percent]", nullable=True),        # pl_trandep
+                  hierr = real("Transit Depth Upper Unc. [percent]", nullable=True),        # pl_trandeperr1
+                  loerr = real("Transit Depth Lower Unc. [percent]", nullable=True),        # pl_trandeperr2
+                  lim = boolean("Transit Depth Limit Flag", nullable=True)        # pl_trandeplim
+                )
+              ),
+              transit_duration = Record(
+                doc = "The length of time from the moment the planet begins to cross the stellar limb to the moment the planet finishes crossing the stellar limb",
+                fields = dict(
+                  val = real("Transit Duration [days]", nullable=True),        # pl_trandur
+                  hierr = real("Transit Duration Upper Unc. [days]", nullable=True),        # pl_trandurerr1
+                  loerr = real("Transit Duration Lower Unc. [days]", nullable=True),        # pl_trandurerr2
+                  lim = boolean("Transit Duration Limit Flag", nullable=True)        # pl_trandurlim
+                )
+              ),
+              transit_midpoint = Record(
+                doc = "The time given by the average of the time the planet begins to cross the stellar limb and the time the planet finishes crossing the stellar limb",
+                fields = dict(
+                  val = real("Transit Midpoint [days]", nullable=True),   # pl_tranmid
+                  hierr = real("Transit Midpoint Upper Unc. [days]", nullable=True),        # pl_tranmiderr1
+                  loerr = real("Transit Midpoint Lower Unc. [days]", nullable=True),        # pl_tranmiderr2
+                  lim = boolean("Transit Midpoint Limit Flag", nullable=True)        # pl_tranmidlim
+                )
+              ),
+              timesystem_reference = Pointer(string(), doc="Time System Reference", nullable=True),  # pl_tsystemref
+              impact_parameter = Record(
+                doc = "The sky-projected distance between the center of the stellar disc and the center of the planet disc at conjunction, normalized by the stellar radius",
+                fields = dict(
+                  val = real("Impact Parameter", nullable=True),   # pl_imppar
+                  hierr = real("Impact Parameter Upper Unc.", nullable=True),        # pl_impparerr1
+                  loerr = real("Impact Parameter Lower Unc.", nullable=True),        # pl_impparerr2
+                  lim = boolean("Impact Parameter Limit Flag", nullable=True)        # pl_impparlim
+                )
+              ),
+              occultation_depth = Record(
+                doc = "Depth of occultation of secondary eclipse",
+                fields = dict(
+                  val = real("Occultation Depth [percentage]", nullable=True),   # pl_occdep
+                  hierr = real("Occultation Depth Upper Unc. [percentage]", nullable=True),        # pl_occdeperr1
+                  loerr = real("Occultation Depth Lower Unc. [percentage]", nullable=True),        # pl_occdeperr2
+                  lim = boolean("Occultation Depth Limit Flag", nullable=True)        # pl_occdeplim
+                )
+              ),
+              ratio_planetdistance_starradius = Record(
+                doc = "The distance between the planet and the star at mid-transit divided by the stellar radius. For the case of zero orbital eccentricity, the distance at mid-transit is the semi-major axis of the planetary orbit.",
+                fields = dict(
+                  val = real("Ratio of Distance to Stellar Radius", nullable=True),   # pl_ratdor
+                  hierr = real("Ratio of Distance to Stellar Radius Upper Unc.", nullable=True),        # pl_ratdorerr1
+                  loerr = real("Ratio of Distance to Stellar Radius Lower Unc.", nullable=True),        # pl_ratdorerr2
+                  lim = boolean("Ratio of Distance to Stellar Radius Limit Flag", nullable=True)        # pl_ratdorlim
+                )
+              ),
+              ratio_planetradius_starradius = Record(
+                doc = "The planet radius divided by the stellar radius",
+                fields = dict(
+                  val = real("Ratio of Planet to Stellar Radius", nullable=True),   # pl_ratror
+                  hierr = real("Ratio of Planet to Stellar Radius Upper Unc.", nullable=True),        # pl_ratrorerr1
+                  loerr = real("Ratio of Planet to Stellar Radius Lower Unc.", nullable=True),        # pl_ratrorerr2
+                  lim = boolean("Ratio of Planet to Stellar Radius Limit Flag", nullable=True)        # pl_ratrorlim
+                )
+              ),
+              reference_link = string("Reference for publication used for default parameter"), # pl_def_reflink
+              discovery = Record(
+                fields = dict(
+                  year = integer("Year the planet was discovered"), # pl_disc
+                  link = string("Reference name for discovery publication"), # pl_disc_reflink
+                  locale = Pointer(string(), doc="Location of observation of planet discovery (Ground or Space)"), # pl_locale
+                  facility = Pointer(string(), doc="Name of facility of planet discovery observations"), # pl_facility
+                  telescope = string("Name of telescope of planet discovery observations"), # pl_telescope
+                  instrument = string("Name of instrument of planet discovery observations"), # pl_instrument
+                )
+              ),
+              num_parameters = integer("Number of Stellar and Planet Parameters", nullable=True),   # pl_st_npar
+              encyclopedia_link = string("Link to the planet page in the Exoplanet Encyclopaedia", nullable=True),  # pl_pelink
+              explorer_link = string("Link to the planet page in Exoplanet Data Explorer", nullable=True),  # pl_edelink
+              publication_date = Pointer(string(), doc="Publication Date of the planet discovery referee publication", nullable=True) # pl_publ_date
             )
           ) # planet Record
         ) # planets List
@@ -722,137 +966,6 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
   )
 )
 
+import oamap.fill
 
-
-
-
-
-              pl_orbtper     real("Time of Periastron [days]", nullable=True)        # pl_orbtper
-              pl_orbtpererr1 real("Time of Periastron Upper Unc. [days]", nullable=True)        # pl_orbtpererr1
-              pl_orbtpererr2 real("Time of Periastron Lower Unc. [days]", nullable=True)        # pl_orbtpererr2
-              pl_orbtperlim  real("Time of Periastron Limit Flag", nullable=True)        # pl_orbtperlim
-              pl_orblper     "Long. of Periastron [deg]"     set([None, bool])   # pl_orblper
-              pl_orblpererr1 real("Long. of Periastron Upper Unc. [deg]", nullable=True)        # pl_orblpererr1
-              pl_orblpererr2 real("Long. of Periastron Lower Unc. [deg]", nullable=True)        # pl_orblpererr2
-              pl_orblperlim  real("Long. of Periastron Limit Flag", nullable=True)        # pl_orblperlim
-              pl_rvamp       "Radial Velocity Amplitude [m/s]"     set([None, bool])   # pl_rvamp
-              pl_rvamperr1   real("Radial Velocity Amplitude Upper Unc. [m/s]", nullable=True)        # pl_rvamperr1
-              pl_rvamperr2   real("Radial Velocity Amplitude Lower Unc. [m/s]", nullable=True)        # pl_rvamperr2
-              pl_rvamplim    real("Radial Velocity Amplitude Limit Flag", nullable=True)        # pl_rvamplim
-              pl_eqt         integer("Equilibrium Temperature [K]", nullable=True)        # pl_eqt
-              pl_eqterr1     integer("Equilibrium Temperature Upper Unc. [K]", nullable=True)        # pl_eqterr1
-              pl_eqterr2     integer("Equilibrium Temperature Lower Unc. [K]", nullable=True)        # pl_eqterr2
-              pl_eqtlim      integer("Equilibrium Temperature Limit Flag", nullable=True)        # pl_eqtlim
-              pl_insol       "Insolation Flux [Earth flux]"     set([None, bool])   # pl_insol
-              pl_insolerr1   real("Insolation Flux Upper Unc. [Earth flux]", nullable=True)        # pl_insolerr1
-              pl_insolerr2   real("Insolation Flux Lower Unc. [Earth flux]", nullable=True)        # pl_insolerr2
-              pl_insollim    real("Insolation Flux Limit Flag", nullable=True)        # pl_insollim
-              pl_massj       "Planet Mass [Jupiter mass]"     set([None, bool])   # pl_massj
-              pl_massjerr1   real("Planet Mass Upper Unc. [Jupiter mass]", nullable=True)        # pl_massjerr1
-              pl_massjerr2   real("Planet Mass Lower Unc. [Jupiter mass]", nullable=True)        # pl_massjerr2
-              pl_massjlim    real("Planet Mass Limit Flag", nullable=True)        # pl_massjlim
-              pl_msinij      integer("Planet M*sin(i) [Jupiter mass]", nullable=True)        # pl_msinij
-              pl_msinijerr1  real("Planet M*sin(i) Upper Unc. [Jupiter mass]", nullable=True)        # pl_msinijerr1
-              pl_msinijerr2  real("Planet M*sin(i) Lower Unc. [Jupiter mass]", nullable=True)        # pl_msinijerr2
-              pl_msinijlim   real("Planet M*sin(i) Limit Flag", nullable=True)        # pl_msinijlim
-              pl_masse       integer("Planet Mass [Earth mass]", nullable=True)        # pl_masse
-              pl_masseerr1   real("Planet Mass Upper Unc. [Earth mass]", nullable=True)        # pl_masseerr1
-              pl_masseerr2   real("Planet Mass Lower Unc. [Earth mass]", nullable=True)        # pl_masseerr2
-              pl_masselim    real("Planet Mass Limit Flag", nullable=True)        # pl_masselim
-              pl_msinie      integer("Planet M*sin(i) [Earth mass]", nullable=True)        # pl_msinie
-              pl_msinieerr1  real("Planet M*sin(i) Upper Unc. [Earth mass]", nullable=True)        # pl_msinieerr1
-              pl_msinieerr2  real("Planet M*sin(i) Lower Unc. [Earth mass]", nullable=True)        # pl_msinieerr2
-              pl_msinielim   real("Planet M*sin(i) Limit Flag", nullable=True)        # pl_msinielim
-              pl_bmasse      integer("Planet Mass or M*sin(i) [Earth mass]", nullable=True)        # pl_bmasse
-              pl_bmasseerr1  real("Planet Mass or M*sin(i) Upper Unc. [Earth mass]", nullable=True)        # pl_bmasseerr1
-              pl_bmasseerr2  real("Planet Mass or M*sin(i) Lower Unc. [Earth mass]", nullable=True)        # pl_bmasseerr2
-              pl_bmasselim   real("Planet Mass or M*sin(i) Limit Flag", nullable=True)        # pl_bmasselim
-              pl_rade        integer("Planet Radius [Earth radii]", nullable=True)        # pl_rade
-              pl_radeerr1    real("Planet Radius Upper Unc. [Earth radii]", nullable=True)        # pl_radeerr1
-              pl_radeerr2    real("Planet Radius Lower Unc. [Earth radii]", nullable=True)        # pl_radeerr2
-              pl_radelim     real("Planet Radius Limit Flag", nullable=True)        # pl_radelim
-              pl_rads        real("Planet Radius [Solar radii]", nullable=True)        # pl_rads
-              pl_radserr1    real("Planet Radius Upper Unc. [Solar radii]", nullable=True)        # pl_radserr1
-              pl_radserr2    real("Planet Radius Lower Unc. [Solar radii]", nullable=True)        # pl_radserr2
-              pl_radslim     real("Planet Radius Limit Flag", nullable=True)        # pl_radslim
-              pl_trandep     real("Transit Depth [percent]", nullable=True)        # pl_trandep
-              pl_trandeperr1 real("Transit Depth Upper Unc. [percent]", nullable=True)        # pl_trandeperr1
-              pl_trandeperr2 real("Transit Depth Lower Unc. [percent]", nullable=True)        # pl_trandeperr2
-              pl_trandeplim  real("Transit Depth Limit Flag", nullable=True)        # pl_trandeplim
-              pl_trandur     real("Transit Duration [days]", nullable=True)        # pl_trandur
-              pl_trandurerr1 real("Transit Duration Upper Unc. [days]", nullable=True)        # pl_trandurerr1
-              pl_trandurerr2 real("Transit Duration Lower Unc. [days]", nullable=True)        # pl_trandurerr2
-              pl_trandurlim  real("Transit Duration Limit Flag", nullable=True)        # pl_trandurlim
-              pl_tranmid     "Transit Midpoint [days]"     set([None, bool])   # pl_tranmid
-              pl_tranmiderr1 real("Transit Midpoint Upper Unc. [days]", nullable=True)        # pl_tranmiderr1
-              pl_tranmiderr2 real("Transit Midpoint Lower Unc. [days]", nullable=True)        # pl_tranmiderr2
-              pl_tranmidlim  real("Transit Midpoint Limit Flag", nullable=True)        # pl_tranmidlim
-              pl_tsystemref  "Time System Reference"     set([None, bool])   # pl_tsystemref
-              pl_imppar      "Impact Parameter"     set([str, None])   # pl_imppar
-              pl_impparerr1  real("Impact Parameter Upper Unc.", nullable=True)        # pl_impparerr1
-              pl_impparerr2  real("Impact Parameter Lower Unc.", nullable=True)        # pl_impparerr2
-              pl_impparlim   real("Impact Parameter Limit Flag", nullable=True)        # pl_impparlim
-              pl_occdep      "Occultation Depth [percentage]"     set([None, bool])   # pl_occdep
-              pl_occdeperr1  real("Occultation Depth Upper Unc. [percentage]", nullable=True)        # pl_occdeperr1
-              pl_occdeperr2  real("Occultation Depth Lower Unc. [percentage]", nullable=True)        # pl_occdeperr2
-              pl_occdeplim   real("Occultation Depth Limit Flag", nullable=True)        # pl_occdeplim
-              pl_ratdor      "Ratio of Distance to Stellar Radius"     set([None, bool])   # pl_ratdor
-              pl_ratdorerr1  real("Ratio of Distance to Stellar Radius Upper Unc.", nullable=True)        # pl_ratdorerr1
-              pl_ratdorerr2  real("Ratio of Distance to Stellar Radius Lower Unc.", nullable=True)        # pl_ratdorerr2
-              pl_ratdorlim   real("Ratio of Distance to Stellar Radius Limit Flag", nullable=True)        # pl_ratdorlim
-              pl_ratror      "Ratio of Planet to Stellar Radius"     set([None, bool])   # pl_ratror
-              pl_ratrorerr1  real("Ratio of Planet to Stellar Radius Upper Unc.", nullable=True)        # pl_ratrorerr1
-              pl_ratrorerr2  real("Ratio of Planet to Stellar Radius Lower Unc.", nullable=True)        # pl_ratrorerr2
-              pl_ratrorlim   real("Ratio of Planet to Stellar Radius Limit Flag", nullable=True)        # pl_ratrorlim
-              pl_def_reflink "Default Reference"     set([None, bool])   # pl_def_reflink
-              pl_disc        string("Year of Discovery")        # pl_disc
-              pl_disc_reflink integer("Discovery Reference")        # pl_disc_reflink
-              pl_locale      string("Discovery Locale")        # pl_locale
-              pl_facility    string("Discovery Facility")        # pl_facility
-              pl_telescope   string("Discovery Telescope")        # pl_telescope
-              pl_instrument  string("Discovery Instrument")        # pl_instrument
-              pl_status      string("Status")        # pl_status
-              pl_mnum        integer("Number of Moons in System")        # pl_mnum
-              pl_st_npar     "Number of Stellar and Planet Parameters"     set([bool])   # pl_st_npar
-              pl_st_nref     integer("Number of Stellar and Planet References")        # pl_st_nref
-              pl_pelink      "Link to Exoplanet Encyclopaedia"     set([bool])   # pl_pelink
-              pl_edelink     "Link to Exoplanet Data Explorer"     set([str, None])   # pl_edelink
-              pl_publ_date   "Publication Date"     set([str, None])   # pl_publ_date
-
-
-
-
-# types = {}
-uniques = {}
-fields = None
-for line in csv.reader(open("/tmp/downloads/planets.csv")):
-    if line[0][0] != "#":
-        if fields is None:
-            fields = line
-        else:
-            for n, x in zip(fields, line):
-                if n not in uniques:
-                    uniques[n] = set()
-                uniques[n].add(x)
-
-
-                # if n not in types:
-                #     types[n] = set()
-                
-                # if x == "0" or x == "1":
-                #     types[n].add(bool)
-                # else:
-                #     try:
-                #         int(x)
-                #     except ValueError:
-                #         try:
-                #             float(x)
-                #         except ValueError:
-                #             if x == "":
-                #                 types[n].add(None)
-                #             else:
-                #                 types[n].add(str)
-                #         else:
-                #             types[n].add(float)
-                #     else:
-                #         types[n].add(int)
+fillables = oamap.fill.fromdata(stars.values(), generator=schema)
