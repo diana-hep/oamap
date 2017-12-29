@@ -179,7 +179,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
             if isinstance(gen, oamap.generator.Masked):
                 fillables[gen.mask].append(gen.maskedvalue)
             elif isinstance(gen, oamap.generator.ExtendedGenerator) and isinstance(gen.generic, oamap.generator.Masked):
-                pass
+                fill(obj, gen.generic, targetids, pointerobjs, at)
             else:
                 raise TypeError("cannot fill None where expecting type {0} at {1}".format(gen.schema, at))
 
