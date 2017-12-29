@@ -615,131 +615,118 @@ schema = (
             num_measurements = integer("Number of Color Measurements")   # st_colorn
           )
         ),
-
-
-
-
+        num_planets = integer("Number of Planets in System"),            # pl_pnum
         planets = List(
           Record(
             name = "Planet",
             fields = dict(
-              name = string("Name of planet"),                            # pl_name
-              hd_name = string("HD identifier", nullable=True),           # hd_name
-              hip_name = string("HIP identifier", nullable=True),         # hip_name
+              name = string("Name of planet"),                              # pl_name
+              hd_name = string("HD identifier", nullable=True),             # hd_name
+              hip_name = string("HIP identifier", nullable=True),           # hip_name
+              letter = Pointer(integer("Planet Letter")),                   # pl_letter
+              discovery_method = Pointer(string(), doc="Discovery Method"), # pl_discmethod
+              orbital_period = Record(
+                doc = "Time the planet takes to make a complete orbit around the host star or system",
+                fields = dict(
+                  val = real("Orbital Period [days]", nullable=True),                 # pl_orbper
+                  hierr = real("Orbital Period Upper Unc. [days]", nullable=True),    # pl_orbpererr1
+                  loerr = real("Orbital Period Lower Unc. [days]", nullable=True),    # pl_orbpererr2
+                  lim = boolean("Orbital Period Limit Flag", nullable=True)           # pl_orbperlim
+                )
+              ),
+              semimajor_axis = Record(
+                doc = "The longest diameter of an elliptic orbit, or for directly imaged planets, the projected separation in the plane of the sky",
+                fields = dict(
+                  val = real("Orbit Semi-Major Axis [AU]", nullable=True),               # pl_orbsmax
+                  hierr = real("Orbit Semi-Major Axis Upper Unc. [AU]", nullable=True),  # pl_orbsmaxerr1
+                  loerr = real("Orbit Semi-Major Axis Lower Unc. [AU]", nullable=True),  # pl_orbsmaxerr2
+                  lim = boolean("Orbit Semi-Major Axis Limit Flag", nullable=True)       # pl_orbsmaxlim
+                )
+              ),
+              eccentricity = Record(
+                doc = "Amount by which the orbit of the planet deviates from a perfect circle",
+                fields = dict(
+                  val = real("Eccentricity", nullable=True),                     # pl_orbeccen
+                  hierr = real("Eccentricity Upper Unc.", nullable=True),        # pl_orbeccenerr1
+                  loerr = real("Eccentricity Lower Unc.", nullable=True),        # pl_orbeccenerr2
+                  lim = boolean("Eccentricity Limit Flag", nullable=True)        # pl_orbeccenlim
+                )
+              ),
+              inclination = Record(
+                doc = "Angular distance of the orbital plane from the line of sight",
+                fields = dict(
+                  val = real("Inclination [deg]", nullable=True),                # pl_orbincl
+                  hierr = real("Inclination Upper Unc. [deg]", nullable=True),   # pl_orbinclerr1
+                  loerr = real("Inclination Lower Unc. [deg]", nullable=True),   # pl_orbinclerr2
+                  lim = boolean("Inclination Limit Flag", nullable=True)         # pl_orbincllim
+                )
+              ),
+              mass = Record(
+                doc = "Best planet mass measurement in units of masses of Jupiter. Either Mass, M*sin(i)/sin(i), or M*sin(i). See provenance for source of the measurement",
+                fields = dict(
+                  val = real("Planet Mass or M*sin(i)[Jupiter mass]", nullable=True),                  # pl_bmassj
+                  hierr = real("Planet Mass or M*sin(i)Upper Unc. [Jupiter mass]", nullable=True),     # pl_bmassjerr1
+                  loerr = real("Planet Mass or M*sin(i)Lower Unc. [Jupiter mass]", nullable=True),     # pl_bmassjerr2
+                  lim = boolean("Planet Mass or M*sin(i)Limit Flag", nullable=True),                   # pl_bmassjlim
+                  provenance = Pointer(string(), doc="Planet Mass or M*sin(i) Provenance", nullable=True)    # pl_bmassprov
+                )
+              ),
+              radius = Record(
+                doc = "Length of a line segment from the center of the planet to its surface, measured in units of radius of Jupiter",
+                fields = dict(
+                  val = real("Planet Radius [Jupiter radii]", nullable=True),   # pl_radj
+                  hierr = real("Planet Radius Upper Unc. [Jupiter radii]", nullable=True),        # pl_radjerr1
+                  loerr = real("Planet Radius Lower Unc. [Jupiter radii]", nullable=True),        # pl_radjerr2
+                  lim = boolean("Planet Radius Limit Flag", nullable=True)        # pl_radjlim
+                )
+              ),
+              density = Record(
+                doc = "Amount of mass per unit of volume of the planet",
+                fields = dict(
+                  val = real("Planet Density [g/cm**3]", nullable=True),        # pl_dens
+                  hierr = real("Planet Density Upper Unc. [g/cm**3]", nullable=True),        # pl_denserr1
+                  loerr = real("Planet Density Lower Unc. [g/cm**3]", nullable=True),        # pl_denserr2
+                  lim = boolean("Planet Density Limit Flag", nullable=True)        # pl_denslim
+                )
+              ),
+              has_timing_variations = boolean("""Flag indicating if the planet orbit exhibits transit timing variations from another planet in the system.
+
+Note: Non-transiting planets discovered via the transit timing variations of another planet in the system will not have their TTV flag set, since they do not themselves demonstrate TTVs."""),  # pl_ttvflag
+              in_kepler_data = boolean("Flag indicating if the planetary system signature is present in data taken with the Kepler mission"), # pl_kepflag
+              in_k2_data = boolean("Flag indicating if the planetary system signature is present in data taken with the K2 Mission"), # pl_k2flag
+              num_notes = integer("Number of Notes associated with the planet. View all notes in the Confirmed Planet Overview page."), # pl_nnotes
+              has_transits = boolean("Flag indicating if the planet transits its host star"), # pl_tranflag
+              has_radial_velocity = boolean("Flag indicating if the planet host star exhibits radial velocity variations due to the planet"), # pl_tranflag
+              has_image = boolean("Flag indicating if the planet has been observed via imaging techniques"), # pl_imgflag
+              has_astrometrical_variations = boolean("Flag indicating if the planet host star exhibits astrometrical variations due to the planet", nullable=True), # pl_astflag
+              has_orbital_modulations = boolean("Flag indicating whether the planet exhibits orbital modulations on the phase curve "), # pl_omflag
+              has_binary = boolean("Flag indicating whether the planet orbits a binary system"), # pl_cbflag
+              angsep = Record(
+                doc = "The calculated angular separation (semi-major axis/distance) between the star and the planet. This value is only calculated for systems with both a semi-major axis and a distance value.",
+                fields = dict(
+                  val = real("Calculated Angular Separation [mas]", nullable=True),   # pl_angsep
+                  hierr = real("Calculated Angular Separation Upper Unc. [mas]", nullable=True),        # pl_angseperr1
+                  loerr = real("Calculated Angular Separation Lower Unc. [mas]", nullable=True)        # pl_angseperr2
+                )
+              ),
 
 
 
 
 
-              )
             )
-          )
-        )
+          ) # planet Record
+        ) # planets List
       )
     )
   )
+)
 
 
 
 
 
 
-
-
-
-
-
-
-
-# types = {}
-uniques = {}
-fields = None
-for line in csv.reader(open("/tmp/downloads/planets.csv")):
-    if line[0][0] != "#":
-        if fields is None:
-            fields = line
-        else:
-            for n, x in zip(fields, line):
-                if n not in uniques:
-                    uniques[n] = set()
-                uniques[n].add(x)
-
-
-                # if n not in types:
-                #     types[n] = set()
-                
-                # if x == "0" or x == "1":
-                #     types[n].add(bool)
-                # else:
-                #     try:
-                #         int(x)
-                #     except ValueError:
-                #         try:
-                #             float(x)
-                #         except ValueError:
-                #             if x == "":
-                #                 types[n].add(None)
-                #             else:
-                #                 types[n].add(str)
-                #         else:
-                #             types[n].add(float)
-                #     else:
-                #         types[n].add(int)
-
-
-
-
-        
-
-
-
-
-
-              pl_letter      integer("Planet Letter")        # pl_letter
-              pl_discmethod  string("Discovery Method")        # pl_discmethod
-              pl_pnum        string("Number of Planets in System")        # pl_pnum
-              pl_orbper      integer("Orbital Period [days]")        # pl_orbper
-              pl_orbpererr1  real("Orbital Period Upper Unc. [days]", nullable=True)        # pl_orbpererr1
-              pl_orbpererr2  real("Orbital Period Lower Unc. [days]", nullable=True)        # pl_orbpererr2
-              pl_orbperlim   real("Orbital Period Limit Flag", nullable=True)        # pl_orbperlim
-              pl_orbsmax     real("Orbit Semi-Major Axis [AU]", nullable=True)        # pl_orbsmax
-              pl_orbsmaxerr1 real("Orbit Semi-Major Axis Upper Unc. [AU]", nullable=True)        # pl_orbsmaxerr1
-              pl_orbsmaxerr2 real("Orbit Semi-Major Axis Lower Unc. [AU]", nullable=True)        # pl_orbsmaxerr2
-              pl_orbsmaxlim  real("Orbit Semi-Major Axis Limit Flag", nullable=True)        # pl_orbsmaxlim
-              pl_orbeccen    real("Eccentricity", nullable=True)        # pl_orbeccen
-              pl_orbeccenerr1 real("Eccentricity Upper Unc.", nullable=True)        # pl_orbeccenerr1
-              pl_orbeccenerr2 real("Eccentricity Lower Unc.", nullable=True)        # pl_orbeccenerr2
-              pl_orbeccenlim real("Eccentricity Limit Flag", nullable=True)        # pl_orbeccenlim
-              pl_orbincl     real("Inclination [deg]", nullable=True)        # pl_orbincl
-              pl_orbinclerr1 real("Inclination Upper Unc. [deg]", nullable=True)        # pl_orbinclerr1
-              pl_orbinclerr2 real("Inclination Lower Unc. [deg]", nullable=True)        # pl_orbinclerr2
-              pl_orbincllim  real("Inclination Limit Flag", nullable=True)        # pl_orbincllim
-              pl_bmassj      integer("Planet Mass or M*sin(i)[Jupiter mass]", nullable=True)        # pl_bmassj
-              pl_bmassjerr1  real("Planet Mass or M*sin(i)Upper Unc. [Jupiter mass]", nullable=True)        # pl_bmassjerr1
-              pl_bmassjerr2  real("Planet Mass or M*sin(i)Lower Unc. [Jupiter mass]", nullable=True)        # pl_bmassjerr2
-              pl_bmassjlim   real("Planet Mass or M*sin(i)Limit Flag", nullable=True)        # pl_bmassjlim
-              pl_bmassprov   integer("Planet Mass or M*sin(i) Provenance", nullable=True)        # pl_bmassprov
-              pl_radj        "Planet Radius [Jupiter radii]"     set([str, None])   # pl_radj
-              pl_radjerr1    real("Planet Radius Upper Unc. [Jupiter radii]", nullable=True)        # pl_radjerr1
-              pl_radjerr2    real("Planet Radius Lower Unc. [Jupiter radii]", nullable=True)        # pl_radjerr2
-              pl_radjlim     real("Planet Radius Limit Flag", nullable=True)        # pl_radjlim
-              pl_dens        integer("Planet Density [g/cm**3]", nullable=True)        # pl_dens
-              pl_denserr1    real("Planet Density Upper Unc. [g/cm**3]", nullable=True)        # pl_denserr1
-              pl_denserr2    real("Planet Density Lower Unc. [g/cm**3]", nullable=True)        # pl_denserr2
-              pl_denslim     real("Planet Density Limit Flag", nullable=True)        # pl_denslim
-              pl_ttvflag     integer("TTV Flag", nullable=True)        # pl_ttvflag
-              pl_kepflag     "Kepler Field Flag"     set([bool])   # pl_kepflag
-              pl_k2flag      "K2 Mission Flag"     set([bool])   # pl_k2flag
-              pl_nnotes      "Number of Notes"     set([bool])   # pl_nnotes
-              pl_tranflag    integer("Planet Transit Flag")        # pl_tranflag
-              pl_rvflag      "Planet RV Flag"     set([bool])   # pl_rvflag
-              pl_imgflag     "Planet Imaging Flag"     set([bool])   # pl_imgflag
-              pl_astflag     "Planet Astrometry Flag"     set([bool])   # pl_astflag
-              pl_omflag      "Planet Orbital Modulation Flag"     set([None, bool])   # pl_omflag
-              pl_cbflag      "Planet Circumbinary Flag"     set([bool])   # pl_cbflag
-              pl_angsep      "Calculated Angular Separation [mas]"     set([bool])   # pl_angsep
-              pl_angseperr1  real("Calculated Angular Separation Upper Unc. [mas]", nullable=True)        # pl_angseperr1
-              pl_angseperr2  real("Calculated Angular Separation Lower Unc. [mas]", nullable=True)        # pl_angseperr2
               pl_orbtper     real("Time of Periastron [days]", nullable=True)        # pl_orbtper
               pl_orbtpererr1 real("Time of Periastron Upper Unc. [days]", nullable=True)        # pl_orbtpererr1
               pl_orbtpererr2 real("Time of Periastron Lower Unc. [days]", nullable=True)        # pl_orbtpererr2
@@ -831,3 +818,41 @@ for line in csv.reader(open("/tmp/downloads/planets.csv")):
               pl_pelink      "Link to Exoplanet Encyclopaedia"     set([bool])   # pl_pelink
               pl_edelink     "Link to Exoplanet Data Explorer"     set([str, None])   # pl_edelink
               pl_publ_date   "Publication Date"     set([str, None])   # pl_publ_date
+
+
+
+
+# types = {}
+uniques = {}
+fields = None
+for line in csv.reader(open("/tmp/downloads/planets.csv")):
+    if line[0][0] != "#":
+        if fields is None:
+            fields = line
+        else:
+            for n, x in zip(fields, line):
+                if n not in uniques:
+                    uniques[n] = set()
+                uniques[n].add(x)
+
+
+                # if n not in types:
+                #     types[n] = set()
+                
+                # if x == "0" or x == "1":
+                #     types[n].add(bool)
+                # else:
+                #     try:
+                #         int(x)
+                #     except ValueError:
+                #         try:
+                #             float(x)
+                #         except ValueError:
+                #             if x == "":
+                #                 types[n].add(None)
+                #             else:
+                #                 types[n].add(str)
+                #         else:
+                #             types[n].add(float)
+                #     else:
+                #         types[n].add(int)
