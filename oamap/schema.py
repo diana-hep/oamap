@@ -486,11 +486,13 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, name=None, doc=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, offsets=None, counts=None, mask=None, name=None, doc=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
         self.stops = stops
+        self.offsets = offsets
+        self.counts = counts
         self.mask = mask
         self.name = name
         self.doc = doc
@@ -527,6 +529,26 @@ class List(Schema):
             raise TypeError("stops must be None or an array name (string), not {0}".format(repr(value)))
         self._stops = value
 
+    @property
+    def offsets(self):
+        return self._offsets
+
+    @offsets.setter
+    def offsets(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("offsets must be None or an array name (string), not {0}".format(repr(value)))
+        self._offsets = value
+
+    @property
+    def counts(self):
+        return self._counts
+
+    @counts.setter
+    def counts(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("counts must be None or an array name (string), not {0}".format(repr(value)))
+        self._counts = value
+
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "=" if indent is None else " = "
 
@@ -547,6 +569,10 @@ class List(Schema):
                 args.append("starts" + eq + repr(self._starts))
             if self._stops is not None:
                 args.append("stops" + eq + repr(self._stops))
+            if self._offsets is not None:
+                args.append("offsets" + eq + repr(self._offsets))
+            if self._counts is not None:
+                args.append("counts" + eq + repr(self._counts))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
             if self._name is not None:
@@ -576,6 +602,10 @@ class List(Schema):
                 out["starts"] = self._starts
             if explicit or self._stops is not None:
                 out["stops"] = self._stops
+            if explicit or self._offsets is not None:
+                out["offsets"] = self._offsets
+            if explicit or self._counts is not None:
+                out["counts"] = self._counts
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
             if explicit or self._name is not None:
@@ -597,6 +627,8 @@ class List(Schema):
         out.nullable = data.get("nullable", False)
         out.starts = data.get("starts", None)
         out.stops = data.get("stops", None)
+        out.offsets = data.get("offsets", None)
+        out.counts = data.get("counts", None)
         out.mask = data.get("mask", None)
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -628,6 +660,10 @@ class List(Schema):
             replacements["starts"] = self._starts
         if "stops" not in replacements:
             replacements["stops"] = self._stops
+        if "offsets" not in replacements:
+            replacements["offsets"] = self._offsets
+        if "counts" not in replacements:
+            replacements["counts"] = self._counts
         if "mask" not in replacements:
             replacements["mask"] = self._mask
         if "name" not in replacements:
@@ -635,14 +671,14 @@ class List(Schema):
         return List(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, offsets=self._offsets, counts=self._counts, mask=self._mask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.offsets == other.offsets and self.counts == other.counts and self.mask == other.mask and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return self.content.__eq__(other.content, memo)
@@ -701,6 +737,16 @@ class List(Schema):
         else:
             args.append(self._stops)
         args.append(cacheidx[0]); cacheidx[0] += 1
+
+        if self._offsets is None:
+            args.append(prefix + delimiter + "o")
+        else:
+            args.append(self._offsets)
+
+        if self._counts is None:
+            args.append(prefix + delimiter + "c")
+        else:
+            args.append(self._counts)
 
         contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, extension)
         args.append(contentgen)

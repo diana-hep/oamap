@@ -1,3 +1,5 @@
+import os
+
 import csv
 
 def boolean(x):
@@ -35,6 +37,8 @@ def rec(x):
 
 stars = {}
 
+# https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=planets
+
 fields = None
 for line in csv.reader(open("planets.csv")):
     if line[0][0] != "#":
@@ -57,7 +61,7 @@ for line in csv.reader(open("planets.csv")):
                     "parallax": rec({"val": real(x["st_plx"]), "hierr": real(x["st_plxerr1"]), "loerr": real(x["st_plxerr2"]), "lim": boolean(x["st_plxlim"]), "blend": boolean(x["st_plxblend"])}),
                     "distance": rec({"val": real(x["st_dist"]), "hierr": real(x["st_disterr1"]), "loerr": real(x["st_disterr2"]), "lim": boolean(x["st_distlim"]), "blend": boolean(x["st_optmagblend"])}),
                     "propermotion": rec({"ra": rec({"val": real(x["st_pmra"]), "err": real(x["st_pmraerr"]), "lim": boolean(x["st_pmralim"])}), "dec": rec({"val": real(x["st_pmdec"]), "err": real(x["st_pmdecerr"]), "lim": boolean(x["st_pmdeclim"])}), "total": rec({"val": real(x["st_pm"]), "err": real(x["st_pmerr"]), "lim": boolean(x["st_pmlim"]), "blend": boolean(x["st_pmblend"])})}),
-                    "gaia": rec({"gband": rec({"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "lim": real(x["gaia_gmaglim"])}), "parallax": rec({"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "lim": real(x["gaia_plxlim"])}), "distance": rec({"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "lim": real(x["gaia_distlim"])}), "propermotion": rec({"ra": rec({"val": real(x["gaia_pmra"]), "err": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}), "dec": rec({"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}), "total": rec({"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])})})}),
+                    "gaia": rec({"gband": rec({"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "lim": boolean(x["gaia_gmaglim"])}), "parallax": rec({"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "lim": boolean(x["gaia_plxlim"])}), "distance": rec({"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "lim": boolean(x["gaia_distlim"])}), "propermotion": rec({"ra": rec({"val": real(x["gaia_pmra"]), "err": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}), "dec": rec({"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}), "total": rec({"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])})})}),
                     "radialvelocity": rec({"val": real(x["st_radv"]), "hierr": real(x["st_radverr1"]), "loerr": real(x["st_radverr2"]), "lim": boolean(x["st_radvlim"]), "blend": boolean(x["st_radvblend"])}),
                     "spectraltype": rec({"val": real(x["st_sp"]), "str": string(x["st_spstr"]), "err": real(x["st_sperr"]), "lim": boolean(x["st_splim"]), "blend": boolean(x["st_spblend"])}),
                     "surfacegravity": rec({"val": real(x["st_logg"]), "hierr": real(x["st_loggerr1"]), "loerr": real(x["st_loggerr2"]), "lim": boolean(x["st_logglim"]), "blend": boolean(x["st_loggblend"])}),
@@ -127,8 +131,11 @@ for line in csv.reader(open("planets.csv")):
                 "publication_date": string(x["pl_publ_date"])
                 })
 
-# import json
-# json.dump(stars, open("planets.json", "wb"))
+before = stars.values()
+
+import json
+json.dump(before, open("planets.json", "wb"))
+os.system("gzip -k planets.json")
 
 from oamap.schema import *
 
@@ -1143,12 +1150,9 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
 
 import avro.schema
 
-def convert2avro(schema, nullable, names):
-    if schema.nullable:
-        nullable = True         # either we get it from above OR we get it here
-
+def convert2avro(schema, names):
     if isinstance(schema, Pointer):
-        out = convert2avro(schema.target, schema.nullable, names)
+        out = convert2avro(schema.target, names)
 
     elif isinstance(schema, Primitive):
         if issubclass(schema.dtype.type, (numpy.bool_, numpy.bool)):
@@ -1164,10 +1168,10 @@ def convert2avro(schema, nullable, names):
         out = {"type": "string"}
 
     elif isinstance(schema, List):
-        out = {"type": "array", "items": convert2avro(schema.content, False, names)}
+        out = {"type": "array", "items": convert2avro(schema.content, names)}
 
     elif isinstance(schema, Record):
-        out = {"type": "record", "name": schema.name, "fields": {n: convert2avro(x, False, names) for n, x in schema.fields.items()}}
+        out = {"type": "record", "name": schema.name, "fields": [{"name": n, "type": convert2avro(x, names)} for n, x in schema.fields.items()]}
 
         if schema.name not in names:
             names[schema.name] = out
@@ -1178,28 +1182,47 @@ def convert2avro(schema, nullable, names):
     else:
         raise AssertionError
 
-    if nullable:
+    if schema.nullable:
         return ["null", out]
     else:
         return out
 
-avroschema = avro.schema.make_avsc_object(convert2avro(schema, False, {}))
+avroschema = avro.schema.make_avsc_object(convert2avro(schema.content, {}))
+
+import avro.datafile
+import avro.io
+
+writer = avro.datafile.DataFileWriter(open("planets_uncompressed.avro", "wb"), avro.io.DatumWriter(), avroschema)
+for star in before:
+    writer.append(star)
+writer.close()
+
+writer = avro.datafile.DataFileWriter(open("planets.avro", "wb"), avro.io.DatumWriter(), avroschema, codec="deflate")
+for star in before:
+    writer.append(star)
+writer.close()
+
+import bson
+
+writer = open("planets.bson", "wb")
+for star in before:
+    writer.write(bson.BSON.encode(star))
+writer.close()
+os.system("gzip -k planets.bson")
 
 
 
 
 
 
-    
+
 import oamap.fill
-
-before = stars.values()
 
 fillables = oamap.fill.fromdata(before, generator=schema, pointer_fromequal=True)
 arrays = oamap.fill.toarrays(fillables)
 after = schema(arrays)
 
-# schema.tojsonfile(open("planets/schema.json", "wb"))
+schema.tojsonfile(open("planets/schema.json", "wb"))
 
 packedarrays = {n: numpy.packbits(x == -1) if n.endswith("-M") else x for n, x in arrays.items() if not n.endswith("-E")}
 
@@ -1208,4 +1231,9 @@ import numpy
 for n, x in packedarrays.items():
     numpy.save("planets/{0}.npy".format(n), x)
 
+os.system("cp -a planets planets_gz")
+for n in packedarrays:
+    os.system("gzip planets_gz/{}.npy".format(n))
+
+numpy.savez("planets_uncompressed.npz", packedarrays)
 numpy.savez_compressed("planets.npz", packedarrays)
