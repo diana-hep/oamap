@@ -98,6 +98,26 @@ class Schema(object):
         self._mask = value
 
     @property
+    def packmask(self):
+        return self._packmask
+
+    @packmask.setter
+    def packmask(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("packmask must be None or an array name (string), not {0}".format(repr(value)))
+        self._packmask = value
+
+    @property
+    def runmask(self):
+        return self._runmask
+
+    @runmask.setter
+    def runmask(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("runmask must be None or an array name (string), not {0}".format(repr(value)))
+        self._runmask = value
+
+    @property
     def name(self):
         return self._name
 
@@ -255,12 +275,14 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, name=None, doc=None):
+    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, packmask=None, runmask=None, name=None, doc=None):
         self.dtype = dtype
         self.dims = dims
         self.nullable = nullable
         self.data = data
         self.mask = mask
+        self.packmask = packmask
+        self.runmask = runmask
         self.name = name
         self.doc = doc
 
@@ -318,6 +340,10 @@ class Primitive(Schema):
                 args.append("data" + eq + repr(self._data))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packmask is not None:
+                args.append("packmask" + eq + repr(self._packmask))
+            if self._runmask is not None:
+                args.append("runmask" + eq + repr(self._runmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -340,7 +366,7 @@ class Primitive(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if not explicit and self._dtype is not None and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._name is None:
+            if not explicit and self._dtype is not None and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._packmask is None and self._runmask is None and self._name is None:
                 return str(self._dtype)
             else:
                 out = {"type": "primitive", "dtype": None if self._dtype is None else str(self._dtype)}
@@ -352,6 +378,10 @@ class Primitive(Schema):
                     out["data"] = self._data
                 if explicit or self._mask is not None:
                     out["mask"] = self._mask
+                if explicit or self._packmask is not None:
+                    out["packmask"] = self._packmask
+                if explicit or self._runmask is not None:
+                    out["runmask"] = self._runmask
                 if explicit or self._name is not None:
                     out["name"] = self._name
                 if explicit or self._doc is not None:
@@ -369,7 +399,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), name=data.get("name", None), doc=data.get("doc", None))
+            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packmask=data.get("packmask", None), runmask=data.get("runmask", None), name=data.get("name", None), doc=data.get("doc", None))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -388,15 +418,19 @@ class Primitive(Schema):
             replacements["data"] = self._data
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packmask" not in replacements:
+            replacements["packmask"] = self._packmask
+        if "runmask" not in replacements:
+            replacements["runmask"] = self._runmask
         if "name" not in replacements:
             replacements["name"] = self._name
         return Primitive(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Primitive(self._dtype, dims=self._dims, nullable=self._nullable, data=self._data, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Primitive(self._dtype, dims=self._dims, nullable=self._nullable, data=self._data, mask=self._mask, packmask=self._packmask, runmask=self._runmask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
-        return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.name == other.name
+        return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.packmask == other.packmask and self.runmask == other.runmask and self.name == other.name
 
     def __contains__(self, value, memo=None):
         if self.dtype is None:
@@ -459,6 +493,14 @@ class Primitive(Schema):
             else:
                 args.append(self._mask)
             args.append(cacheidx[0]); cacheidx[0] += 1
+            if self._packmask is None:
+                args.append(prefix + delimiter + "m")
+            else:
+                args.append(self._packmask)
+            if self._runmask is None:
+                args.append(prefix + delimiter + "r")
+            else:
+                args.append(self._runmask)
         else:
             cls = oamap.generator.PrimitiveGenerator
 
@@ -486,7 +528,7 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, offsets=None, counts=None, mask=None, name=None, doc=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, offsets=None, counts=None, mask=None, packmask=None, runmask=None, name=None, doc=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
@@ -494,6 +536,8 @@ class List(Schema):
         self.offsets = offsets
         self.counts = counts
         self.mask = mask
+        self.packmask = packmask
+        self.runmask = runmask
         self.name = name
         self.doc = doc
 
@@ -575,6 +619,10 @@ class List(Schema):
                 args.append("counts" + eq + repr(self._counts))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packmask is not None:
+                args.append("packmask" + eq + repr(self._packmask))
+            if self._runmask is not None:
+                args.append("runmask" + eq + repr(self._runmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
             if indent is not None:
@@ -608,6 +656,10 @@ class List(Schema):
                 out["counts"] = self._counts
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packmask is not None:
+                out["packmask"] = self._packmask
+            if explicit or self._runmask is not None:
+                out["runmask"] = self._runmask
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -630,6 +682,8 @@ class List(Schema):
         out.offsets = data.get("offsets", None)
         out.counts = data.get("counts", None)
         out.mask = data.get("mask", None)
+        out.packmask = data.get("packmask", None)
+        out.runmask = data.get("runmask", None)
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -666,19 +720,23 @@ class List(Schema):
             replacements["counts"] = self._counts
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packmask" not in replacements:
+            replacements["packmask"] = self._packmask
+        if "runmask" not in replacements:
+            replacements["runmask"] = self._runmask
         if "name" not in replacements:
             replacements["name"] = self._name
         return List(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, offsets=self._offsets, counts=self._counts, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, offsets=self._offsets, counts=self._counts, mask=self._mask, packmask=self._packmask, runmask=self._runmask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.offsets == other.offsets and self.counts == other.counts and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.offsets == other.offsets and self.counts == other.counts and self.mask == other.mask and self.packmask == other.packmask and self.runmask == other.runmask and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return self.content.__eq__(other.content, memo)
@@ -723,6 +781,14 @@ class List(Schema):
             else:
                 args.append(self._mask)
             args.append(cacheidx[0]); cacheidx[0] += 1
+            if self._packmask is None:
+                args.append(prefix + delimiter + "m")
+            else:
+                args.append(self._packmask)
+            if self._runmask is None:
+                args.append(prefix + delimiter + "r")
+            else:
+                args.append(self._runmask)
         else:
             cls = oamap.generator.ListGenerator
 
@@ -766,12 +832,14 @@ class List(Schema):
 ################################################################ Unions may be one of several types
 
 class Union(Schema):
-    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, name=None, doc=None):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, packmask=None, runmask=None, name=None, doc=None):
         self.possibilities = possibilities
         self.nullable = nullable
         self.tags = tags
         self.offsets = offsets
         self.mask = mask
+        self.packmask = packmask
+        self.runmask = runmask
         self.name = name
         self.doc = doc
 
@@ -866,6 +934,10 @@ class Union(Schema):
                 args.append("offsets" + eq + repr(self._offsets))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packmask is not None:
+                args.append("packmask" + eq + repr(self._packmask))
+            if self._runmask is not None:
+                args.append("runmask" + eq + repr(self._runmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
             if indent is not None:
@@ -895,6 +967,10 @@ class Union(Schema):
                 out["offsets"] = self._offsets
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packmask is not None:
+                out["packmask"] = self._packmask
+            if explicit or self._runmask is not None:
+                out["runmask"] = self._runmask
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -917,6 +993,8 @@ class Union(Schema):
         out.tags = data.get("tags", None)
         out.offsets = data.get("offsets", None)
         out.mask = data.get("mask", None)
+        out.packmask = data.get("packmask", None)
+        out.runmask = data.get("runmask", None)
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -951,19 +1029,23 @@ class Union(Schema):
             replacements["offsets"] = self._offsets
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packmask" not in replacements:
+            replacements["packmask"] = self._packmask
+        if "runmask" not in replacements:
+            replacements["runmask"] = self._runmask
         if "name" not in replacements:
             replacements["name"] = self._name
         return Union(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, packmask=self._packmask, runmask=self._runmask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Union) and len(self.possibilities) == len(other.possibilities) and self.nullable == other.nullable and self.tags == other.tags and self.offsets == other.offsets and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Union) and len(self.possibilities) == len(other.possibilities) and self.nullable == other.nullable and self.tags == other.tags and self.offsets == other.offsets and self.mask == other.mask and self.packmask == other.packmask and self.runmask == other.runmask and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self.possibilities, other.possibilities))
@@ -999,6 +1081,14 @@ class Union(Schema):
             else:
                 args.append(self._mask)
             args.append(cacheidx[0]); cacheidx[0] += 1
+            if self._packmask is None:
+                args.append(prefix + delimiter + "m")
+            else:
+                args.append(self._packmask)
+            if self._runmask is None:
+                args.append(prefix + delimiter + "r")
+            else:
+                args.append(self._runmask)
         else:
             cls = oamap.generator.UnionGenerator
 
@@ -1032,10 +1122,12 @@ class Union(Schema):
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
-    def __init__(self, fields, nullable=False, mask=None, name=None, doc=None):
+    def __init__(self, fields, nullable=False, mask=None, packmask=None, runmask=None, name=None, doc=None):
         self.fields = fields
         self.nullable = nullable
         self.mask = mask
+        self.packmask = packmask
+        self.runmask = runmask
         self.name = name
         self.doc = doc
 
@@ -1092,6 +1184,10 @@ class Record(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packmask is not None:
+                args.append("packmask" + eq + repr(self._packmask))
+            if self._runmask is not None:
+                args.append("runmask" + eq + repr(self._runmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
             if indent is not None:
@@ -1117,6 +1213,10 @@ class Record(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packmask is not None:
+                out["packmask"] = self._packmask
+            if explicit or self._runmask is not None:
+                out["runmask"] = self._runmask
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1140,6 +1240,8 @@ class Record(Schema):
             raise TypeError("argument 'fields' for Record Schema from JSON should be a list or dict of key-value pairs (in which the keys are strings), not {0}".format(repr(data["fields"])))
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
+        out.packmask = data.get("packmask", None)
+        out.runmask = data.get("runmask", None)
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -1170,19 +1272,23 @@ class Record(Schema):
             replacements["nullable"] = self._nullable
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packmask" not in replacements:
+            replacements["packmask"] = self._packmask
+        if "runmask" not in replacements:
+            replacements["runmask"] = self._runmask
         if "name" not in replacements:
             replacements["name"] = self._name
         return Record(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, packmask=self._packmask, runmask=self._runmask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self.nullable == other.nullable and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self.nullable == other.nullable and self.mask == other.mask and self.packmask == other.packmask and self.runmask == other.runmask and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return all(self._fields[n].__eq__(other._fields[n], memo) for n in self._fields)
@@ -1227,6 +1333,14 @@ class Record(Schema):
             else:
                 args.append(self._mask)
             args.append(cacheidx[0]); cacheidx[0] += 1
+            if self._packmask is None:
+                args.append(prefix + delimiter + "m")
+            else:
+                args.append(self._packmask)
+            if self._runmask is None:
+                args.append(prefix + delimiter + "r")
+            else:
+                args.append(self._runmask)
         else:
             cls = oamap.generator.RecordGenerator
 
@@ -1248,10 +1362,12 @@ class Record(Schema):
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, types, nullable=False, mask=None, name=None, doc=None):
+    def __init__(self, types, nullable=False, mask=None, packmask=None, runmask=None, name=None, doc=None):
         self.types = types
         self.nullable = nullable
         self.mask = mask
+        self.packmask = packmask
+        self.runmask = runmask
         self.name = name
         self.doc = doc
 
@@ -1322,6 +1438,10 @@ class Tuple(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packmask is not None:
+                args.append("packmask" + eq + repr(self._packmask))
+            if self._runmask is not None:
+                args.append("runmask" + eq + repr(self._runmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
             if indent is not None:
@@ -1344,6 +1464,10 @@ class Tuple(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packmask is not None:
+                out["packmask"] = self._packmask
+            if explicit or self._runmask is not None:
+                out["runmask"] = self._runmask
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1364,6 +1488,8 @@ class Tuple(Schema):
         out._types = [Schema._fromjson(x, labels) for x in data["types"]]
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
+        out.packmask = data.get("packmask", None)
+        out.runmask = data.get("runmask", None)
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -1394,19 +1520,23 @@ class Tuple(Schema):
             replacements["nullable"] = self._nullable
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packmask" not in replacements:
+            replacements["packmask"] = self._packmask
+        if "runmask" not in replacements:
+            replacements["runmask"] = self._runmask
         if "name" not in replacements:
             replacements["name"] = self._name
         return Tuple(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, packmask=self._packmask, runmask=self._runmask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self.nullable == other.nullable and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self.nullable == other.nullable and self.mask == other.mask and self.packmask == other.packmask and self.runmask == other.runmask and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self._types, other._types))
@@ -1447,6 +1577,14 @@ class Tuple(Schema):
             else:
                 args.append(self._mask)
             args.append(cacheidx[0]); cacheidx[0] += 1
+            if self._packmask is None:
+                args.append(prefix + delimiter + "m")
+            else:
+                args.append(self._packmask)
+            if self._runmask is None:
+                args.append(prefix + delimiter + "r")
+            else:
+                args.append(self._runmask)
         else:
             cls = oamap.generator.TupleGenerator
 
@@ -1468,11 +1606,13 @@ class Tuple(Schema):
 ################################################################ Pointers redirect to the contents of other types
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None, name=None, doc=None):
+    def __init__(self, target, nullable=False, positions=None, mask=None, packmask=None, runmask=None, name=None, doc=None):
         self.target = target
         self.nullable = nullable
         self.positions = positions
         self.mask = mask
+        self.packmask = packmask
+        self.runmask = runmask
         self.name = name
         self.doc = doc
 
@@ -1520,6 +1660,10 @@ class Pointer(Schema):
                 args.append("positions" + eq + repr(self._positions))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packmask is not None:
+                args.append("packmask" + eq + repr(self._packmask))
+            if self._runmask is not None:
+                args.append("runmask" + eq + repr(self._runmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
             if indent is not None:
@@ -1547,6 +1691,10 @@ class Pointer(Schema):
                 out["positions"] = self._positions
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packmask is not None:
+                out["packmask"] = self._packmask
+            if explicit or self._runmask is not None:
+                out["runmask"] = self._runmask
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1566,6 +1714,8 @@ class Pointer(Schema):
         out.nullable = data.get("nullable", False)
         out.positions = data.get("positions", None)
         out.mask = data.get("mask", None)
+        out.packmask = data.get("packmask", None)
+        out.runmask = data.get("runmask", None)
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -1596,19 +1746,23 @@ class Pointer(Schema):
             replacements["positions"] = self._positions
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packmask" not in replacements:
+            replacements["packmask"] = self._packmask
+        if "runmask" not in replacements:
+            replacements["runmask"] = self._runmask
         if "name" not in replacements:
             replacements["name"] = self._name
         return Pointer(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, packmask=self._packmask, runmask=self._runmask, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Pointer) and self.nullable == other.nullable and self.positions == other.positions and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Pointer) and self.nullable == other.nullable and self.positions == other.positions and self.mask == other.mask and self.packmask == other.packmask and self.runmask == other.runmask and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return self.target.__eq__(other.target, memo)
@@ -1648,6 +1802,14 @@ class Pointer(Schema):
             else:
                 args.append(self._mask)
             args.append(cacheidx[0]); cacheidx[0] += 1
+            if self._packmask is None:
+                args.append(prefix + delimiter + "m")
+            else:
+                args.append(self._packmask)
+            if self._runmask is None:
+                args.append(prefix + delimiter + "r")
+            else:
+                args.append(self._runmask)
         else:
             cls = oamap.generator.PointerGenerator
 
