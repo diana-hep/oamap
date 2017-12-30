@@ -1255,8 +1255,8 @@ void assign_{0}(Char_t value, int index) {{
 }}
 """.format(name, "8" if nested else "1"))
             ROOT.gInterpreter.ProcessLine("""
-planets->Branch("{0}", {0}, "{0}/B{2}");
-""".format(name, "8" if nested else "1", "[num_planets]" if nested else ""))
+planets->Branch("{0}", {0}, "{0}{2}/B", 448000);
+""".format(name, "8" if nested else "1", "[branch_num_planets]" if nested else ""))
 
         elif schema.dtype == numpy.dtype(numpy.int32):
             ROOT.gInterpreter.Declare("""
@@ -1266,8 +1266,8 @@ void assign_{0}(int32_t value, int index) {{
 }}
 """.format(name, "8" if nested else "1"))
             ROOT.gInterpreter.ProcessLine("""
-planets->Branch("{0}", {0}, "{0}/I{2}");
-""".format(name, "8" if nested else "1", "[num_planets]" if nested else ""))
+planets->Branch("{0}", {0}, "{0}{2}/I", 448000);
+""".format(name, "8" if nested else "1", "[branch_num_planets]" if nested else ""))
 
         elif schema.dtype == numpy.dtype(numpy.float32):
             ROOT.gInterpreter.Declare("""
@@ -1277,8 +1277,8 @@ void assign_{0}(float value, int index) {{
 }}
 """.format(name, "8" if nested else "1"))
             ROOT.gInterpreter.ProcessLine("""
-planets->Branch("{0}", {0}, "{0}/F{2}");
-""".format(name, "8" if nested else "1", "[num_planets]" if nested else ""))
+planets->Branch("{0}", {0}, "{0}{2}/F", 448000);
+""".format(name, "8" if nested else "1", "[branch_num_planets]" if nested else ""))
 
         else:
             raise AssertionError
@@ -1295,7 +1295,7 @@ void assign_{0}(const char* value, int index) {{
 }}
 """.format(name, "8" if nested else "1"))
         ROOT.gInterpreter.ProcessLine("""
-planets->Branch("{0}", {0}, "{0}/C");
+planets->Branch("{0}", {0}, "{0}/C", 448000);
 """.format(name, "8" if nested else "1"))
 
     elif isinstance(schema, List):
@@ -1311,12 +1311,21 @@ planets->Branch("{0}", {0}, "{0}/C");
     else:
         raise AssertionError
 
+nan = float("nan")
+
 def fillbranches(schema, name, value, index):
     if isinstance(schema, Primitive):
-        exec("ROOT.assign_{0}({1}, {2})".format(name, repr(0 if value is None else value), repr(index)))
+        if issubclass(schema.dtype.type, (numpy.bool, numpy.bool_)):
+            exec("ROOT.assign_{0}({1}, {2})".format(name, -1 if value is None else value, index))
+
+        elif schema.dtype == numpy.dtype(numpy.int32):
+            exec("ROOT.assign_{0}({1}, {2})".format(name, -2147483648 if value is None else value, index))
+
+        elif schema.dtype == numpy.dtype(numpy.float32):
+            exec("ROOT.assign_{0}({1}, {2})".format(name, "nan" if value is None else value, index))
 
     elif isinstance(schema, List) and schema.name == "UTF8String":
-        exec("ROOT.assign_{0}({1}, {2})".format(name, repr("" if value is None else value), repr(index)))
+        exec("ROOT.assign_{0}({1}, {2})".format(name, repr("" if value is None else value), index))
 
     elif isinstance(schema, List):
         for i, x in enumerate(value):
