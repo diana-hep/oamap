@@ -36,7 +36,7 @@ def rec(x):
 stars = {}
 
 fields = None
-for line in csv.reader(open("planets_nolinks.csv")):
+for line in csv.reader(open("planets.csv")):
     if line[0][0] != "#":
         if fields is None:
             fields = line
@@ -57,7 +57,7 @@ for line in csv.reader(open("planets_nolinks.csv")):
                     "parallax": rec({"val": real(x["st_plx"]), "hierr": real(x["st_plxerr1"]), "loerr": real(x["st_plxerr2"]), "lim": boolean(x["st_plxlim"]), "blend": boolean(x["st_plxblend"])}),
                     "distance": rec({"val": real(x["st_dist"]), "hierr": real(x["st_disterr1"]), "loerr": real(x["st_disterr2"]), "lim": boolean(x["st_distlim"]), "blend": boolean(x["st_optmagblend"])}),
                     "propermotion": rec({"ra": rec({"val": real(x["st_pmra"]), "err": real(x["st_pmraerr"]), "lim": boolean(x["st_pmralim"])}), "dec": rec({"val": real(x["st_pmdec"]), "err": real(x["st_pmdecerr"]), "lim": boolean(x["st_pmdeclim"])}), "total": rec({"val": real(x["st_pm"]), "err": real(x["st_pmerr"]), "lim": boolean(x["st_pmlim"]), "blend": boolean(x["st_pmblend"])})}),
-                    "gaia": rec({"gband": rec({"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "limit": real(x["gaia_gmaglim"])}), "parallax": rec({"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "limit": real(x["gaia_plxlim"])}), "distance": rec({"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "limit": real(x["gaia_distlim"])}), "propermotion": rec({"ra": rec({"val": real(x["gaia_pmra"]), "err": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}), "dec": rec({"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}), "total": rec({"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])})})}),
+                    "gaia": rec({"gband": rec({"val": real(x["gaia_gmag"]), "err": real(x["gaia_gmagerr"]), "lim": real(x["gaia_gmaglim"])}), "parallax": rec({"val": real(x["gaia_plx"]), "hierr": real(x["gaia_plxerr1"]), "loerr": real(x["gaia_plxerr2"]), "lim": real(x["gaia_plxlim"])}), "distance": rec({"val": real(x["gaia_dist"]), "hierr": real(x["gaia_disterr1"]), "loerr": real(x["gaia_disterr2"]), "lim": real(x["gaia_distlim"])}), "propermotion": rec({"ra": rec({"val": real(x["gaia_pmra"]), "err": real(x["gaia_pmraerr"]), "lim": boolean(x["gaia_pmralim"])}), "dec": rec({"val": real(x["gaia_pmdec"]), "err": real(x["gaia_pmdecerr"]), "lim": boolean(x["gaia_pmdeclim"])}), "total": rec({"val": real(x["gaia_pm"]), "err": real(x["gaia_pmerr"]), "lim": boolean(x["gaia_pmlim"])})})}),
                     "radialvelocity": rec({"val": real(x["st_radv"]), "hierr": real(x["st_radverr1"]), "loerr": real(x["st_radverr2"]), "lim": boolean(x["st_radvlim"]), "blend": boolean(x["st_radvblend"])}),
                     "spectraltype": rec({"val": real(x["st_sp"]), "str": string(x["st_spstr"]), "err": real(x["st_sperr"]), "lim": boolean(x["st_splim"]), "blend": boolean(x["st_spblend"])}),
                     "surfacegravity": rec({"val": real(x["st_logg"]), "hierr": real(x["st_loggerr1"]), "loerr": real(x["st_loggerr2"]), "lim": boolean(x["st_logglim"]), "blend": boolean(x["st_loggblend"])}),
@@ -119,14 +119,16 @@ for line in csv.reader(open("planets_nolinks.csv")):
                 "occultation_depth": rec({"val": real(x["pl_occdep"]), "hierr": real(x["pl_occdeperr1"]), "loerr": real(x["pl_occdeperr2"]), "lim": boolean(x["pl_occdeplim"])}),
                 "ratio_planetdistance_starradius": rec({"val": real(x["pl_ratdor"]), "hierr": real(x["pl_ratdorerr1"]), "loerr": real(x["pl_ratdorerr2"]), "lim": boolean(x["pl_ratdorlim"])}),
                 "ratio_planetradius_starradius": rec({"val": real(x["pl_ratror"]), "hierr": real(x["pl_ratrorerr1"]), "loerr": real(x["pl_ratrorerr2"]), "lim": boolean(x["pl_ratrorlim"])}),
-                # "reference_link": string(x["pl_def_reflink"]),
-                "discovery": rec({"year": integer(x["pl_disc"]), # "link": string(x["pl_disc_reflink"]),
-                              "locale": string(x["pl_locale"]), "facility": string(x["pl_facility"]), "telescope": string(x["pl_telescope"]), "instrument": string(x["pl_instrument"])}),
+                "reference_link": string(x["pl_def_reflink"]),
+                "discovery": rec({"year": integer(x["pl_disc"]), "link": string(x["pl_disc_reflink"]), "locale": string(x["pl_locale"]), "facility": string(x["pl_facility"]), "telescope": string(x["pl_telescope"]), "instrument": string(x["pl_instrument"])}),
                 "num_parameters": integer(x["pl_st_npar"]),
-                # "encyclopedia_link": string(x["pl_pelink"]),
-                # "explorer_link": string(x["pl_edelink"]),
+                "encyclopedia_link": string(x["pl_pelink"]),
+                "explorer_link": string(x["pl_edelink"]),
                 "publication_date": string(x["pl_publ_date"])
                 })
+
+# import json
+# json.dump(stars, open("planets.json", "wb"))
 
 from oamap.schema import *
 
@@ -153,6 +155,7 @@ schema = (
         dec = real("Declination of the planetary system in decimal degrees"),       # dec
         opticalband = Pointer(string(), doc="Optical Magnitude Band", nullable=True),   # st_optband
         temperature = Record(
+          name = "ValueAsymErrBlend",
           doc = "Temperature of the star as modeled by a black body emitting the same total amount of electromagnetic radiation",
           nullable = True,
           fields = dict(
@@ -164,6 +167,7 @@ schema = (
           )
         ),
         mass = Record(
+          name = "ValueAsymErrBlend",
           doc = "Amount of matter contained in the star, measured in units of masses of the Sun",
           nullable = True,
           fields = dict(
@@ -175,6 +179,7 @@ schema = (
           )
         ),
         radius = Record(
+          name = "ValueAsymErrBlend",
           doc = "Length of a line segment from the center of the star to its surface, measured in units of radius of the Sun",
           nullable = True,
           fields = dict(
@@ -186,6 +191,7 @@ schema = (
           )
         ),
         galactic = Record(
+          name = "Coordinate",
           doc = "Coordinates with respect to the plane of the galaxy in degrees",
           fields = dict(
             longitude = real("Galactic Longitude [deg]"),                           # st_glon
@@ -193,6 +199,7 @@ schema = (
           )
         ),
         ecliptic = Record(
+          name = "Coordinate",
           doc = "Coordinates with respect to the plane of the ecliptic in degrees",
           fields = dict(
             longitude = real("Ecliptic Longitude [deg]"),                           # st_elon
@@ -200,6 +207,7 @@ schema = (
           )
         ),
         parallax = Record(
+          name = "ValueAsymErrBlend",
           doc = "Difference in the angular position of a star as measured at two opposite positions within the Earth's orbit",
           nullable = True,
           fields = dict(
@@ -211,6 +219,7 @@ schema = (
           )
         ),
         distance = Record(
+          name = "ValueAsymErrBlend",
           doc = "Distance to the planetary system in units of parsecs",
           nullable = True,
           fields = dict(
@@ -222,10 +231,12 @@ schema = (
           )
         ),
         propermotion = Record(
+          name = "ProperMotion",
           doc = "Angular change over time as seen from the center of mass of the Solar System",
           nullable = True,
           fields = dict(
             ra = Record(
+              name = "ValueErr",
               doc = "Proper motion in right ascension",
               fields = dict(
                 val = real("Proper Motion (RA) [mas/yr]", nullable=True),           # st_pmra
@@ -234,6 +245,7 @@ schema = (
               )
             ),
             dec = Record(
+              name = "ValueErr",
               doc = "Proper motion in declination",
               fields = dict(
                 val = real("Proper Motion (Dec) [mas/yr]", nullable=True),          # st_pmdec
@@ -242,6 +254,7 @@ schema = (
               )
             ),
             total = Record(
+              name = "ValueErrBlend",
               doc = "Total proper motion",
               fields = dict(
                 val = real("Total Proper Motion [mas/yr]", nullable=True),          # st_pm
@@ -253,40 +266,46 @@ schema = (
           )
         ),
         gaia = Record(
+          name = "GAIAMeasurements",
           nullable = True,
           fields = dict(
             gband = Record(
+              name = "ValueErr",
               fields = dict(
                 val = real(doc="G-band (Gaia) [mag]", nullable=True),               # gaia_gmag
                 err = real(doc="G-band (Gaia) Unc. [mag]", nullable=True),          # gaia_gmagerr
-                limit = boolean(doc="G-band (Gaia) Limit Flag", nullable=True)      # gaia_gmaglim
+                lim = boolean(doc="G-band (Gaia) Limit Flag", nullable=True)      # gaia_gmaglim
               )
             ),
             parallax = Record(
+              name = "ValueAsymErr",
               doc = "Difference in the angular position of a star as measured at two opposite positions within the Earth's orbit",
               nullable = True,
               fields = dict(
                 val = real(doc="Gaia Parallax [mas]", nullable=True),               # gaia_plx
                 hierr = real(doc="Gaia Parallax Upper Unc. [mas]", nullable=True),  # gaia_plxerr1
                 loerr = real(doc="Gaia Parallax Lower Unc. [mas]", nullable=True),  # gaia_plxerr2
-                limit = boolean(doc="Gaia Parallax Limit Flag", nullable=True)      # gaia_plxlim
+                lim = boolean(doc="Gaia Parallax Limit Flag", nullable=True)      # gaia_plxlim
               )
             ),
             distance = Record(
+              name = "ValueAsymErr",
               doc = "Distance to the planetary system in units of parsecs",
               nullable = True,
               fields = dict(
                 val = real(doc="Gaia Distance [pc]", nullable=True),                # gaia_dist
                 hierr = real(doc="Gaia Distance Upper Unc. [pc]", nullable=True),   # gaia_disterr1
                 loerr = real(doc="Gaia Distance Lower Unc. [pc]", nullable=True),   # gaia_disterr2
-                limit = boolean(doc="Gaia Distance Limit Flag", nullable=True)      # gaia_distlim
+                lim = boolean(doc="Gaia Distance Limit Flag", nullable=True)      # gaia_distlim
               )
             ),
             propermotion = Record(
+              name = "GAIAProperMotion",
               doc = "Angular change over time as seen from the center of mass of the Solar System",
               nullable = True,
               fields = dict(
                 ra = Record(
+                  name = "ValueErr",
                   doc = "Proper motion in right ascension",
                   fields = dict(
                     val = real(doc="Gaia Proper Motion (RA) [mas/yr]", nullable=True),       # gaia_pmra
@@ -295,6 +314,7 @@ schema = (
                   ),
                 ),
                 dec = Record(
+                  name = "ValueErr",
                   doc = "Proper motion in declination",
                   fields = dict(
                     val = real(doc="Gaia Proper Motion (Dec) [mas/yr]", nullable=True),      # gaia_pmdec
@@ -303,6 +323,7 @@ schema = (
                   )
                 ),
                 total = Record(
+                  name = "ValueErr",
                   doc = "Total proper motion",
                   fields = dict(
                     val = real(doc="Gaia Total Proper Motion [mas/yr]", nullable=True),      # gaia_pm
@@ -315,6 +336,7 @@ schema = (
           )
         ),
         radialvelocity = Record(
+          name = "ValueAsymErrBlend",
           doc = "Velocity of the star in the direction of the line of sight",
           nullable = True,
           fields = dict(
@@ -326,6 +348,7 @@ schema = (
           )
         ),
         spectraltype = Record(
+          name = "ValueStrErrBlend",
           doc = "Classification of the star based on their spectral characteristics following the Morgan-Keenan system",
           nullable = True,
           fields = dict(
@@ -337,6 +360,7 @@ schema = (
           )
         ),
         surfacegravity = Record(
+          name = "ValueAsymErrBlend",
           doc = "Gravitational acceleration experienced at the stellar surface",
           nullable = True,
           fields = dict(
@@ -348,6 +372,7 @@ schema = (
           )
         ),
         luminosity = Record(
+          name = "ValueAsymErrBlend",
           doc = "Amount of energy emitted by a star per unit time, measured in units of solar luminosities",
           nullable = True,
           fields = dict(
@@ -359,6 +384,7 @@ schema = (
           )
         ),
         density = Record(
+          name = "ValueAsymErr",
           doc = "Amount of mass per unit of volume of the star",
           nullable = True,
           fields = dict(
@@ -369,6 +395,7 @@ schema = (
           )
         ),
         metallicity = Record(
+          name = "ValueAsymErrBlendRatio",
           doc = "Measurement of the metal content of the photosphere of the star as compared to the hydrogen content",
           nullable = True,
           fields = dict(
@@ -381,6 +408,7 @@ schema = (
           )
         ),
         age = Record(
+          name = "ValueAsymErr",
           doc = "The age of the host star",
           nullable = True,
           fields = dict(
@@ -391,6 +419,7 @@ schema = (
           )
         ),
         rotational_velocity = Record(
+          name = "ValueAsymErrBlend",
           doc = "Rotational velocity at the equator of the star multiplied by the sine of the inclination",
           nullable = True,
           fields = dict(
@@ -402,10 +431,12 @@ schema = (
           )
         ),
         activity = Record(
+          name = "StellarActivity",
           doc = "Stellar activity in various metrics",
           nullable = True,
           fields = dict(
             sindex = Record(
+              name = "ValueErrBlend",
               doc = "Chromospheric activity as measured by the S-index (ratio of the emission of the H and K Ca lines to that in nearby continuum)",
               nullable = True,
               fields = dict(
@@ -416,6 +447,7 @@ schema = (
               )
             ),
             rindex = Record(
+              name = "ValueErrBlend",
               doc = "Chromospheric activity as measured by the log(R' HK) index, with is based on the S-index, but excludes the photospheric component in the Ca lines",
               nullable = True,
               fields = dict(
@@ -426,6 +458,7 @@ schema = (
               )
             ),
             xindex = Record(
+              name = "ValueErrBlend",
               doc = "Stellar activity as measured by the total luminosity in X-rays",
               nullable = True,
               fields = dict(
@@ -445,8 +478,10 @@ schema = (
         num_images = integer("Number of literature images available for this star in the NASA Exoplanet Archive"), # st_nimg
         num_spectra = integer("Number of literature of spectra available for this star in the NASA Exoplanet Archive"), # st_nspec
         photometry = Record(
+          name = "Photometry",
           fields = dict(
             uband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the U (Johnson) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -457,6 +492,7 @@ schema = (
               )
             ),
             vband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the V (Johnson) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -467,6 +503,7 @@ schema = (
               )
             ),
             bband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the B (Johnson) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -477,6 +514,7 @@ schema = (
               )
             ),
             rband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the R (Cousins) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -487,6 +525,7 @@ schema = (
               )
             ),
             iband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the I (Cousins) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -497,6 +536,7 @@ schema = (
               )
             ),
             jband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the J (2MASS) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -507,6 +547,7 @@ schema = (
               )
             ),
             hband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the H (2MASS) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -517,6 +558,7 @@ schema = (
               )
             ),
             kband = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the K (2MASS) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -527,6 +569,7 @@ schema = (
               )
             ),
             wise1 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 3.4um (WISE) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -537,6 +580,7 @@ schema = (
               )
             ),
             wise2 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 4.6um (WISE) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -547,6 +591,7 @@ schema = (
               )
             ),
             wise3 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 12.um (WISE) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -557,6 +602,7 @@ schema = (
               )
             ),
             wise4 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 22.um (WISE) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -567,6 +613,7 @@ schema = (
               )
             ),
             irac1 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 3.6um (IRAC) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -577,6 +624,7 @@ schema = (
               )
             ),
             irac2 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 4.5um (IRAC) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -587,6 +635,7 @@ schema = (
               )
             ),
             irac3 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 5.8um (IRAC) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -597,6 +646,7 @@ schema = (
               )
             ),
             irac4 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 8.0um (IRAC) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -607,6 +657,7 @@ schema = (
               )
             ),
             mips1 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 24um (MIPS) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -617,6 +668,7 @@ schema = (
               )
             ),
             mips2 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 70um (MIPS) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -627,6 +679,7 @@ schema = (
               )
             ),
             mips3 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 160um (MIPS) band in units of magnitudes",
               nullable = True,
               fields = dict(
@@ -637,6 +690,7 @@ schema = (
               )
             ),
             iras1 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 12um (IRAS) band in units of Jy",
               nullable = True,
               fields = dict(
@@ -647,6 +701,7 @@ schema = (
               )
             ),
             iras2 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 25um (IRAS) band in units of Jy",
               nullable = True,
               fields = dict(
@@ -657,6 +712,7 @@ schema = (
               )
             ),
             iras3 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 60um (IRAS) band in units of Jy",
               nullable = True,
               fields = dict(
@@ -667,6 +723,7 @@ schema = (
               )
             ),
             iras4 = Record(
+              name = "ValueErrBlend",
               doc = "Brightness of the host star as measured using the 100um (IRAS) band in units of Jy",
               nullable = True,
               fields = dict(
@@ -680,8 +737,10 @@ schema = (
           )
         ),
         color = Record(
+          name = "Color",
           fields = dict(
             ub_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between U and B (Johnson) bands",
               nullable = True,
               fields = dict(
@@ -692,6 +751,7 @@ schema = (
               )
             ),
             bv_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between B and V (Johnson) bands",
               nullable = True,
               fields = dict(
@@ -702,6 +762,7 @@ schema = (
               )
             ),
             vi_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between V (Johnson) and I (Cousins) bands",
               nullable = True,
               fields = dict(
@@ -712,6 +773,7 @@ schema = (
               )
             ),
             vr_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between V (Johnson) and R (Cousins) bands",
               nullable = True,
               fields = dict(
@@ -722,6 +784,7 @@ schema = (
               )
             ),
             jh_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between J and H (2MASS) bands",
               nullable = True,
               fields = dict(
@@ -732,6 +795,7 @@ schema = (
               )
             ),
             hk_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between H and K (2MASS) bands",
               nullable = True,
               fields = dict(
@@ -742,6 +806,7 @@ schema = (
               )
             ),
             jk_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between K and K (2MASS) bands",
               nullable = True,
               fields = dict(
@@ -752,6 +817,7 @@ schema = (
               )
             ),
             by_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the difference between b and y (Stromgren) bands",
               nullable = True,
               fields = dict(
@@ -762,6 +828,7 @@ schema = (
               )
             ),
             m1_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the m1 (Stromgren) system",
               nullable = True,
               fields = dict(
@@ -772,6 +839,7 @@ schema = (
               )
             ),
             c1_diff = Record(
+              name = "ValueErrBlend",
               doc = "Color of the star as measured by the c1 (Stromgren) system",
               nullable = True,
               fields = dict(
@@ -795,6 +863,7 @@ schema = (
               letter = Pointer(string(), doc="Planet Letter"),              # pl_letter
               discovery_method = Pointer(string(), doc="Discovery Method"), # pl_discmethod
               orbital_period = Record(
+                name = "ValueAsymErr",
                 doc = "Time the planet takes to make a complete orbit around the host star or system",
                 nullable = True,
                 fields = dict(
@@ -805,6 +874,7 @@ schema = (
                 )
               ),
               semimajor_axis = Record(
+                name = "ValueAsymErr",
                 doc = "The longest diameter of an elliptic orbit, or for directly imaged planets, the projected separation in the plane of the sky",
                 nullable = True,
                 fields = dict(
@@ -815,6 +885,7 @@ schema = (
                 )
               ),
               eccentricity = Record(
+                name = "ValueAsymErr",
                 doc = "Amount by which the orbit of the planet deviates from a perfect circle",
                 nullable = True,
                 fields = dict(
@@ -825,6 +896,7 @@ schema = (
                 )
               ),
               inclination = Record(
+                name = "ValueAsymErr",
                 doc = "Angular distance of the orbital plane from the line of sight",
                 nullable = True,
                 fields = dict(
@@ -835,6 +907,7 @@ schema = (
                 )
               ),
               mass = Record(
+                name = "ValueAsymErr",
                 doc = "Amount of matter contained in the planet, measured in units of masses of Jupiter",
                 nullable = True,
                 fields = dict(
@@ -845,6 +918,7 @@ schema = (
                 )
               ),
               mass_sini = Record(
+                name = "ValueAsymErr",
                 doc = "Minimum mass of a planet as measured by radial velocity, measured in units of masses of Jupiter",
                 nullable = True,
                 fields = dict(
@@ -855,6 +929,7 @@ schema = (
                 )
               ),
               mass_best = Record(
+                name = "ValueAsymErrProvenance",
                 doc = "Best planet mass measurement in units of masses of Jupiter. Either Mass, M*sin(i)/sin(i), or M*sin(i). See provenance for source of the measurement.",
                 nullable = True,
                 fields = dict(
@@ -866,6 +941,7 @@ schema = (
                 )
               ),
               radius = Record(
+                name = "ValueAsymErr",
                 doc = "Length of a line segment from the center of the planet to its surface, measured in units of radius of Jupiter",
                 nullable = True,
                 fields = dict(
@@ -876,6 +952,7 @@ schema = (
                 )
               ),
               density = Record(
+                name = "ValueAsymErr",
                 doc = "Amount of mass per unit of volume of the planet",
                 nullable = True,
                 fields = dict(
@@ -898,6 +975,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
               has_orbital_modulations = boolean("Flag indicating whether the planet exhibits orbital modulations on the phase curve "), # pl_omflag
               has_binary = boolean("Flag indicating whether the planet orbits a binary system"), # pl_cbflag
               angular_separation = Record(
+                name = "ValueAsymErrNoLim",
                 doc = "The calculated angular separation (semi-major axis/distance) between the star and the planet. This value is only calculated for systems with both a semi-major axis and a distance value.",
                 nullable = True,
                 fields = dict(
@@ -907,6 +985,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               periastron = Record(
+                name = "ValueAsymErr",
                 doc = "The time at which the orbiting body is at its closest approach to the star it orbits (i.e. is at periastron)",
                 nullable = True,
                 fields = dict(
@@ -917,6 +996,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               longitude_periastron = Record(
+                name = "ValueAsymErr",
                 doc = "The angular separation between the ascending node of the orbit and the location in the orbit of periastron",
                 nullable = True,
                 fields = dict(
@@ -927,6 +1007,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               radial_velocity = Record(
+                name = "ValueAsymErr",
                 doc = "Half the peak-to-peak amplitude of variability in the stellar radial velocity",
                 nullable = True,
                 fields = dict(
@@ -937,6 +1018,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               equilibrium_temperature = Record(
+                name = "ValueAsymErr",
                 doc = "The equilibrium temperature of the planet as modeled by a black body heated only by its host star, or for directly imaged planets, the effective temperature of the planet required to match the measured luminosity if the planet were a black body",
                 nullable = True,
                 fields = dict(
@@ -947,6 +1029,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               isolation_flux = Record(
+                name = "ValueAsymErr",
                 doc = "Insolation flux is another way to give the equilibrium temperature. It's given in units relative to those measured for the Earth from the Sun",
                 nullable = True,
                 fields = dict(
@@ -957,6 +1040,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               transit_depth = Record(
+                name = "ValueAsymErr",
                 doc = "The size of the relative flux decrement caused by the orbiting body transiting in front of the star",
                 nullable = True,
                 fields = dict(
@@ -967,6 +1051,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               transit_duration = Record(
+                name = "ValueAsymErr",
                 doc = "The length of time from the moment the planet begins to cross the stellar limb to the moment the planet finishes crossing the stellar limb",
                 nullable = True,
                 fields = dict(
@@ -977,6 +1062,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               transit_midpoint = Record(
+                name = "ValueAsymErr",
                 doc = "The time given by the average of the time the planet begins to cross the stellar limb and the time the planet finishes crossing the stellar limb",
                 nullable = True,
                 fields = dict(
@@ -988,6 +1074,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
               ),
               timesystem_reference = Pointer(string(), doc="Time System Reference", nullable=True),  # pl_tsystemref
               impact_parameter = Record(
+                name = "ValueAsymErr",
                 doc = "The sky-projected distance between the center of the stellar disc and the center of the planet disc at conjunction, normalized by the stellar radius",
                 nullable = True,
                 fields = dict(
@@ -998,6 +1085,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               occultation_depth = Record(
+                name = "ValueAsymErr",
                 doc = "Depth of occultation of secondary eclipse",
                 nullable = True,
                 fields = dict(
@@ -1008,6 +1096,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               ratio_planetdistance_starradius = Record(
+                name = "ValueAsymErr",
                 doc = "The distance between the planet and the star at mid-transit divided by the stellar radius. For the case of zero orbital eccentricity, the distance at mid-transit is the semi-major axis of the planetary orbit.",
                 nullable = True,
                 fields = dict(
@@ -1018,6 +1107,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               ratio_planetradius_starradius = Record(
+                name = "ValueAsymErr",
                 doc = "The planet radius divided by the stellar radius",
                 nullable = True,
                 fields = dict(
@@ -1029,6 +1119,7 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
               ),
               # reference_link = string("Reference for publication used for default parameter"), # pl_def_reflink
               discovery = Record(
+                name = "Discovery",
                 fields = dict(
                   year = integer("Year the planet was discovered"), # pl_disc
                   # link = string("Reference name for discovery publication"), # pl_disc_reflink
@@ -1050,6 +1141,56 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
   )
 )
 
+import avro.schema
+
+def convert2avro(schema, nullable, names):
+    if schema.nullable:
+        nullable = True         # either we get it from above OR we get it here
+
+    if isinstance(schema, Pointer):
+        out = convert2avro(schema.target, schema.nullable, names)
+
+    elif isinstance(schema, Primitive):
+        if issubclass(schema.dtype.type, (numpy.bool_, numpy.bool)):
+            out = {"type": "boolean"}
+        elif issubclass(schema.dtype.type, numpy.integer):
+            out = {"type": "int"}
+        elif issubclass(schema.dtype.type, numpy.floating):
+            out = {"type": "float"}
+        else:
+            raise AssertionError
+
+    elif isinstance(schema, List) and schema.name == "UTF8String":
+        out = {"type": "string"}
+
+    elif isinstance(schema, List):
+        out = {"type": "array", "items": convert2avro(schema.content, False, names)}
+
+    elif isinstance(schema, Record):
+        out = {"type": "record", "name": schema.name, "fields": {n: convert2avro(x, False, names) for n, x in schema.fields.items()}}
+
+        if schema.name not in names:
+            names[schema.name] = out
+        else:
+            assert names[schema.name] == out, "{}:\n{}\n{}".format(schema.name, names[schema.name], out)
+            out = schema.name
+
+    else:
+        raise AssertionError
+
+    if nullable:
+        return ["null", out]
+    else:
+        return out
+
+avroschema = avro.schema.make_avsc_object(convert2avro(schema, False, {}))
+
+
+
+
+
+
+    
 import oamap.fill
 
 before = stars.values()
@@ -1058,11 +1199,13 @@ fillables = oamap.fill.fromdata(before, generator=schema, pointer_fromequal=True
 arrays = oamap.fill.toarrays(fillables)
 after = schema(arrays)
 
-schema.tojsonfile(open("planets/schema.json", "wb"))
+# schema.tojsonfile(open("planets/schema.json", "wb"))
+
+packedarrays = {n: numpy.packbits(x == -1) if n.endswith("-M") else x for n, x in arrays.items() if not n.endswith("-E")}
 
 import numpy
 
-for n, x in arrays.items():
+for n, x in packedarrays.items():
     numpy.save("planets/{0}.npy".format(n), x)
 
-numpy.savez_compressed("planets.npz", arrays)
+numpy.savez_compressed("planets.npz", packedarrays)
