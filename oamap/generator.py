@@ -64,7 +64,7 @@ class Generator(object):
             try:
                 array = arrays[name]
             except KeyError as err:
-                self._fallback(arrays, cache, name, err)
+                array = self._fallback(arrays, cache, name, err)
             cache.arraylist[cacheidx] = array
             if dtype is not None and getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
                 raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].dtype, dtype))
@@ -94,25 +94,22 @@ class Masked(object):
         self.packmask = packmask
 
     def _fallback(self, arrays, cache, name, err):
+        # packmask = numpy.packbits(mask != -1)
         if name == self.mask:
             try:
                 packmask = arrays[self.packmask]
             except KeyError:
-                pass
+                raise err
             else:
-                # packmask = numpy.packbits(mask != -1)
                 if packmask.dtype != numpy.dtype(numpy.uint8):
-                    raise TypeError("arrays[{0}].dtype is {1} but expected uint8".format(repr(self.packmask), packmask.dtype))
+                    raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(self.packmask), packmask.dtype, numpy.dtype(numpy.uint8)))
                 if packmask.shape[1:] != ():
                     raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.packmask), packmask.shape[1:]))
                 unmasked = numpy.unpackbits(packmask).view(numpy.bool_)
                 mask = numpy.empty(len(unmasked), dtype=self.maskdtype)
                 mask[unmasked] = numpy.arange(unmasked.sum(), dtype=self.maskdtype)
                 mask[~unmasked] = self.maskedvalue
-                return mask
-
-            raise err
-
+                return mask                   # may have excess -1 at the end due to zero-padding in numpy.packbits
         else:
             return self.__class__.__bases__[1]._fallback(self, arrays, cache, name, err)
 
@@ -157,10 +154,24 @@ class ListGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _fallback(self, arrays, cache, name, err):
+        # counts = stops - starts
         if name == self.starts:
-            raise NotImplementedError
+            try:
+                counts = arrays[self.counts]
+            except KeyError:
+                raise err
+            else:
+                if counts.dtype != self.dtype:
+                    raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(self.counts), counts.dtype, self.dtype))
+                if counts.shape[1:] != ():
+                    raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.counts), counts.shape[1:]))
+                offsets = numpy.empty(len(counts) + 1, dtype=self.dtype)
+                offsets[0] = 0
+                offsets[1:] = numpy.cumsum(counts)
+                return offsets                # offsets is a starts array with an excess number at the end
         elif name == self.stops:
-            raise NotImplementedError
+            # if we get here, we've already filled starts with offsets
+            return cache[self.startsidx][1:]  # take off the initial zero (now we need that excess number at the end!)
         else:
             raise err
 
@@ -188,10 +199,16 @@ class UnionGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _fallback(self, arrays, cache, name, err):
-        if name == self.tags:
-            raise err
+        if name == self.offsets:
+            # if we get here, we've already filled tags
+            tags = cache[self.tagsidx]
+            offsets = numpy.empty(len(tags), dtype=self.dtype)
+            for tag in range(len(self.possibilities)):
+                hastag = (tags == tag)
+                offsets[hastag] = numpy.arange(hastag.sum(), dtype=self.dtype)
+            return offsets
         else:
-            raise NotImplementedError
+            raise err
 
     def _generate(self, arrays, index, cache):
         tags    = self._getarray(arrays, self.tags,    cache, self.tagsidx,    self.dtype, ())
