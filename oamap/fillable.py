@@ -68,6 +68,9 @@ class Fillable(object):
     def __getitem__(self, index):
         raise NotImplementedError
 
+    def __array__(self):
+        return self[:]
+
 ################################################################ make fillables
 
 def _makefillables(generator, fillables, makefillable):

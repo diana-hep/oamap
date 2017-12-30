@@ -133,9 +133,9 @@ for line in csv.reader(open("planets.csv")):
 
 before = stars.values()
 
-import json
-json.dump(before, open("planets.json", "wb"))
-os.system("gzip -k planets.json")
+# import json
+# json.dump(before, open("planets.json", "wb"))
+# os.system("gzip -k planets.json")
 
 from oamap.schema import *
 
@@ -1187,44 +1187,40 @@ def convert2avro(schema, names):
     else:
         return out
 
-avroschema = avro.schema.make_avsc_object(convert2avro(schema.content, {}))
+# avroschema = avro.schema.make_avsc_object(convert2avro(schema.content, {}))
 
-import avro.datafile
-import avro.io
+# import avro.datafile
+# import avro.io
 
-writer = avro.datafile.DataFileWriter(open("planets_uncompressed.avro", "wb"), avro.io.DatumWriter(), avroschema)
-for star in before:
-    writer.append(star)
-writer.close()
+# writer = avro.datafile.DataFileWriter(open("planets_uncompressed.avro", "wb"), avro.io.DatumWriter(), avroschema)
+# for star in before:
+#     writer.append(star)
+# writer.close()
 
-writer = avro.datafile.DataFileWriter(open("planets.avro", "wb"), avro.io.DatumWriter(), avroschema, codec="deflate")
-for star in before:
-    writer.append(star)
-writer.close()
+# writer = avro.datafile.DataFileWriter(open("planets.avro", "wb"), avro.io.DatumWriter(), avroschema, codec="deflate")
+# for star in before:
+#     writer.append(star)
+# writer.close()
 
-import bson
+# import bson
 
-writer = open("planets.bson", "wb")
-for star in before:
-    writer.write(bson.BSON.encode(star))
-writer.close()
-os.system("gzip -k planets.bson")
+# writer = open("planets.bson", "wb")
+# for star in before:
+#     writer.write(bson.BSON.encode(star))
+# writer.close()
+# os.system("gzip -k planets.bson")
 
-
-
-
-
-
-
-import oamap.fill
-
-fillables = oamap.fill.fromdata(before, generator=schema, pointer_fromequal=True)
-arrays = oamap.fill.toarrays(fillables)
-after = schema(arrays)
 
 schema.tojsonfile(open("planets/schema.json", "wb"))
 
-packedarrays = {n: numpy.packbits(x == -1) if n.endswith("-M") else x for n, x in arrays.items() if not n.endswith("-E")}
+import oamap.fill
+
+generator = schema.generator()
+fillables = oamap.fill.fromdata(before, generator=generator, pointer_fromequal=True)
+after = schema(fillables)
+
+packedarrays = generator.save(fillables)
+after2 = schema(packedarrays)
 
 import numpy
 

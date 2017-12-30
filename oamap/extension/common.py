@@ -40,7 +40,7 @@ class _GenerateBytes(object):
 
     def _generatebytes(self, arrays, index, cache):
         if self.schema.nullable:
-            value = self._getarray(arrays, self.generic.mask, cache, self.generic.maskidx, self.generic.maskdtype)[index]
+            value = self._getarray(arrays, self.generic.mask, cache, self.generic.maskidx, self.generic.maskdtype, ())[index]
             if value == self.generic.maskedvalue:
                 return None
             else:
@@ -49,9 +49,9 @@ class _GenerateBytes(object):
         listgen = self.generic
         primgen = self.generic.content
 
-        starts = self._getarray(arrays, listgen.starts, cache, listgen.startsidx, listgen.dtype)
-        stops  = self._getarray(arrays, listgen.stops,  cache, listgen.stopsidx,  listgen.dtype)
-        data   = self._getarray(arrays, primgen.data,   cache, primgen.dataidx,   primgen.dtype)
+        starts = self._getarray(arrays, listgen.starts, cache, listgen.startsidx, listgen.dtype, ())
+        stops  = self._getarray(arrays, listgen.stops,  cache, listgen.stopsidx,  listgen.dtype, ())
+        data   = self._getarray(arrays, primgen.data,   cache, primgen.dataidx,   primgen.dtype, ())
         array  = data[starts[index]:stops[index]]
 
         if isinstance(array, numpy.ndarray):
