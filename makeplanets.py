@@ -35,11 +35,10 @@ def rec(x):
     else:
         return x
 
-stars = {}
-
 # https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=planets
 
 fields = None
+stars = {}
 for line in csv.reader(open("planets.csv")):
     if line[0][0] != "#":
         if fields is None:
@@ -133,9 +132,9 @@ for line in csv.reader(open("planets.csv")):
 
 before = stars.values()
 
-# import json
-# json.dump(before, open("planets.json", "wb"))
-# os.system("gzip -k planets.json")
+import json
+json.dump(before, open("planets.json", "wb"))
+os.system("gzip -k planets.json")
 
 from oamap.schema import *
 
@@ -1124,12 +1123,12 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                   lim = boolean("Ratio of Planet to Stellar Radius Limit Flag", nullable=True)        # pl_ratrorlim
                 )
               ),
-              # reference_link = string("Reference for publication used for default parameter"), # pl_def_reflink
+              reference_link = string("Reference for publication used for default parameter"), # pl_def_reflink
               discovery = Record(
                 name = "Discovery",
                 fields = dict(
                   year = integer("Year the planet was discovered"), # pl_disc
-                  # link = string("Reference name for discovery publication"), # pl_disc_reflink
+                  link = string("Reference name for discovery publication"), # pl_disc_reflink
                   locale = Pointer(string(), doc="Location of observation of planet discovery (Ground or Space)"), # pl_locale
                   facility = Pointer(string(), doc="Name of facility of planet discovery observations"), # pl_facility
                   telescope = string("Name of telescope of planet discovery observations"), # pl_telescope
@@ -1137,8 +1136,8 @@ Note: Non-transiting planets discovered via the transit timing variations of ano
                 )
               ),
               num_parameters = integer("Number of Stellar and Planet Parameters", nullable=True),   # pl_st_npar
-              # encyclopedia_link = string("Link to the planet page in the Exoplanet Encyclopaedia", nullable=True),  # pl_pelink
-              # explorer_link = string("Link to the planet page in Exoplanet Data Explorer", nullable=True),  # pl_edelink
+              encyclopedia_link = string("Link to the planet page in the Exoplanet Encyclopaedia", nullable=True),  # pl_pelink
+              explorer_link = string("Link to the planet page in Exoplanet Data Explorer", nullable=True),  # pl_edelink
               publication_date = Pointer(string(), doc="Publication Date of the planet discovery referee publication", nullable=True) # pl_publ_date
             )
           ) # planet Record
@@ -1187,29 +1186,28 @@ def convert2avro(schema, names):
     else:
         return out
 
-# avroschema = avro.schema.make_avsc_object(convert2avro(schema.content, {}))
+avroschema = avro.schema.make_avsc_object(convert2avro(schema.content, {}))
 
-# import avro.datafile
-# import avro.io
+import avro.datafile
+import avro.io
 
-# writer = avro.datafile.DataFileWriter(open("planets_uncompressed.avro", "wb"), avro.io.DatumWriter(), avroschema)
-# for star in before:
-#     writer.append(star)
-# writer.close()
+writer = avro.datafile.DataFileWriter(open("planets_uncompressed.avro", "wb"), avro.io.DatumWriter(), avroschema)
+for star in before:
+    writer.append(star)
+writer.close()
 
-# writer = avro.datafile.DataFileWriter(open("planets.avro", "wb"), avro.io.DatumWriter(), avroschema, codec="deflate")
-# for star in before:
-#     writer.append(star)
-# writer.close()
+writer = avro.datafile.DataFileWriter(open("planets.avro", "wb"), avro.io.DatumWriter(), avroschema, codec="deflate")
+for star in before:
+    writer.append(star)
+writer.close()
 
-# import bson
+import bson
 
-# writer = open("planets.bson", "wb")
-# for star in before:
-#     writer.write(bson.BSON.encode(star))
-# writer.close()
-# os.system("gzip -k planets.bson")
-
+writer = open("planets.bson", "wb")
+for star in before:
+    writer.write(bson.BSON.encode(star))
+writer.close()
+os.system("gzip -k planets.bson")
 
 schema.tojsonfile(open("planets/schema.json", "wb"))
 
@@ -1233,3 +1231,112 @@ for n in packedarrays:
 
 numpy.savez("planets_uncompressed.npz", packedarrays)
 numpy.savez_compressed("planets.npz", packedarrays)
+
+############################################################################################################
+
+import time
+
+import json
+before = json.load(open("planets.json"))
+
+import ROOT
+
+file = ROOT.TFile("planets.root", "RECREATE")
+file.SetCompressionAlgorithm(1)
+file.SetCompressionLevel(4)
+
+def makebranches(schema, name, nested):
+    if isinstance(schema, Primitive):
+        if issubclass(schema.dtype.type, (numpy.bool, numpy.bool_)):
+            ROOT.gInterpreter.Declare("""
+Char_t {0}[{1}];
+void assign_{0}(Char_t value, int index) {{
+    {0}[index] = value;
+}}
+""".format(name, "8" if nested else "1"))
+            ROOT.gInterpreter.ProcessLine("""
+planets->Branch("{0}", {0}, "{0}/B{2}");
+""".format(name, "8" if nested else "1", "[num_planets]" if nested else ""))
+
+        elif schema.dtype == numpy.dtype(numpy.int32):
+            ROOT.gInterpreter.Declare("""
+int32_t {0}[{1}];
+void assign_{0}(int32_t value, int index) {{
+    {0}[index] = value;
+}}
+""".format(name, "8" if nested else "1"))
+            ROOT.gInterpreter.ProcessLine("""
+planets->Branch("{0}", {0}, "{0}/I{2}");
+""".format(name, "8" if nested else "1", "[num_planets]" if nested else ""))
+
+        elif schema.dtype == numpy.dtype(numpy.float32):
+            ROOT.gInterpreter.Declare("""
+float {0}[{1}];
+void assign_{0}(float value, int index) {{
+    {0}[index] = value;
+}}
+""".format(name, "8" if nested else "1"))
+            ROOT.gInterpreter.ProcessLine("""
+planets->Branch("{0}", {0}, "{0}/F{2}");
+""".format(name, "8" if nested else "1", "[num_planets]" if nested else ""))
+
+        else:
+            raise AssertionError
+
+    elif isinstance(schema, List) and schema.name == "UTF8String":
+        ROOT.gInterpreter.Declare("""
+char {0}[150 * {1}];
+int {0}_position;
+void assign_{0}(const char* value, int index) {{
+    if (index == 0)
+        {0}_position = 0;
+    strcpy(&{0}[{0}_position], value);
+    {0}_position += strlen(value);
+}}
+""".format(name, "8" if nested else "1"))
+        ROOT.gInterpreter.ProcessLine("""
+planets->Branch("{0}", {0}, "{0}/C");
+""".format(name, "8" if nested else "1"))
+
+    elif isinstance(schema, List):
+        makebranches(schema.content, name, True)
+
+    elif isinstance(schema, Record):
+        for n, x in schema.fields.items():
+            makebranches(x, n if name is None else name + "_" + n, nested)
+
+    elif isinstance(schema, Pointer):
+        makebranches(schema.target, name, nested)
+
+    else:
+        raise AssertionError
+
+def fillbranches(schema, name, value, index):
+    if isinstance(schema, Primitive):
+        exec("ROOT.assign_{0}({1}, {2})".format(name, repr(0 if value is None else value), repr(index)))
+
+    elif isinstance(schema, List) and schema.name == "UTF8String":
+        exec("ROOT.assign_{0}({1}, {2})".format(name, repr("" if value is None else value), repr(index)))
+
+    elif isinstance(schema, List):
+        for i, x in enumerate(value):
+            fillbranches(schema.content, name, x, i)
+
+    elif isinstance(schema, Record):
+        for n, x in schema.fields.items():
+            fillbranches(x, n if name is None else name + "_" + n, None if value is None else value[n], index)
+
+    elif isinstance(schema, Pointer):
+        fillbranches(schema.target, name, value, index)
+
+tree = ROOT.TTree("planets", "")
+makebranches(schema.content, "branch", False)
+
+startTime = time.time()
+for i, x in enumerate(before):
+    fillbranches(schema.content, "branch", x, 0)
+    tree.Fill()
+    print i, len(before), time.time() - startTime, "seconds", "len(planets)", len(x["planets"])
+
+tree.Write()
+file.Close()
