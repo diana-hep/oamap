@@ -88,15 +88,31 @@ class Masked(object):
     maskdtype = numpy.dtype(numpy.int32)
     maskedvalue = -1
 
-    def __init__(self, mask, maskidx, packmask, runmask):
+    def __init__(self, mask, maskidx, packmask):
         self.mask = mask
         self.maskidx = maskidx
         self.packmask = packmask
-        self.runmask = runmask
 
     def _fallback(self, arrays, cache, name, err):
         if name == self.mask:
-            raise NotImplementedError
+            try:
+                packmask = arrays[self.packmask]
+            except KeyError:
+                pass
+            else:
+                # packmask = numpy.packbits(mask != -1)
+                if packmask.dtype != numpy.dtype(numpy.uint8):
+                    raise TypeError("arrays[{0}].dtype is {1} but expected uint8".format(repr(self.packmask), packmask.dtype))
+                if packmask.shape[1:] != ():
+                    raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.packmask), packmask.shape[1:]))
+                unmasked = numpy.unpackbits(packmask).view(numpy.bool_)
+                mask = numpy.empty(len(unmasked), dtype=self.maskdtype)
+                mask[unmasked] = numpy.arange(unmasked.sum(), dtype=self.maskdtype)
+                mask[~unmasked] = self.maskedvalue
+                return mask
+
+            raise err
+
         else:
             return self.__class__.__bases__[1]._fallback(self, arrays, cache, name, err)
 
@@ -122,8 +138,8 @@ class PrimitiveGenerator(Generator):
         return self._getarray(arrays, self.data, cache, self.dataidx, self.dtype, self.dims)[index]
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
-    def __init__(self, mask, maskidx, packmask, runmask, data, dataidx, dtype, dims, name, derivedname, schema):
-        Masked.__init__(self, mask, maskidx, packmask, runmask)
+    def __init__(self, mask, maskidx, packmask, data, dataidx, dtype, dims, name, derivedname, schema):
+        Masked.__init__(self, mask, maskidx, packmask)
         PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, name, derivedname, schema)
 
 ################################################################ Lists
@@ -131,12 +147,11 @@ class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
 class ListGenerator(Generator):
     dtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, starts, startsidx, stops, stopsidx, offsets, counts, content, name, derivedname, schema):
+    def __init__(self, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema):
         self.starts = starts
         self.startsidx = startsidx
         self.stops = stops
         self.stopsidx = stopsidx
-        self.offsets = offsets
         self.counts = counts
         self.content = content
         Generator.__init__(self, name, derivedname, schema)
@@ -155,9 +170,9 @@ class ListGenerator(Generator):
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
 class MaskedListGenerator(Masked, ListGenerator):
-    def __init__(self, mask, maskidx, packmask, runmask, starts, startsidx, stops, stopsidx, offsets, counts, content, name, derivedname, schema):
-        Masked.__init__(self, mask, maskidx, packmask, runmask)
-        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, offsets, counts, content, name, derivedname, schema)
+    def __init__(self, mask, maskidx, packmask, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema):
+        Masked.__init__(self, mask, maskidx, packmask)
+        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema)
 
 ################################################################ Unions
 
@@ -184,8 +199,8 @@ class UnionGenerator(Generator):
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
-    def __init__(self, mask, maskidx, packmask, runmask, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
-        Masked.__init__(self, mask, maskidx, packmask, runmask)
+    def __init__(self, mask, maskidx, packmask, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
+        Masked.__init__(self, mask, maskidx, packmask)
         UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema)
 
 ################################################################ Records
@@ -199,8 +214,8 @@ class RecordGenerator(Generator):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
 class MaskedRecordGenerator(Masked, RecordGenerator):
-    def __init__(self, mask, maskidx, packmask, runmask, fields, name, derivedname, schema):
-        Masked.__init__(self, mask, maskidx, packmask, runmask)
+    def __init__(self, mask, maskidx, packmask, fields, name, derivedname, schema):
+        Masked.__init__(self, mask, maskidx, packmask)
         RecordGenerator.__init__(self, fields, name, derivedname, schema)
 
 ################################################################ Tuples
@@ -214,8 +229,8 @@ class TupleGenerator(Generator):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
-    def __init__(self, mask, maskidx, packmask, runmask, types, name, derivedname, schema):
-        Masked.__init__(self, mask, maskidx, packmask, runmask)
+    def __init__(self, mask, maskidx, packmask, types, name, derivedname, schema):
+        Masked.__init__(self, mask, maskidx, packmask)
         TupleGenerator.__init__(self, types, name, derivedname, schema)
 
 ################################################################ Pointers
@@ -234,8 +249,8 @@ class PointerGenerator(Generator):
         return self.target._generate(arrays, positions[index], cache)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
-    def __init__(self, mask, maskidx, packmask, runmask, positions, positionsidx, target, name, derivedname, schema):
-        Masked.__init__(self, mask, maskidx, packmask, runmask)
+    def __init__(self, mask, maskidx, packmask, positions, positionsidx, target, name, derivedname, schema):
+        Masked.__init__(self, mask, maskidx, packmask)
         PointerGenerator.__init__(self, positions, positionsidx, target, name, derivedname, schema)
 
 ################################################################ for extensions: domain-specific and user
@@ -356,15 +371,15 @@ def _uniquestr(generator, memo):
             generator._uniquestr = "(P {0} {1} ({2}) {3} {4})".format(givenname, repr(str(generator.dtype)), " ".join(map(repr, generator.dims)), generator.dataidx, repr(generator.data))
 
         elif isinstance(generator, MaskedPrimitiveGenerator):
-            generator._uniquestr = "(P {0} {1} ({2}) {3} {4} {5} {6} {7} {8})".format(givenname, repr(str(generator.dtype)), " ".join(map(repr, generator.dims)), generator.maskidx, repr(generator.mask), repr(generator.packmask), repr(generator.runmask), generator.dataidx, repr(generator.data))
+            generator._uniquestr = "(P {0} {1} ({2}) {3} {4} {5} {6} {7})".format(givenname, repr(str(generator.dtype)), " ".join(map(repr, generator.dims)), generator.maskidx, repr(generator.mask), repr(generator.packmask), generator.dataidx, repr(generator.data))
 
         elif isinstance(generator, ListGenerator):
             _uniquestr(generator.content, memo)
-            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6} {7})".format(givenname, generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), repr(generator.offsets), repr(generator.counts), generator.content._uniquestr)
+            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6})".format(givenname, generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), repr(generator.counts), generator.content._uniquestr)
 
         elif isinstance(generator, MaskedListGenerator):
             _uniquestr(generator.content, memo)
-            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6} {7} {8} {9})".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), repr(generator.runmask), generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), generator.content._uniquestr)
+            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6} {7})".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), repr(generator.counts), generator.content._uniquestr)
 
         elif isinstance(generator, UnionGenerator):
             for t in generator.possibilities:
@@ -374,7 +389,7 @@ def _uniquestr(generator, memo):
         elif isinstance(generator, MaskedUnionGenerator):
             for t in generator.possibilities:
                 _uniquestr(t, memo)
-            generator._uniquestr = "(U {0} {1} {2} {3} {4} {5} {6} {7} {8} ({9}))".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), repr(generator.runmask), generator.tagsidx, repr(generator.tags), generator.offsetsidx, repr(generator.offsets), " ".join(x._uniquestr for x in generator.possibilities))
+            generator._uniquestr = "(U {0} {1} {2} {3} {4} {5} {6} {7} ({8}))".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), generator.tagsidx, repr(generator.tags), generator.offsetsidx, repr(generator.offsets), " ".join(x._uniquestr for x in generator.possibilities))
 
         elif isinstance(generator, RecordGenerator):
             for t in generator.fields.values():
@@ -384,7 +399,7 @@ def _uniquestr(generator, memo):
         elif isinstance(generator, MaskedRecordGenerator):
             for t in generator.fields.values():
                 _uniquestr(t, memo)
-            generator._uniquestr = "(R {0} {1} {2} {3} {4} ({5}))".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), repr(generator.runmask), " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in generator.fields.items()))
+            generator._uniquestr = "(R {0} {1} {2} {3} ({4}))".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in generator.fields.items()))
 
         elif isinstance(generator, TupleGenerator):
             for t in generator.types:
@@ -394,7 +409,7 @@ def _uniquestr(generator, memo):
         elif isinstance(generator, MaskedTupleGenerator):
             for t in generator.types:
                 _uniquestr(t, memo)
-            generator._uniquestr = "(T {0} {1} {2} {3} {4} ({5}))".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), repr(generator.runmask), " ".join(t._uniquestr for t in generator.types))
+            generator._uniquestr = "(T {0} {1} {2} {3} ({4}))".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), " ".join(t._uniquestr for t in generator.types))
 
         elif isinstance(generator, PointerGenerator):
             _uniquestr(generator.target, memo)
@@ -410,7 +425,7 @@ def _uniquestr(generator, memo):
                 target = _firstindex(generator.target)
             else:
                 target = generator.target._uniquestr
-            generator._uniquestr = "(X {0} {1} {2} {3} {4} {5} {6} {7})".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), repr(generator.runmask), generator.positionsidx, repr(generator.positions), target)
+            generator._uniquestr = "(X {0} {1} {2} {3} {4} {5} {6})".format(givenname, generator.maskidx, repr(generator.mask), repr(generator.packmask), generator.positionsidx, repr(generator.positions), target)
 
         elif isinstance(generator, ExtendedGenerator):
             _uniquestr(generator.generic, memo)
