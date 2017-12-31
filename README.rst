@@ -17,7 +17,7 @@ OAMap is a toolset for computing arbitrary functions on hierarchical, columnar d
 
 OAMap is intended as a library on top of which high-level analysis software may be built. It focuses on mapping an object-oriented view of data onto columnar arrays. `Numpy <http://www.numpy.org/>`_ is OAMap's only dependency, though it is also implemented as a `Numba extension <http://numba.pydata.org/numba-doc/dev/extending/index.html>`_, so if `Numba <http://numba.pydata.org/>`_ is available, user code would be accelerated in Numba's JIT-compiled functions. OAMap is unopinionated about the source of its columnar arrays, allowing for a variety of backends. See the walkthrough (below) for an introduction.
 
-Also, a similar object array mapping could be implemented in any language--- Python was chosen only for its popularity among data analysts.
+Also, a similar object array mapping could be implemented in any language— Python was chosen only for its popularity among data analysts.
 
 Walkthrough
 -----------
