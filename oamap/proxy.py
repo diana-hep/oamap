@@ -243,6 +243,9 @@ class RecordProxy(Proxy):
     def _fields(self):
         return list(self._generator.fields)
 
+    def __dir__(self):
+        return dir(super(RecordProxy, self)) + list(str(x) for x in self._fields)
+
     def __getattr__(self, field):
         if field.startswith("_"):
             return self.__dict__[field]

@@ -38,6 +38,9 @@ For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet 
 
 .. code-block:: python
 
+    from oamap.schema import *
+
+    import codecs
     try:
         from urllib.request import urlopen   # Python 3
     except ImportError:
@@ -45,7 +48,10 @@ For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet 
 
     baseurl = "http://diana-hep.org/oamap/examples/planets/"
 
-    schema = Schema.fromjsonfile(urlopen(baseurl + "schema.json"))
+    # explicit utf-8 conversion required for Python 3
+    downloadschema = codecs.getreader("utf-8")(urlopen(baseurl + "schema.json"))
+
+    schema = Schema.fromjsonfile(downloadschema)
 
 If you're brave, try ``schema.show()`` to see its hundreds of attributes. This data object is a list of stars, each of which has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star has a list of planets, with its own attributes, like orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
 
@@ -53,16 +59,64 @@ We can view the data as nested Python objects by providing a dict of arrays to t
 
 .. code-block:: python
 
+    import io
     import numpy
-    from io import BytesIO
 
     class DataSource:
         def __getitem__(self, name):
             try:
-                return numpy.load(BytesIO(urlopen(baseurl + name + ".npy").read()))
+                return numpy.load(io.BytesIO(urlopen(baseurl + name + ".npy").read()))
             except Exception as err:
-                raise KeyError(err.message)
+                raise KeyError(str(err))
 
-    exoplanets = schema(DataSource())
+    stars = schema(DataSource())
 
+This ``stars`` is a list of ``Star`` records. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though we have not downloaded hundreds of attributes for thousands of stars.
 
+Explore the ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or tab-completion to see what fields are available. One of these is ``planets``.
+
+.. code-block:: python
+
+    stars[0].planets
+    # [<Planet at index 0>]
+
+    stars[258].planets
+    # [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>, <Planet at index 328>]
+
+    stars[0].name
+    # 'Kepler-1239'
+    stars[0].planets[0].name
+    # 'Kepler-1239 b'
+
+    stars[258].name
+    # 'HD 40307'
+    [x.name for x in stars[258].planets]
+    # ['HD 40307 b', 'HD 40307 c', 'HD 40307 d', 'HD 40307 f', 'HD 40307 g']
+
+    stars[0].planets[0].orbital_period.val
+    # 5.19104
+    stars[0].planets[0].orbital_period.hierr
+    # 2.643e-05
+    stars[0].planets[0].orbital_period.loerr
+    # -2.643e-05
+    stars[0].planets[0].orbital_period.lim
+    # False
+
+    stars[0].planets[0].discovery_method
+    # 'Transit'
+    stars[0].planets[0].transit_duration.val
+    # 0.17783
+
+    [x.discovery_method for x in stars[258].planets]
+    # ['Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity']
+    [x.transit_duration for x in stars[258].planets]
+    # [None, None, None, None, None]
+
+    from collections import Counter
+    discovery_method = Counter()
+    for star in stars:
+        for planet in star.planets:
+            discovery_method[planet.discovery_method] += 1
+
+    discovery_method
+    # Counter({'Transit': 2774, 'Radial Velocity': 662, 'Microlensing': 53, 'Imaging': 44, 'Transit Timing Variations': 15, 'Eclipse Timing Variations': 9, 'Pulsar Timing': 6, 'Orbital Brightness Modulation': 6, 'Pulsation Timing Variations': 2, 'Astrometry': 1})

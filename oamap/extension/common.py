@@ -49,8 +49,8 @@ class _GenerateBytes(object):
         listgen = self.generic
         primgen = self.generic.content
 
-        starts = self._getarray(arrays, listgen.starts, cache, listgen.startsidx, listgen.dtype, ())
-        stops  = self._getarray(arrays, listgen.stops,  cache, listgen.stopsidx,  listgen.dtype, ())
+        starts = self._getarray(arrays, listgen.starts, cache, listgen.startsidx, listgen.posdtype, ())
+        stops  = self._getarray(arrays, listgen.stops,  cache, listgen.stopsidx,  listgen.posdtype, ())
         data   = self._getarray(arrays, primgen.data,   cache, primgen.dataidx,   primgen.dtype, ())
         array  = data[starts[index]:stops[index]]
 
