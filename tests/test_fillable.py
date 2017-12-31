@@ -30,6 +30,8 @@
 
 import os
 import tempfile
+import sys
+
 import unittest
 
 import numpy
@@ -39,6 +41,12 @@ from oamap.fillable import *
 class TestFillable(unittest.TestCase):
     def runTest(self):
         pass
+
+    def array_equal(self, one, two):
+        if sys.version_info < (2, 7, 0, "", 0):
+            return numpy.array_equal(one, two)
+        else:
+            return one.tolist() == two.tolist()
 
     def test_FillableArray1(self):
         data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
@@ -463,19 +471,19 @@ class TestFillable(unittest.TestCase):
             data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
             a = FillableNumpyFile(filename, "f8", chunksize=10)
             self.assertEqual(a[:].tolist(), [])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.append(data[0])
             self.assertEqual(a[:].tolist(), [])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.append(data[1])
             a.append(data[2])
             a.append(data[3])
             a.update()
             self.assertEqual(a[:].tolist(), data[:4])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.extend(data[4:])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data)
             self.assertEqual(a[1:].tolist(), data[1:])
             self.assertEqual(a[2:].tolist(), data[2:])
@@ -511,10 +519,10 @@ class TestFillable(unittest.TestCase):
             data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
             a = FillableNumpyFile(filename, "f8", chunksize=5)
             self.assertEqual(a[:].tolist(), [])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.append(data[0])
             self.assertEqual(a[:].tolist(), [])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.append(data[1])
             a.append(data[2])
             a.append(data[3])
@@ -522,7 +530,7 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:4])
             a.extend(data[4:])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data)
             self.assertEqual(a[1:].tolist(), data[1:])
             self.assertEqual(a[2:].tolist(), data[2:])
@@ -558,10 +566,10 @@ class TestFillable(unittest.TestCase):
             data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
             a = FillableNumpyFile(filename, "f8", chunksize=3)
             self.assertEqual(a[:].tolist(), [])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.append(data[0])
             self.assertEqual(a[:].tolist(), [])
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             a.append(data[1])
             a.append(data[2])
             a.append(data[3])
@@ -569,7 +577,7 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:4])
             a.extend(data[4:])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data)
             self.assertEqual(a[1:].tolist(), data[1:])
             self.assertEqual(a[2:].tolist(), data[2:])
@@ -607,7 +615,7 @@ class TestFillable(unittest.TestCase):
             a.append(data[0])
             a.append(data[1])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:2])
             a.append(999)
             self.assertEqual(a[:].tolist(), data[:2])
@@ -615,7 +623,7 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:2])
             a.append(data[2])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:3])
             a.extend([999, 999, 999, 999])
             self.assertEqual(a[:].tolist(), data[:3])
@@ -623,11 +631,11 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:3])
             a.extend(data[3:5])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:5])
             a.extend(data[5:])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data)
         finally:
             os.remove(filename)
@@ -640,7 +648,7 @@ class TestFillable(unittest.TestCase):
             a.append(data[0])
             a.append(data[1])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:2])
             a.append(999)
             self.assertEqual(a[:].tolist(), data[:2])
@@ -648,7 +656,7 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:2])
             a.append(data[2])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:3])
             a.extend([999, 999, 999, 999])
             self.assertEqual(a[:].tolist(), data[:3])
@@ -656,11 +664,11 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:3])
             a.extend(data[3:5])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:5])
             a.extend(data[5:])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data)
         finally:
             os.remove(filename)
@@ -673,7 +681,7 @@ class TestFillable(unittest.TestCase):
             a.append(data[0])
             a.append(data[1])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:2])
             a.append(999)
             self.assertEqual(a[:].tolist(), data[:2])
@@ -681,7 +689,7 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:2])
             a.append(data[2])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:3])
             a.extend([999, 999, 999, 999])
             self.assertEqual(a[:].tolist(), data[:3])
@@ -689,11 +697,11 @@ class TestFillable(unittest.TestCase):
             self.assertEqual(a[:].tolist(), data[:3])
             a.extend(data[3:5])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data[:5])
             a.extend(data[5:])
             a.update()
-            self.assertTrue(numpy.array_equal(a[:], numpy.load(filename)))
+            self.assertTrue(self.array_equal(a[:], numpy.load(filename)))
             self.assertEqual(a[:].tolist(), data)
         finally:
             os.remove(filename)

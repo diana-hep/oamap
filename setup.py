@@ -44,20 +44,7 @@ setup(name = "oamap",
       packages = find_packages(exclude = ["tests"]),
       scripts = [],
       description = "Toolset for computing directly on hierarchically nested, columnar data, such as Apache Arrow.",
-      long_description = """Data analysts are often faced with a choice between speed and flexibility. Tabular data, such as an SQL table or CSV file, can be accessed quickly, which improves the question-and-answer nature of exploratory data analysis. Hierarchically nested data, such as JSON, expresses better the relationship between nested quantities. These relationships *can* be represented with multiple, linked tables (i.e. `database normalization <https://en.wikipedia.org/wiki/Database_normalization>`_), but at the cost of complexity for the data analyst and the introduction of expensive joins.
-
-In many circumstances, data analysts want to work with 
-
-
-
-High energy physicists have been addressing this problem 
-
-
-
-
-
-
-This project began as a `question on StackOverflow <https://stackoverflow.com/q/38831961/1623645>`_, 
+      long_description = """Data analysts are often faced with a choice between speed and flexibility. Tabular data, such as an SQL table or CSV file, can be accessed quickly, which improves the question-and-answer nature of exploratory data analysis. Hierarchically nested data, such as JSON, expresses better the relationship between nested quantities. These relationships *can* be represented with multiple, linked tables (i.e. `database normalization <https://en.wikipedia.org/wiki/Database_normalization>`_), but at the cost of complexity for the data analyst and the introduction of expensive joins (see `this question <https://stackoverflow.com/q/38831961/1623645>`_). Ideally, we want to perform calculations on JSON-like structures at the speed of SQL.
 
 
 
