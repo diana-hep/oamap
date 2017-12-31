@@ -78,8 +78,7 @@ class TestInference(unittest.TestCase):
         self.assertEqual(schema.replace(dropdtype), fromnames.replace(dropnames))
 
     def test_infer_Unknown(self):
-        with self.assertRaises(TypeError):
-            oamap.inference.fromdata(None)
+        self.assertRaises(TypeError, lambda: oamap.inference.fromdata(None))
 
     def test_infer_Primitive(self):
         self.checkdata(False, Primitive("bool_"))
@@ -192,14 +191,9 @@ class TestInference(unittest.TestCase):
         self.assertTrue([0], [1+1j] in Primitive("c16", [2, 1]))
 
     def test_infer_List0(self):
-        with self.assertRaises(TypeError):
-            oamap.inference.fromdata([])
-
-        with self.assertRaises(TypeError):
-            oamap.inference.fromdata([None])
-
-        with self.assertRaises(TypeError):
-            oamap.inference.fromdata([None, None, None])
+        self.assertRaises(TypeError, lambda: oamap.inference.fromdata([]))
+        self.assertRaises(TypeError, lambda: oamap.inference.fromdata([None]))
+        self.assertRaises(TypeError, lambda: oamap.inference.fromdata([None, None, None]))
 
     def test_infer_List1(self):
         self.checkdata([False], List(Primitive("bool_")))

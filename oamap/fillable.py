@@ -85,13 +85,13 @@ def _makefillables(generator, fillables, makefillable):
         fillables[generator.data] = makefillable(generator.data, generator.dtype, generator.dims)
 
     elif isinstance(generator, oamap.generator.ListGenerator):
-        fillables[generator.starts] = makefillable(generator.starts, generator.dtype, ())
-        fillables[generator.stops] = makefillable(generator.stops, generator.dtype, ())
+        fillables[generator.starts] = makefillable(generator.starts, generator.posdtype, ())
+        fillables[generator.stops]  = makefillable(generator.stops,  generator.posdtype, ())
         _makefillables(generator.content, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.UnionGenerator):
-        fillables[generator.tags] = makefillable(generator.tags, generator.dtype, ())
-        fillables[generator.offsets] = makefillable(generator.offsets, generator.dtype, ())
+        fillables[generator.tags]    = makefillable(generator.tags,    generator.tagdtype,    ())
+        fillables[generator.offsets] = makefillable(generator.offsets, generator.offsetdtype, ())
         for possibility in generator.possibilities:
             _makefillables(possibility, fillables, makefillable)
 
@@ -104,7 +104,7 @@ def _makefillables(generator, fillables, makefillable):
             _makefillables(field, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.PointerGenerator):
-        fillables[generator.positions] = makefillable(generator.positions, generator.dtype, ())
+        fillables[generator.positions] = makefillable(generator.positions, generator.posdtype, ())
         if not generator._internal:
             _makefillables(generator.target, fillables, makefillable)
 

@@ -20,3 +20,12 @@ install:
 
 script:
   python setup.py test
+
+deploy:
+  provider: pypi
+  user: pivarski
+  password:
+    secure: "LHpXu4U8uTfk8wn2gWNlRb+IQHSzMRq1eBVlff+cPuUP6n42hDINCUwBeLvipPBrug6e4+3qrVAdW3ktvKZnld8jRhNaLA7YR+DWOTsFECBpT7HbjuhL5MszM0F/8wemUpGcBBVNm5ybTeagYb3/29mXQy8M6jdAGP/mCjLDbOMDygn9v9VBHY/Tat1E8KlfzY9Ypb8mM92mVYlpOfRJevfkqJFDBdlQHMsIQ16rM7gmfLY2JwRCq80paJzku5uxQFI3H98KWhH6wz6mdGEWRiXbDz3Wl9L9DEaZXMU4DmMHsiTrVdG58q+p7pmgNL+SHQZyWQST4wuJ7VPB13RMn+NVUJgbmNqiugHyVH/y37qAVPd2W4xyCxhavjKdR9SRn5TjU4vtqNIfC/9FEBhWSGiavtif/Nn2p8k7GUB4KqHK0Cc8haSA2874IT4BirQ2drR3QAyXIbyY4RkHD/RDCcv1G3bXn6FfKsu0tL+diFX7JMUK1sripkajTDjwW11bnf0DRi+fFK5jx9QLGrzUSVf7T6zUtnfUhcCKEWwnFUisdyJBUoxQwKh8PfsCgJoj93BKqdy/MV3YzRIK64gKIcwLWjO0fcSS8HW+aqEkkYRqkDYo/KRFOXFgjOdKhFSkpK6GE27DA5ESWxvadZ00M9tM58UbDp+42ev2cixsYLo="
+  on:
+    tags: true
+    branch: master

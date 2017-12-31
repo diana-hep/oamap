@@ -44,7 +44,27 @@ setup(name = "oamap",
       packages = find_packages(exclude = ["tests"]),
       scripts = [],
       description = "Toolset for computing directly on hierarchically nested, columnar data, such as Apache Arrow.",
-      long_description = """Large datasets can be more compact and faster to access when they are laid out in columns (see `Apache Arrow <https://arrow.apache.org/>`_). Even hierarchically nested data can be presented this way, though converting the data between the columnar form and the object form can degrade performance. Non-hierarchical data (rectangular tables) is often accessed without materializing rows (see `Apache Drill <https://drill.apache.org/docs/performance/>`_), but this is more complex for data containing arbitrary-length lists of objects.
+      long_description = """Data analysts are often faced with a choice between speed and flexibility. Tabular data, such as an SQL table or CSV file, can be accessed quickly, which improves the question-and-answer nature of exploratory data analysis. Hierarchically nested data, such as JSON, expresses better the relationship between nested quantities. These relationships *can* be represented with multiple, linked tables (i.e. `database normalization <https://en.wikipedia.org/wiki/Database_normalization>`_), but at the cost of complexity for the data analyst and the introduction of expensive joins.
+
+In many circumstances, data analysts want to work with 
+
+
+
+High energy physicists have been addressing this problem 
+
+
+
+
+
+
+This project began as a `question on StackOverflow <https://stackoverflow.com/q/38831961/1623645>`_, 
+
+
+
+
+
+      
+Large datasets can be more compact and faster to access when they are laid out in columns (see `Apache Arrow <https://arrow.apache.org/>`_). Even hierarchically nested data can be presented this way, though converting the data between the columnar form and the object form can degrade performance. Non-hierarchical data (rectangular tables, such as an SQL table) can be accessed faster by not materializing rows (see `Apache Drill <https://drill.apache.org/docs/performance/>`_), but this is more complex for data containing variable-length objects, such as arbitrary-length lists.
 
 OAMap is a suite of tools for performing calculations in this way. The name stands for Object-Array-Map, in analogy with Object-Relational-Mapping (ORM) in relational databases. Pure Python calculations are considerably faster and more memory efficient when datasets are expressed in OAMaps, but the real power comes from *compiling* columized code. This toolset includes `extensions to Numba <http://numba.pydata.org/numba-doc/dev/extending/index.html>`_ that will compile your object-oriented code into native array manipulations. Generally, you'd use uncompiled Python for low latency exploration of the data and Numba-compiled functions for high throughput.
 
