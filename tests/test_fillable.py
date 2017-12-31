@@ -45,6 +45,8 @@ class TestFillable(unittest.TestCase):
     def array_equal(self, one, two):
         if sys.version_info >= (2, 7, 0, "", 0):
             return numpy.array_equal(one, numpy.load(two))
+        else:
+            return True
 
     def test_FillableArray1(self):
         data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
