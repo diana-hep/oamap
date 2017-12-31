@@ -22,4 +22,47 @@ Also, a similar object array mapping could be implemented in any language— Pyt
 Walkthrough
 -----------
 
-asdf
+Start by installing OAMap:
+
+.. code-block:: bash
+
+    pip install oamap --user
+
+or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish). Now you should be able to import the package in Python:
+
+.. code-block:: python
+
+    from oamap.schema import *
+
+For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, we can start working with it without fully downloading it. Type the following to get a schema.
+
+.. code-block:: python
+
+    try:
+        from urllib.request import urlopen   # Python 3
+    except ImportError:
+        from urllib2 import urlopen          # Python 2
+
+    baseurl = "http://diana-hep.org/oamap/examples/planets/"
+
+    schema = Schema.fromjsonfile(urlopen(baseurl + "schema.json"))
+
+If you're brave, try ``schema.show()`` to see its hundreds of attributes. This data object is a list of stars, each of which has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star has a list of planets, with its own attributes, like orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
+
+We can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes our website act like a Python dict.)
+
+.. code-block:: python
+
+    import numpy
+    from io import BytesIO
+
+    class DataSource:
+        def __getitem__(self, name):
+            try:
+                return numpy.load(BytesIO(urlopen(baseurl + name + ".npy").read()))
+            except Exception as err:
+                raise KeyError(err.message)
+
+    exoplanets = schema(DataSource())
+
+
