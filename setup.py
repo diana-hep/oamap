@@ -43,26 +43,16 @@ setup(name = "oamap",
       version = get_version(),
       packages = find_packages(exclude = ["tests"]),
       scripts = [],
-      description = "Toolset for computing directly on hierarchically nested, columnar data, such as Apache Arrow.",
-      long_description = """Data analysts are often faced with a choice between speed and flexibility. Tabular data, such as an SQL table or CSV file, can be accessed quickly, which improves the question-and-answer nature of exploratory data analysis. Hierarchically nested data, such as JSON, expresses better the relationship between nested quantities. These relationships *can* be represented with separate, linked tables (i.e. `database normalization <https://en.wikipedia.org/wiki/Database_normalization>`_), but at the cost of complexity for the data analyst and the introduction of expensive joins (see `this question <https://stackoverflow.com/q/38831961/1623645>`_, which got me started on this project). Ideally, we want to perform calculations on JSON-like structures at the speed of SQL.
+      description = "Tools for analyzing hierarchically nested, columnar data without deserialization.",
+      long_description = """Data analysts are often faced with a choice between speed and flexibility. Tabular data, such as SQL tables, can often be processed rapidly enough for a truly interactive analysis session, but hierarchically nested data, such as JSON, is better at representing relationships within complex data models. In some domains (such as particle physics), we want to perform calculations on JSON-like structures at the speed of SQL.
 
-Tools that analyze tabular data get their performance primarily by laying out data in an intelligent way: computers can access contiguous data more quickly than separated data, whether loading from a disk to memory or from memory to the processor. Datasets with many attributes, of which only a few will be 
+The key to high throughput for large datasets, particularly ones with many more attributes than are typically accessed in a single pass, is laying out the data in "columns." All values of an attribute should be contiguous in disk or memory because data are paged from one cache to the next in locally contiguous blocks. The `ROOT <https://root.cern/>`_ and `Parquet <http://parquet.apache.org/>`_ file formats represent hierarchically nested data in a columnar form on disk, and `Apache Arrow <https://arrow.apache.org/>`_ is an emerging standard for sharing hierarchically nested data in memory. However, data from these formats are usually deserialized into conventional data structures before processing, which limits performance (see `this talk <https://youtu.be/jvt4v2LTGK0>`_ and `this paper <https://arxiv.org/abs/1711.01229>`_).
 
+OAMap is a toolset for computing arbitrary functions on hierarchical, columnar data without deserialization. The name stands for Object Array Mapping, in analogy with the `Object Relational Mapping (ORM) <https://en.wikipedia.org/wiki/Object-relational_mapping>`_ interface to some databases. Users (data analysts) write functions on JSON-like objects that OAMap compiles into operations on the underlying arrays, similar to the way that ORM converts object-oriented code into SQL. The difference is that mapping objects to non-relational arrays permits bare-metal performance (giving up some traditional database features).
 
+OAMap is intended as a library on top of which high-level analysis software may be built. It focuses on mapping an object-oriented view of data onto columnar arrays. `Numpy <http://www.numpy.org/>`_ is OAMap's only dependency, though it is also implemented as a `Numba extension <http://numba.pydata.org/numba-doc/dev/extending/index.html>`_, so if `Numba <http://numba.pydata.org/>`_ is available, user code would be accelerated in Numba's JIT-compiled functions. OAMap is unopinionated about the source of its columnar arrays, allowing for a variety of backends. See `the walkthrough <https://github.com/diana-hep/oamap/blob/master/README.rst#Walkthrough>`_ for an introduction.
 
-
-
-OAMap, short for Object-Array Mapping and intended
-
-
-
-
-      
-Large datasets can be more compact and faster to access when they are laid out in columns (see `Apache Arrow <https://arrow.apache.org/>`_). Even hierarchically nested data can be presented this way, though converting the data between the columnar form and the object form can degrade performance. Non-hierarchical data (rectangular tables, such as an SQL table) can be accessed faster by not materializing rows (see `Apache Drill <https://drill.apache.org/docs/performance/>`_), but this is more complex for data containing variable-length objects, such as arbitrary-length lists.
-
-OAMap is a suite of tools for performing calculations in this way. The name stands for Object-Array-Map, in analogy with Object-Relational-Mapping (ORM) in relational databases. Pure Python calculations are considerably faster and more memory efficient when datasets are expressed in OAMaps, but the real power comes from *compiling* columized code. This toolset includes `extensions to Numba <http://numba.pydata.org/numba-doc/dev/extending/index.html>`_ that will compile your object-oriented code into native array manipulations. Generally, you'd use uncompiled Python for low latency exploration of the data and Numba-compiled functions for high throughput.
-
-OAMap only strictly depends on Numpy, but `Numba <http://numba.pydata.org/>`_ will accelerate it and `pyarrow <https://arrow.apache.org/docs/python/index.html>`_, `h5py <http://www.h5py.org/>`_, etc. provide hooks for converting data among various formats.""",
+Also, a similar object array mapping could be implemented in any language--- Python was chosen only for its popularity among data analysts.""",
       author = "Jim Pivarski (DIANA-HEP)",
       author_email = "pivarski@fnal.gov",
       maintainer = "Jim Pivarski (DIANA-HEP)",
