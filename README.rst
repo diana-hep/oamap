@@ -1,8 +1,8 @@
 OAMap
 =====
 
-.. image:: https://travis-ci.org/scikit-hep/oamap.svg?branch=master
-   :target: https://travis-ci.org/scikit-hep/oamap
+.. image:: https://travis-ci.org/diana-hep/oamap.svg?branch=master
+   :target: https://travis-ci.org/diana-hep/oamap
 
 Tools for analyzing hierarchically nested, columnar data without deserialization.
 
