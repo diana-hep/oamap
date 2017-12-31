@@ -60,7 +60,7 @@ OAMap only strictly depends on Numpy, but `Numba <http://numba.pydata.org/>`_ wi
       install_requires = ["numpy"],
       tests_require = [],
       classifiers = [
-          "Development Status :: 2 - Pre-Alpha"
+          "Development Status :: 3 - Alpha",
           "Intended Audience :: Developers",
           "Intended Audience :: Information Technology",
           "Intended Audience :: Science/Research",
