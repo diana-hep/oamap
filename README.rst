@@ -287,11 +287,17 @@ Schemas
 Filling datasets
 """"""""""""""""
 
+(immutable or append-only semantics)
+
 Columnar granularity
 """"""""""""""""""""
 
+(add an attribute to the exoplanets (number of moons), soft-filter the exoplanets)
+
 Low-latency random access
 """""""""""""""""""""""""
+
+(memory mapped files, starts/stops versus counts)
 
 High throughput processing
 """"""""""""""""""""""""""
