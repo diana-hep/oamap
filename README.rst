@@ -291,6 +291,16 @@ A schema definition language defines the scope of representable data. To keep th
 Primitive
 ~~~~~~~~~
 
+Primitives are fixed-width, concrete types such as booleans, integers, floating point numbers, and complex numbers. For generality, OAMap primitives can be anything describable by a `Numpy dtype <https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.html>`_ and `shape <https://docs.scipy.org/doc/numpy/reference/generated/numpy.ndarray.shape.html>`_, which includes not just scalars but fixed-size vectors, matrices, and tensors and rowwise structs (`Numpy record dtypes <https://docs.scipy.org/doc/numpy/user/basics.rec.html>`_).
+
+For example,
+
+
+
+
+
+
+
 List
 ~~~~
 
