@@ -269,7 +269,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
-(*gzip level 4)
+**(*gzip level 4)**
 
 - NASA's original data were provided as a **CSV** file, but CSV is a rectangular table that cannot represent the fact that one star can have multiple planets without padding or duplication— NASA chose duplication. This format happens to be relatively small because of all the missing data: missing data only costs one byte in CSV (a comma).
 - **JSON** captures the structure of the variable number of planets per star, as well as wrapping up values with their errors in convenient records, but with considerable bloat.
