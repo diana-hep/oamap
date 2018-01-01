@@ -162,8 +162,8 @@ so there should be more values of planetary eccentricity than stellar temperatur
     eccentricity_count = 0
     for star in stars:
         for planet in star.planets:
-            if planet.eccentricity is not None:
-                if planet.eccentricity.val is not None:
+            if planet.eccentricity is not None:             # nullable records can be None
+                if planet.eccentricity.val is not None:     # nullable floats can be None
                     eccentricity_count += 1
     eccentricity_count
     # 1153
@@ -171,8 +171,8 @@ so there should be more values of planetary eccentricity than stellar temperatur
     semimajor_axis_count = 0
     for star in stars:
         for planet in star.planets:
-            if planet.semimajor_axis is not None:
-                if planet.semimajor_axis.val is not None:
+            if planet.semimajor_axis is not None:           # nullable records can be None
+                if planet.semimajor_axis.val is not None:   # nullable floats can be None
                     semimajor_axis_count += 1
     semimajor_axis_count
     # 2076
