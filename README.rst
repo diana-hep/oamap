@@ -146,7 +146,7 @@ To peek behind the scenes and see these arrays, look at
 
     stars._cache.arraylist
 
-The slots that are filled with arrays are the ones you've viewed. Note that these arrays don't all have the same length, as they would if this dataset were as a rectangular table. There are more planets than stars,
+The slots that are filled with arrays are the ones you've viewed. Note that these arrays don't all have the same length, as they would if this dataset were a rectangular table. There are more planets than stars,
 
 .. code-block:: python
 
