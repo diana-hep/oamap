@@ -138,7 +138,7 @@ To poke around the data, use ``dir(stars[0])``, ``stars[0]._fields`` or tab-comp
 Object array mapping
 """"""""""""""""""""
 
-In short, the dataset appears to be a collection of Python objects. However, it's actually a set of Numpy arrays. One hint that you may have noticed is the time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. This is because the request triggered a download of the attribute array, which contains values for all stars and planets at once, through our ``DataSource``.
+In short, the dataset appears to be a nested Python object. However, it's actually a set of Numpy arrays. One hint that you may have noticed is the time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. This is because the request triggered a download of the attribute array, which contains values for all stars and planets at once, through our ``DataSource``.
 
 To peek behind the scenes and see these arrays, look at
 
@@ -146,7 +146,7 @@ To peek behind the scenes and see these arrays, look at
 
     stars._cache.arraylist
 
-The slots that are filled with arrays are the ones you've viewed above. Note that these arrays don't all have the same length, as they would if this dataset could be represented as a rectangular table. There are more planets than stars,
+The slots that are filled with arrays are the ones you've viewed. Note that these arrays don't all have the same length, as they would if this dataset were as a rectangular table. There are more planets than stars,
 
 .. code-block:: python
 
@@ -159,23 +159,64 @@ so there should be more values of planetary eccentricity than stellar temperatur
 
 .. code-block:: python
 
-    sum(0 if y.eccentricity is None else 1 for x in stars for y in x.planets)
-    # 1177
-    sum(0 if y.semimajor_axis is None else 1 for x in stars for y in x.planets)
-    # 2084
+    eccentricity_count = 0
+    for star in stars:
+        for planet in star.planets:
+            if planet.eccentricity is not None:
+                if planet.eccentricity.val is not None:
+                    eccentricity_count += 1
+    eccentricity_count
+    # 1153
+
+    semimajor_axis_count = 0
+    for star in stars:
+        for planet in star.planets:
+            if planet.semimajor_axis is not None:
+                if planet.semimajor_axis.val is not None:
+                    semimajor_axis_count += 1
+    semimajor_axis_count
+    # 2076
 
     d = DataSource()
-    eccentricity = d["object-L-NStar-Fplanets-L-NPlanet-Feccentricity-NValueAsymErr-Fval"]
+    eccentricity_array = d["object-L-NStar-Fplanets-L-NPlanet-Feccentricity-NValueAsymErr-Fval"]
     # array([ 0.   ,  0.   ,  0.05 , ...,  0.   ,  0.12 ,  0.062], dtype=float32)
-    semimajor_axis = d["object-L-NStar-Fplanets-L-NPlanet-Fsemimajor_axis-NValueAsymErr-Fval"]
+    semimajor_axis_array = d["object-L-NStar-Fplanets-L-NPlanet-Fsemimajor_axis-NValueAsymErr-Fval"]
     # array([ 0.115     ,  0.01855   ,  0.26899999, ...,  0.359     ,
     #         0.056     ,  0.116     ], dtype=float32)
-    len(eccentricity), len(semimajor_axis)
+
+    len(eccentricity_array), len(semimajor_axis_array)
     # (1153, 2076)
 
 The arrays contain exactly as much data as is necessary to reconstruct the objects, so an attribute with more missing data is represented by a smaller array.
 
-I used the website as a data source to emphasize that this is not a type of file— in this particular case, every column is a separate file. The "mapping" in "Object Array Mapping" is between an object and a set of named arrays— those arrays may be located in any file or files. Therefore, it's a metaformat, a way of interpreting arrays as objects.
+OAMap is not a file format
+""""""""""""""""""""""""""
+
+The reason I used a website as a data source (other than saving you the trouble of downloading a big file) is to emphasize the fact that this is not a new file format— it is a way of working with nested data using tools that can already manage flat, named arrays. In this case, the source of flat, named arrays is HTTP (``urlopen``) with Numpy headers (``numpy.load``), but it could as easily be an HDF5 file. Object store databases and memory-mapped files are particularly interesting sources.
+
+The "mapping" described here is between an object-oriented conceptual view and a source of named arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— the transformation rules used by the OAMap package are a generalization of these three, so that they can all be used as sources.
+
+But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate, so a dead-simple Numpy npz file produces smaller, faster to access files than known alternatives. Consider the following series:
+
+======================== ======= ======= ======= ========= ========= ============ ============
+                     Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
+======================== ======= ======= ======= ========= ========= ============ ============
+**CSV**                                                                4.9 MB      0.96 MB
+**JSON**                 yes                                          14  MB       1.2  MB
+**BSON**                 yes     yes                                  11  MB       1.5  MB
+**Avro**                 yes     yes     yes                           3.0 MB      0.95 MB
+**ROOT**                 yes     yes     yes     yes                   5.7 MB      1.6  MB
+**Parquet**              yes     yes     yes     yes       yes         1.1 MB      0.84 MB
+**OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
+======================== ======= ======= ======= ========= ========= ============ ============
+
+- The exoplanets data were provided by NASA in a **CSV** format, but CSV is a rectangular table that cannot represent the fact that one star can have multiple planets without padding or duplication— NASA chose to duplicate.
+- **JSON**
+
+
+
+
+
 
 Advantages and disadvantages
 """"""""""""""""""""""""""""
@@ -184,17 +225,6 @@ This column-at-a-time way of organizing data is very good if you will be accessi
 
 Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
-==================== ======= ======= ======= ========= ========= ============ ============
-Format               Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
-==================== ======= ======= ======= ========= ========= ============ ============
-CSV                                                                4.9 MB      0.96 MB
-JSON                 yes                                          14  MB       1.2  MB
-BSON                 yes     yes                                  11  MB       1.5  MB
-Avro                 yes     yes     yes                           3.0 MB      0.95 MB
-ROOT                 yes     yes     yes     yes                   5.7 MB      1.6  MB
-Parquet              yes     yes     yes     yes       yes         1.1 MB      0.84 MB
-OAMap in Numpy (npz) yes     yes     yes     yes       yes         2.7 MB      0.68 MB
-==================== ======= ======= ======= ========= ========= ============ ============
 
 
 
