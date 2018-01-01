@@ -184,17 +184,21 @@ This column-at-a-time way of organizing data is very good if you will be accessi
 
 Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
-========= ============ ============ ===============================================
-Format    Uncompressed Compressed   Rationale
-========= ============ ============ ===============================================
-CSV       4.9 MB       0.96 MB      Though a text-based format, CSV is quite good at compressing *missing* data, since a missing value is just a comma.
-JSON      14 MB        1.2 MB       However, CSV forces data into a tabular shape, erasing or at least obscuring relationships in a complex data model. JSON can express this model directly, but at a significant cost in data size and access rate.
-BSON      11 MB        1.5 MB       The fact that JSON is text is often accused for its inefficiency, but this is not always the case. A number represented with fewer than 4 or 8 characters is more tightly packed than a 4 or 8 byte integer or float. BSON is a binary form of JSON, and they both suffer from lacking a schema: the hundreds of fields per object must be *named as strings* for every object in the dataset.
-Avro      3.0 MB       0.95 MB      Formats like Avro exist to address this deficiency: it's binary JSON with a schema.
-Parquet   1.1 MB       0.84 MB      However, Avro is not *columnar.* If you want to access only one or a few fields, you have to deserialize entire objects. Parquet is columnar, binary JSON with a schema. It packs more tightly because of a clever missing value and nested list depth scheme, but this scheme doesn't scale well with hundreds of attributes at the same level of nesting.
-ROOT      5.7 MB       1.6 MB       The ROOT format was developed by the particle physics community to do the same thing as Parquet, but 15 years earlier. Its more conventional nested list depth scheme scales better with hundreds of attributes, but it doesn't have a mechanism for packing missing values, which bloats the exoplanet dataset. (Missing values aren't common in particle physics.)
-Numpy     2.7 MB       0.68 MB      The object array map defined here, placed in a simple Numpy-zip file (npz) has an absolute minimum of overhead. For 
-========= ============ ============ ===============================================
+
+
+
+=========== ======= ======= ======= ========= ============ ============ 
+Format      Nested? Binary? Schema? Columnar? Uncompressed Compressed   
+=========== ======= ======= ======= ========= ============ ============ 
+CSV                                           4.9 MB       0.96 MB      
+JSON        yes                               14 MB        1.2 MB       
+BSON        yes     yes                       11 MB        1.5 MB       
+Avro        yes     yes     yes               3.0 MB       0.95 MB      
+Parquet     yes     yes     yes     yes       1.1 MB       0.84 MB      
+ROOT        yes     yes     yes     yes       5.7 MB       1.6 MB       
+OAMap-Numpy yes     yes     yes     yes       2.7 MB       0.68 MB      
+=========== ======= ======= ======= ========= ============ ============ 
+
 
 
 
