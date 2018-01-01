@@ -284,11 +284,11 @@ The story would look different if we had used a string dominated or purely numer
 Schemas
 """""""
 
+Append-only data
+""""""""""""""""
+
 Random access representations
 """""""""""""""""""""""""""""
-
-Appendable datasets
-"""""""""""""""""""
 
 High throughput computing
 """""""""""""""""""""""""
