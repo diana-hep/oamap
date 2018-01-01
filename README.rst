@@ -284,13 +284,13 @@ The story would look different if we had used a string dominated or purely numer
 Schemas
 """""""
 
-Append-only data
+Filling datasets
 """"""""""""""""
 
-Random access representations
-"""""""""""""""""""""""""""""
-
-High throughput computing
+Low-latency random access
 """""""""""""""""""""""""
+
+High throughput processing
+""""""""""""""""""""""""""
 
 (compile with Numba; completely avoids deserialization; should add up-to-date performance measurements)
