@@ -139,7 +139,7 @@ Object array mapping
 
 In short, the dataset appears to be a collection of Python objects. However, it's actually a set of Numpy arrays. One hint that you may have noticed is the time lag whenever you requested a new attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. This is because the request triggered a download of the entire attribute array, containing values for all stars and planets, through our ``DataSource``.
 
-To look behind the scenes and see these arrays, do
+To peek behind the scenes and see these arrays, look at
 
 .. code-block:: python
 
@@ -164,6 +164,17 @@ so there could be more values of planetary eccentricity than stellar temperature
     # 2084
 
 The arrays contain exactly as much data as is necessary to reconstruct the objects, so an attribute with more missing data is represented by a smaller array.
+
+When would you use this?
+""""""""""""""""""""""""
+
+This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset.
+
+Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. OAMap is for batch data analysis.
+
+
+
+
 
 Schemas
 """""""
