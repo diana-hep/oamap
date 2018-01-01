@@ -159,7 +159,7 @@ so there should be more values of planetary eccentricity than stellar temperatur
 
 .. code-block:: python
 
-    eccentricity_count = 0
+    eccentricity_count = 0                                  # one planetary attribute
     for star in stars:
         for planet in star.planets:
             if planet.eccentricity is not None:             # nullable records can be None
@@ -168,7 +168,7 @@ so there should be more values of planetary eccentricity than stellar temperatur
     eccentricity_count
     # 1153
 
-    semimajor_axis_count = 0
+    semimajor_axis_count = 0                                # another planetary attribute
     for star in stars:
         for planet in star.planets:
             if planet.semimajor_axis is not None:           # nullable records can be None
@@ -187,7 +187,7 @@ so there should be more values of planetary eccentricity than stellar temperatur
     len(eccentricity_array), len(semimajor_axis_array)
     # (1153, 2076)
 
-Missing values are not padded— these arrays contain exactly as much data as is necessary to reconstruct the objects.
+Missing values are not padded— these arrays contain exactly as much data as necessary to reconstruct the objects.
 
 Repeated strings can also bloat a dataset, so they're often replaced with enumeration constants— integers whose meaning is either encoded in the schema or in external documentation. OAMap has a pointer data type that naturally provides self-documenting enumeration constants. Consider the difference between the planet's ``name`` field, which has no expected duplicates:
 
