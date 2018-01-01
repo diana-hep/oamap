@@ -232,7 +232,7 @@ and the ``discovery_method`` field, which has many duplicates (it's essentially 
     #        0, 0, 1, 1, 0, 1, 2, 1], dtype=int32)
 
 
-The content array for planet ``name`` has all 3572 planet names running together, while the content array for ``discovery_method`` has only the 10 *distinct* discovery method names, while its pointer array effectively acts like enumeration constants (pointing to the 10 strings). This space-saving feature is a natural consequence of the pointer data type: no explicit enumeration type needed.
+The content array for planet ``name`` has all 3572 planet names running together, while the content array for ``discovery_method`` has only the 10 *distinct* discovery method names, while its pointer array effectively acts like enumeration constants (pointing to the 10 strings). This space-saving feature is a natural consequence of the pointer data type: no enumeration type is explicitly needed.
 
 Columnar vs rowwise
 """""""""""""""""""
