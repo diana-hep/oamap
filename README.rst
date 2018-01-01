@@ -187,7 +187,59 @@ so there should be more values of planetary eccentricity than stellar temperatur
     len(eccentricity_array), len(semimajor_axis_array)
     # (1153, 2076)
 
-The arrays contain exactly as much data as is necessary to reconstruct the objects, so an attribute with more missing data is represented by a smaller array.
+Missing values are not padded— these arrays contain exactly as much data as is necessary to reconstruct the objects.
+
+Repeated strings can also bloat a dataset, so they're often replaced with enumeration constants— integers whose meaning is either encoded in the schema or in external documentation. OAMap has a pointer data type that naturally provides self-documenting enumeration constants. Consider the difference between the planet's ``name`` field, which has no expected duplicates:
+
+.. code-block:: python
+
+    schema.content.fields["planets"].content.fields["name"].show()
+    # List(
+    #   name = u'UTF8String', 
+    #   content = Primitive(dtype('uint8'))
+    # )
+
+    len(d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"])
+    # 41122
+
+    d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"][:100].tostring()
+    # 'Kepler-1239 bKepler-1238 bKepler-618 bKepler-1231 bKepler-1230 bKepler-1233 bKepler-1232 bHD 4308 bK'
+
+and the ``discovery_method`` field, which has many duplicates (it's essentially a category label):
+
+.. code-block:: python
+
+    schema.content.fields["planets"].content.fields["discovery_method"].show()
+    # Pointer(
+    #   target = List(
+    #     name = u'UTF8String', 
+    #     content = Primitive(dtype('uint8'))
+    #   )
+    # )
+
+    len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"])
+    # 170
+
+    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"].tostring()
+    # 'TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timing
+    #  VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry'
+
+    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-P"][:100]
+    # array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0,
+    #        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0,
+    #        0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    #        0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 3, 0, 1,
+    #        0, 0, 1, 1, 0, 1, 2, 1], dtype=int32)
+
+
+The content array for planet ``name`` has all 3572 planet names running together, while the content array for ``discovery_method`` has only the 10 *distinct* discovery method names, while its pointer array effectively acts like enumeration constants (pointing to the 10 strings). This space-saving feature is a natural consequence of the pointer data type: no explicit enumeration type needed.
+
+Bottom line
+"""""""""""
+
+This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
+
+Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
 OAMap is not a file format
 """"""""""""""""""""""""""
@@ -196,7 +248,13 @@ The reason I used a website as a data source (other than saving you the trouble 
 
 The "mapping" described here is between an object-oriented conceptual view and a source of named arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— the transformation rules used by the OAMap package are a generalization of these three, so that they can all be used as sources.
 
-But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate, so a dead-simple Numpy npz file produces smaller, faster to access files than known alternatives. Consider the following series:
+But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that we downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory:
+
+.. code-block:: python
+
+    schema = oamap.inference.fromnames(directory_listing)
+
+would be sufficient to reconstruct the schema, and the schema reconstructs the object. The `Numpy npz file format <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_ is a dead-simple way to save (and possibly compress) a collection of named arrays, and it happens to be the leanest way to store the exoplanets dataset:
 
 ======================== ======= ======= ======= ========= ========= ============ ============
 Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
@@ -210,20 +268,19 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
-- The exoplanets data were provided by NASA in a **CSV** format, but CSV is a rectangular table that cannot represent the fact that one star can have multiple planets without padding or duplication— NASA chose to duplicate.
-- **JSON**
+- NASA's original data were provided as a **CSV** file, but CSV is a rectangular table that cannot represent the fact that one star can have multiple planets without padding or duplication— NASA chose duplication. This format happens to be relatively small because of all the missing data: missing data only costs one byte in CSV (a comma).
+- **JSON** captures the structure of the variable number of stars per planet, as well as wrapping up values with their errors in convenient records, but with considerable bloat.
+- The fact that JSON is text, rather than binary, is often blamed for its size, but more often it's because JSON lacks a schema. The names of all the fields are repeated for each object. **BSON** is a binary JSON format, but it's not much smaller than JSON.
+- **Avro** is binary JSON with a schema, and a good choice when rowwise data is preferred over columnar (e.g. streaming data or RPC). But because it is not columnar, accessing just one attribute requires all attributes to be read, so it can be a poor choice for batch data analysis.
+- The **ROOT** framework defines a serialization format for arbitrary C++ objects that is binary and columnar with a schema. It was developed for particle physics data, which requires these features but not often missing data. The exoplanets dataset is relatively large in ROOT format because missing values are represented by a fill value like ``-999``; they cannot be skipped.
+- **Parquet** is a binary, columnar format with a schema, and it has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack missing data and nested data in the fewest bytes before compression. It is therefore the winner in the "uncompressed" category.
+- However, the repetition level mechanism requires structure bits for each field, even if there are many fields at the same level of structure, as is the case for our 122 planetary attributes. **OAMap** uses a simpler mechanism from ROOT and Apache Arrow that shares one "number of planets" array among all planetary attributes. It also uses pointer types to avoid repeatedly storing frequently expressed data, such as the "discovery method" strings (above).
 
 
 
 
 
 
-Advantages and disadvantages
-""""""""""""""""""""""""""""
-
-This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
-
-Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
 
 
