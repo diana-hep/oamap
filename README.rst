@@ -22,6 +22,9 @@ Also, a similar object array mapping could be implemented in any language— Pyt
 Walkthrough
 -----------
 
+Installation
+""""""""""""
+
 Start by installing OAMap:
 
 .. code-block:: bash
@@ -33,6 +36,9 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish). Now you sho
 .. code-block:: python
 
     from oamap.schema import *
+
+Sample dataset
+""""""""""""""
 
 For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, we can start working with it without fully downloading it. Type the following to get a schema.
 
@@ -73,7 +79,10 @@ We can view the data as nested Python objects by providing a dict of arrays to t
 
 This ``stars`` is a list of ``Star`` records. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though we have not downloaded hundreds of attributes for thousands of stars.
 
-Explore the ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or tab-completion to see what fields are available. One of these is ``planets``.
+Exploring the data interactively
+""""""""""""""""""""""""""""""""
+
+Take a look at these ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or tab-completion to see what fields are available. One such field is ``planets``.
 
 .. code-block:: python
 
@@ -124,3 +133,18 @@ Explore the ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or 
     #          'Transit Timing Variations': 15, 'Eclipse Timing Variations': 9, 'Pulsar Timing': 6,
     #          'Orbital Brightness Modulation': 6, 'Pulsation Timing Variations': 2,
     #          'Astrometry': 1})
+
+Object array mapping
+""""""""""""""""""""
+
+In short, the dataset appears to be a collection of Python objects. However, it's actually a set of Numpy arrays. One hint that you may have noticed is the time lag whenever you requested a new attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. This is because the request triggered a download of the entire attribute array, containing values for all stars and planets, through our ``DataSource``.
+
+To look behind the scenes and see these arrays, do
+
+.. code-block:: python
+
+    stars._cache.arraylist
+
+The slots that are filled with arrays are the ones you explored as object attributes.
+
+
