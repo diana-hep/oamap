@@ -199,7 +199,7 @@ The "mapping" described here is between an object-oriented conceptual view and a
 But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate, so a dead-simple Numpy npz file produces smaller, faster to access files than known alternatives. Consider the following series:
 
 ======================== ======= ======= ======= ========= ========= ============ ============
-                     Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
+                         Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
 ======================== ======= ======= ======= ========= ========= ============ ============
 **CSV**                                                                4.9 MB      0.96 MB
 **JSON**                 yes                                          14  MB       1.2  MB
