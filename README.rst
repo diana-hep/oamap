@@ -237,9 +237,9 @@ The content array for planet ``name`` has all 3572 planet names running together
 Columnar vs rowwise
 """""""""""""""""""
 
-This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes from all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), you only need to access the list sizes, not any of the eccentricity or semimajor axis values, but you have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
+This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes from all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), you only need to access the list size attributes, not any of the eccentricity or semimajor axis values, but you have to do it for all stars in the dataset. This access pattern is common in batch data analysis or when querying a static dataset.
 
-Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
+Sometimes, however, you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline or Remote Procedure Call (RPC), in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
 OAMap is not a file format
 """"""""""""""""""""""""""
