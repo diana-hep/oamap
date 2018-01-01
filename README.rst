@@ -184,17 +184,17 @@ This column-at-a-time way of organizing data is very good if you will be accessi
 
 Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
-=========== ======= ======= ======= ========= ========= ============ ============
-Format      Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
-=========== ======= ======= ======= ========= ========= ============ ============
-CSV                                                       4.9 MB      0.96 MB
-JSON        yes                                          14  MB       1.2  MB
-BSON        yes     yes                                  11  MB       1.5  MB
-Avro        yes     yes     yes                           3.0 MB      0.95 MB
-ROOT        yes     yes     yes     yes                   5.7 MB      1.6  MB
-Parquet     yes     yes     yes     yes       yes         1.1 MB      0.84 MB
-OAMap-Numpy yes     yes     yes     yes       yes         2.7 MB      0.68 MB
-=========== ======= ======= ======= ========= ========= ============ ============
+================ ======= ======= ======= ========= ========= ============ ============
+Format           Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
+================ ======= ======= ======= ========= ========= ============ ============
+CSV                                                            4.9 MB      0.96 MB
+JSON             yes                                          14  MB       1.2  MB
+BSON             yes     yes                                  11  MB       1.5  MB
+Avro             yes     yes     yes                           3.0 MB      0.95 MB
+ROOT             yes     yes     yes     yes                   5.7 MB      1.6  MB
+Parquet          yes     yes     yes     yes       yes         1.1 MB      0.84 MB
+OAMap with Numpy yes     yes     yes     yes       yes         2.7 MB      0.68 MB
+================ ======= ======= ======= ========= ========= ============ ============
 
 
 
