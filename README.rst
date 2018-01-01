@@ -40,7 +40,7 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish). Now you sho
 Sample dataset
 """"""""""""""
 
-For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, we can start working with it without fully downloading it. Copy-paste the following to get a schema.
+For this walkthrough, you'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, you can start working with it without fully downloading it. Copy-paste the following to get a schema.
 
 .. code-block:: python
 
@@ -62,7 +62,7 @@ For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet 
 
 If you're brave, try ``schema.show()`` to see its hundreds of attributes. This data object is a list of stars with planets; each star has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. It also has a list of planets, with its own attributes, like orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
 
-We can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes the website act like a Python dict.)
+You can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes the website act like a Python dict.)
 
 .. code-block:: python
 
@@ -78,7 +78,7 @@ We can view the data as nested Python objects by providing a dict of arrays to t
 
     stars = schema(DataSource())
 
-This ``stars`` object is a list of ``Star`` records with nested ``planets``. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though we have not downloaded hundreds of attributes for thousands of stars. (You'd notice the lag.)
+This ``stars`` object is a list of ``Star`` records with nested ``planets``. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though you have not downloaded hundreds of attributes for thousands of stars. (You'd notice the lag.)
 
 Exploring the data interactively
 """"""""""""""""""""""""""""""""
@@ -237,7 +237,7 @@ The content array for planet ``name`` has all 3572 planet names running together
 Columnar vs rowwise
 """""""""""""""""""
 
-This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
+This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), you only need to access the list sizes, not any of the eccentricity or semimajor axis values, but you have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
 
 Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
 
@@ -248,7 +248,7 @@ The reason I used a website as a data source (other than saving you the trouble 
 
 The "mapping" described here is between an object-oriented conceptual view and a source of named arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— the transformation rules used by the OAMap package are a generalization of these three, so that they can all be used as sources.
 
-But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that we downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory:
+But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that you downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory:
 
 .. code-block:: python
 
