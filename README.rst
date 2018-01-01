@@ -40,7 +40,7 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish). Now you sho
 Sample dataset
 """"""""""""""
 
-For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, we can start working with it without fully downloading it. Type the following to get a schema.
+For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, we can start working with it without fully downloading it. Copy-paste the following to get a schema.
 
 .. code-block:: python
 
