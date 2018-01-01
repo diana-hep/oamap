@@ -156,6 +156,8 @@ The slots that are filled with arrays are the ones you explored as object attrib
 
 so there could be more values of planetary eccentricity than stellar temperature, for instance. But some of these fields are also missing, so there may even be a different number of eccentricities than semimajor axes, for example.
 
+.. code-block:: python
+
     sum(0 if y.eccentricity is None else 1 for x in stars for y in x.planets)
     # 1177
     sum(0 if y.semimajor_axis is None else 1 for x in stars for y in x.planets)
