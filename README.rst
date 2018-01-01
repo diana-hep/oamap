@@ -258,7 +258,7 @@ But granted that OAMap is not a file format, it's a particularly efficient one. 
 would be sufficient to reconstruct the schema and therefore the data. The `Numpy npz file format <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_ is a dead-simple way to save (and optionally compress) a collection of named arrays, and it happens to be the leanest way to store the exoplanets dataset:
 
 ======================== ======= ======= ======= ========= ========= ============ ============
-Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
+Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed*
 ======================== ======= ======= ======= ========= ========= ============ ============
 **CSV**                                                                4.9 MB      0.96 MB
 **JSON**                 yes                                          14  MB       1.2  MB
@@ -269,6 +269,8 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
+(*gzip level 4)
+
 - NASA's original data were provided as a **CSV** file, but CSV is a rectangular table that cannot represent the fact that one star can have multiple planets without padding or duplication— NASA chose duplication. This format happens to be relatively small because of all the missing data: missing data only costs one byte in CSV (a comma).
 - **JSON** captures the structure of the variable number of planets per star, as well as wrapping up values with their errors in convenient records, but with considerable bloat.
 - The fact that JSON is text, rather than binary, is often blamed for its size, but more often it's because JSON lacks a schema. The names of all the fields are repeated for each object. **BSON** is a binary JSON format, but it's not much smaller than JSON.
@@ -276,6 +278,11 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 - The **ROOT** framework defines a serialization format for arbitrary C++ objects that is binary and columnar with a schema. It was developed for particle physics data, which requires these features but not often missing data. The exoplanets dataset is relatively large in ROOT format because missing values are represented by a fill value like ``-999``; they cannot be skipped.
 - **Parquet** is a binary, columnar format with a schema, and it has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack missing data and nested data in the fewest bytes before compression. It is therefore the winner in the "uncompressed" category.
 - However, the repetition level mechanism requires structure bits for each field, even if there are many fields at the same level of structure, as is the case for our 122 planetary attributes. This repeated data can't be compressed away (it's in different columns). **OAMap** uses a simpler mechanism from ROOT and Apache Arrow that shares one "number of planets" array among all planetary attributes.
+
+The story would look different if we had used a string dominated or purely numerical dataset, or if we had used one without missing values, or one with 
+
+
+
 
 For a fuller picture, we should also study read access rates, though the only dramatic distinction would be between rowwise and columnar formats, and then it would be dominated by uncompressing the compressed data (gzip level 4 in all cases). In addition, it is highly dependent on the chosen dataset— CSV and SQL are fine for purely tabular data, string-heavy datasets don't benefit from a binary format, datasets without missing values don't benefit from masking mechanisms, and datasets with few attributes can freely repeat structure bits for each field. I chose the exoplanets dataset because it stresses all of the above.
 
