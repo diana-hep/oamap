@@ -145,6 +145,23 @@ To look behind the scenes and see these arrays, do
 
     stars._cache.arraylist
 
-The slots that are filled with arrays are the ones you explored as object attributes.
+The slots that are filled with arrays are the ones you explored as object attributes. Note that these arrays don't all have the same length, as they would if this dataset could be represented as a rectangular table. There are more planets than stars,
 
+.. code-block:: python
 
+    len(stars)
+    # 2660
+    sum(len(x.planets) for x in stars)
+    # 3572
+
+so there could be more values of planetary eccentricity than stellar temperature, for instance. But some of these fields are also missing, so there may even be a different number of eccentricities than semimajor axes, for example.
+
+    sum(0 if y.eccentricity is None else 1 for x in stars for y in x.planets)
+    # 1177
+    sum(0 if y.semimajor_axis is None else 1 for x in stars for y in x.planets)
+    # 2084
+
+The arrays contain exactly as much data as is necessary to reconstruct the objects, so an attribute with more missing data is represented by a smaller array.
+
+Schemas
+"""""""
