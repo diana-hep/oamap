@@ -155,7 +155,7 @@ The slots that are filled with arrays are the ones you've viewed. Note that thes
     sum(len(x.planets) for x in stars)
     # 3572
 
-so there should be more values of planetary eccentricity than stellar temperature, for instance. But some of those fields are also missing, so there aren't even the same number of planetary attributes.
+so there should be more values of planetary eccentricity than stellar temperature, for instance. But some of those fields are missing values, so there aren't even the same number of planetary attributes.
 
 .. code-block:: python
 
@@ -291,3 +291,4 @@ Appendable datasets
 High throughput computing
 """""""""""""""""""""""""
 
+(compile with Numba; completely avoids deserialization; should add up-to-date performance measurements)
