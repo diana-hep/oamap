@@ -81,7 +81,8 @@ Explore the ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or 
     # [<Planet at index 0>]
 
     stars[258].planets
-    # [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>, <Planet at index 328>]
+    # [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>,
+    # <Planet at index 328>]
 
     stars[0].name
     # 'Kepler-1239'
@@ -119,4 +120,6 @@ Explore the ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or 
             discovery_method[planet.discovery_method] += 1
 
     discovery_method
-    # Counter({'Transit': 2774, 'Radial Velocity': 662, 'Microlensing': 53, 'Imaging': 44, 'Transit Timing Variations': 15, 'Eclipse Timing Variations': 9, 'Pulsar Timing': 6, 'Orbital Brightness Modulation': 6, 'Pulsation Timing Variations': 2, 'Astrometry': 1})
+    # Counter({'Transit': 2774, 'Radial Velocity': 662, 'Microlensing': 53, 'Imaging': 44,
+    # 'Transit Timing Variations': 15, 'Eclipse Timing Variations': 9, 'Pulsar Timing': 6,
+    # 'Orbital Brightness Modulation': 6, 'Pulsation Timing Variations': 2, 'Astrometry': 1})
