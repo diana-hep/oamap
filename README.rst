@@ -121,5 +121,6 @@ Explore the ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or 
 
     discovery_method
     # Counter({'Transit': 2774, 'Radial Velocity': 662, 'Microlensing': 53, 'Imaging': 44,
-    # 'Transit Timing Variations': 15, 'Eclipse Timing Variations': 9, 'Pulsar Timing': 6,
-    # 'Orbital Brightness Modulation': 6, 'Pulsation Timing Variations': 2, 'Astrometry': 1})
+    #          'Transit Timing Variations': 15, 'Eclipse Timing Variations': 9, 'Pulsar Timing': 6,
+    #          'Orbital Brightness Modulation': 6, 'Pulsation Timing Variations': 2,
+    #          'Astrometry': 1})
