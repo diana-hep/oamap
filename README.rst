@@ -234,8 +234,8 @@ and the ``discovery_method`` field, which has many duplicates (it's essentially 
 
 The content array for planet ``name`` has all 3572 planet names running together, while the content array for ``discovery_method`` has only the 10 *distinct* discovery method names, while its pointer array effectively acts like enumeration constants (pointing to the 10 strings). This space-saving feature is a natural consequence of the pointer data type: no explicit enumeration type needed.
 
-Bottom line
-"""""""""""
+Columnar vs rowwise
+"""""""""""""""""""
 
 This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
 
@@ -276,15 +276,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 - **Parquet** is a binary, columnar format with a schema, and it has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack missing data and nested data in the fewest bytes before compression. It is therefore the winner in the "uncompressed" category.
 - However, the repetition level mechanism requires structure bits for each field, even if there are many fields at the same level of structure, as is the case for our 122 planetary attributes. **OAMap** uses a simpler mechanism from ROOT and Apache Arrow that shares one "number of planets" array among all planetary attributes. It also uses pointer types to avoid repeatedly storing frequently expressed data, such as the "discovery method" strings (above).
 
-
-
-
-
-
-
-
-
-
+For a fuller picture, we should also study read access rates, though the only dramatic distinction would be between rowwise and columnar formats, and then it would be dominated by uncompressing the compressed data (gzip level 4 in all cases). In addition, it is highly dependent on the chosen dataset— CSV and SQL are fine for purely tabular data, string-heavy datasets don't benefit from a binary format, datasets without missing values don't benefit from masking mechanisms, and datasets with few attributes can freely repeat structure bits for each field. I chose the exoplanets dataset because it stresses all of the above.
 
 Schemas
 """""""
