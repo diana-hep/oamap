@@ -244,7 +244,7 @@ Sometimes, however, you want the opposite: all attributes of a single object, to
 OAMap is not a file format
 """"""""""""""""""""""""""
 
-The reason I used a website as a data source (other than saving you the trouble of downloading a big file) is to emphasize the fact that this is not a new file format— it is a way of working with nested data using tools that can already manage flat, named arrays. In this case, the source of flat, named arrays is HTTP (``urlopen``) with Numpy headers (``numpy.load``), but it could as easily be an HDF5 file. Object store databases and memory-mapped files are particularly interesting sources.
+The reason I used a website as a data source (other than saving you the trouble of downloading a big file) is to emphasize the fact that this is not a new file format— it is a way of working with nested data using tools that can already manage flat, named arrays. In this case, the source of flat, named arrays is HTTP (``urlopen``) with Numpy headers (``numpy.load``), but it could as easily be an HDF5 file. The OAMap functions only require a dict-like source of arrays.
 
 The "mapping" described here is between an object-oriented conceptual view and a source of named arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— the transformation rules used by the OAMap package are a generalization of these three, so that they can all be used as sources.
 
