@@ -287,6 +287,9 @@ Schemas
 Filling datasets
 """"""""""""""""
 
+Columnar granularity
+""""""""""""""""""""
+
 Low-latency random access
 """""""""""""""""""""""""
 
