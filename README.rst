@@ -190,13 +190,13 @@ Sometimes you want the opposite: all attributes of a single object, to "drill do
 =========== ======= ======= ======= ========= ========= ============ ============
 Format      Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed  
 =========== ======= ======= ======= ========= ========= ============ ============
-CSV                                                     `` 4.9 MB``   ``0.96 MB``
-JSON        yes                                         ``14   MB``   ``1.2  MB``
-BSON        yes     yes                                 ``11   MB``   ``1.5  MB``
-Avro        yes     yes     yes                         `` 3.0 MB``   ``0.95 MB``
-ROOT        yes     yes     yes     yes                 `` 5.7 MB``   ``1.6  MB``
-Parquet     yes     yes     yes     yes       yes       `` 1.1 MB``   ``0.84 MB``
-OAMap-Numpy yes     yes     yes     yes       yes       `` 2.7 MB``   ``0.68 MB``
+CSV                                                     |_|4.9 MB       0.96 MB     
+JSON        yes                                         14 |_|MB        1.2 |_|MB      
+BSON        yes     yes                                 11 |_|MB        1.5 |_|MB      
+Avro        yes     yes     yes                         |_|3.0 MB       0.95 MB     
+ROOT        yes     yes     yes     yes                 |_|5.7 MB       1.6 |_|MB      
+Parquet     yes     yes     yes     yes       yes       |_|1.1 MB       0.84 MB     
+OAMap-Numpy yes     yes     yes     yes       yes       |_|2.7 MB       0.68 MB     
 =========== ======= ======= ======= ========= ========= ============ ============
 
 
