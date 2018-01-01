@@ -279,12 +279,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 - **Parquet** is a binary, columnar format with a schema, and it has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack missing data and nested data in the fewest bytes before compression. It is therefore the winner in the "uncompressed" category.
 - However, the repetition level mechanism requires structure bits for each field, even if there are many fields at the same level of structure, as is the case for our 122 planetary attributes. This repeated data can't be compressed away (it's in different columns). **OAMap** uses a simpler mechanism from ROOT and Apache Arrow that shares one "number of planets" array among all planetary attributes.
 
-The story would look different if we had used a string dominated or purely numerical dataset, or if we had used one without missing values, or one with 
-
-
-
-
-For a fuller picture, we should also study read access rates, though the only dramatic distinction would be between rowwise and columnar formats, and then it would be dominated by uncompressing the compressed data (gzip level 4 in all cases). In addition, it is highly dependent on the chosen dataset— CSV and SQL are fine for purely tabular data, string-heavy datasets don't benefit from a binary format, datasets without missing values don't benefit from masking mechanisms, and datasets with few attributes can freely repeat structure bits for each field. I chose the exoplanets dataset because it stresses all of the above.
+The story would look different if we had used a string dominated or purely numerical dataset, or if we had used one without missing values, or one with fewer attributes per same-level structure. The exoplanets dataset has a little of all of these anti-features; it's the worst of all worlds, and therefore makes a good example.
 
 Schemas
 """""""
