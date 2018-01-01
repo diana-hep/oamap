@@ -55,13 +55,14 @@ For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet 
     baseurl = "http://diana-hep.org/oamap/examples/planets/"
 
     # explicit utf-8 conversion required for Python 3
-    downloadschema = codecs.getreader("utf-8")(urlopen(baseurl + "schema.json"))
+    remotefile = urlopen(baseurl + "schema.json")
+    withcodec = codecs.getreader("utf-8")(remotefile)
 
-    schema = Schema.fromjsonfile(downloadschema)
+    schema = Schema.fromjsonfile(withcodec)
 
-If you're brave, try ``schema.show()`` to see its hundreds of attributes. This data object is a list of stars, each of which has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star has a list of planets, with its own attributes, like orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
+If you're brave, try ``schema.show()`` to see its hundreds of attributes. This data object is a list of stars with planets; each star has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. It also has a list of planets, with its own attributes, like orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
 
-We can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes our website act like a Python dict.)
+We can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes the website act like a Python dict.)
 
 .. code-block:: python
 
@@ -77,12 +78,12 @@ We can view the data as nested Python objects by providing a dict of arrays to t
 
     stars = schema(DataSource())
 
-This ``stars`` is a list of ``Star`` records. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though we have not downloaded hundreds of attributes for thousands of stars.
+This ``stars`` object is a list of ``Star`` records with nested ``planets``. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though we have not downloaded hundreds of attributes for thousands of stars. (You'd notice the lag.)
 
 Exploring the data interactively
 """"""""""""""""""""""""""""""""
 
-Take a look at these ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fields`` or tab-completion to see what fields are available. One such field is ``planets``.
+To poke around the data, use ``dir(stars[0])``, ``stars[0]._fields`` or tab-completion to see what fields are available. One such field is ``planets``.
 
 .. code-block:: python
 
@@ -137,7 +138,7 @@ Take a look at these ``stars`` objects, using ``dir(stars[0])``, ``stars[0]._fie
 Object array mapping
 """"""""""""""""""""
 
-In short, the dataset appears to be a collection of Python objects. However, it's actually a set of Numpy arrays. One hint that you may have noticed is the time lag whenever you requested a new attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. This is because the request triggered a download of the entire attribute array, containing values for all stars and planets, through our ``DataSource``.
+In short, the dataset appears to be a collection of Python objects. However, it's actually a set of Numpy arrays. One hint that you may have noticed is the time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. This is because the request triggered a download of the attribute array, which contains values for all stars and planets at once, through our ``DataSource``.
 
 To peek behind the scenes and see these arrays, look at
 
@@ -145,7 +146,7 @@ To peek behind the scenes and see these arrays, look at
 
     stars._cache.arraylist
 
-The slots that are filled with arrays are the ones you explored as object attributes. Note that these arrays don't all have the same length, as they would if this dataset could be represented as a rectangular table. There are more planets than stars,
+The slots that are filled with arrays are the ones you've viewed above. Note that these arrays don't all have the same length, as they would if this dataset could be represented as a rectangular table. There are more planets than stars,
 
 .. code-block:: python
 
@@ -154,7 +155,7 @@ The slots that are filled with arrays are the ones you explored as object attrib
     sum(len(x.planets) for x in stars)
     # 3572
 
-so there could be more values of planetary eccentricity than stellar temperature, for instance. But some of these fields are also missing, so there may even be a different number of eccentricities than semimajor axes, for example.
+so there should be more values of planetary eccentricity than stellar temperature, for instance. But some of those fields are also missing, so there aren't even the same number of planetary attributes.
 
 .. code-block:: python
 
@@ -163,14 +164,42 @@ so there could be more values of planetary eccentricity than stellar temperature
     sum(0 if y.semimajor_axis is None else 1 for x in stars for y in x.planets)
     # 2084
 
+    d = DataSource()
+    eccentricity = d["object-L-NStar-Fplanets-L-NPlanet-Feccentricity-NValueAsymErr-Fval"]
+    # array([ 0.   ,  0.   ,  0.05 , ...,  0.   ,  0.12 ,  0.062], dtype=float32)
+    semimajor_axis = d["object-L-NStar-Fplanets-L-NPlanet-Fsemimajor_axis-NValueAsymErr-Fval"]
+    # array([ 0.115     ,  0.01855   ,  0.26899999, ...,  0.359     ,
+    #         0.056     ,  0.116     ], dtype=float32)
+    len(eccentricity), len(semimajor_axis)
+    # (1153, 2076)
+
 The arrays contain exactly as much data as is necessary to reconstruct the objects, so an attribute with more missing data is represented by a smaller array.
 
-When would you use this?
-""""""""""""""""""""""""
+I used the website as a data source to emphasize that this is not a type of file— in this particular case, every column is a separate file. The "mapping" in "Object Array Mapping" is between an object and a set of named arrays— those arrays may be located in any file or files. Therefore, it's a metaformat, a way of interpreting arrays as objects.
 
-This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset.
+Advantages and disadvantages
+""""""""""""""""""""""""""""
 
-Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. OAMap is for batch data analysis.
+This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes of all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), we only need to access the list sizes, not any of the eccentricity or semimajor axis values, but we have to do it for all stars in the dataset. This access pattern is common in batch data analysis or querying a static dataset.
+
+Sometimes you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline, in which whole objects are always moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. If that is your goal, you do not want to use OAMap.
+
+========= ============ ============ ===============================================
+Format    Uncompressed Compressed   Rationale
+========= ============ ============ ===============================================
+CSV       4.9 MB       0.96 MB      Though a text-based format, CSV is quite good at compressing *missing* data, since a missing value is just a comma.
+JSON      14 MB        1.2 MB       However, CSV forces data into a tabular shape, erasing or at least obscuring relationships in a complex data model. JSON can express this model directly, but at a significant cost in data size and access rate.
+BSON      11 MB        1.5 MB       The fact that JSON is text is often accused for its inefficiency, but this is not always the case. A number represented with fewer than 4 or 8 characters is more tightly packed than a 4 or 8 byte integer or float. BSON is a binary form of JSON, and they both suffer from lacking a schema: the hundreds of fields per object must be *named as strings* for every object in the dataset.
+Avro      3.0 MB       0.95 MB      Formats like Avro exist to address this deficiency: it's binary JSON with a schema.
+Parquet   1.1 MB       0.84 MB      However, Avro is not *columnar.* If you want to access only one or a few fields, you have to deserialize entire objects. Parquet is columnar, binary JSON with a schema. It packs more tightly because of a clever missing value and nested list depth scheme, but this scheme doesn't scale well with hundreds of attributes at the same level of nesting.
+ROOT      5.7 MB       1.6 MB       The ROOT format was developed by the particle physics community to do the same thing as Parquet, but 15 years earlier. Its more conventional nested list depth scheme scales better with hundreds of attributes, but it doesn't have a mechanism for packing missing values, which bloats the exoplanet dataset. (Missing values aren't common in particle physics.)
+Numpy     2.7 MB       0.68 MB      The object array map defined here, placed in a simple Numpy-zip file (npz) has an absolute minimum of overhead. For 
+========= ============ ============ ===============================================
+
+
+
+
+
 
 
 
