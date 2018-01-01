@@ -282,3 +282,12 @@ For a fuller picture, we should also study read access rates, though the only dr
 Schemas
 """""""
 
+Representations
+"""""""""""""""
+
+Appendable datasets
+"""""""""""""""""""
+
+Compiled with Numba
+"""""""""""""""""""
+
