@@ -284,6 +284,37 @@ The story would look different if we had used a string dominated or purely numer
 Schemas
 """""""
 
+Unlike a rowwise representation, which could introduce new data types at any point in the stream, columnar representations must always have a schema. As we've seen above, schemas also reduce the memory needed to store a dataset, and they allow functions to be compiled for faster execution as well.
+
+A schema definition language defines the scope of representable data. To keep things simple and language-independent, we define schemas with seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*).
+
+Primitive
+~~~~~~~~~
+
+List
+~~~~
+
+Union
+~~~~~
+
+Record
+~~~~~~
+
+Tuple
+~~~~~
+
+Pointer
+~~~~~~~
+
+Extension
+~~~~~~~~~
+
+
+
+
+
+
+
 Filling datasets
 """"""""""""""""
 
