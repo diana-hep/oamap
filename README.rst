@@ -248,10 +248,11 @@ The reason I used a website as a data source (other than saving you the trouble 
 
 The "mapping" described here is between an object-oriented conceptual view and a source of named arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— the transformation rules used by the OAMap package are a generalization of these three, so that they can all be used as sources.
 
-But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that you downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory:
+But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that you downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory, and
 
 .. code-block:: python
 
+    import oamap.inference
     schema = oamap.inference.fromnames(directory_listing)
 
 would be sufficient to reconstruct the schema, and the schema reconstructs the object. The `Numpy npz file format <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_ is a dead-simple way to save (and possibly compress) a collection of named arrays, and it happens to be the leanest way to store the exoplanets dataset:
