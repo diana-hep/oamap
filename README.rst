@@ -209,7 +209,7 @@ Note that you may not always want columnar data. This access method benefits bat
 
 On the other hand, remote procedure calls (RPC) and its extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— this case is much more efficient with rowwise data.
 
-To illustrate the tradeoffs, I've converted the exoplanets dataset into a variety of formats, each with one more feature than the last:
+To illustrate the tradeoffs, I've converted the exoplanets dataset into a variety of formats, each with one more feature than the last. (\*Some formats have built-in compression, others don't; in all cases I compressed with gzip level 4.)
 
 ======================== ======= ======= ======= ========= ========= ============ ============
 Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed*
@@ -222,10 +222,6 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **Parquet**              yes     yes     yes     yes       yes         1.1 MB      0.84 MB
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
-
-.. class:: center
-
-**(*gzip level 4)**
 
 - **CSV** was NASA's original file format, but it cannot fit in a rectangular table without 
 
