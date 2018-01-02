@@ -202,50 +202,52 @@ so there should be more planetary eccentricity values than stellar temperature v
 
 Missing values are not padded— these arrays contain exactly as much data as necessary to reconstruct the objects.
 
-Repeated strings can also bloat a dataset, so they're often replaced with enumeration constants— integers whose meaning is either encoded in the schema or in external documentation. OAMap has a pointer data type that naturally provides self-documenting enumeration constants. Consider the difference between the planet's ``name`` field, which has no expected duplicates:
+.. comment::
 
-.. code-block:: python
+    Repeated strings can also bloat a dataset, so they're often replaced with enumeration constants— integers whose meaning is either encoded in the schema or in external documentation. OAMap has a pointer data type that naturally provides self-documenting enumeration constants. Consider the difference between the planet's ``name`` field, which has no expected duplicates:
 
-    schema.content.fields["planets"].content.fields["name"].show()
-    # List(
-    #   name = u'UTF8String', 
-    #   content = Primitive(dtype('uint8'))
-    # )
+    .. code-block:: python
 
-    len(d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"])
-    # 41122
+        schema.content.fields["planets"].content.fields["name"].show()
+        # List(
+        #   name = u'UTF8String', 
+        #   content = Primitive(dtype('uint8'))
+        # )
 
-    d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"][:100].tostring()
-    # 'Kepler-1239 bKepler-1238 bKepler-618 bKepler-1231 bKepler-1230 bKepler-1233 bKepler-1232 bHD 4308 bK'
+        len(d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"])
+        # 41122
 
-and the ``discovery_method`` field, which has many duplicates (it's essentially a category label):
+        d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"][:100].tostring()
+        # 'Kepler-1239 bKepler-1238 bKepler-618 bKepler-1231 bKepler-1230 bKepler-1233 bKepler-1232 bHD 4308 bK'
 
-.. code-block:: python
+    and the ``discovery_method`` field, which has many duplicates (it's essentially a category label):
 
-    schema.content.fields["planets"].content.fields["discovery_method"].show()
-    # Pointer(
-    #   target = List(
-    #     name = u'UTF8String', 
-    #     content = Primitive(dtype('uint8'))
-    #   )
-    # )
+    .. code-block:: python
 
-    len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"])
-    # 170
+        schema.content.fields["planets"].content.fields["discovery_method"].show()
+        # Pointer(
+        #   target = List(
+        #     name = u'UTF8String', 
+        #     content = Primitive(dtype('uint8'))
+        #   )
+        # )
 
-    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"].tostring()
-    # 'TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timing
-    #  VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry'
+        len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"])
+        # 170
 
-    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-P"][:100]
-    # array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0,
-    #        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0,
-    #        0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    #        0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 3, 0, 1,
-    #        0, 0, 1, 1, 0, 1, 2, 1], dtype=int32)
+        d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"].tostring()
+        # 'TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timing
+        #  VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry'
+
+        d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-P"][:100]
+        # array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0,
+        #        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0,
+        #        0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        #        0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 3, 0, 1,
+        #        0, 0, 1, 1, 0, 1, 2, 1], dtype=int32)
 
 
-The content array for planet ``name`` has all 3572 planet names running together, while the content array for ``discovery_method`` has only the 10 *distinct* discovery method names, while its pointer array effectively acts like enumeration constants (pointing to the 10 strings). This space-saving feature is a natural consequence of the pointer data type: no enumeration type is explicitly needed.
+    The content array for planet ``name`` has all 3572 planet names running together, while the content array for ``discovery_method`` has only the 10 *distinct* discovery method names, while its pointer array effectively acts like enumeration constants (pointing to the 10 strings). This space-saving feature is a natural consequence of the pointer data type: no enumeration type is explicitly needed.
 
 Columnar vs rowwise
 """""""""""""""""""
