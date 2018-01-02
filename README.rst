@@ -151,7 +151,7 @@ Object array mapping
 
 In short, the dataset appears to be a nested Python object. However, all of these object façades ("proxies") are created on demand from the data in the arrays. In functions compiled by Numba (described at the bottom of this walkthrough), there won't even be any runtime objects— the code itself will be transformed to access array data instead of creating anything that has to be allocated in memory. This code transformation is part of the compilation process and the throughput of the transformed code is often faster than that of compiled C code with runtime objects (see `this talk <https://youtu.be/jvt4v2LTGK0>`_ and `this paper <https://arxiv.org/abs/1711.01229>`_ again).
 
-While executing the above commands, you might have noticed a time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. If you then view this attribute on another star, there's no time lag because it is already downloaded. The data access has *columnar granularity—* if you show interest in an attribute, it is assumed that you'll want to do something with that attribute for all or most data points. The alternative, *rowwise granularity* (e.g. JSON), would fetch a whole star's data record if you want one of its attributes. (The optimum for data analysis is usually columnar granularity in chunks of *N* records, similar to Parquet's "row groups" or ROOT's "baskets.")
+While executing the above commands, you might have noticed a time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. If you then view this attribute on another star, there's no time lag because it is already downloaded. The data access has *columnar granularity—* if you show interest in an attribute, it is assumed that you'll want to do something with that attribute for all or most data points. The alternative, *rowwise granularity* (e.g. JSON), would fetch a whole star's data record if you want one of its attributes. (The optimum for data analysis is usually columnar granularity in chunks of *N* records, similar to Parquet's "row groups" or ROOT's "clusters.")
 
 To peek behind the scenes and see these arrays, look at
 
@@ -453,11 +453,23 @@ is a list of tuples. (Lists are homogeneous and arbitrary-length, tuples are het
 
 List contents are stored in arrays that ignore list boundaries and the boundaries are reconstructed by "counts" arrays like ``"object-L-c": [3, 0, 2]``. Actually, there are three common representations of list structure:
 
-- counts arrays, which compress well (small integers) but don't permit random access (to find the *Nth* element, you have to add up *N – 1* counts);
+- a **counts array**, which compress well (small integers) but don't permit random access (to find the *Nth* element, you have to add up the first *N – 1* counts);
+- an **offsets array**, which is a cumulative sum of the counts array, permitting random access;
+- **starts** and **stops arrays**, which individually indicate the start and stop of each list (also random accessible).
 
+ROOT uses counts and offsets, Arrow uses offsets, and Parquet uses something altogether different (repetition level). OAMap converts any of these into starts and stops arrays because that form is the most powerful: the physical data may contain gaps to emulate stencils, may be in a different physical order than the logical order for database-style indexing, and may contain data accessible by pointer but not in the main list (e.g. it's part of a tree). When OAMap fails to find a starts or stops array (names usually end with ``-B`` or ``-E``), it searches for a counts array (name usually ends with ``-c``). For simplicity, all of the examples we have considered have been in that fallback case. Arrow and Parquet are handled with special dict-like objects— offsets arrays can be turned into starts and stops without even copying data.
 
+Most datasets are lists at the top level— lists of *something—* so they have one silly looking single-element array containing nothing but the total number of entries. The total number of entries is sometimes found in metadata, rather than data, so this array is often created on demand (as in the ROOT example above).
 
+Some datasets are so large that even a single attribute cannot be fully read into memory— these list-of-X datasets can be represented as a sequence of list-of-X objects, each of which containing one partition of the data. Columnar datasets must always be partitioned at some level, since the serialization of an attribute must end at some point to move on to the next attribute. (In that sense, rowwise data can be thought of as columnar data with partition size 1!) Parquet calls these partitions "row groups" and ROOT calls them "clusters," but OAMap has no special nomenclature. The same schema can apply to many objects, so there's a natural way to process a sequence of partitions:
 
+.. code-block:: python
+
+    schema = List(Record({"x": "float", "y": "float", "z": "float"}))
+    for arrays in partitions:
+        obj = schema(arrays)
+        for x in obj:
+            do_something(x)
 
 Union
 ~~~~~
