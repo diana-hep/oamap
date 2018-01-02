@@ -40,7 +40,7 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish). Now you sho
 Sample dataset
 """"""""""""""
 
-For this walkthrough, you'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, you can start working with it without fully downloading it. Copy-paste the following to get a schema.
+For this walkthrough, we'll be working with a real dataset, the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_. As an illustration of columnar data access, you can start working with it without fully downloading it. Copy-paste the following to get a schema.
 
 .. code-block:: python
 
@@ -62,9 +62,11 @@ For this walkthrough, you'll be working with a real dataset, the `NASA Exoplanet
 
     schema = Schema.fromjsonfile(remotefile)
 
-If you're brave, try ``schema.show()`` to see its hundreds of attributes. This schema represents a list of stars that are known to have planets; each star has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star also has a list of planets, with its own attributes, such as orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
+The schema is a description of the data type, not the data itself: data in OAMap are strongly and statically typed (even though this is Python). If you're brave, try ``schema.show()`` to see hundreds of attributes for each star and all the planets orbiting these stars. Stars and planets are data records with attributes such as distance, position on the sky, orbital period, mass, discovery method, etc. Most numerical quantities have uncertainties, so values and their uncertainties are bundled into nested records. Since discovering planets is a tricky business, many of these quantities (numeric and string-valued) are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
 
-You can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes the website act like a Python dict.)
+Perhaps the most important point about the structure of this schema is that each star may have a different number of planets. The data *cannot* be described by a single flat table without padding or duplication. If we were designing a conventional database for this dataset, we would make two tables: one for stars and one for planets, with links between the tables (normal form). That's okay for a single variable-length sublist, but some datasets, such as those in particle physics, have events containing arbitrary numbers of electrons, muons, taus, photons, and many different kinds of jets— the database normalization technique `gets cumbersome <https://stackoverflow.com/q/38831961/1623645>`_ and loses sight of the fact that quantities nested under the same parent should be stored on the same machine because they are frequently processed together.
+
+Enough talk: let's get the data. The schema can be treated like a Python type: you get an instance of that type by calling it with arguments. The required argument is a dict-like object of columnar arrays. The exoplanet dataset is hosted on the same website, use this ``DataSource`` class to make the website act like a dict.
 
 .. code-block:: python
 
@@ -80,7 +82,7 @@ You can view the data as nested Python objects by providing a dict of arrays to 
 
     stars = schema(DataSource())
 
-This ``stars`` object is a list of ``Star`` records with nested ``planets``. If you print it on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though you have not downloaded hundreds of attributes for thousands of stars. (You'd notice the lag.)
+If you print this ``stars`` object on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though you have not downloaded hundreds of attributes for thousands of stars. (You'd notice the delay, especially if you're on a slow network.)
 
 Exploring the data interactively
 """"""""""""""""""""""""""""""""
