@@ -27,7 +27,7 @@ Installation
 
 Start by installing OAMap:
 
-.. code-block:: bash
+.. code-block:: sh
 
     pip install oamap --user
 
@@ -242,7 +242,7 @@ Having just extolled OAMap's virtues as a data format, I must emphasize that OAM
 
 To make this point further, let's use a real file:
 
-.. code-block:: bash
+.. code-block:: sh
 
     wget http://diana-hep.org/oamap/examples/HZZ.root
 
