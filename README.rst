@@ -233,7 +233,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 - **Parquet** is the Big Data community's nested, binary, schemaed, columnar data format that skips missing values. It has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack structural information about missing data and nesting levels into the fewest bytes before compression, and therefore wins in the uncompressed category.
 - **OAMap** uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow) which is larger than Parquet when uncompressed, but smaller when compressed. Parquet's nesting mechanism packs nesting structure into a minimum of bits, but those bits have to be repeated for all fields at the same level of a record, and the exoplanets (like particle physics data) have hundreds of fields per record. This duplication can't be compressed away (fields are compressed independently of one another), which could explain why OAMap compresses smaller for exoplanets.
 
-The situation would look different if we had purely numerical data, or text-heavy data, or a dataset without missing values, or one without hundreds of attributes per record. The exoplanets has a little of all of these anti-features— it's the worst of all worlds, and is therefore a great example.
+The situation would look different if we had purely numerical data, or text-heavy data, or a dataset without missing values, or one without hundreds of attributes per record. The exoplanets has a little of all of these anti-features— it's the worst of all worlds, and therefore a great example.
 
 OAMap is not a file format
 """"""""""""""""""""""""""
@@ -246,7 +246,7 @@ To make this point further, let's use a real file:
 
     wget http://diana-hep.org/oamap/examples/HZZ.root
 
-Since this is a ROOT file, we'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_ (version 2.5.14 or later):
+It's in ROOT format, so we'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_ (version 2.5.14 or later):
 
 .. code-block:: bash
 
