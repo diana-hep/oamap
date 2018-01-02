@@ -246,7 +246,7 @@ To make this point further, let's use a real file:
 
     wget http://diana-hep.org/oamap/examples/HZZ.root
 
-Since this is a ROOT file, we'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_:
+Since this is a ROOT file, we'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_ (version 2.5.14 or later):
 
 .. code-block:: bash
 
