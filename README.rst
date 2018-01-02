@@ -302,7 +302,7 @@ Now we define a new schema, mapping parts of the conceptual object to the ROOT f
         )
       )
 
-We need to load the ROOT "tree" and adapt it to look like a dict,
+Next, load the ROOT "tree" and adapt it to look like a dict,
 
 .. code-block:: python
 
