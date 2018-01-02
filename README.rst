@@ -258,7 +258,7 @@ Now define a new schema, mapping parts of the conceptual object to the ROOT file
 
     from oamap.schema import *
 
-    schema2 = List(
+    schema = List(
         counts = "nEvents",
         content = Record(
           name = "Event",
@@ -308,7 +308,7 @@ Next, load the ROOT "tree" and adapt it to look like a dict,
 
     import uproot
 
-    class DataSource2:
+    class DataSource:
         def __init__(self):
             self.ttree = uproot.open("HZZ.root")["events"]
         def __getitem__(self, name):
@@ -322,7 +322,7 @@ and now you can get objects from the ROOT file, just as you could from the web.
 
 .. code-block:: python
 
-    events = schema2(DataSource2())
+    events = schema(DataSource())
 
     events[0].met.x, events[0].met.y
     # (5.9127712, 2.5636332)
@@ -354,9 +354,9 @@ For the file format comparision table, I made an "OAMap file" by putting the OAM
 Schemas
 """""""
 
-Unlike a rowwise representation, which could introduce new data types at any point in the stream, columnar representations must always have a schema. As we've seen above, schemas also reduce the memory needed to store a dataset, and they allow functions to be compiled for faster execution as well.
+Now let's focus on OAMap's schemas. Columnar representations must have schemas, since it wouldn't be possible to represent the emergence of a new field in the middle of a dataset, as it is with schemaless formats. The schema defines the possible values that an object of that type may take, and the schema definition language describes the possible types that any object in the system may have.
 
-A schema definition language defines the scope of representable data. To keep things simple and language-independent, we define schemas with seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*).
+To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*). Thus, we can't put function objects or transient types such as file handles into an object described by OAMap, but we can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
 
 Primitive
 ~~~~~~~~~
