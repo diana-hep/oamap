@@ -68,6 +68,7 @@ Perhaps the most important point about the structure of this schema is that each
 
 .. code-block:: python
 
+    schema.show()                             # it's a list
     schema.content.fields["planets"].show()   # it's another list
 
 The data *cannot* be described by a single flat table without padding or duplication. If we were designing a conventional database for this dataset, we would make two tables: one for stars and one for planets, with links between the tables (normal form). That's okay for a single variable-length sublist, but some datasets, such as those in particle physics, have events containing arbitrary numbers of electrons, muons, taus, photons, and many different kinds of jets— the database normalization technique `gets cumbersome <https://stackoverflow.com/q/38831961/1623645>`_ and loses sight of the fact that quantities nested under the same parent should be stored on the same machine because they are frequently processed together.
