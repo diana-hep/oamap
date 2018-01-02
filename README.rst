@@ -453,7 +453,7 @@ is a list of tuples. (Lists are homogeneous and arbitrary-length, tuples are het
 
 List contents are stored in arrays that ignore list boundaries and the boundaries are reconstructed by "counts" arrays like ``"object-L-c": [3, 0, 2]``. Actually, there are three common representations of list structure:
 
-- counts arrays, which compress well (small integers) but don't permit random access (to find the *N :sub:`th`* element, you have to add up *N – 1* counts);
+- counts arrays, which compress well (small integers) but don't permit random access (to find the *Nth* element, you have to add up *N – 1* counts);
 
 
 
