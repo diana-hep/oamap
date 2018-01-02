@@ -335,6 +335,7 @@ and now you can get objects from the ROOT file, just as you could from the web.
         if len(event.muons) == 2:
             mu1, mu2 = event.muons[0], event.muons[1]
             if mu1.charge * mu2.charge < 0:
+                # oppositely signed muons: calculate their mass (it's close to the Z mass)
                 px = mu1.px + mu2.px
                 py = mu1.py + mu2.py
                 pz = mu1.pz + mu2.pz
