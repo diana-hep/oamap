@@ -302,7 +302,7 @@ Now define a new schema, mapping parts of the conceptual object to the ROOT file
         )
       )
 
-Next, load the ROOT "tree" and adapt it to look like a dict,
+Next, load the ROOT "tree" and adapt it to look like a dict.
 
 .. code-block:: python
 
@@ -318,7 +318,7 @@ Next, load the ROOT "tree" and adapt it to look like a dict,
             else:
                 return self.ttree.array(name)
 
-and now you can get objects from the ROOT file, just as you could from the web.
+Now you can get objects from the ROOT file, just as you did from the web.
 
 .. code-block:: python
 
@@ -349,7 +349,7 @@ and now you can get objects from the ROOT file, just as you could from the web.
     # 92.1167215271
     # ...
 
-For the file format comparision table, I made an "OAMap file" by putting the OAMap arrays into a `Numpy npz file <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_, which is a dead-simple format for a collection of arrays. However, I could have put them into a ROOT file, which would have given the ROOT file the missing data packing feature.
+For the file format comparision table (previous section), the "OAMap file" was really a `Numpy npz file <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_, a dead-simple format when you only want to save a set of named arrays. I could have instead put them in a ROOT file, which would have given the ROOT file the missing data handling that worked so well for the exoplanets dataset.
 
 Schemas
 """""""
