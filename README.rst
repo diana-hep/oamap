@@ -62,7 +62,7 @@ For this walkthrough, you'll be working with a real dataset, the `NASA Exoplanet
 
     schema = Schema.fromjsonfile(remotefile)
 
-If you're brave, try ``schema.show()`` to see its hundreds of attributes. It represents a list of stars that are known to have planets; each star has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star also has a list of planets, with its own attributes, such as orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
+If you're brave, try ``schema.show()`` to see its hundreds of attributes. This schema represents a list of stars that are known to have planets; each star has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star also has a list of planets, with its own attributes, such as orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
 
 You can view the data as nested Python objects by providing a dict of arrays to the schema. (The ``DataSource`` below makes the website act like a Python dict.)
 
