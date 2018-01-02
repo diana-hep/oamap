@@ -240,7 +240,7 @@ OAMap is not a file format
 
 Having just extolled OAMap's virtues as a data format, I must emphasize that OAMap is not a data format. It is an abstraction layer just above file formats and sources. The "mapping" described here is between a set of real arrays an a conceptual view of objects, and it doesn't matter how the real arrays get served. The reason I used a website as a data source— probably not a good choice for a high-throughput application— is to emphasize that point. This dataset isn't even a *file.* The binary data are served by HTTP (``urlopen``), separately for each column, and interpreted as arrays by Numpy (``numpy.load``). It could as easily have been a local directory of files, a key-value database, or a single HDF5 file, etc.
 
-To make this point further, let's use a real file:
+To push this point further, let's switch to a real file:
 
 .. code-block:: bash
 
