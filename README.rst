@@ -205,7 +205,7 @@ Missing values are not padded— these arrays contain exactly as much data as ne
 When would you want this?
 """""""""""""""""""""""""
 
-You may not always want columnar data. This access method benefits batch analyses and query-style analysis, where you typically want to know something about one or a few attributes from many or all objects. However, sometimes you want to know about all attributes of a single object, e.g. to "drill down" to a single interesting entity or to visualize a single interesting event. Drill downs and event displays are not high-throughput applications, so it usually doesn't hurt to store data as columns for fast analysis and slow single object examination.
+You might not always want columnar data. This access method benefits batch analyses and query-style analysis, where you typically want to know something about one or a few attributes from many or all objects. However, sometimes you want to know about all attributes of a single object, e.g. to "drill down" to a single interesting entity or to visualize a single interesting event. Drill downs and event displays are not high-throughput applications, so it usually doesn't hurt to store data as columns for fast analysis and slow single object examination.
 
 On the other hand, remote procedure calls (RPC) and its extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— this case is much more efficient with rowwise data. You would *not* want to use OAMap for that.
 
@@ -223,7 +223,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes        2.7 MB      0.68 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
-(\*Some formats have built-in compression, others don't; in all cases I compressed with gzip level 4.)
+(\*Some formats have built-in compression, others have to be externally compressed; in all cases I used gzip level 4.)
 
 - **CSV** was NASA's original file format, but it cannot fit in a rectangular table without padding or duplication— NASA chose duplication. Most stars have only one planet, so it's not *much* duplication.
 - **JSON** captures the structure of the data better, but with considerable bloat. Most of this compresses away because it consists of record field names, restated for every data point in the sample.
