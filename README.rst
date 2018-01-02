@@ -89,7 +89,7 @@ Enough talk: let's get the data. The schema can be treated like a Python type: y
 
     stars = schema(DataSource())
 
-If you print this ``stars`` object on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though you have not downloaded hundreds of attributes for thousands of stars. (You'd notice the delay, especially if you're on a slow network.)
+If you print this ``stars`` object on the Python command line (or Jupyter notebook, whatever you're using), you'll see that there are 2660 stars, though you have not downloaded hundreds of attributes for thousands of stars. (Downloading the whole dataset would cause a noticeable delay, especially on a slow network.)
 
 Exploring the data interactively
 """"""""""""""""""""""""""""""""
@@ -98,10 +98,10 @@ To poke around the data, use ``dir(stars[0])``, ``stars[0]._fields`` or tab-comp
 
 .. code-block:: python
 
-    stars[0].planets
+    stars[0].planets           # one planet...
     # [<Planet at index 0>]
 
-    stars[258].planets   # five planets!
+    stars[258].planets         # five planets!
     # [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>,
     # <Planet at index 328>]
 
@@ -151,7 +151,7 @@ Object array mapping
 
 In short, the dataset appears to be a nested Python object. However, all of these object façades ("proxies") are created on demand from the data in the arrays. In functions compiled by Numba (described at the bottom of this walkthrough), there won't even be any runtime objects— the code itself will be transformed to access array data instead of creating anything that has to be allocated in memory. This code transformation is part of the compilation process and the throughput of the transformed code is often faster than that of compiled C code with runtime objects (see `this talk <https://youtu.be/jvt4v2LTGK0>`_ and `this paper <https://arxiv.org/abs/1711.01229>`_ again).
 
-While executing the above commands, you might have noticed a time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. If you then view this attribute on another star, there's no time lag because it is already downloaded. Data access has a *columnar granularity—* if you show interest in an attribute, it is assumed that you'll want to do something with that attribute for all or most data points. The alternative, *rowwise granularity* (e.g. JSON), would fetch a whole star's data record if you want one of its attributes. (The optimum for data analysis is usually columnar granularity in chunks of *N* records, similar to Parquet's "row groups" or ROOT's "baskets.")
+While executing the above commands, you might have noticed a time lag whenever you requested a *new* attribute, such as star name or planet orbital period, the first time you accessed it from *any* star or planet. If you then view this attribute on another star, there's no time lag because it is already downloaded. The data access has *columnar granularity—* if you show interest in an attribute, it is assumed that you'll want to do something with that attribute for all or most data points. The alternative, *rowwise granularity* (e.g. JSON), would fetch a whole star's data record if you want one of its attributes. (The optimum for data analysis is usually columnar granularity in chunks of *N* records, similar to Parquet's "row groups" or ROOT's "baskets.")
 
 To peek behind the scenes and see these arrays, look at
 
@@ -168,7 +168,7 @@ The slots that are filled with arrays are the ones you've viewed. Note that thes
     sum(len(x.planets) for x in stars)
     # 3572
 
-so there should be more planetary eccentricity values than stellar temperature values, for instance. But some of those values are missing, so there aren't even the same number of values for two different planetary attributes.
+so there should be more planetary eccentricity values than stellar temperature values, for instance. But some of those values are missing (``None``), so there aren't even the same number of values for two different planetary attributes.
 
 .. code-block:: python
 
@@ -205,9 +205,9 @@ Missing values are not padded— these arrays contain exactly as much data as ne
 When would you want this?
 """""""""""""""""""""""""
 
-You might not always want columnar data. This access method benefits batch analyses and query-style analysis, where you typically want to know something about one or a few attributes from many or all objects. However, sometimes you want to know about all attributes of a single object, e.g. to "drill down" to a single interesting entity or to visualize a single interesting event. Drill downs and event displays are not high-throughput applications, so it usually doesn't hurt to store data as columns for fast analysis and slow single object examination.
+You might not always want columnar data. This access method benefits batch analyses and query-style analysis, where you typically want to know something about one or a few attributes from many or all objects. However, sometimes you want to know about all attributes of a single object, e.g. to "drill down" to a single interesting entity or to visualize a single interesting event. Drill downs and event displays are not high-throughput applications, so it usually doesn't hurt to store data as columns for fast analysis and slow single-object examination.
 
-On the other hand, remote procedure calls (RPC) and its extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— this case is much more efficient with rowwise data. You would *not* want to use OAMap for that.
+On the other hand, remote procedure calls (RPC) and their extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— it makes much more sense for whole objects to be contiguous (rowwise) in that case. You would *not* want to use OAMap for that.
 
 To illustrate the tradeoffs, I've converted the exoplanets dataset into a variety of formats:
 
