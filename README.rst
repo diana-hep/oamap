@@ -54,8 +54,10 @@ For this walkthrough, you'll be working with a real dataset, the `NASA Exoplanet
 
     baseurl = "http://diana-hep.org/oamap/examples/planets/"
 
-    # explicit utf-8 conversion required for Python 3
+    # download the schema from our website
     remotefile = urlopen(baseurl + "schema.json")
+
+    # explicit utf-8 conversion required for Python 3
     withcodec = codecs.getreader("utf-8")(remotefile)
 
     schema = Schema.fromjsonfile(withcodec)
