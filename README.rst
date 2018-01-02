@@ -418,7 +418,7 @@ are big-endian (``>``), complex-valued 2×2 matrices, and
     obj
     # [(1,  1.1, 'one'), (2,  2.2, 'two'), (3,  3.3, 'three'), (4,  4.4, 'four'), (5,  5.5, 'five')]
 
-are rowwise records containing an integer, a float, and a string of no more than 5 characters. These rowwise structures can be embedded within a columnar object (a ROOT feature; therefore OAMap must support it).
+are rowwise records containing an integer, a float, and a string of no more than 5 characters. These rowwise structures can be embedded within a larger columnar object (a ROOT feature; therefore OAMap must support it).
 
 Primitives are by themselves fairly expressive— they can do anything that Numpy can do. What primitives and Numpy cannot express are variable-width values, which is why the example above was limited to strings of 5 characters (shorter strings are padded for constant length).
 
@@ -427,7 +427,33 @@ In fact, if your data fits well into a primitive or simple list of primitives, t
 List
 ~~~~
 
+Lists are variable-length in the sense that the schema does not prescribe their length. A list type must always have a content type, which could be anything— primitive types, nested lists, records, etc. Lists are "homogeneous," meaning that all elements in the list must have the same, prescribed type, but that prescribed type could be a union of many options.
 
+For example,
+
+.. code-block:: python
+
+    schema = List(List("int"))   # shorthand string "int" for Primitive("int")
+
+    obj = schema({"object-L-L": [1, 2, 3, 4, 5], "object-L-c": [3, 0, 2], "object-c": [3]})
+    obj
+    # [[1, 2, 3], [], [4, 5]]
+
+is a list of lists and
+
+.. code-block:: python
+
+    schema = List(Tuple(["int", "float"]))
+
+    obj = schema({"object-L-F0": [1, 2, 3], "object-L-F1": [1.1, 2.2, 3.3], "object-c": [3]})
+    obj
+    # [(1, 1.1), (2, 2.2), (3, 3.3)]
+
+is a list of tuples. (Lists are homogeneous and arbitrary-length, tuples are heterogeneous and fixed-length.)
+
+List contents are stored in arrays that ignore list boundaries and the boundaries are reconstructed by "counts" arrays like ``"object-L-c": [3, 0, 2]``. Actually, there are three common representations of list structure:
+
+- counts arrays, which compress well (small integers) but don't permit random access (to find the *N :sub:`th`* element, you have to add up *N – 1* counts);
 
 
 
