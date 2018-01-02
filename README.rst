@@ -474,6 +474,41 @@ Some datasets are so large that even a single attribute cannot be fully read int
 Union
 ~~~~~
 
+Unions represent data that could be one of several types. In algebraic type theory, these are called "`sum types <https://en.wikipedia.org/wiki/Tagged_union>`_" because addition has the properties of a logical or: the type may be this, or that, or something else.
+
+A union is expressed by a list of possibilities:
+
+.. code-block:: python
+
+     schema = List(Union(["float", List("int")]))
+
+     obj = schema({"object-c": [3],                   # length of outer list
+                   "object-L-T": [0, 1, 0],           # tags: possibility 0 (float) or possibility 1 (list of int)?
+                   "object-L-U0": [1.1, 3.3],         # data for possibility 0
+                   "object-L-U1-c": [4],              # list lengths for possibility 1
+                   "object-L-U1-L": [1, 2, 3, 4]})    # list content for possibility 1
+     obj
+     # [1.1, [1, 2, 3, 4], 3.3]
+
+Unions can emulate a popular object-oriented concept: class inheritance. If we wanted to model an ontology of objects, like "electrons, muons, and taus are all leptons, leptons and quarks are all charged particles, charged particles and photons are all particles", we can create records for each of the concrete classes and combine them with a union.
+
+.. code-block:: python
+
+    schema = List(Union([
+        Record(name="NeutralParticle", fields={"energy": "float"}),
+        Record(name="ChargedParticle", fields={"energy": "float", "charge": "int"})
+        ]))
+    obj = schema({"object-c": [5],
+                  "object-L-T": [1, 1, 0, 1, 0, 0],
+                  "object-L-U0-Fenergy": [1.1, 2.2, 3.3],
+                  "object-L-U1-Fenergy": [1.1, 2.2, 3.3],
+                  "object-L-U1-Fcharge": [1, -1, -1]})
+    obj
+    # [<ChargedParticle at index 0>, <ChargedParticle at index 1>, <NeutralParticle at index 0>, <ChargedParticle at index 2>, <NeutralParticle at index 1>]
+
+
+
+
 Record
 ~~~~~~
 
@@ -486,7 +521,8 @@ Pointer
 Extension
 ~~~~~~~~~
 
-
+Nullable
+~~~~~~~~
 
 
 
