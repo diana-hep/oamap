@@ -112,6 +112,8 @@ class Masked(object):
             except KeyError:
                 raise err
             else:
+                if not isinstance(packmask, numpy.ndarray):
+                    packmask = numpy.array(packmask, dtype=numpy.dtype(numpy.uint8))
                 if packmask.dtype != numpy.dtype(numpy.uint8):
                     raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(self.packmask), packmask.dtype, numpy.dtype(numpy.uint8)))
                 if packmask.shape[1:] != ():
@@ -183,7 +185,7 @@ class ListGenerator(Generator):
             except KeyError:
                 raise err
             else:
-                if counts.dtype != self.posdtype:
+                if getattr(counts, "dtype", None) != self.posdtype:
                     counts = numpy.array(counts, dtype=self.posdtype)
                 if counts.shape[1:] != ():
                     raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.counts), counts.shape[1:]))
