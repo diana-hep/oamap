@@ -474,7 +474,7 @@ Some datasets are so large that even a single attribute cannot be fully read int
 Union
 ~~~~~
 
-Unions represent data that could be one of several types. In algebraic type theory, these are called "`sum types <https://en.wikipedia.org/wiki/Tagged_union>`_" because addition has the properties of a logical or: the type may be this, or that, or something else.
+Unions represent data that could be one of several types. In algebraic type theory, these are called "`sum types <https://en.wikipedia.org/wiki/Tagged_union>`_" because addition has the properties of logical-or: the type may be this, *or* that, *or* something else.
 
 A union is expressed by a list of possibilities:
 
@@ -505,10 +505,79 @@ Unions can emulate a popular object-oriented concept: class inheritance. If we w
                   "object-L-U1-Fcharge": [1, -1, -1]})
     obj
     # [<ChargedParticle at index 0>, <ChargedParticle at index 1>, <NeutralParticle at index 0>,
-    # <ChargedParticle at index 2>, <NeutralParticle at index 1>]
+    #  <ChargedParticle at index 2>, <NeutralParticle at index 1>]
 
 Record
 ~~~~~~
+
+Records represent data that contains several types. In algebraic type theory, these are called "`product types <https://en.wikipedia.org/wiki/Product_type>`_" because multiplication has the properties of logical-and: the type is this *and* that, *and* something else.
+
+A record is expressed by a dict of field names to field types (or a list of key-value pairs to maintain the order for readability).
+
+We've already seen several examples of record types, so here's one drawn from the exoplanet dataset:
+
+.. code-block:: python
+
+    remotefile = urlopen("http://diana-hep.org/oamap/examples/planets/schema.json")
+    remotefile = codecs.getreader("utf-8")(remotefile)
+    schema = Schema.fromjsonfile(remotefile)
+
+    schema.content.fields["gaia"].show()
+
+    # Record(
+    #   nullable = True, name = 'GAIAMeasurements', 
+    #   fields = {
+    #     'distance': Record(
+    #       nullable = True, name = 'ValueAsymErr', 
+    #       fields = {
+    #         'lim': Primitive(dtype('bool'), nullable=True),
+    #         'loerr': Primitive(dtype('float32'), nullable=True),
+    #         'val': Primitive(dtype('float32'), nullable=True),
+    #         'hierr': Primitive(dtype('float32'), nullable=True)
+    #       }),
+    #     'propermotion': Record(
+    #       nullable = True, name = 'GAIAProperMotion', 
+    #       fields = {
+    #         'total': Record(
+    #           name = 'ValueErr', 
+    #           fields = {
+    #             'lim': Primitive(dtype('bool'), nullable=True),
+    #             'err': Primitive(dtype('float32'), nullable=True),
+    #             'val': Primitive(dtype('float32'), nullable=True)
+    #           }),
+    #         'dec': Record(
+    #           name = 'ValueErr', 
+    #           fields = {
+    #             'lim': Primitive(dtype('bool'), nullable=True),
+    #             'err': Primitive(dtype('float32'), nullable=True),
+    #             'val': Primitive(dtype('float32'), nullable=True)
+    #           }),
+    #         'ra': Record(
+    #           name = 'ValueErr', 
+    #           fields = {
+    #             'lim': Primitive(dtype('bool'), nullable=True),
+    #             'err': Primitive(dtype('float32'), nullable=True),
+    #             'val': Primitive(dtype('float32'), nullable=True)
+    #           })
+    #       }),
+    #     'parallax': Record(
+    #       nullable = True, name = 'ValueAsymErr', 
+    #       fields = {
+    #         'lim': Primitive(dtype('bool'), nullable=True),
+    #         'loerr': Primitive(dtype('float32'), nullable=True),
+    #         'val': Primitive(dtype('float32'), nullable=True),
+    #         'hierr': Primitive(dtype('float32'), nullable=True)
+    #       }),
+    #     'gband': Record(
+    #       name = 'ValueErr', 
+    #       fields = {
+    #         'lim': Primitive(dtype('bool'), nullable=True),
+    #         'err': Primitive(dtype('float32'), nullable=True),
+    #         'val': Primitive(dtype('float32'), nullable=True)
+    #       })
+    #   })
+
+Records don't need to have names. If a record doesn't have a name, its type is defined solely by its field names and types; if it does have a name, its type also depends on the name. Thus, two records containing ``{"x": "float", "y": "float", "z": "float"}`` can be the same type if anonymous but different types if named "Position" and "Direction", for instance. (`Structural typing <https://en.wikipedia.org/wiki/Structural_type_system>`_ by default and `nominal typing <https://en.wikipedia.org/wiki/Nominal_type_system>`_ if desired.)
 
 Tuple
 ~~~~~
