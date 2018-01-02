@@ -73,7 +73,7 @@ Perhaps the most important point about the structure of this schema is that each
 
 The data *cannot* be described by a single flat table without padding or duplication. If we were designing a conventional database for this dataset, we would make two tables: one for stars and one for planets, with links between the tables (`normal form <https://en.wikipedia.org/wiki/Database_normalization>`_). That's okay for a single variable-length sublist, but some datasets, such as those in particle physics, have events containing arbitrary numbers of electrons, muons, taus, photons, and many different kinds of jets— the database normalization technique `gets cumbersome <https://stackoverflow.com/q/38831961/1623645>`_ and loses sight of the fact that quantities nested under the same parent should be stored on the same machine because they are frequently processed together.
 
-Enough talk: let's get the data. The schema can be treated like a Python type: you get an instance of that type by calling it with arguments. The required argument is a dict-like object of columnar arrays. The exoplanet dataset is hosted on the same website, use this ``DataSource`` class to make the website act like a dict.
+Enough talk: let's get the data. The schema can be treated like a Python type: you get an instance of that type by calling it with arguments. The required argument is a dict-like object of columnar arrays. We're hosting the exoplanet dataset on the same website, so use this ``DataSource`` class to make the website act like a dict of Numpy arrays.
 
 .. code-block:: python
 
