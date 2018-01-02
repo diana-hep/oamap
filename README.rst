@@ -418,13 +418,20 @@ are big-endian (``>``), complex-valued 2×2 matrices, and
     obj
     # [(1,  1.1, 'one'), (2,  2.2, 'two'), (3,  3.3, 'three'), (4,  4.4, 'four'), (5,  5.5, 'five')]
 
+are rowwise records containing an integer, a float, and a string of no more than 5 characters. These rowwise structures can be embedded within a columnar object (a ROOT feature; therefore OAMap must support it).
 
+Primitives are by themselves fairly expressive— they can do anything that Numpy can do. What primitives and Numpy cannot express are variable-width values, which is why the example above was limited to strings of 5 characters (shorter strings are padded for constant length).
 
-
-
+In fact, if your data fits well into a primitive or simple list of primitives, then you have tabular data and you don't need OAMap. Use Numpy, Pandas, or SQL instead.
 
 List
 ~~~~
+
+
+
+
+
+
 
 Union
 ~~~~~
