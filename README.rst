@@ -73,7 +73,7 @@ Perhaps the most important point about the structure of this schema is that each
 
 The data *cannot* be described by a single flat table without padding or duplication. If we were designing a conventional database for this dataset, we would make two tables: one for stars and one for planets, with links between the tables (`normal form <https://en.wikipedia.org/wiki/Database_normalization>`_). That's okay for a single variable-length sublist, but some datasets, such as those in particle physics, have events containing arbitrary numbers of electrons, muons, taus, photons, and many different kinds of jets— the database normalization technique `gets cumbersome <https://stackoverflow.com/q/38831961/1623645>`_ and loses sight of the fact that quantities nested under the same parent should be stored on the same machine because they are frequently processed together.
 
-Enough talk: let's get the data. The schema can be treated like a Python type: you get an instance of that type by calling it with arguments. The required argument is a dict-like object of columnar arrays. We're hosting the exoplanet dataset on the same website, so use this ``DataSource`` class to make the website act like a dict of Numpy arrays.
+Enough talk: let's get the data. The schema can be treated like a Python type: you get an instance of that type by calling it with arguments. The required argument is a dict-like object of columnar arrays. I'm hosting the exoplanet dataset on the same website, so use this ``DataSource`` class to make the website act like a dict of Numpy arrays.
 
 .. code-block:: python
 
@@ -229,7 +229,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 - **JSON** captures the structure of the data better, but with considerable bloat. Most of this compresses away because it consists of record field names, restated for every data point in the sample.
 - The fact that JSON is human-readable text, rather than binary, is often blamed for this bloat, but it usually has more to do with this repetition of data points. **BSON** is a binary version of JSON, but it's not much smaller.
 - **Avro** is one of several JSON-like binary formats with a schema (see also Thrift, ProtocolBuffers and FlatBuffers). The schema names all of the fields as metadata so they do not need to be restated in the dataset itself, which trades the flexibility of adding new fields whenever you want with a smaller, faster format. These rowwise formats were designed for RPC and streaming data pipelines.
-- The **ROOT** framework serializes arbitrary C++ objects in a binary, columnar format with a schema (the C++ types). While C++ can have nullable records (class objects addressed with pointers), there are no nullable numbers. The exoplanets dataset has a lot of missing data, so we filled them in with ``NaN`` for floats and ``-2147483648`` for integers, which takes more space than skipping missing values entirely.
+- The **ROOT** framework serializes arbitrary C++ objects in a binary, columnar format with a schema (the C++ types). While C++ can have nullable records (class objects addressed with pointers), there are no nullable numbers. The exoplanets dataset has a lot of missing data, so I filled them in with ``NaN`` for floats and ``-2147483648`` for integers, which takes more space than skipping missing values entirely.
 - **Parquet** is the Big Data community's nested, binary, schemaed, columnar data format that skips missing values. It has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack structural information about missing data and nesting levels into the fewest bytes before compression, and therefore wins in the uncompressed category.
 - **OAMap** uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow) which is larger than Parquet when uncompressed, but smaller when compressed. Parquet's nesting mechanism packs nesting structure into a minimum of bits, but those bits have to be repeated for all fields at the same level of a record, and the exoplanets (like particle physics data) have hundreds of fields per record. This duplication can't be compressed away (fields are compressed independently of one another), which could explain why OAMap compresses smaller for exoplanets.
 
@@ -246,13 +246,13 @@ To make this point further, let's use a real file:
 
     wget http://diana-hep.org/oamap/examples/HZZ.root
 
-It's in ROOT format, so we'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_ (version 2.5.14 or later):
+It's in ROOT format, so you'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_ (version 2.5.14 or later):
 
 .. code-block:: bash
 
     pip install uproot --user
 
-Now we define a new schema, mapping parts of the conceptual object to the ROOT file's "branches." 
+Now define a new schema, mapping parts of the conceptual object to the ROOT file's "branches." 
 
 .. code-block:: python
 
@@ -318,7 +318,7 @@ Next, load the ROOT "tree" and adapt it to look like a dict,
             else:
                 return self.ttree.array(name)
 
-and now we can get objects from the ROOT file, just as we could from the web.
+and now you can get objects from the ROOT file, just as you could from the web.
 
 .. code-block:: python
 
