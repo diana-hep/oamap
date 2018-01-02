@@ -480,15 +480,15 @@ A union is expressed by a list of possibilities:
 
 .. code-block:: python
 
-     schema = List(Union(["float", List("int")]))
+    schema = List(Union(["float", List("int")]))
 
-     obj = schema({"object-c": [3],                   # length of outer list
-                   "object-L-T": [0, 1, 0],           # tags: possibility 0 (float) or 1 (list of int)?
-                   "object-L-U0": [1.1, 3.3],         # data for possibility 0
-                   "object-L-U1-c": [4],              # list lengths for possibility 1
-                   "object-L-U1-L": [1, 2, 3, 4]})    # list content for possibility 1
-     obj
-     # [1.1, [1, 2, 3, 4], 3.3]
+    obj = schema({"object-c": [3],                   # length of outer list
+                  "object-L-T": [0, 1, 0],           # tags: possibility 0 (float) or 1 (list of int)?
+                  "object-L-U0": [1.1, 3.3],         # data for possibility 0
+                  "object-L-U1-c": [4],              # list lengths for possibility 1
+                  "object-L-U1-L": [1, 2, 3, 4]})    # list content for possibility 1
+    obj
+    # [1.1, [1, 2, 3, 4], 3.3]
 
 Unions can emulate a popular object-oriented concept: class inheritance. If we wanted to model an ontology of objects, like "electrons, muons, and taus are all leptons, leptons and quarks are all charged particles, charged particles and photons are all particles", we can create records for each of the concrete classes and combine them with a union.
 
@@ -523,7 +523,6 @@ We've already seen several examples of record types, so here's one drawn from th
     schema = Schema.fromjsonfile(remotefile)
 
     schema.content.fields["gaia"].show()
-
     # Record(
     #   nullable = True, name = 'GAIAMeasurements', 
     #   fields = {
@@ -577,10 +576,35 @@ We've already seen several examples of record types, so here's one drawn from th
     #       })
     #   })
 
-Records don't need to have names. If a record doesn't have a name, its type is defined solely by its field names and types; if it does have a name, its type also depends on the name. Thus, two records containing ``{"x": "float", "y": "float", "z": "float"}`` can be the same type if anonymous but different types if named "Position" and "Direction", for instance. (`Structural typing <https://en.wikipedia.org/wiki/Structural_type_system>`_ by default and `nominal typing <https://en.wikipedia.org/wiki/Nominal_type_system>`_ if desired.)
+Records don't need to have names. If a record doesn't have a name, its type is defined solely by its field names and types; if it does have a name, its type also depends on the name. Thus, two records containing ``{"x": "float", "y": "float", "z": "float"}`` can be the same type if anonymous but different types if named "Position" and "Direction", for instance. (This is `structural typing <https://en.wikipedia.org/wiki/Structural_type_system>`_ by default and `nominal typing <https://en.wikipedia.org/wiki/Nominal_type_system>`_ if desired.)
 
 Tuple
 ~~~~~
+
+Tuples represent data that contains several types, but unlike records, the content fields are not named, they're numbered. These are also "`product types <https://en.wikipedia.org/wiki/Product_type>`_" for the same reason.
+
+Tuples are fundamentally different from lists:
+
+- list data can have any length, but the tuple length is fixed by the type schema;
+- all elements of a list must have the same type (though that could be a union type), but each element of a tuple may have a different type (specified by the type schema).
+
+Tuples and lists are more distinct from each other in a static typesystem than they are in a dynamic language like Python.
+
+Here's an example of a tuple:
+
+.. code-block:: python
+
+    schema = List(Tuple(["int", "float", List("int")]))
+
+    obj = schema({"object-c": [3],                   # length of outer list
+                  "object-L-F0": [1, 2, 3],          # tuple field 0 contents
+                  "object-L-F1": [1.1, 2.2, 3.3],    # tuple field 1 contents
+                  "object-L-F2-c": [3, 0, 2],        # tuple field 2 list lengths
+                  "object-L-F2-L": [1, 2, 3, 4, 5]}) # tuple field 2 list contents
+    obj
+    # [(1, 1.1, [1, 2, 3]), (2, 2.2, []), (3, 3.3, [4, 5])]
+
+There's barely any difference between a record and a tuple, but sometimes you want to name your fields, sometimes you want to infer them from order.
 
 Pointer
 ~~~~~~~
