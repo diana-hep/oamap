@@ -27,7 +27,7 @@ Installation
 
 Start by installing OAMap:
 
-.. code-block:: sh
+.. code-block:: bash
 
     pip install oamap --user
 
@@ -242,7 +242,7 @@ Having just extolled OAMap's virtues as a data format, I must emphasize that OAM
 
 To make this point further, let's use a real file:
 
-.. code-block:: sh
+.. code-block:: bash
 
     wget http://diana-hep.org/oamap/examples/HZZ.root
 
@@ -313,6 +313,7 @@ We need to load the ROOT "tree" and adapt it to look like a dict,
             self.ttree = uproot.open("HZZ.root")["events"]
         def __getitem__(self, name):
             if name == "nEvents":
+                # ROOT TTrees don't have a number of entries branch; make it on the fly.
                 return numpy.array([self.ttree.numentries])
             else:
                 return self.ttree.array(name)
