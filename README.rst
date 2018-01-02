@@ -349,7 +349,7 @@ and now you can get objects from the ROOT file, just as you could from the web.
     # 92.1167215271
     # ...
 
-In the file format comparision, I made an "OAMap file" by putting the OAMap arrays into a `Numpy npz file <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_, which is a dead-simple format for a collection of arrays. However, I could have put them into a ROOT file, which would have given the ROOT file the missing data packing feature that it lacked.
+For the file format comparision table, I made an "OAMap file" by putting the OAMap arrays into a `Numpy npz file <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_, which is a dead-simple format for a collection of arrays. However, I could have put them into a ROOT file, which would have given the ROOT file the missing data packing feature.
 
 Schemas
 """""""
