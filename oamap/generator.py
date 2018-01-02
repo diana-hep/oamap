@@ -72,7 +72,7 @@ class Generator(object):
                 array = self._fallback(arrays, cache, name, err)
             cache.arraylist[cacheidx] = array
             if dtype is not None and getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
-                raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].dtype, dtype))
+                array = numpy.array(array, dtype=dtype)
             if dims is not None and getattr(cache.arraylist[cacheidx], "shape", (0,) + dims)[1:] != dims:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
         return cache.arraylist[cacheidx]
@@ -184,7 +184,7 @@ class ListGenerator(Generator):
                 raise err
             else:
                 if counts.dtype != self.posdtype:
-                    raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(self.counts), counts.dtype, self.posdtype))
+                    counts = numpy.array(counts, dtype=self.posdtype)
                 if counts.shape[1:] != ():
                     raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.counts), counts.shape[1:]))
                 offsets = numpy.empty(len(counts) + 1, dtype=self.posdtype)

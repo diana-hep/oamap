@@ -207,9 +207,9 @@ When would you want this?
 
 Note that you may not always want columnar data. This access method benefits batch analyses and query-style analysis, where you typically want to know something about one or a few attributes from many or all objects. However, sometimes you want to know about all attributes of a single object, e.g. to "drill down" to a single interesting entity or to visualize a single interesting event. Drill downs and event displays are not high-throughput applications, so it usually doesn't hurt to store data as columns for fast analysis and slow single object examination.
 
-On the other hand, remote procedure calls (RPC) and its extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— this case is much more efficient with rowwise data.
+On the other hand, remote procedure calls (RPC) and its extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— this case is much more efficient with rowwise data. You would *not* want to use OAMap for this case.
 
-To illustrate the tradeoffs, I've converted the exoplanets dataset into a variety of formats, each with one more feature than the last. (\*Some formats have built-in compression, others don't; in all cases I compressed with gzip level 4.)
+To illustrate the tradeoffs, I've converted the exoplanets dataset into a variety of formats:
 
 ======================== ======= ======= ======= ========= ========= ============ ============
 Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed*
@@ -223,53 +223,131 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
-- **CSV** was NASA's original file format, but it cannot fit in a rectangular table without 
+(\*Some formats have built-in compression, others don't; in all cases I compressed with gzip level 4.)
 
+- **CSV** was NASA's original file format, but it cannot fit in a rectangular table without padding or duplication— NASA chose duplication. Most stars have only one planet, so it's not *much* duplication.
+- **JSON** captures the structure of the data better, but with considerable bloat. Most of this compresses away because it consists of record field names, restated for every data point in the sample.
+- The fact that JSON is human-readable text, rather than binary, is often blamed for this bloat, but it usually has more to do with this repetition of data points. **BSON** is a binary version of JSON, but it's not much smaller.
+- **Avro** is one of several JSON-like binary formats with a schema (see also Thrift, ProtocolBuffers and FlatBuffers). The schema names all of the fields as metadata so they do not need to be restated in the dataset itself, which trades the flexibility of adding new fields whenever you want with a smaller, faster format. These rowwise formats were designed for RPC and streaming data pipelines.
+- The **ROOT** framework serializes arbitrary C++ objects in a binary, columnar format with a schema (the C++ types). While C++ can have nullable records (class objects addressed with pointers), there are no nullable numbers. The exoplanets dataset has a lot of missing data, so we filled them in with ``NaN`` for floats and ``-2147483648`` for integers, which takes more space than skipping missing values entirely.
+- **Parquet** is the Big Data community's nested, binary, schemaed, columnar data format that skips missing values. It has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack structural information about missing data and nesting levels into the fewest bytes before compression, and therefore wins in the uncompressed category.
+- **OAMap** uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow) which is larger when uncompressed, but smaller when compressed. Parquet's nesting mechanism packs nesting structure into a minimum of bits, but those bits have to be repeated for all fields at the same level of a record, and the exoplanets (like particle physics data) have hundreds of fields per record. This duplication can't be compressed away (fields are separately compressed), which could explain why OAMap compresses smaller for exoplanets.
 
-
-
-
-
+The situation might look different if we had purely numerical data, or text-heavy data, or a dataset without missing values, or one without hundreds of attributes per record. The exoplanets has a little of all of these anti-features— it's the worst of all worlds, and is therefore a great example.
 
 OAMap is not a file format
 """"""""""""""""""""""""""
 
-The reason I used a website as a data source (other than saving you the trouble of downloading a big file) is to emphasize the fact that this is not a new file format— it is a way of interpreting a set of named, flat arrays as though they were hierarchically nested objects. In this case, the source of named, flat arrays is HTTP (``urlopen``) with Numpy headers (``numpy.load``), but it could as easily be a local directory of files, a blobstore database, or a single HDF5 file. OAMap only requires a dict-like source of arrays: it's an abstraction layer above files.
+Having just extolled OAMap's virtues as a data format, I must emphasize that OAMap is not a data format. It is an abstraction layer just above file formats and sources (and just below a user-facing analysis framework). The "mapping" described here is between a set of real arrays an a conceptual view of objects, and it doesn't matter how the real arrays are served. The reason I used a website as a data source— probably not a good choice for a high-throughput application— is to emphasize that point: this dataset isn't even a file. The binary data are served by HTTP (``urlopen``) and interpreted as arrays by Numpy (``numpy.load``), but it could as easily have been a local directory of files, a key-value database, or a single HDF5 file.
 
-The "mapping" described here is between a conceptual view of objects and the real arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— and the transformation rules used by the OAMap package are a generalization of these three, so that any of them can be used as sources.
+To make this point further, let's use a real file:
 
-But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that you downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory, and
+.. code-block:: bash
+
+    wget http://diana-hep.org/oamap/examples/HZZ.root
+
+Since this is a ROOT file, we'll need something to read it. Try `uproot <https://github.com/scikit-hep/uproot>`_:
+
+.. code-block:: bash
+
+    pip install uproot --user
+
+Now we define a new schema, mapping parts of the conceptual object to the ROOT file's "branches." 
 
 .. code-block:: python
 
-    import oamap.inference
-    schema = oamap.inference.fromnames(directory_listing)
+    from oamap.schema import *
 
-would be sufficient to reconstruct the schema and therefore the data. The `Numpy npz file format <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_ is a dead-simple way to save (and optionally compress) a collection of named arrays, and it happens to be the leanest way to store the exoplanets dataset:
+    schema2 = List(
+        counts = "nEvents",
+        content = Record(
+          name = "Event",
+          fields = dict(
+            met = Record(
+              name = "MissingEnergy",
+              fields = dict(
+                x = Primitive(None, data="MET_px"),
+                y = Primitive(None, data="MET_py"),
+              )
+            ),
+            electrons = List(
+              counts = "NElectron",
+              content = Record(
+                name = "Electron",
+                fields = dict(
+                  px = Primitive(None, data="Electron_Px"),
+                  py = Primitive(None, data="Electron_Py"),
+                  pz = Primitive(None, data="Electron_Pz"),
+                  energy = Primitive(None, data="Electron_E"),
+                  charge = Primitive(None, data="Electron_Charge"),
+                  iso = Primitive(None, data="Electron_Iso")
+                )
+              )
+            ),
+            muons = List(
+              counts = "NMuon",
+              content = Record(
+                name = "Muon",
+                fields = dict(
+                  px = Primitive(None, data="Muon_Px"),
+                  py = Primitive(None, data="Muon_Py"),
+                  pz = Primitive(None, data="Muon_Pz"),
+                  energy = Primitive(None, data="Muon_E"),
+                  charge = Primitive(None, data="Muon_Charge"),
+                  iso = Primitive(None, data="Muon_Iso")
+                )
+              )
+            )
+          )
+        )
+      )
 
-======================== ======= ======= ======= ========= ========= ============ ============
-Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed*
-======================== ======= ======= ======= ========= ========= ============ ============
-**CSV**                                                                4.9 MB      0.96 MB
-**JSON**                 yes                                          14  MB       1.2  MB
-**BSON**                 yes     yes                                  11  MB       1.5  MB
-**Avro**                 yes     yes     yes                           3.0 MB      0.95 MB
-**ROOT**                 yes     yes     yes     yes                   5.7 MB      1.6  MB
-**Parquet**              yes     yes     yes     yes       yes         1.1 MB      0.84 MB
-**OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
-======================== ======= ======= ======= ========= ========= ============ ============
+We need to load the ROOT "tree" and adapt it to look like a dict,
 
-**(*gzip level 4)**
+.. code-block:: python
 
-- NASA's original data were provided as a **CSV** file, but CSV is a rectangular table that cannot represent the fact that one star can have multiple planets without padding or duplication— NASA chose duplication. This format happens to be relatively small because of all the missing data: missing data only costs one byte in CSV (a comma).
-- **JSON** captures the structure of the variable number of planets per star, as well as wrapping up values with their errors in convenient records, but with considerable bloat.
-- The fact that JSON is text, rather than binary, is often blamed for its size, but more often it's because JSON lacks a schema. The names of all the fields are repeated for each object. **BSON** is a binary JSON format, but it's not much smaller than JSON.
-- **Avro** is binary JSON with a schema, and a good choice when rowwise data is preferred over columnar (e.g. streaming data or RPC). But because it is not columnar, accessing just one attribute requires all attributes to be read, so it can be a poor choice for batch data analysis.
-- The **ROOT** framework defines a serialization format for arbitrary C++ objects that is binary and columnar with a schema. It was developed for particle physics data, which requires these features but not often missing data. The exoplanets dataset is relatively large in ROOT format because missing values are represented by a fill value like ``-999``; they cannot be skipped.
-- **Parquet** is a binary, columnar format with a schema, and it has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack missing data and nested data in the fewest bytes before compression. It is therefore the winner in the "uncompressed" category.
-- However, the repetition level mechanism requires structure bits for each field, even if there are many fields at the same level of structure, as is the case for our 122 planetary attributes. This repeated data can't be compressed away (it's in different columns). **OAMap** uses a simpler mechanism from ROOT and Apache Arrow that shares one "number of planets" array among all planetary attributes. It's the winner of the "compressed" category.
+    import uproot
 
-The story would look different if we had used a string dominated or purely numerical dataset, or if we had used one without missing values, or one with fewer attributes per same-level structure. The exoplanets dataset has a little of all of these anti-features; it's the worst of all worlds, and therefore makes a good example.
+    class DataSource2:
+        def __init__(self):
+            self.ttree = uproot.open("HZZ.root")["events"]
+        def __getitem__(self, name):
+            if name == "nEvents":
+                return numpy.array([self.ttree.numentries])
+            else:
+                return self.ttree.array(name)
+
+and now we can get objects from the ROOT file, just as we could from the web.
+
+.. code-block:: python
+
+    events = schema2(DataSource2())
+
+    events[0].met.x, events[0].met.y
+    # (5.9127712, 2.5636332)
+
+    events[0].muons[0].px, events[0].muons[0].py, events[0].muons[0].pz
+    # (-52.899456, -11.654672, -8.1607933)
+
+    from math import sqrt
+    for event in events:
+        if len(event.muons) == 2:
+            mu1, mu2 = event.muons[0], event.muons[1]
+            if mu1.charge * mu2.charge < 0:
+                px = mu1.px + mu2.px
+                py = mu1.py + mu2.py
+                pz = mu1.pz + mu2.pz
+                energy = mu1.energy + mu2.energy
+                print(sqrt(energy**2 - px**2 - py**2 - pz**2))
+
+    # 90.2278015749
+    # 74.7465483668
+    # 89.7578672676
+    # 94.855212688
+    # 92.1167215271
+    # ...
+
+In the file format comparision, I made an "OAMap file" by putting the OAMap arrays into a `Numpy npz file <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_, which is a dead-simple format for a collection of arrays. However, I could have put them into a ROOT file, which would have given the ROOT file the missing data packing feature that it lacked.
 
 Schemas
 """""""
