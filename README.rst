@@ -81,7 +81,7 @@ Enough talk: let's get the data. The schema can be treated like a Python type: y
     import numpy
 
     class DataSource:
-        def __getitem__(self, name):
+        def __getitem__(self, name):        # overloads datasource["name"] to fetch from web
             try:
                 return numpy.load(io.BytesIO(urlopen(baseurl + name + ".npy").read()))
             except Exception as err:
