@@ -202,19 +202,45 @@ so there should be more planetary eccentricity values than stellar temperature v
 
 Missing values are not padded— these arrays contain exactly as much data as necessary to reconstruct the objects.
 
-Columnar vs rowwise
-"""""""""""""""""""
+When would you want this?
+"""""""""""""""""""""""""
 
-This column-at-a-time way of organizing data is very good if you will be accessing one or a few attributes from all or many objects. For instance, to answer questions like "how many stars and planets are in the dataset?" (above), you only need to access the list size attributes, not any of the eccentricity or semimajor axis values, but you have to do it for all stars in the dataset. This access pattern is common in batch data analysis, when querying a static dataset.
+Note that you may not always want columnar data. This access method benefits batch analyses and query-style analysis, where you typically want to know something about one or a few attributes from many or all objects. However, sometimes you want to know about all attributes of a single object, e.g. to "drill down" to a single interesting entity or to visualize a single interesting event. Drill downs and event displays are not high-throughput applications, so it usually doesn't hurt to store data as columns for fast analysis and slow single object examination.
 
-Sometimes, however, you want the opposite: all attributes of a single object, to "drill down" into a single interesting entity or to visualize a single interesting event. Or perhaps you have a streaming data pipeline or Remote Procedure Call (RPC), in which whole objects are moving from one processor to the next. In these cases, you'd want all attributes of an object to be contiguous— rowwise data— rather than all values of an attribute to be contiguous— columnar data. For these cases, you do not want to use OAMap. (Use Protocol Buffers, Thrift, or Avro.)
+On the other hand, remote procedure calls (RPC) and its extreme, streaming data pipelines, in which objects are always in flight between processors, would be hindered by a columnar data representation. These systems need to shoot a whole object from one processor to the next and then forget it— this case is much more efficient with rowwise data.
+
+To illustrate the tradeoffs, I've converted the exoplanets dataset into a variety of formats, each with one more feature than the last:
+
+======================== ======= ======= ======= ========= ========= ============ ============
+Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompressed Compressed*
+======================== ======= ======= ======= ========= ========= ============ ============
+**CSV**                                                                4.9 MB      0.96 MB
+**JSON**                 yes                                          14  MB       1.2  MB
+**BSON**                 yes     yes                                  11  MB       1.5  MB
+**Avro**                 yes     yes     yes                           3.0 MB      0.95 MB
+**ROOT**                 yes     yes     yes     yes                   5.7 MB      1.6  MB
+**Parquet**              yes     yes     yes     yes       yes         1.1 MB      0.84 MB
+**OAMap in Numpy (npz)** yes     yes     yes     yes       yes         2.7 MB      0.68 MB
+======================== ======= ======= ======= ========= ========= ============ ============
+
+.. class:: center
+
+**(*gzip level 4)**
+
+- **CSV** was NASA's original file format, but it cannot fit in a rectangular table without 
+
+
+
+
+
+
 
 OAMap is not a file format
 """"""""""""""""""""""""""
 
-The reason I used a website as a data source (other than saving you the trouble of downloading a big file) is to emphasize the fact that this is not a new file format— it is a way of working with nested data using tools that can already manage flat, named arrays. In this case, the source of flat, named arrays is HTTP (``urlopen``) with Numpy headers (``numpy.load``), but it could as easily be an HDF5 file. The OAMap functions only require a dict-like source of arrays.
+The reason I used a website as a data source (other than saving you the trouble of downloading a big file) is to emphasize the fact that this is not a new file format— it is a way of interpreting a set of named, flat arrays as though they were hierarchically nested objects. In this case, the source of named, flat arrays is HTTP (``urlopen``) with Numpy headers (``numpy.load``), but it could as easily be a local directory of files, a blobstore database, or a single HDF5 file. OAMap only requires a dict-like source of arrays: it's an abstraction layer above files.
 
-The "mapping" described here is between a conceptual view of objects and the real arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— the transformation rules used by the OAMap package are a generalization of these three, so that they can all be used as sources.
+The "mapping" described here is between a conceptual view of objects and the real arrays, however they are served. There are already file formats that represent hierarchically nested objects in arrays— ROOT, Parquet, and Apache Arrow— and the transformation rules used by the OAMap package are a generalization of these three, so that any of them can be used as sources.
 
 But granted that OAMap is not a file format, it's a particularly efficient one. It requires very little "support structure" to operate. Even the ``schema.json`` that you downloaded to determine the structure of the exoplanets dataset was superfluous— the schema is losslessly encoded in the default array names. (That's why the names are long and contain hyphenated code-letters.) The arrays could literally be binary blobs in a filesystem directory, and
 
