@@ -101,7 +101,7 @@ To poke around the data, use ``dir(stars[0])``, ``stars[0]._fields`` or tab-comp
     stars[0].planets
     # [<Planet at index 0>]
 
-    stars[258].planets
+    stars[258].planets   # five planets!
     # [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>,
     # <Planet at index 328>]
 
