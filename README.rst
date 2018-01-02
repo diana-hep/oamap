@@ -483,7 +483,7 @@ A union is expressed by a list of possibilities:
      schema = List(Union(["float", List("int")]))
 
      obj = schema({"object-c": [3],                   # length of outer list
-                   "object-L-T": [0, 1, 0],           # tags: possibility 0 (float) or possibility 1 (list of int)?
+                   "object-L-T": [0, 1, 0],           # tags: possibility 0 (float) or 1 (list of int)?
                    "object-L-U0": [1.1, 3.3],         # data for possibility 0
                    "object-L-U1-c": [4],              # list lengths for possibility 1
                    "object-L-U1-L": [1, 2, 3, 4]})    # list content for possibility 1
@@ -504,10 +504,8 @@ Unions can emulate a popular object-oriented concept: class inheritance. If we w
                   "object-L-U1-Fenergy": [1.1, 2.2, 3.3],
                   "object-L-U1-Fcharge": [1, -1, -1]})
     obj
-    # [<ChargedParticle at index 0>, <ChargedParticle at index 1>, <NeutralParticle at index 0>, <ChargedParticle at index 2>, <NeutralParticle at index 1>]
-
-
-
+    # [<ChargedParticle at index 0>, <ChargedParticle at index 1>, <NeutralParticle at index 0>,
+    # <ChargedParticle at index 2>, <NeutralParticle at index 1>]
 
 Record
 ~~~~~~
