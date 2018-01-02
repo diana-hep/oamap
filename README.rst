@@ -58,9 +58,9 @@ For this walkthrough, you'll be working with a real dataset, the `NASA Exoplanet
     remotefile = urlopen(baseurl + "schema.json")
 
     # explicit utf-8 conversion required for Python 3
-    withcodec = codecs.getreader("utf-8")(remotefile)
+    remotefile = codecs.getreader("utf-8")(remotefile)
 
-    schema = Schema.fromjsonfile(withcodec)
+    schema = Schema.fromjsonfile(remotefile)
 
 If you're brave, try ``schema.show()`` to see its hundreds of attributes. It represents a list of stars that are known to have planets; each star has attributes like distance, position on the sky, mass, and temperature, and each of those attributes has a central value, asymmetric uncertainties, and limit flags, packaged in record structures. Each star also has a list of planets, with its own attributes, such as orbital period, mass, discovery method, etc. Some of these, like discovery method, are strings, some are numbers, and most are "nullable," meaning that they could be missing (unmeasured or otherwise unavailable).
 
