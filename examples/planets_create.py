@@ -1229,8 +1229,8 @@ os.system("cp -a planets planets_gz")
 for n in packedarrays:
     os.system("gzip planets_gz/{}.npy".format(n))
 
-numpy.savez("planets_uncompressed.npz", packedarrays)
-numpy.savez_compressed("planets.npz", packedarrays)
+numpy.savez("planets_uncompressed.npz", **packedarrays)
+numpy.savez_compressed("planets.npz", **packedarrays)
 
 ############################################################################################################
 
