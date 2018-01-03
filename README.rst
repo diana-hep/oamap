@@ -695,16 +695,83 @@ Here's an example of the first case (pointing at another object within the same 
     #   })
     # It's the same thing!
 
-    obj = schema({"object-Fpoints-c": [4],                           # number of points
-                  "object-Fpoints-L-F0": [0, 0, 1, 1],               # point x values
-                  "object-Fpoints-L-F1": [0, 1, 1, 0],               # point y values
-                  "object-Fline-c": [3],                             # number of steps in line
-                  "object-Fline-L-P-object-Fpoints-L": [0, 2, 1]})   # which points the line connects
-
+    obj = schema({"object-Fpoints-c": [4],                         # number of points
+                  "object-Fpoints-L-F0": [0, 0, 1, 1],             # point x values
+                  "object-Fpoints-L-F1": [0, 1, 1, 0],             # point y values
+                  "object-Fline-c": [3],                           # number of steps in line
+                  "object-Fline-L-P-object-Fpoints-L": [0, 2, 1]   # which points the line connects
+                 })
     obj.points
     # [(0, 0), (0, 1), (1, 1), (1, 0)]
     obj.line
     # [(0, 0), (1, 1), (0, 1)]
+
+Connecting the dots is a generic-sounding application, but this feature is needed in particle physics to link measured tracks and showers to reconstructed particles without duplication. (Remember that these objects have hundreds of fields.)
+
+Here's an example of the second case (pointing at a pointer's parent object, creating a loop):
+
+.. code-block:: python
+
+    schema = Record(
+        name = "Tree",
+        fields = dict(
+            label = "float",
+            children = List(Pointer(None))
+        ))
+
+    schema.fields["children"].content.target = schema
+
+    schema.show()
+    # #0: Record(
+    #   name = 'Tree', 
+    #   fields = {
+    #     'children': List(
+    #       content = Pointer(
+    #         target = #0
+    #       )
+    #     ),
+    #     'label': Primitive(dtype('int64'))
+    #   })
+
+    # Suppose we want to build this structure:
+    # 
+    # 1.1
+    #  │
+    #  ├── 2.2
+    #  │    │
+    #  │    ├── 4.4
+    #  │    │    └── 7.7
+    #  │    │
+    #  │    └── 5.5
+    #  │         └── 8.8
+    #  │
+    #  └── 3.3
+    #       └── 6.6
+
+    obj = schema({
+        "object-NTree-Flabel": [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8],
+        "object-NTree-Fchildren-c": [2, 2, 1, 1, 1, 0, 0, 0],
+        "object-NTree-Fchildren-L-P-object-NTree": [1, 2, 3, 4, 5, 6, 7, 8]
+        })
+
+    obj
+    # <Tree at index 0>
+    obj.label, obj.children
+    # (1.1, [<Tree at index 1>, <Tree at index 2>])
+    obj.children[0].label, obj.children[0].children
+    # (2.2, [<Tree at index 3>, <Tree at index 4>])
+    obj.children[0].children[0].label, obj.children[0].children[0].children
+    # (4.4, [<Tree at index 6>])
+    obj.children[0].children[0].children[0].label, obj.children[0].children[0].children[0].children
+    # (7.7, [])
+    obj.children[0].children[1].label, obj.children[0].children[1].children
+    # (5.5, [<Tree at index 7>])
+    obj.children[0].children[1].children[0].label, obj.children[0].children[1].children[0].children
+    # (8.8, [])
+    obj.children[1].label, obj.children[1].children
+    # (3.3, [<Tree at index 5>])
+    obj.children[1].children[0].label, obj.children[1].children[0].children
+    # (6.6, [])
 
 
 
