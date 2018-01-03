@@ -389,12 +389,12 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
             if len(matches) != 1:
                 raise KeyError("ambiguous set of array names: more than one Primitive at {0}".format(repr(prefix)))
             info = matches[0].split(delimiter)
-            if info[0][0] == "b":
-                dtype = numpy.dtype(">" + info[0][1:])
-            elif info[0][0] == "l":
-                dtype = numpy.dtype("<" + info[0][1:])
+            if info[0].startswith("S"):
+                dtype = numpy.dtype(info[0])
+            elif info[0].isupper():
+                dtype = numpy.dtype(">" + info[0].lower())
             else:
-                raise AssertionError(info[0][0])
+                dtype = numpy.dtype("<" + info[0])
             dims = tuple(int(x) for x in info[1:])
             byname[prefix] = oamap.schema.Primitive(dtype, dims=dims, nullable=nullable, data=None, mask=None, packmask=None, name=name, doc=None)
 

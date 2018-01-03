@@ -285,11 +285,11 @@ class Primitive(Schema):
             value = numpy.dtype(value)
         self._dtype = value
 
-    _byteorder_transform = {"!": "b", ">": "b", "<": "l", "|": "l", "=": "b" if numpy.dtype(">f8").isnative else "l"}
+    _byteorder_transform = {"!": True, ">": True, "<": False, "|": False, "=": numpy.dtype(">f8").isnative}
 
     @property
     def strdtype(self):
-        return "{0}{1}{2}".format(self._byteorder_transform[self._dtype.byteorder], self._dtype.kind, self._dtype.itemsize)
+        return "{0}{1}".format(self._dtype.kind.upper() if self._byteorder_transform[self._dtype.byteorder] else self._dtype.kind, self._dtype.itemsize)
 
     @property
     def dims(self):
