@@ -571,7 +571,7 @@ or padded contents (Arrow's "`sparse union <https://github.com/apache/arrow/blob
                   "object-L-T": [0, 0, 0, 1, 1],
                   "object-L-O": [0, 1, 2, 3, 4],                     # just counting
                   "object-L-U0-Df8": [1.1, 2.2, 3.3, -999, -999],    # need to pad unused values
-                  "object-L-U1-Di8": [-1, -1, -1, True, False]})
+                  "object-L-U1-Db1": [-1, -1, -1, True, False]})
     obj
     # [1.1, 2.2, 3.3, True, False]
 
