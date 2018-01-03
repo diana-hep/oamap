@@ -1002,7 +1002,8 @@ These strings are now effectively enumeration constants (except that you didn't 
     len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"])
     # 170
     d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"].tostring()
-    # 'TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timing VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry'
+    # ('TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar Timing' +
+    #  'Transit Timing VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry')
 
     # the appropriate value for each planet is selected with a pointer
     d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-P"][:100]
