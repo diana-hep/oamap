@@ -26,25 +26,24 @@ Table of contents
 """""""""""""""""
 
 #. `Installation <#installation>`_
-
-Sample dataset https://github.com/diana-hep/oamap#sample-dataset
-Exploring the data interactively https://github.com/diana-hep/oamap#exploring-the-data-interactively
-Object array mapping https://github.com/diana-hep/oamap#object-array-mapping
-When would you want this? https://github.com/diana-hep/oamap#when-would-you-want-this
-#. OAMap is not a file format https://github.com/diana-hep/oamap#oamap-is-not-a-file-format
-#. Schemas https://github.com/diana-hep/oamap#schemas
-   #. Primitive https://github.com/diana-hep/oamap#primitive
-   #. List https://github.com/diana-hep/oamap#list
-   #. Union https://github.com/diana-hep/oamap#union
-   #. Record https://github.com/diana-hep/oamap#record
-   #. Tuple https://github.com/diana-hep/oamap#tuple
-   #. Pointer https://github.com/diana-hep/oamap#pointer
-   #. Extension https://github.com/diana-hep/oamap#extension
-   #. Nullability https://github.com/diana-hep/oamap#nullability
-#. Filling datasets https://github.com/diana-hep/oamap#filling-datasets
-#. Manipulating data with columnar granularity
-
-
+#. `Sample dataset <#sample-dataset>`_
+#. `Exploring the data interactively <#exploring-the-data-interactively>`_
+#. `Object array mapping <#object-array-mapping>`_
+#. `When would you want this? <#when-would-you-want-this>`_
+#. `OAMap is not a file format <#oamap-is-not-a-file-format>`_
+#. `Schemas <#schemas>`_
+   #. `Primitive <#primitive>`_
+   #. `List <#list>`_
+   #. `Union <#union>`_
+   #. `Record <#record>`_
+   #. `Tuple <#tuple>`_
+   #. `Pointer <#pointer>`_
+   #. `Extension <#extension>`_
+   #. `Nullability <#nullability>`_
+#. `Filling datasets <#filling-datasets>`_
+#. `Manipulating data with columnar granularity <#manipulating-data-with-columnar-granularity>`_
+#. `Low-latency random access <#low-latency-random-access>`_
+#. `High-throughput processing <#high-throughput-processing>`_
 
 Installation
 """"""""""""
@@ -1070,7 +1069,7 @@ Low-latency random access
 
 (memory mapped files, starts/stops versus counts)
 
-High throughput processing
+High-throughput processing
 """"""""""""""""""""""""""
 
 (compile with Numba; completely avoids deserialization; should add up-to-date performance measurements)
