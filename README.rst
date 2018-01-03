@@ -1204,7 +1204,7 @@ OAMap's mechanism for expressing missing data is a combined mask-offset array: s
 
 This representation uses more memory than Parquet's definition levels or Arrow's bitmask, but it can be generated on the fly from each. When storing OAMap data natively, these ``-M`` mask-offsets are packed into ``-m`` bitmasks (identical to Arrow's).
 
-Why not just use Arrow's bitmasks? Bitmasks require the missing data to be padded with meaningless values, such as –999, to maintain alignment. Missing records or tuples must be padded *in all fields,* and particle physics datasets often have hundreds of fields per record— padding scales poorly to that case. OAMap's mask-offsets can represent missing data regardless of whether the value arrays have been compactified or not (different values for the offsets).
+Why not just use Arrow's bitmasks? Bitmasks require the missing data to be padded with meaningless values, such as –999, to maintain alignment. Missing records or tuples must be padded *in all fields,* and particle physics datasets often have hundreds of fields per record— padding scales poorly to that case. OAMap's mask-offsets can represent missing data regardless of whether the value arrays have been compactified or not (different values for the offsets), so we don't have to modify data if it's given to us in compactified or non-compactified form.
 
 Filling datasets
 """"""""""""""""
