@@ -32,14 +32,14 @@ Table of contents
 #. `When would you want this? <#when-would-you-want-this>`_
 #. `OAMap is not a file format <#oamap-is-not-a-file-format>`_
 #. `Schemas <#schemas>`_
-   #. `Primitive <#primitive>`_
-   #. `List <#list>`_
-   #. `Union <#union>`_
-   #. `Record <#record>`_
-   #. `Tuple <#tuple>`_
-   #. `Pointer <#pointer>`_
-   #. `Extension <#extension>`_
-   #. `Nullability <#nullability>`_
+    #. `Primitive <#primitive>`_
+    #. `List <#list>`_
+    #. `Union <#union>`_
+    #. `Record <#record>`_
+    #. `Tuple <#tuple>`_
+    #. `Pointer <#pointer>`_
+    #. `Extension <#extension>`_
+    #. `Nullability <#nullability>`_
 #. `Filling datasets <#filling-datasets>`_
 #. `Manipulating data with columnar granularity <#manipulating-data-with-columnar-granularity>`_
 #. `Low-latency random access <#low-latency-random-access>`_
