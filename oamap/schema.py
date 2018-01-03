@@ -1371,6 +1371,8 @@ class Tuple(Schema):
             else:
                 return label + ": Tuple(" + ", ".join(args) + ")"
 
+        return label
+
     def _tojson(self, explicit, labels, shown):
         label = self._label(labels)
 

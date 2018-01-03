@@ -644,7 +644,16 @@ OAMap pointers are similar to pointers in a language like C, in that they refere
 1. The address is an array index, not a native memory address. This allows OAMap object to be portable, because the native memory addresses can't be copied as-is from one process to another.
 2. OAMap pointers are `bounded pointers <https://en.wikipedia.org/wiki/Bounded_pointer>`_, limited to a specified "target."
 
-This second condition limits the power of the pointer mechanism, but for good reason. A pointer in C can point *anywhere,* even at objects of the wrong type (causing an incorrect cast; garbage data) or out of the memory owned by the process (causing a segmentation fault). OAMap pointers can only point to objects described by a given schema node. I see this limitation as analogous to the limitation imposed by programming with ``while`` loops instead of ``goto`` statements, since the options it eliminates are generally bad. If you want to a pointer to point to multiple targets, you would simply make a union of pointers— unions allow you to approach unbounded pointers in the same way that unions allow you to approach dynamic typing (described above), letting you reintroduce these features in measured doses.
+This second condition limits the power of the pointer mechanism, but for good reason. A pointer in C can point *anywhere,* even at objects of the wrong type (causing an incorrect cast; garbage data) or out of the memory owned by the process (causing a segmentation fault). OAMap pointers can only point to objects described by a given schema node. I see this limitation as analogous to the limitation imposed by programming with ``while`` loops instead of ``goto`` statements, since the options it eliminates are generally bad. If you want a pointer to point to multiple targets, you would simply make a union of pointers— unions allow you to approach unbounded pointers in the same way that unions allow you to approach dynamic typing (described above), letting you reintroduce these features in measured doses.
+
+Pointers can be used in three topologies: (1) to point at another object within the same schema, but not its own parent, (2) to point at its parent object, creating a loop (the only way to make arbitrary depth trees and graphs in OAMap), and (3) to point to an external object.
+
+Here's an example of the first case:
+
+
+
+
+
 
 
 
