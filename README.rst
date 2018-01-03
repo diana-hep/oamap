@@ -361,7 +361,7 @@ Now let's focus on OAMap's schemas. Columnar data representations must have sche
 
 To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*). Thus, you can't put function objects or transient types such as file handles into an object described by OAMap, but you can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
 
-Every schema has a JSON representation:
+Every schema has a JSON representation, which you can save as metadata describing the object.
 
 .. code-block:: python
 
@@ -373,9 +373,7 @@ Every schema has a JSON representation:
     schema = Schema.fromjsonstring(stringdata)
     schema = Schema.fromjsonfile(open("schema.json", "r"))
 
-so that you can save it as metadata.
-
-If you don't set any array names explicitly (the usual case), the schema can be derived from the names of the arrays in the namespace. Only the ``doc`` strings are lost.
+If you don't set any array names explicitly (the usual case), the schema can be derived from the names of the arrays in the namespace. Only ``doc`` strings are lost.
 
 .. code-block:: bash
 
@@ -399,8 +397,6 @@ If you don't set any array names explicitly (the usual case), the schema can be 
     #  <Star at index 2655>, <Star at index 2656>, <Star at index 2657>, <Star at index 2658>,
     #  <Star at index 2659>]
 
-(Yes, this would have been a more performant way to explore the exoplanets dataset, but the point was to show how it didn't have to be a file.)
-
 Each schema also has an optional ``name`` attribute, used to identify extension types, and a ``nullable`` attribute, which indicates that the data may be missing. Both of these are described after each generator has been presented in its own section.
 
 Primitive
@@ -412,7 +408,6 @@ For example,
 
 .. code-block:: python
 
-    import numpy
     from oamap.schema import *
 
     schema = List(Primitive(int, data="p"), counts="c")
@@ -457,7 +452,7 @@ are big-endian (``>``), complex-valued 2×2 matrices, and
     obj
     # [b'one', b'two', b'thre', b'four', b'five']
 
-are length-5 byte strings (shorter values are padded and longer values are truncated, like ``b'thre'``). See extension types (below) for a much better way to encode strings (as variable width objects).
+are length-4 byte strings (shorter values are padded and longer values are truncated, like ``b'thre'``). This would be a good way to store quantities that are wider than any numeric types or just an awkward size, like UUIDs (16 bytes), MAC addresses (6 bytes), or a sequence of trigger bits (could be anything). It would not be a good way to encode text strings, because text can have any width— you wouldn't want long strings to be truncated like ``b'thre'`` above. See extension types (below) for a much better way to do this.
 
 Primitives are by themselves fairly expressive— they can do anything that Numpy can do. What primitives and Numpy cannot express are variable-width values. In fact, if your data fits into a primitive or simple list of primitives, then you have purely tabular data and you don't need OAMap. Use Numpy, Pandas, or SQL instead.
 
