@@ -1013,6 +1013,7 @@ These strings are now effectively enumeration constants (except that you didn't 
 .. code-block:: python
 
     import codecs
+    import io
     try:
         from urllib.request import urlopen   # Python 3
     except ImportError:
