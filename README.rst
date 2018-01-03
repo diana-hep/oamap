@@ -979,7 +979,7 @@ For example, suppose you want to store a list of strings. (This example uses `oa
     obj
     # ['one', 'two', 'three', 'one', 'two', 'three', 'over', 'and', 'up', 'two', 'three']
 
-    arrays["object-L-NUTF8String-L-Dlu1"].tostring()
+    arrays["object-L-NUTF8String-L-Du1"].tostring()
     'onetwothreeonetwothreeoveranduptwothree'
 
 The ``"object-L-NUTF8String-L"`` array contains the character content of the strings, and as you can see, repeated strings are repeatedly stored (``"one"`` appears twice and ``"two"``, ``"three"`` appear three times).
@@ -1001,7 +1001,7 @@ Just wrap this in a ``Pointer`` constructor and the storage is entirely differen
     # ['one', 'two', 'three', 'one', 'two', 'three', 'over', 'and', 'up', 'two', 'three']
 
     # but the storage is smaller (no repeated strings)
-    arrays["object-L-X-NUTF8String-L-Dlu1"].tostring()
+    arrays["object-L-X-NUTF8String-L-Du1"].tostring()
     # 'onetwothreeoverandup'
 
     # and we now have integers indicating which string to pick
@@ -1038,9 +1038,9 @@ These strings are now effectively enumeration constants (except that you didn't 
     # )
 
     # and they have a lot of characters
-    len(d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Dlu1"])
+    len(d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Du1"])
     # 41122
-    d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Dlu1"][:100].tostring()
+    d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Du1"][:100].tostring()
     # 'Kepler-1239 bKepler-1238 bKepler-618 bKepler-1231 bKepler-1230 bKepler-1233 bKepler-1232 bHD 4308 bK'
 
     # but a categorical variable like "discovery method" is a pointer
@@ -1053,9 +1053,9 @@ These strings are now effectively enumeration constants (except that you didn't 
     # )
 
     # and it avoids duplication
-    len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L-Dlu1"])
+    len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L-Du1"])
     # 170
-    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L-Dlu1"].tostring()
+    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L-Du1"].tostring()
     # ('TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar Timing' +
     #  'Transit Timing VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry')
 
