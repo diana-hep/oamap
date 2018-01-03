@@ -25,7 +25,7 @@ Walkthrough
 Table of contents
 """""""""""""""""
 
-
+#. `Installation <#installation>`_
 
 
 
