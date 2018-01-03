@@ -653,7 +653,7 @@ Here's an example of the first case (pointing at another object within the same 
 .. code-block:: python
 
     # to link the schema to itself, temporarily set the pointer target to None
-    schema = Record({"points": List(Tuple(["float", "float"])),
+    schema = Record({"points": List(Tuple(["int", "int"])),
                      "line": List(Pointer(None))})
 
     # and then set it properly
@@ -666,8 +666,8 @@ Here's an example of the first case (pointing at another object within the same 
     #     'points': List(
     #       content = #0: Tuple(
     #         types = [
-    #           Primitive(dtype('float64')),
-    #           Primitive(dtype('float64'))
+    #           Primitive(dtype('int64')),
+    #           Primitive(dtype('int64'))
     #         ])
     #     ),
     #     'line': List(
@@ -684,8 +684,8 @@ Here's an example of the first case (pointing at another object within the same 
     #       content = Pointer(
     #         target = #0: Tuple(
     #           types = [
-    #             Primitive(dtype('float64')),
-    #             Primitive(dtype('float64'))
+    #             Primitive(dtype('int64')),
+    #             Primitive(dtype('int64'))
     #           ])
     #       )
     #     ),
@@ -702,9 +702,9 @@ Here's an example of the first case (pointing at another object within the same 
                   "object-Fline-L-P-object-Fpoints-L": [0, 2, 1]})   # which points the line connects
 
     obj.points
-    # [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
+    # [(0, 0), (0, 1), (1, 1), (1, 0)]
     obj.line
-    # [(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    # [(0, 0), (1, 1), (0, 1)]
 
 
 
