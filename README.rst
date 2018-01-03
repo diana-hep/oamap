@@ -558,7 +558,7 @@ An offsets array may point to compact contents (Arrow's "`dense union <https://g
                   "object-L-T": [0, 0, 0, 1, 1],
                   "object-L-O": [0, 1, 2, 0, 1],                     # counting, masked by tag
                   "object-L-U0-Df8": [1.1, 2.2, 3.3],
-                  "object-L-U1-Dlb1": [True, False]})
+                  "object-L-U1-Db1": [True, False]})
     obj
     # [1.1, 2.2, 3.3, True, False]
 
