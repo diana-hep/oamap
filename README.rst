@@ -233,8 +233,8 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 - The fact that JSON is human-readable text, rather than binary, is often blamed for this bloat, but it usually has more to do with this repetition of data points. **BSON** is a binary version of JSON, but it's not much smaller.
 - **Avro** is one of several JSON-like binary formats with a schema (see also Thrift, ProtocolBuffers and FlatBuffers). The schema names all of the fields as metadata so they do not need to be restated in the dataset itself, which trades the flexibility of adding new fields whenever you want with a smaller, faster format. These rowwise formats were designed for RPC and streaming data pipelines.
 - The **ROOT** framework serializes arbitrary C++ objects in a binary, columnar format with a schema (the C++ types). While C++ can have nullable records (class objects addressed with pointers), there are no nullable numbers. The exoplanets dataset has a lot of missing data, so I filled them in with ``NaN`` for floats and ``-2147483648`` for integers, which takes more space than skipping missing values entirely.
-- **Parquet** is the Big Data community's nested, binary, schemaed, columnar data format that skips missing values. It has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack structural information about missing data and nesting levels into the fewest bytes before compression, and therefore wins in the uncompressed category.
-- **OAMap** uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow), and this doesn't pack as well without compression. However, the compression algorithm seems to effectively perform this packing, so the OAMap file is exactly as small with compression.
+- **Parquet** is the Big Data community's nested, binary, schemaed, columnar data format that skips missing values. It has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack structural information about missing data and nesting levels into the fewest bytes possible.
+- **OAMap** natively uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow), and this doesn't pack as well without compression. However, gzip compression seems to perform the equivalent of this packing for free, so the OAMap file ties with Parquet after compression.
 
 The situation would look different if we had purely numerical data, or text-heavy data, or a dataset without missing values, or one without hundreds of attributes per record. The exoplanets has a little of all of these anti-features— it's the worst of all worlds, and therefore a great example.
 
@@ -392,7 +392,8 @@ so that you can save it as metadata. If you don't set any array names explicitly
     stars = schema(npzfile)
     stars
     # [<Star at index 0>, <Star at index 1>, <Star at index 2>, <Star at index 3>, <Star at index 4>, ...,
-    #  <Star at index 2655>, <Star at index 2656>, <Star at index 2657>, <Star at index 2658>, <Star at index 2659>]
+    #  <Star at index 2655>, <Star at index 2656>, <Star at index 2657>, <Star at index 2658>,
+    #  <Star at index 2659>]
 
 Each schema also has an optional ``name`` attribute, used by extension types, and a ``nullable`` attribute, which indicates that the data may be missing.
 
