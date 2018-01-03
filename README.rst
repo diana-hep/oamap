@@ -23,6 +23,7 @@ Walkthrough
 -----------
 
 .. contents:: **Table of contents**
+    :backlinks: none
 
 Installation
 """"""""""""
