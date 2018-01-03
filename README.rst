@@ -27,6 +27,23 @@ Table of contents
 
 #. `Installation <#installation>`_
 
+Sample dataset https://github.com/diana-hep/oamap#sample-dataset
+Exploring the data interactively https://github.com/diana-hep/oamap#exploring-the-data-interactively
+Object array mapping https://github.com/diana-hep/oamap#object-array-mapping
+When would you want this? https://github.com/diana-hep/oamap#when-would-you-want-this
+#. OAMap is not a file format https://github.com/diana-hep/oamap#oamap-is-not-a-file-format
+#. Schemas https://github.com/diana-hep/oamap#schemas
+   #. Primitive https://github.com/diana-hep/oamap#primitive
+   #. List https://github.com/diana-hep/oamap#list
+   #. Union https://github.com/diana-hep/oamap#union
+   #. Record https://github.com/diana-hep/oamap#record
+   #. Tuple https://github.com/diana-hep/oamap#tuple
+   #. Pointer https://github.com/diana-hep/oamap#pointer
+   #. Extension https://github.com/diana-hep/oamap#extension
+   #. Nullability https://github.com/diana-hep/oamap#nullability
+#. Filling datasets https://github.com/diana-hep/oamap#filling-datasets
+#. Manipulating data with columnar granularity
+
 
 
 Installation
@@ -520,6 +537,8 @@ The tags array (``-T``) and contents (``-U*``) in these examples are sufficient 
 
 An offsets array may point to compact contents (Arrow's "`dense union <https://github.com/apache/arrow/blob/master/format/Layout.md#dense-union-type>`_"):
 
+.. code-block:: python
+
     schema = List(Union(["float", "bool"]))
     obj = schema({"object-c": [5],
                   "object-L-T": [0, 0, 0, 1, 1],
@@ -530,6 +549,8 @@ An offsets array may point to compact contents (Arrow's "`dense union <https://g
     # [1.1, 2.2, 3.3, True, False]
 
 or padded contents (Arrow's "`sparse union <https://github.com/apache/arrow/blob/master/format/Layout.md#sparse-union-type>`_"):
+
+.. code-block:: python
 
     schema = List(Union(["float", "bool"]))
     obj = schema({"object-c": [5],
@@ -1039,8 +1060,8 @@ Filling datasets
 
 (immutable or append-only semantics)
 
-Columnar granularity
-""""""""""""""""""""
+Manipulating data with columnar granularity
+"""""""""""""""""""""""""""""""""""""""""""
 
 (add an attribute to the exoplanets (number of moons), soft-filter the exoplanets)
 
