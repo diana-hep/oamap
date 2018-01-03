@@ -25,25 +25,7 @@ Walkthrough
 Table of contents
 """""""""""""""""
 
-#. `Installation <#installation>`_
-#. `Sample dataset <#sample-dataset>`_
-#. `Exploring the data interactively <#exploring-the-data-interactively>`_
-#. `Object array mapping <#object-array-mapping>`_
-#. `When would you want this? <#when-would-you-want-this>`_
-#. `OAMap is not a file format <#oamap-is-not-a-file-format>`_
-#. `Schemas <#schemas>`_
-    a. `Primitive <#primitive>`_
-    b. `List <#list>`_
-    c. `Union <#union>`_
-    d. `Record <#record>`_
-    e. `Tuple <#tuple>`_
-    f. `Pointer <#pointer>`_
-    g. `Extension <#extension>`_
-    h. `Nullability <#nullability>`_
-#. `Filling datasets <#filling-datasets>`_
-#. `Manipulating data with columnar granularity <#manipulating-data-with-columnar-granularity>`_
-#. `Low-latency random access <#low-latency-random-access>`_
-#. `High-throughput processing <#high-throughput-processing>`_
+.. contents::
 
 Installation
 """"""""""""
