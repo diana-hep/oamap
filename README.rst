@@ -1151,7 +1151,7 @@ But the pattern says nothing about whether the list is nullable (the primitive m
         },
         extension = {})                                            # don't use any extensions
     obj
-    # [[104, 101, 108, 108, 111, ..., 116, 104, 101, 114, 101],    # not interpreted as a string, though it is eligible
+    # [[104, 101, 108, 108, 111, ..., 116, 104, 101, 114, 101],    # not interpreted as a string
     #  [121, 111, 117, 32, 103, 117, 121, 115]]
 
 The default set of extensions is the ``oamap.extension.common`` module; any dict, iterable, or module full of ``oamap.generator.ExtededGenerator`` subclasses would be accepted.
