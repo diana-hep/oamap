@@ -758,7 +758,7 @@ class List(Schema):
         else:
             args.append(self._counts)
 
-        contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, extension)
+        contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, OrderedDict(memo.items()), extension)
         args.append(contentgen)
         args.append(self._name)
         args.append(prefix)
@@ -1036,7 +1036,7 @@ class Union(Schema):
             args.append(self._offsets)
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        possibilitiesgen = [x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._possibilities)]
+        possibilitiesgen = [x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, OrderedDict(memo.items()), extension) for i, x in enumerate(self._possibilities)]
         args.append(possibilitiesgen)
         args.append(self._name)
         args.append(prefix)
@@ -1264,7 +1264,7 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        fieldsgen = OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, extension)) for n in sorted(self._fields)])
+        fieldsgen = OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, OrderedDict(memo.items()), extension)) for n in sorted(self._fields)])
         args.append(fieldsgen)
         args.append(self._name)
         args.append(prefix)
@@ -1498,7 +1498,7 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        typesgen = [x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, extension) for i, x in enumerate(self._types)]
+        typesgen = [x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, OrderedDict(memo.items()), extension) for i, x in enumerate(self._types)]
         args.append(typesgen)
         args.append(self._name)
         args.append(prefix)

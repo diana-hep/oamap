@@ -356,7 +356,7 @@ Schemas
 
 Now let's focus on OAMap's schemas. Columnar data representations must have schemas, since the schema acts as a set of instructions to reassemble objects from serialized data. "Schemaless" file formats pack reassembly instructions inline with or between the objects, and there's only a "between objects" for a rowwise representation. A schema specifies all of the possible values that objects of that type may take, and the schema definition language describes the possible types that any object in the system can ever have.
 
-To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*). Thus, we can't put function objects or transient types such as file handles into an object described by OAMap, but we can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
+To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*). Thus, you can't put function objects or transient types such as file handles into an object described by OAMap, but you can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
 
 Primitive
 ~~~~~~~~~
@@ -490,7 +490,7 @@ A union is expressed by a list of possibilities:
     obj
     # [1.1, [1, 2, 3, 4], 3.3]
 
-Unions can emulate a popular object-oriented concept: class inheritance. If we wanted to model an ontology of objects, like "electrons, muons, and taus are all leptons, leptons and quarks are all charged particles, charged particles and photons are all particles", we can create records for each of the concrete classes and combine them with a union.
+Unions can emulate a popular object-oriented concept: class inheritance. If you want to model an ontology of objects, like "electrons, muons, and taus are all leptons, leptons and quarks are all charged particles, charged particles and photons are all particles", you can create records for each of the concrete classes and combine them with a union.
 
 .. code-block:: python
 
@@ -533,7 +533,7 @@ or padded contents (Arrow's "`sparse union <https://github.com/apache/arrow/blob
     obj
     # [1.1, 2.2, 3.3, True, False]
 
-In both cases, the offsets can be computed from the tags, so we often avoid saving them.
+In both cases, the offsets can be computed from the tags, so we usually don't save them.
 
 Record
 ~~~~~~
@@ -542,7 +542,7 @@ Records represent data that contains several types. In algebraic type theory, th
 
 A record is expressed by a dict of field names to field types (or a list of key-value pairs to maintain the order for readability).
 
-We've already seen several examples of record types, so here's one drawn from the exoplanet dataset:
+You've already seen several examples of record types, so here's one drawn from the exoplanet dataset:
 
 .. code-block:: python
 
@@ -733,7 +733,7 @@ Here's an example of the second case (pointing at a pointer's parent object, cre
     #     'label': Primitive(dtype('int64'))
     #   })
 
-    # Suppose we want to build this structure:
+    # Suppose you want to build this structure:
     # 
     # 1.1
     #  │
@@ -773,15 +773,243 @@ Here's an example of the second case (pointing at a pointer's parent object, cre
     obj.children[1].children[0].label, obj.children[1].children[0].children
     # (6.6, [])
 
+Or if it's easier to see as a tuple:
 
+.. code-block:: python
 
+    schema = Tuple(["float", List(Pointer(None))])
+    schema.types[1].content.target = schema
 
+    # 1.1
+    #  │
+    #  ├── 2.2
+    #  │    │
+    #  │    ├── 4.4
+    #  │    │    └── 7.7
+    #  │    │
+    #  │    └── 5.5
+    #  │         └── 8.8
+    #  │
+    #  └── 3.3
+    #       └── 6.6
 
+    obj = schema({
+        "object-F0": [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8],
+        "object-F1-c": [2, 2, 1, 1, 1, 0, 0, 0],
+        "object-F1-L-P-object": [1, 2, 3, 4, 5, 6, 7, 8]
+        })
+    obj
+    # (1.1, [(2.2, [(4.4, [(7.7, [])]), (5.5, [(8.8, [])])]), (3.3, [(6.6, [])])])
 
+For completeness, let's also look at an example of a non-tree graph. The simplest is a circular linked list.
 
+.. code-block:: python
 
+    schema = Tuple(["float", Pointer(None)])
+    schema.types[1].target = schema
 
+    obj = schema({
+        "object-F0": [1.1, 2.2, 3.3, 4.4, 5.5],    # labels for viewing
+        "object-F1-P-object": [1, 2, 3, 4, 0]      # link from each to the next or back to the first (0)
+        })
+    obj
+    # (1.1, (2.2, (3.3, (4.4, (5.5, (...))))))     # the (...) indicates nesting within one's self
 
+    obj[1]
+    # (2.2, (3.3, (4.4, (5.5, (1.1, (...))))))
+    obj[1][1]
+    # (3.3, (4.4, (5.5, (1.1, (2.2, (...))))))
+    obj[1][1][1]
+    # (4.4, (5.5, (1.1, (2.2, (3.3, (...))))))
+    obj[1][1][1][1]
+    # (5.5, (1.1, (2.2, (3.3, (4.4, (...))))))
+    obj[1][1][1][1][1]
+    # (1.1, (2.2, (3.3, (4.4, (5.5, (...))))))
+
+As a reminder, this is the *only* way to make arbitrary depth trees or non-tree graphs in OAMap. It can be hard to reason about how to fill the arrays, but OAMap has a function for turning linked Python objects into OAMap objects automatically (`oamap.fill.fromdata`, described below).
+
+Also, the *only* reason schemas can be non-trivially linked is to make arbitrary depth trees or non-tree graphs. Any other attempt to nest a type within itself (however many levels deep) is reported as an error.
+
+The above two cases pointed at data within the same schema. You can also point to external data, such as a lookup table. Here's an example of that:
+
+.. code-block:: python
+
+    arrays = {
+        "table-c": [4],
+        "table-x": [0, 0, 1, 1],
+        "table-y": [0, 1, 1, 0],
+        "object-c": [3],
+        "object-L-P": [0, 2, 1],
+        }
+
+    tableschema = List(
+        counts = "table-c",
+        content = Tuple([
+            Primitive("int", data="table-x"),
+            Primitive("int", data="table-y"),
+            ])
+        )
+
+    table = tableschema(arrays)
+    table
+    # [(0, 0), (0, 1), (1, 1), (1, 0)]
+
+    schema = List(Pointer(tableschema.content))
+    schema.show()
+    # List(
+    #   content = Pointer(
+    #     target = Tuple(
+    #       types = [
+    #         Primitive(dtype('int64'), data='table-x'),
+    #         Primitive(dtype('int64'), data='table-y')
+    #       ])
+    #   )
+    # )
+
+    obj = schema(arrays)
+    obj
+    # [(0, 0), (1, 1), (0, 1)]
+
+As you can see, the arrays for the object and the external table must share a namespace, and the pointer effectively "ingests" the external table, making it part of its own schema. You might argue that this table isn't really external, but that's a moot point. With columnar data, the question of what's "inside" or "outside" an object becomes murky: they're all just arrays that could be located anywhere. Nothing's really inside anything else.
+
+Two parts of a schema can use the same external table:
+
+.. code-block:: python
+
+    schema = Record({
+        "left":  List(Pointer(tableschema.content)),
+        "right": List(Pointer(tableschema.content))
+        })
+    schema.show()
+    # Record(
+    #   fields = {
+    #     'right': List(
+    #       content = Pointer(
+    #         target = #0: Tuple(
+    #           types = [
+    #             Primitive(dtype('int64'), data='table-x'),
+    #             Primitive(dtype('int64'), data='table-y')
+    #           ])
+    #       )
+    #     ),
+    #     'left': List(
+    #       content = Pointer(
+    #         target = #0
+    #       )
+    #     )
+    #   })
+
+    obj = schema({
+        "table-c": [4],
+        "table-x": [0, 0, 1, 1],
+        "table-y": [0, 1, 1, 0],
+        "object-Fleft-c": [2],
+        "object-Fleft-L-P": [0, 3],
+        "object-Fright-c": [2],
+        "object-Fright-L-P": [1, 2],
+        })
+    obj.left
+    # [(0, 0), (1, 0)]
+    obj.right
+    # [(0, 1), (1, 1)]
+
+As an alternate use-case of the above, the "external" data can just be data you don't want to repeat a million times. Any part of a schema can be wrapped with a ``Pointer`` constructor to store only unique values and pointer references.
+
+For example, suppose you want to store a list of strings. (This example uses `oamap.fill.fromdata` for convenience.)
+
+.. code-block:: python
+
+    import oamap.fill
+
+    schema = List(List("uint8", name="UTF8String"))
+    arrays = oamap.fill.toarrays(oamap.fill.fromdata(
+        ["one", "two", "three", "one", "two", "three", "over", "and", "up", "two", "three"],
+        schema))
+
+    obj = schema(arrays)
+    obj
+    # ['one', 'two', 'three', 'one', 'two', 'three', 'over', 'and', 'up', 'two', 'three']
+
+    arrays["object-L-NUTF8String-L"].tostring()
+    'onetwothreeonetwothreeoveranduptwothree'
+
+The ``"object-L-NUTF8String-L"`` array contains the character content of the strings, and as you can see, repeated strings are repeatedly stored (``"one"`` appears twice and ``"two"``, ``"three"`` appear three times).
+
+Just wrap this in a ``Pointer`` constructor and the storage is entirely different:
+
+.. code-block:: python
+
+    schema = List(Pointer(List("uint8", name="UTF8String")))
+
+    # same data in
+    arrays = oamap.fill.toarrays(oamap.fill.fromdata(
+        ["one", "two", "three", "one", "two", "three", "over", "and", "up", "two", "three"],
+        schema))
+
+    # same data out
+    obj = schema(arrays)
+    obj
+    # ['one', 'two', 'three', 'one', 'two', 'three', 'over', 'and', 'up', 'two', 'three']
+
+    # but the storage is smaller (no repeated strings)
+    arrays["object-L-X-NUTF8String-L"].tostring()
+    # 'onetwothreeoverandup'
+
+    # and we now have integers indicating which string to pick
+    arrays["object-L-P"]
+    # array([0, 1, 2, 0, 1, 2, 3, 4, 5, 1, 2], dtype=int32)
+
+These strings are now effectively enumeration constants (except that you didn't have to specify the possible values in the schema). The identity of a categorical variable is represented by an integer— the descriptive name can be as long as you like, it's only saved once. The exoplanets dataset used this feature:
+
+.. code-block:: python
+
+    baseurl = "http://diana-hep.org/oamap/examples/planets/"
+    remotefile = urlopen(baseurl + "schema.json")
+    remotefile = codecs.getreader("utf-8")(remotefile)
+    schema = Schema.fromjsonfile(remotefile)
+    class DataSource:
+        def __getitem__(self, name):
+            try:
+                return numpy.load(io.BytesIO(urlopen(baseurl + name + ".npy").read()))
+            except Exception as err:
+                raise KeyError(str(err))
+    d = DataSource()
+
+    # names are just strings
+    schema.content.fields["planets"].content.fields["name"].show()
+    # List(
+    #   name = u'UTF8String',
+    #   content = Primitive(dtype('uint8'))
+    # )
+
+    # and they have a lot of characters
+    len(d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"])
+    # 41122
+    d["object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L"][:100].tostring()
+    # 'Kepler-1239 bKepler-1238 bKepler-618 bKepler-1231 bKepler-1230 bKepler-1233 bKepler-1232 bHD 4308 bK'
+
+    # but a categorical variable like "discovery method" is a pointer
+    schema.content.fields["planets"].content.fields["discovery_method"].show()
+    # Pointer(
+    #   target = List(
+    #     name = u'UTF8String',
+    #     content = Primitive(dtype('uint8'))
+    #   )
+    # )
+
+    # and it avoids duplication
+    len(d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"])
+    # 170
+    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-X-NUTF8String-L"].tostring()
+    # 'TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timing VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry'
+
+    # the appropriate value for each planet is selected with a pointer
+    d["object-L-NStar-Fplanets-L-NPlanet-Fdiscovery_method-P"][:100]
+    # array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0,
+    #        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0,
+    #        0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    #        0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 3, 0, 1,
+    #        0, 0, 1, 1, 0, 1, 2, 1], dtype=int32)
 
 Extension
 ~~~~~~~~~
