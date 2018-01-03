@@ -260,7 +260,6 @@ Now define a new schema, mapping parts of the conceptual object to the ROOT file
 .. code-block:: python
 
     from oamap.schema import *
-
     schema = List(
         counts = "nEvents",
         content = Record(
@@ -269,8 +268,8 @@ Now define a new schema, mapping parts of the conceptual object to the ROOT file
             met = Record(
               name = "MissingEnergy",
               fields = dict(
-                x = Primitive(None, data="MET_px"),
-                y = Primitive(None, data="MET_py"),
+                x = Primitive("f4", data="MET_px"),
+                y = Primitive("f4", data="MET_py"),
               )
             ),
             electrons = List(
@@ -278,12 +277,12 @@ Now define a new schema, mapping parts of the conceptual object to the ROOT file
               content = Record(
                 name = "Electron",
                 fields = dict(
-                  px = Primitive(None, data="Electron_Px"),
-                  py = Primitive(None, data="Electron_Py"),
-                  pz = Primitive(None, data="Electron_Pz"),
-                  energy = Primitive(None, data="Electron_E"),
-                  charge = Primitive(None, data="Electron_Charge"),
-                  iso = Primitive(None, data="Electron_Iso")
+                  px = Primitive("f4", data="Electron_Px"),
+                  py = Primitive("f4", data="Electron_Py"),
+                  pz = Primitive("f4", data="Electron_Pz"),
+                  energy = Primitive("f4", data="Electron_E"),
+                  charge = Primitive("i4", data="Electron_Charge"),
+                  iso = Primitive("f4", data="Electron_Iso")
                 )
               )
             ),
@@ -292,12 +291,12 @@ Now define a new schema, mapping parts of the conceptual object to the ROOT file
               content = Record(
                 name = "Muon",
                 fields = dict(
-                  px = Primitive(None, data="Muon_Px"),
-                  py = Primitive(None, data="Muon_Py"),
-                  pz = Primitive(None, data="Muon_Pz"),
-                  energy = Primitive(None, data="Muon_E"),
-                  charge = Primitive(None, data="Muon_Charge"),
-                  iso = Primitive(None, data="Muon_Iso")
+                  px = Primitive("f4", data="Muon_Px"),
+                  py = Primitive("f4", data="Muon_Py"),
+                  pz = Primitive("f4", data="Muon_Pz"),
+                  energy = Primitive("f4", data="Muon_E"),
+                  charge = Primitive("i4", data="Muon_Charge"),
+                  iso = Primitive("f4", data="Muon_Iso")
                 )
               )
             )
