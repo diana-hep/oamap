@@ -22,10 +22,7 @@ Also, a similar object array mapping could be implemented in any language— Pyt
 Walkthrough
 -----------
 
-Table of contents
-"""""""""""""""""
-
-.. contents::
+.. contents:: **Table of contents**
 
 Installation
 """"""""""""
