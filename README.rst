@@ -353,8 +353,8 @@ Now you can get objects from the ROOT file, just as you did from the web.
 
 For the file format comparision table (previous section), the "OAMap file" was really a `Numpy npz file <https://docs.scipy.org/doc/numpy/reference/generated/numpy.savez.html>`_, a dead-simple format when you only want to save a set of named arrays. I could have instead put them in a ROOT file, which would have given the ROOT file the missing data handling that worked so well for the exoplanets dataset.
 
-Schemas
-"""""""
+Schemas and data representation
+"""""""""""""""""""""""""""""""
 
 Now let's focus on OAMap's schemas. Columnar data representations must have schemas, since the schema acts as a set of instructions to reassemble objects from serialized data. "Schemaless" file formats pack reassembly instructions inline with or between the objects, and there's only a "between objects" for a rowwise representation. A schema specifies all of the possible values that objects of that type may take, and the schema definition language describes the possible types that any object in the system can ever have.
 
@@ -1170,7 +1170,7 @@ OAMap's mechanism for expressing missing data is a combined mask-offset array: s
     schema = List(List(Primitive(int, nullable=True), nullable=True), nullable=True)
 
     # in this case, only a primitive is missing
-    schema({
+    obj = schema({
         "object-M": [0],
         "object-c": [3],
         "object-L-M": [0, 1, 2],
@@ -1178,10 +1178,11 @@ OAMap's mechanism for expressing missing data is a combined mask-offset array: s
         "object-L-L-M": [0, -1, 1, 2, 3],
         "object-L-L-Di8": [1, 3, 4, 5]                 # compactified: no "2"
         })
+    obj
     # [[1, None, 3], [], [4, 5]]
 
     # in this case, one of the sublists is missing
-    schema({
+    obj = schema({
         "object-M": [0],
         "object-c": [3],
         "object-L-M": [-1, 0, 1],
@@ -1189,10 +1190,11 @@ OAMap's mechanism for expressing missing data is a combined mask-offset array: s
         "object-L-L-M": [0, 1],
         "object-L-L-Di8": [4, 5]                       # compactified: no "1, 2, 3"
         })
+    obj
     # [None, [], [4, 5]]
 
     # now the whole thing is missing
-    schema({
+    obj = schema({
         "object-M": [-1],
         "object-c": [],                                # everthing is compactified: no data at all
         "object-L-M": [],
@@ -1200,14 +1202,19 @@ OAMap's mechanism for expressing missing data is a combined mask-offset array: s
         "object-L-L-M": [],
         "object-L-L-Di8": []
         })
+    obj
     # None
 
 This representation uses more memory than Parquet's definition levels or Arrow's bitmask, but it can be generated on the fly from each. When storing OAMap data natively, these ``-M`` mask-offsets are packed into ``-m`` bitmasks (identical to Arrow's).
 
 Why not just use Arrow's bitmasks? Bitmasks require the missing data to be padded with meaningless values, such as –999, to maintain alignment. Missing records or tuples must be padded *in all fields,* and particle physics datasets often have hundreds of fields per record— padding scales poorly to that case. OAMap's mask-offsets can represent missing data regardless of whether the value arrays have been compactified or not (different values for the offsets), so we don't have to modify data if it's given to us in compactified or non-compactified form.
 
-Filling datasets
-""""""""""""""""
+Creating and filling datasets
+"""""""""""""""""""""""""""""
+
+
+
+
 
 (immutable or append-only semantics)
 
