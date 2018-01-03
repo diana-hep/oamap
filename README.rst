@@ -1212,16 +1212,17 @@ Why not just use Arrow's bitmasks? Bitmasks require the missing data to be padde
 Creating and filling datasets
 """""""""""""""""""""""""""""
 
+In the section on schemas and data representation (above), I created the columnar data by hand. Usually, you wouldn't do that. The OAMap package has functions for generating columnar data from Python objects and for viewing columnar data in various forms as OAMaps.
+
+We have also been viewing datasets as pre-built, immutable objects. Although most batch data analysis *is* performed on immutable data, OAMap datasets can be modified in place in a limited way: they are append-only, like a log file.
+
+As an aside, this is the concession that Object Array Mapping makes for bare-metal performance, relative to Object Relational Mapping (ORM): ORM datasets can be transactional databases, with any row being modified at any time. Because of the way that OAMap buries variable-length structures in arrays, the lengths of these structures are fixed everywhere but at the end of a list. (Strictly speaking, buried structures can only *decrease* in size, but shrink-only data isn't likely to be useful.)
+
 
 
 
 
 (immutable or append-only semantics)
-
-Manipulating data with columnar granularity
-"""""""""""""""""""""""""""""""""""""""""""
-
-(add an attribute to the exoplanets (number of moons), soft-filter the exoplanets)
 
 Viewing common data formats as OAMaps
 """""""""""""""""""""""""""""""""""""
@@ -1234,6 +1235,11 @@ Apache Arrow
 
 Parquet
 ~~~~~~~
+
+Manipulating data with columnar granularity
+"""""""""""""""""""""""""""""""""""""""""""
+
+(add an attribute to the exoplanets (number of moons), soft-filter the exoplanets)
 
 Low-latency random access
 """""""""""""""""""""""""
