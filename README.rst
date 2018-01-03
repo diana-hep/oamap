@@ -748,6 +748,7 @@ Here's an example of the second case (pointing at a pointer's parent object, cre
     #  └── 3.3
     #       └── 6.6
 
+    # carefully make each node point to the right index
     obj = schema({
         "object-NTree-Flabel": [1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8],
         "object-NTree-Fchildren-c": [2, 2, 1, 1, 1, 0, 0, 0],
@@ -773,7 +774,7 @@ Here's an example of the second case (pointing at a pointer's parent object, cre
     obj.children[1].children[0].label, obj.children[1].children[0].children
     # (6.6, [])
 
-Or if it's easier to see as a tuple:
+Maybe it's easier to read as a tuple, instead of a record:
 
 .. code-block:: python
 
@@ -1013,6 +1014,10 @@ These strings are now effectively enumeration constants (except that you didn't 
 
 Extension
 ~~~~~~~~~
+
+
+
+
 
 Nullability
 ~~~~~~~~~~~

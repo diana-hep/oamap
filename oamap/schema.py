@@ -251,7 +251,7 @@ class Schema(object):
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
                     generator._internal = False
-                    generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2, extension), cacheidx, memo2, extension)
+                    generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2, set(), extension), cacheidx, memo2, extension)
                     generator.schema.target = generator.target.schema
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
@@ -458,12 +458,11 @@ class Primitive(Schema):
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
-        if id(self) in memo:
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+        if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        memo[id(self)] = None
         args = []
 
         if self._name is not None:
@@ -716,12 +715,11 @@ class List(Schema):
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
-        if id(self) in memo:
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+        if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        memo[id(self)] = None
         args = []
 
         if self._name is not None:
@@ -758,7 +756,7 @@ class List(Schema):
         else:
             args.append(self._counts)
 
-        contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, OrderedDict(memo.items()), extension)
+        contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)
         args.append(contentgen)
         args.append(self._name)
         args.append(prefix)
@@ -999,12 +997,11 @@ class Union(Schema):
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
-        if id(self) in memo:
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+        if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        memo[id(self)] = None
         args = []
 
         if self._name is not None:
@@ -1036,7 +1033,7 @@ class Union(Schema):
             args.append(self._offsets)
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        possibilitiesgen = [x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, OrderedDict(memo.items()), extension) for i, x in enumerate(self._possibilities)]
+        possibilitiesgen = [x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._possibilities)]
         args.append(possibilitiesgen)
         args.append(self._name)
         args.append(prefix)
@@ -1237,14 +1234,13 @@ class Record(Schema):
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._fields) == 0:
             raise TypeError("Record has no fields")
-        if id(self) in memo:
+        if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        memo[id(self)] = None
         args = []
 
         if self._name is not None:
@@ -1264,7 +1260,7 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        fieldsgen = OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, OrderedDict(memo.items()), extension)) for n in sorted(self._fields)])
+        fieldsgen = OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)) for n in sorted(self._fields)])
         args.append(fieldsgen)
         args.append(self._name)
         args.append(prefix)
@@ -1471,14 +1467,13 @@ class Tuple(Schema):
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
-        if id(self) in memo:
+        if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        memo[id(self)] = None
         args = []
 
         if self._name is not None:
@@ -1498,7 +1493,7 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        typesgen = [x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, OrderedDict(memo.items()), extension) for i, x in enumerate(self._types)]
+        typesgen = [x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._types)]
         args.append(typesgen)
         args.append(self._name)
         args.append(prefix)
@@ -1685,13 +1680,11 @@ class Pointer(Schema):
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, extension), cacheidx, memo, extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
-
-        memo[id(self)] = None
         args = []
 
         if self._name is not None:
