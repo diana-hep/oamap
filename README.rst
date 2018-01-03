@@ -365,26 +365,30 @@ Every schema has a JSON representation:
 
 .. code-block:: python
 
-    schema.tojson()
-    schema.tojsonstring()
+    data = schema.tojson()
+    stringdata = schema.tojsonstring()
     schema.tojsonfile(open("schema.json", "w"))
 
     schema = Schema.fromjson(data)
     schema = Schema.fromjsonstring(stringdata)
     schema = Schema.fromjsonfile(open("schema.json", "r"))
 
-so that you can save it as metadata. If you don't set any array names explicitly (the usual case), the schema can be derived from the names of the arrays in the namespace.
+so that you can save it as metadata.
+
+If you don't set any array names explicitly (the usual case), the schema can be derived from the names of the arrays in the namespace. Only the ``doc`` strings are lost.
+
+.. code-block:: bash
+
+    wget http://diana-hep.org/oamap/examples/planets_formats/planets.npz
 
 .. code-block:: python
 
-    # the npz file has no schema.json, just a bunch of arrays
-    import os
-    os.system("wget http://diana-hep.org/oamap/examples/planets_formats/planets.npz")
-
     import numpy
+    import oamap.inference
+
+    # the npz file has no schema.json, just a bunch of arrays
     npzfile = numpy.load("planets.npz")
 
-    import oamap.inference
     # optionally specify a prefix, so that different objects can occupy the same namespace
     schema = oamap.inference.fromnames(npzfile, prefix="object")
     schema.show()
@@ -395,7 +399,9 @@ so that you can save it as metadata. If you don't set any array names explicitly
     #  <Star at index 2655>, <Star at index 2656>, <Star at index 2657>, <Star at index 2658>,
     #  <Star at index 2659>]
 
-Each schema also has an optional ``name`` attribute, used by extension types, and a ``nullable`` attribute, which indicates that the data may be missing.
+(Yes, this would have been a more performant way to explore the exoplanets dataset, but the point was to show how it didn't have to be a file.)
+
+Each schema also has an optional ``name`` attribute, used to identify extension types, and a ``nullable`` attribute, which indicates that the data may be missing. Both of these are described after each generator has been presented in its own section.
 
 Primitive
 ~~~~~~~~~
