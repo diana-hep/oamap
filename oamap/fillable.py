@@ -68,8 +68,13 @@ class Fillable(object):
     def __getitem__(self, index):
         raise NotImplementedError
 
-    def __array__(self):
-        return self[:]
+    def __array__(self, dtype=None, copy=True, order="K", subok=False, ndmin=0):
+        if not isinstance(dtype, numpy.dtype):
+            dtype = numpy.dtype(dtype)
+        if dtype == self.dtype and subok is False and ndmin == 0:
+            return self[:]
+        else:
+            return numpy.array(self[:], dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
 
 ################################################################ make fillables
 

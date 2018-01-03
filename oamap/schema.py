@@ -281,9 +281,15 @@ class Primitive(Schema):
 
     @dtype.setter
     def dtype(self, value):
-        if value is not None and not isinstance(value, numpy.dtype):
+        if not isinstance(value, numpy.dtype):
             value = numpy.dtype(value)
         self._dtype = value
+
+    _byteorder_transform = {"!": "b", ">": "b", "<": "l", "|": "l", "=": "b" if numpy.dtype(">f8").isnative else "l"}
+
+    @property
+    def strdtype(self):
+        return "{0}{1}{2}".format(self._byteorder_transform[self._dtype.byteorder], self._dtype.kind, self._dtype.itemsize)
 
     @property
     def dims(self):
@@ -295,8 +301,8 @@ class Primitive(Schema):
             value = tuple(value)
         except TypeError:
             pass
-        if value is not None and (not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value)):
-            raise TypeError("dims must be None or a tuple of non-negative integers, not {0}".format(repr(value)))
+        if not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value):
+            raise TypeError("dims must be a tuple of non-negative integers, not {0}".format(repr(value)))
         self._dims = value
 
     @property
@@ -353,10 +359,10 @@ class Primitive(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if not explicit and self._dtype is not None and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._packmask is None and self._name is None:
+            if not explicit and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._packmask is None and self._name is None:
                 return str(self._dtype)
             else:
-                out = {"type": "primitive", "dtype": None if self._dtype is None else str(self._dtype)}
+                out = {"type": "primitive", "dtype": str(self._dtype)}
                 if explicit or self._dims != ():
                     out["dims"] = None if self._dims is None else list(self._dims)
                 if explicit or self._nullable is not False:
@@ -416,10 +422,6 @@ class Primitive(Schema):
         return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.packmask == other.packmask and self.name == other.name
 
     def __contains__(self, value, memo=None):
-        if self.dtype is None:
-            raise TypeError("cannot determine if {0} is in {1}: no dtype specified".format(repr(value), self))
-        if self.dims is None:
-            raise TypeError("cannot determine if {0} is in {1}: no dims specified".format(repr(value), self))
         if value is None:
             return self.nullable
 
@@ -483,7 +485,7 @@ class Primitive(Schema):
             cls = oamap.generator.PrimitiveGenerator
 
         if self._data is None:
-            args.append(prefix)
+            args.append(prefix + delimiter + "D" + self.strdtype + "".join(delimiter + repr(x) for x in self.dims))
         else:
             args.append(self._data)
         args.append(cacheidx[0]); cacheidx[0] += 1

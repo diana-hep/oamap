@@ -223,18 +223,18 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **Avro**                 yes     yes     yes                          3.0 MB      0.95 MB
 **ROOT**                 yes     yes     yes     yes                  5.7 MB      1.6  MB
 **Parquet**              yes     yes     yes     yes       yes        1.1 MB      0.84 MB
-**OAMap in Numpy (npz)** yes     yes     yes     yes       yes        2.7 MB      0.68 MB
+**OAMap in Numpy (npz)** yes     yes     yes     yes       yes        2.9 MB      0.85 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
 (\*Some formats have built-in compression, others have to be externally compressed; in all cases I used gzip level 4.)
 
-- **CSV** was NASA's original file format, but it cannot fit in a rectangular table without padding or duplication— NASA chose duplication. Most stars have only one planet, so it's not *much* duplication.
+- **CSV** was NASA's original file format, but it cannot fit in a rectangular table without padding or duplication— NASA chose duplication. Most stars have exactly one planet, so it's not *much* duplication.
 - **JSON** captures the structure of the data better, but with considerable bloat. Most of this compresses away because it consists of record field names, restated for every data point in the sample.
 - The fact that JSON is human-readable text, rather than binary, is often blamed for this bloat, but it usually has more to do with this repetition of data points. **BSON** is a binary version of JSON, but it's not much smaller.
 - **Avro** is one of several JSON-like binary formats with a schema (see also Thrift, ProtocolBuffers and FlatBuffers). The schema names all of the fields as metadata so they do not need to be restated in the dataset itself, which trades the flexibility of adding new fields whenever you want with a smaller, faster format. These rowwise formats were designed for RPC and streaming data pipelines.
 - The **ROOT** framework serializes arbitrary C++ objects in a binary, columnar format with a schema (the C++ types). While C++ can have nullable records (class objects addressed with pointers), there are no nullable numbers. The exoplanets dataset has a lot of missing data, so I filled them in with ``NaN`` for floats and ``-2147483648`` for integers, which takes more space than skipping missing values entirely.
 - **Parquet** is the Big Data community's nested, binary, schemaed, columnar data format that skips missing values. It has a `clever "definition level/repetition level" mechanism <https://blog.twitter.com/engineering/en_us/a/2013/dremel-made-simple-with-parquet.html>`_ to pack structural information about missing data and nesting levels into the fewest bytes before compression, and therefore wins in the uncompressed category.
-- **OAMap** uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow) which is larger than Parquet when uncompressed, but smaller when compressed. Parquet's nesting mechanism packs nesting structure into a minimum of bits, but those bits have to be repeated for all fields at the same level of a record, and the exoplanets (like particle physics data) have hundreds of fields per record. This duplication can't be compressed away (fields are compressed independently of one another), which could explain why OAMap compresses smaller for exoplanets.
+- **OAMap** uses a simpler mechanism to express nesting (found in ROOT and Apache Arrow) and missing values (just Arrow), and this doesn't pack as well without compression. However, the compression algorithm seems to effectively perform this packing, so the OAMap file is exactly as small with compression.
 
 The situation would look different if we had purely numerical data, or text-heavy data, or a dataset without missing values, or one without hundreds of attributes per record. The exoplanets has a little of all of these anti-features— it's the worst of all worlds, and therefore a great example.
 
@@ -360,6 +360,23 @@ Schemas
 Now let's focus on OAMap's schemas. Columnar data representations must have schemas, since the schema acts as a set of instructions to reassemble objects from serialized data. "Schemaless" file formats pack reassembly instructions inline with or between the objects, and there's only a "between objects" for a rowwise representation. A schema specifies all of the possible values that objects of that type may take, and the schema definition language describes the possible types that any object in the system can ever have.
 
 To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*). Thus, you can't put function objects or transient types such as file handles into an object described by OAMap, but you can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
+
+Every schema has a JSON representation:
+
+.. code-block:: python
+
+    schema.tojson()
+    schema.tojsonstring()
+    schema.tojsonfile(open("schema.json", "w"))
+
+    schema = Schema.fromjson(data)
+    schema = Schema.fromjsonstring(stringdata)
+    schema = Schema.fromjsonfile(open("schema.json", "r"))
+
+so that you can save it as metadata. If you don't set any array names explicitly (the usual case), it can be derived from 
+
+
+
 
 Primitive
 ~~~~~~~~~
@@ -1022,6 +1039,11 @@ These strings are now effectively enumeration constants (except that you didn't 
 
 Extension
 ~~~~~~~~~
+
+Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to make fully specify how the data are to be used at runtime. For instance, we don't have an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we want to interpret text strings differently from lists of 1-byte numbers in data analyses.
+
+
+
 
 
 

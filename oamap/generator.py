@@ -71,9 +71,9 @@ class Generator(object):
             except KeyError as err:
                 array = self._fallback(arrays, cache, name, err)
             cache.arraylist[cacheidx] = array
-            if dtype is not None and getattr(cache.arraylist[cacheidx], "dtype", dtype) != dtype:
+            if cache.arraylist[cacheidx].dtype != dtype:
                 array = numpy.array(array, dtype=dtype)
-            if dims is not None and getattr(cache.arraylist[cacheidx], "shape", (0,) + dims)[1:] != dims:
+            if cache.arraylist[cacheidx].shape[1:] != dims:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
         return cache.arraylist[cacheidx]
 

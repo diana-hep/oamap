@@ -38,28 +38,6 @@ import oamap.inference
 import oamap.fillable
 from oamap.schema import *
 
-def dropdtype(x):
-    if isinstance(x, Primitive):
-        return x.copy(dtype=None, dims=None)
-    else:
-        return x
-
-def dropnames(x):
-    if isinstance(x, Primitive):
-        return x.copy(data=None, mask=None)
-    elif isinstance(x, List):
-        return x.copy(starts=None, stops=None, mask=None)
-    elif isinstance(x, Union):
-        return x.copy(tags=None, offsets=None, mask=None)
-    elif isinstance(x, Record):
-        return x.copy(mask=None)
-    elif isinstance(x, Tuple):
-        return x.copy(mask=None)
-    elif isinstance(x, Pointer):
-        return x.copy(positions=None, mask=None)
-    else:
-        return x
-
 class TestInference(unittest.TestCase):
     def runTest(self):
         pass
@@ -73,9 +51,7 @@ class TestInference(unittest.TestCase):
         self.assertEqual(schema, eval(repr(schema), self.env))
         self.assertEqual(schema, eval(schema.show(stream=None), self.env))
         self.assertEqual(schema, Schema.fromjsonstring(schema.tojsonstring()))
-
-        fromnames = oamap.inference.fromnames(oamap.fillable.arrays(schema).keys())
-        self.assertEqual(schema.replace(dropdtype), fromnames.replace(dropnames))
+        self.assertEqual(schema, oamap.inference.fromnames(oamap.fillable.arrays(schema).keys()))
 
     def test_infer_Unknown(self):
         self.assertRaises(TypeError, lambda: oamap.inference.fromdata(None))

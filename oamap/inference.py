@@ -307,10 +307,12 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
         if name is not None:
             prefix = prefixdelimiter + "N" + name
             prefixdelimiter = prefix + delimiter
-
+            
         mask      = prefixdelimiter + "M"
+        packmask  = prefixdelimiter + "m"
         starts    = prefixdelimiter + "B"
         stops     = prefixdelimiter + "E"
+        counts    = prefixdelimiter + "c"
         content   = prefixdelimiter + "L"
         tags      = prefixdelimiter + "T"
         offsets   = prefixdelimiter + "O"
@@ -318,19 +320,18 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
         field     = prefixdelimiter + "F"
         positions = prefixdelimiter + "P"
         external  = prefixdelimiter + "X"
+        primitive = prefixdelimiter + "D"
 
         nullable = mask in arraynames
         if not nullable:
             mask = None
+            packmask = None
 
-        if prefix in arraynames:
-            byname[prefix] = oamap.schema.Primitive(None, dims=None, nullable=nullable, data=prefix, mask=mask, name=name)
-
-        elif starts in arraynames and stops in arraynames:
+        if (starts in arraynames and stops in arraynames) or counts in arraynames:
             byname[prefix] = None
-            byname[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, byname, internalpointers), nullable=nullable, starts=starts, stops=stops, mask=mask, name=name)
+            byname[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, byname, internalpointers), nullable=nullable, starts=None, stops=None, counts=None, mask=None, packmask=None, name=name, doc=None)
 
-        elif tags in arraynames and offsets in arraynames:
+        elif tags in arraynames:
             possibilities = []
             while True:
                 possibility = uniondata + repr(len(possibilities))
@@ -339,7 +340,7 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
                 else:
                     break
             byname[prefix] = None
-            byname[prefix] = oamap.schema.Union([recurse(filter(arraynames, x), x, byname, internalpointers) for x in possibilities], nullable=nullable, tags=tags, offsets=offsets, mask=mask, name=name)
+            byname[prefix] = oamap.schema.Union([recurse(filter(arraynames, x), x, byname, internalpointers) for x in possibilities], nullable=nullable, tags=None, offsets=None, mask=None, packmask=None, name=name, doc=None)
 
         elif any(x.startswith(field) for x in arraynames):
             pattern = re.compile("^" + field + "(" + oamap.schema.Schema._identifier.pattern + ")")
@@ -360,9 +361,9 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
                     break
 
             if len(fields) >= 0 and len(types) == 0:
-                byname[prefix] = oamap.schema.Record(oamap.schema.OrderedDict([(n, recurse(fields[n], field + n, byname, internalpointers)) for n in sorted(fields)]), nullable=nullable, mask=mask, name=name)
+                byname[prefix] = oamap.schema.Record(oamap.schema.OrderedDict([(n, recurse(fields[n], field + n, byname, internalpointers)) for n in sorted(fields)]), nullable=nullable, mask=None, packmask=None, name=name, doc=None)
             elif len(fields) == 0 and len(types) > 0:
-                byname[prefix] = oamap.schema.Tuple([recurse(filter(arraynames, n), n, byname, internalpointers) for n in types], nullable=nullable, mask=mask, name=name)
+                byname[prefix] = oamap.schema.Tuple([recurse(filter(arraynames, n), n, byname, internalpointers) for n in types], nullable=nullable, mask=None, packmask=None, name=name, doc=None)
             else:
                 raise KeyError("ambiguous set of array names: may be Record or Tuple at {0}".format(repr(prefix)))
 
@@ -372,16 +373,30 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
                 byname2 = {}
                 internalpointers2 = []
                 target = finalize(recurse(filter(arraynames, external), external, byname2, internalpointers2), byname2, internalpointers2)
-                byname[prefix] = oamap.schema.Pointer(target, nullable=nullable, positions=positions, mask=mask, name=name)
+                byname[prefix] = oamap.schema.Pointer(target, nullable=nullable, positions=None, mask=None, packmask=None, name=name, doc=None)
 
             else:
                 # internal
-                matches = [x for x in arraynames if x.startswith(positions)]
+                matches = [x[len(positions) + 1:] for x in arraynames if x.startswith(positions)]
                 if len(matches) != 1:
                     raise KeyError("ambiguous set of array names: more than one internal Pointer at {0}".format(repr(prefix)))
                 target = None   # placeholder! see finalize
-                byname[prefix] = oamap.schema.Pointer(target, nullable=nullable, positions=matches[0], mask=mask, name=name)
-                internalpointers.append((byname[prefix], matches[0][len(positions) + 1:]))
+                byname[prefix] = oamap.schema.Pointer(target, nullable=nullable, positions=None, mask=None, packmask=None, name=name, doc=None)
+                internalpointers.append((byname[prefix], matches[0]))
+
+        elif any(x.startswith(primitive) for x in arraynames):
+            matches = [x[len(primitive):] for x in arraynames if x.startswith(primitive)]
+            if len(matches) != 1:
+                raise KeyError("ambiguous set of array names: more than one Primitive at {0}".format(repr(prefix)))
+            info = matches[0].split(delimiter)
+            if info[0][0] == "b":
+                dtype = numpy.dtype(">" + info[0][1:])
+            elif info[0][0] == "l":
+                dtype = numpy.dtype("<" + info[0][1:])
+            else:
+                raise AssertionError(info[0][0])
+            dims = tuple(int(x) for x in info[1:])
+            byname[prefix] = oamap.schema.Primitive(dtype, dims=dims, nullable=nullable, data=None, mask=None, packmask=None, name=name, doc=None)
 
         else:
             raise KeyError("missing array names: nothing found as {0} contents".format(repr(prefix)))
