@@ -93,7 +93,7 @@ class ListProxy(Proxy):
         key = (id(self._generator), self._whence, self._stride, self._length)
         if key in memo:
             return "[...]"
-        memo.add(key)
+        memo = memo.union(set([key]))
         if len(self) > 10:
             before = self[:5]
             after = self[-5:]
@@ -291,7 +291,7 @@ class TupleProxy(Proxy):
         key = (self._index,) + tuple(id(x) for x in self._generator.types)
         if key in memo:
             return "(...)"
-        memo.add(key)
+        memo = memo.union(set([key]))
         return "({0}{1})".format(", ".join(x.__repr__(memo) if isinstance(x, (ListProxy, TupleProxy)) else repr(x) for x in self), "," if len(self) == 1 else "")
 
     def __str__(self):
