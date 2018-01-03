@@ -648,8 +648,63 @@ This second condition limits the power of the pointer mechanism, but for good re
 
 Pointers can be used in three topologies: (1) to point at another object within the same schema, but not its own parent, (2) to point at its parent object, creating a loop (the only way to make arbitrary depth trees and graphs in OAMap), and (3) to point to an external object.
 
-Here's an example of the first case:
+Here's an example of the first case (pointing at another object within the same schema, but not its own parent):
 
+.. code-block:: python
+
+    # to link the schema to itself, temporarily set the pointer target to None
+    schema = Record({"points": List(Tuple(["float", "float"])),
+                     "line": List(Pointer(None))})
+
+    # and then set it properly
+    schema.fields["line"].content.target = schema.fields["points"].content
+
+    # the print-out shows this internal connection with a "#0" label
+    schema.show()
+    # Record(
+    #   fields = {
+    #     'points': List(
+    #       content = #0: Tuple(
+    #         types = [
+    #           Primitive(dtype('float64')),
+    #           Primitive(dtype('float64'))
+    #         ])
+    #     ),
+    #     'line': List(
+    #       content = Pointer(
+    #         target = #0
+    #       )
+    #     )
+    #   })
+
+    # Note: depending on the order of the fields, you might see this:
+    # Record(
+    #   fields = {
+    #     'line': List(
+    #       content = Pointer(
+    #         target = #0: Tuple(
+    #           types = [
+    #             Primitive(dtype('float64')),
+    #             Primitive(dtype('float64'))
+    #           ])
+    #       )
+    #     ),
+    #     'points': List(
+    #       content = #0
+    #     )
+    #   })
+    # It's the same thing!
+
+    obj = schema({"object-Fpoints-c": [4],                           # number of points
+                  "object-Fpoints-L-F0": [0, 0, 1, 1],               # point x values
+                  "object-Fpoints-L-F1": [0, 1, 1, 0],               # point y values
+                  "object-Fline-c": [3],                             # number of steps in line
+                  "object-Fline-L-P-object-Fpoints-L": [0, 2, 1]})   # which points the line connects
+
+    obj.points
+    # [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
+    obj.line
+    # [(0.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
 
 
