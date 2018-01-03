@@ -858,12 +858,12 @@ For completeness, let's also look at an example of a non-tree graph. The simples
     schema.types[1].target = schema
 
     obj = schema({
-        "object-F0-Df8": [1.1, 2.2, 3.3, 4.4, 5.5],     # labels for viewing
-        "object-F1-P-object": [1, 2, 3, 4, 0]           # link from each to the next or back to the first (0)
+        "object-F0-Df8": [1.1, 2.2, 3.3, 4.4, 5.5],   # labels for viewing
+        "object-F1-P-object": [1, 2, 3, 4, 0]         # link from each to the next or back to the first (0)
         })
     obj
-    # (1.1, (2.2, (3.3, (4.4, (5.5, (...))))))          # the (...) indicates nesting within one's self
-                                                        # (following Python convention)
+    # (1.1, (2.2, (3.3, (4.4, (5.5, (...))))))        # the (...) indicates nesting within one's self
+                                                      # (following Python convention)
     obj[1]
     # (2.2, (3.3, (4.4, (5.5, (1.1, (...))))))
     obj[1][1]
