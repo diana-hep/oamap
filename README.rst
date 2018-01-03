@@ -489,7 +489,7 @@ List contents are stored in arrays that ignore list boundaries and the boundarie
 - an **offsets array**, which is a cumulative sum of the counts array, permitting random access;
 - **starts** and **stops arrays**, which individually indicate the start and stop of each list (also random accessible).
 
-ROOT uses counts and offsets, `Arrow uses offsets <https://github.com/apache/arrow/blob/master/format/Layout.md#list-type>`_, and Parquet uses something altogether different (repetition level). OAMap converts any of these into starts and stops arrays because that form is the most powerful: the physical data may contain gaps to emulate stencils, may be in a different physical order than the logical order for database-style indexing, and may contain data accessible by pointer but not in the main list (e.g. it's part of a tree). When OAMap fails to find a starts or stops array (default names end with ``-B`` and ``-E``), it searches for a counts array (default name ends with ``-c``). For simplicity, all of the examples we have considered have been in that fallback case. Arrow and Parquet are handled with special dict-like objects— offsets arrays can be turned into starts and stops without even copying data.
+ROOT uses counts and offsets, `Arrow uses offsets <https://github.com/apache/arrow/blob/master/format/Layout.md#list-type>`_, and Parquet uses something altogether different (repetition level). OAMap converts any of these into starts and stops arrays because that form is the most powerful: the physical data may contain gaps to emulate stencils, may be in a different physical order than the logical order for database-style indexing, and may contain data accessible by pointer but not in the main list (e.g. it's part of a tree). When OAMap fails to find a starts or stops array (default names end with ``-B`` and ``-E``), it searches for a counts array (default name ends with ``-c``). For simplicity, all of the examples we have considered have been based on counts arrays. Arrow and Parquet are handled with special dict-like objects— offsets arrays can be turned into starts and stops without even copying data.
 
 Most datasets are lists at the top level— lists of *something—* so they have one silly-looking single element array containing nothing but the total number of entries. The total number of entries is sometimes found in metadata, rather than data, so this array is created on demand in such cases (as in the ROOT example above).
 
@@ -1071,7 +1071,7 @@ These strings are now effectively enumeration constants (except that you didn't 
 Extension
 ~~~~~~~~~
 
-Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to fully specify how the data are to be used at runtime. For instance, we don't have an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we would want to interpret text strings differently from lists of 1-byte numbers in a data analysis.
+Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to fully specify how the data are to be used at runtime. For instance, there isn't an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we would want to interpret text strings differently from lists of 1-byte numbers in a data analysis.
 
 All schemas have a ``name`` attribute to make that distinction. Record names were discussed above as a way to distinguish records that have the same field names and types, but names can be used to distinguish any type.
 
@@ -1103,19 +1103,109 @@ is interpreted as a UTF-8 encoded string at runtime.
     obj
     # ['hello there', 'you guys']
 
+Everything named in the pattern has to match the type. For instance, if you use the wrong name or primitive dtype, it won't be recognized as a string.
 
+.. code-block:: python
 
+    schema = List(
+        List(name = "UTF8String", content = Primitive("int8"))     # wrong primitive dtype: int8 instead of uint8
+        )
+    obj = schema({
+        "object-c": [2],
+        "object-L-NUTF8String-c": [11, 8],
+        "object-L-NUTF8String-L-Di1": [104, 101, 108, 108, 111, 32, 116, 104, 101, 114, 101,
+                                       121, 111, 117, 32, 103, 117, 121, 115]
+        })
+    obj
+    # [[104, 101, 108, 108, 111, ..., 116, 104, 101, 114, 101],    # interpreted as a list of lists of bytes
+    #  [121, 111, 117, 32, 103, 117, 121, 115]]
 
+But the pattern says nothing about whether the list is nullable (the primitive must not be nullable). Therefore, we can have nullable strings:
 
+.. code-block:: python
 
+    schema = List(
+        List(name = "UTF8String", content = Primitive("uint8"), nullable = True)
+        )
+    obj = schema({
+        "object-c": [2],
+        "object-L-NUTF8String-M": [0, -1],
+        "object-L-NUTF8String-c": [11],
+        "object-L-NUTF8String-L-Du1": [104, 101, 108, 108, 111, 32, 116, 104, 101, 114, 101]
+        })
+    obj
+    # ['hello there', None]
 
+``UTF8String`` and ``ByteString`` are the first two extensions, but more can be added at any time. The user can control which extensions are applied when they create an object:
+
+.. code-block:: python
+
+    schema = List(
+        List(name = "UTF8String", content = Primitive("uint8"))
+        )
+    obj = schema({
+        "object-c": [2],
+        "object-L-NUTF8String-c": [11, 8],
+        "object-L-NUTF8String-L-Du1": [104, 101, 108, 108, 111, 32, 116, 104, 101, 114, 101,
+                                       121, 111, 117, 32, 103, 117, 121, 115]
+        },
+        extension = {})                                            # don't use any extensions
+    obj
+    # [[104, 101, 108, 108, 111, ..., 116, 104, 101, 114, 101],    # not interpreted as a string, though it is eligible
+    #  [121, 111, 117, 32, 103, 117, 121, 115]]
+
+The default set of extensions is the ``oamap.extension.common`` module; any dict, iterable, or module full of ``oamap.generator.ExtededGenerator`` subclasses would be accepted.
+
+One can imagine domain-specific libraries of specialized types.
 
 Nullability
 ~~~~~~~~~~~
 
+Every data type, at any level, may be nullable. Rather than being an eighth type (e.g. a singleton ``NoneType`` that must be combined with other types as a union, the way Avro does it), nullability is a property of every type generator. This is in part to match Arrow and Parquet's behaviors, but also because having to mix a ``NoneType`` with other types is annoying. It complicates Avro's type schemas to express a case that is much more common than tagged unions.
 
+OAMap's mechanism for expressing missing data is a combined mask-offset array: slots containing a -1 are missing and any other value provides an offset to the non-missing data. This allows the non-missing data to be compactified (like Parquet) but also random accessible (like Arrow).
 
+.. code-block:: python
 
+    # every level of this schema could be None
+    schema = List(List(Primitive(int, nullable=True), nullable=True), nullable=True)
+
+    # in this case, only a primitive is missing
+    schema({
+        "object-M": [0],
+        "object-c": [3],
+        "object-L-M": [0, 1, 2],
+        "object-L-c": [3, 0, 2],
+        "object-L-L-M": [0, -1, 1, 2, 3],
+        "object-L-L-Di8": [1, 3, 4, 5]                 # compactified: no "2"
+        })
+    # [[1, None, 3], [], [4, 5]]
+
+    # in this case, one of the sublists is missing
+    schema({
+        "object-M": [0],
+        "object-c": [3],
+        "object-L-M": [-1, 0, 1],
+        "object-L-c": [0, 2],                          # compactified: no first list length
+        "object-L-L-M": [0, 1],
+        "object-L-L-Di8": [4, 5]                       # compactified: no "1, 2, 3"
+        })
+    # [None, [], [4, 5]]
+
+    # now the whole thing is missing
+    schema({
+        "object-M": [-1],
+        "object-c": [],                                # everthing is compactified: no data at all
+        "object-L-M": [],
+        "object-L-c": [],
+        "object-L-L-M": [],
+        "object-L-L-Di8": []
+        })
+    # None
+
+This representation uses more memory than Parquet's definition levels or Arrow's bitmask, but it can be generated on the fly from each. When storing OAMap data natively, these ``-M`` mask-offsets are packed into ``-m`` bitmasks (identical to Arrow's).
+
+Why not just use Arrow's bitmasks? Bitmasks require the missing data to be padded with meaningless values, such as –999, to maintain alignment. Missing records or tuples must be padded *in all fields,* and particle physics datasets often have hundreds of fields per record— padding scales poorly to that case. OAMap's mask-offsets can represent missing data regardless of whether the value arrays have been compactified or not (different values for the offsets).
 
 Filling datasets
 """"""""""""""""
@@ -1126,6 +1216,18 @@ Manipulating data with columnar granularity
 """""""""""""""""""""""""""""""""""""""""""
 
 (add an attribute to the exoplanets (number of moons), soft-filter the exoplanets)
+
+Viewing common data formats as OAMaps
+"""""""""""""""""""""""""""""""""""""
+
+ROOT
+~~~~
+
+Apache Arrow
+~~~~~~~~~~~~
+
+Parquet
+~~~~~~~
 
 Low-latency random access
 """""""""""""""""""""""""
