@@ -358,7 +358,7 @@ Schemas
 
 Now let's focus on OAMap's schemas. Columnar data representations must have schemas, since the schema acts as a set of instructions to reassemble objects from serialized data. "Schemaless" file formats pack reassembly instructions inline with or between the objects, and there's only a "between objects" for a rowwise representation. A schema specifies all of the possible values that objects of that type may take, and the schema definition language describes the possible types that any object in the system can ever have.
 
-To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension** (PLURTPE: *plur-teep*). Thus, you can't put function objects or transient types such as file handles into an object described by OAMap, but you can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
+To keep things simple and language-independent, OAMap schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension**. Thus, you can't put function objects or transient types such as file handles into an object described by OAMap, but you can make arbitrary graphs using pointers, heterogeneous collections using unions, and interpret these data in special ways at runtine with extensions. Each generator is described below.
 
 Every schema has a JSON representation, which you can save as metadata describing the object.
 
