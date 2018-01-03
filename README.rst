@@ -1333,6 +1333,19 @@ A second fill does not use the same pointer values:
     oamap.fill.toarrays(fillables)["object-L-X-NUTF8String-L-Du1"].tostring()
     # 'zeroonetwothreezeroonetwothree'
 
+There's also
+
+- ``oamap.fill.fromiterdata``
+- ``oamap.fill.fromjson``
+- ``oamap.fill.fromjsonstring``
+- ``oamap.fill.fromjsonfile``
+- ``oamap.fill.fromjsonstream``
+- ``oamap.fill.fromjsonfilestream``
+
+which do the same but for an iterator of data and JSON objects in various forms.
+
+Filling technology will likely grow to include more cases.
+
 Viewing common data formats as OAMaps
 """""""""""""""""""""""""""""""""""""
 
