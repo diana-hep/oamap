@@ -1108,7 +1108,7 @@ Everything named in the pattern has to match the type. For instance, if you use 
 .. code-block:: python
 
     schema = List(
-        List(name = "UTF8String", content = Primitive("int8"))     # wrong primitive dtype: int8 instead of uint8
+        List(name = "UTF8String", content = Primitive("int8"))   # wrong primitive dtype: int8 instead of uint8
         )
     obj = schema({
         "object-c": [2],
@@ -1117,7 +1117,7 @@ Everything named in the pattern has to match the type. For instance, if you use 
                                        121, 111, 117, 32, 103, 117, 121, 115]
         })
     obj
-    # [[104, 101, 108, 108, 111, ..., 116, 104, 101, 114, 101],    # interpreted as a list of lists of bytes
+    # [[104, 101, 108, 108, 111, ..., 116, 104, 101, 114, 101],  # interpreted as a list of lists of bytes
     #  [121, 111, 117, 32, 103, 117, 121, 115]]
 
 But the pattern says nothing about whether the list is nullable (the primitive must not be nullable). Therefore, we can have nullable strings:
