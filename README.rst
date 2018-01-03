@@ -194,9 +194,9 @@ so there should be more planetary eccentricity values than stellar temperature v
     # 2076
 
     d = DataSource()
-    eccentricity_array = d["object-L-NStar-Fplanets-L-NPlanet-Feccentricity-NValueAsymErr-Fval"]
+    eccentricity_array = d["object-L-NStar-Fplanets-L-NPlanet-Feccentricity-NValueAsymErr-Fval-Df4"]
     # array([ 0.   ,  0.   ,  0.05 , ...,  0.   ,  0.12 ,  0.062], dtype=float32)
-    semimajor_axis_array = d["object-L-NStar-Fplanets-L-NPlanet-Fsemimajor_axis-NValueAsymErr-Fval"]
+    semimajor_axis_array = d["object-L-NStar-Fplanets-L-NPlanet-Fsemimajor_axis-NValueAsymErr-Fval-Df4"]
     # array([ 0.115     ,  0.01855   ,  0.26899999, ...,  0.359     ,
     #         0.056     ,  0.116     ], dtype=float32)
 
