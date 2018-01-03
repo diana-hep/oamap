@@ -1212,17 +1212,126 @@ Why not just use Arrow's bitmasks? Bitmasks require the missing data to be padde
 Creating and filling datasets
 """""""""""""""""""""""""""""
 
-In the section on schemas and data representation (above), I created the columnar data by hand. Usually, you wouldn't do that. The OAMap package has functions for generating columnar data from Python objects and for viewing columnar data in various forms as OAMaps.
+In the section on schemas and data representation (above), I created the columnar arrays by hand. Usually, you wouldn't do that. The OAMap package has functions for generating columnar data from Python objects and for viewing preexisting columnar data in various forms.
+ 
+I have also presented the datasets as pre-built, immutable objects. Although most batch data analysis *is* performed on immutable sources, OAMap datasets can be modified in place in a limited way: they are append-only, like a log file.
 
-We have also been viewing datasets as pre-built, immutable objects. Although most batch data analysis *is* performed on immutable data, OAMap datasets can be modified in place in a limited way: they are append-only, like a log file.
+This is the concession that Object Array Mapping makes for bare-metal performance, compared to Object Relational Mapping (ORM). ORM datasets can be transactional databases, with any row being modified at any time. Because of the way that OAMap buries variable-length structures in arrays, the lengths of these structures are fixed everywhere except at the end of a list. (Strictly speaking, some buried structures can *decrease* in size, but the restrictions on that are too complicated to likely be useful.)
 
-As an aside, this is the concession that Object Array Mapping makes for bare-metal performance, relative to Object Relational Mapping (ORM): ORM datasets can be transactional databases, with any row being modified at any time. Because of the way that OAMap buries variable-length structures in arrays, the lengths of these structures are fixed everywhere but at the end of a list. (Strictly speaking, buried structures can only *decrease* in size, but shrink-only data isn't likely to be useful.)
+So in general, there are two sources for datasets: dicts of arrays (as above), and subclasses of `oamap.fillable.Fillable`. If the schema has list type, it can grow until the underlying arrays get too unwieldy for use. (A good practice is to grow them up to a good partition size, then start a new object as a new partition.)
 
+Currently, there are three implementations of Fillables:
 
+- `oamap.fillable.FillableArray`, which is a Python list of Numpy arrays in memory (can only grow while it fits in memory);
+- `oamap.fillable.FillableFile`, which is an unformatted binary file on disk (must be able to seek and write);
+- `oamap.fillable.FillableNumpyFile`, which is the same with a Numpy header (and can therefore be interpreted without metadata by other processes).
 
+The Fillable interface has ``append(item)``, ``extend(items)`` semantics, like a list, but also ``update()`` (consider all appends/extends up to the present to be valid) and ``revert()`` (return to the last good state). If a filling operation fails, the Fillable remains valid.
 
+Fillables also have ``__getitem__(index)`` (overloads square brackets for indexing and slicing) and ``__array__()`` (overrides cast as Numpy array) to present all valid data as an array. These are the arrays that can be used to view a columnar object while it is still growing. They represent snapshots after the last good ``update()`` and usually do not involve copying.
 
-(immutable or append-only semantics)
+The primary function for converting data into columnar arrays is ``oamap.fill.fromdata``:
+
+.. code-block:: python
+
+    import oamap.fill
+
+    fillables = oamap.fill.fromdata([1, 2, 3, None, 5])
+
+    oamap.fill.toarrays(fillables)
+    # {'object-B': array([0], dtype=int32),
+    #  'object-E': array([5], dtype=int32),
+    #  'object-L-M': array([ 0,  1,  2, -1,  3], dtype=int32),
+    #  'object-L-Du1': array([1, 2, 3, 5], dtype=uint8)}
+
+The fillables are returned so that the same set can be filled again:
+
+.. code-block:: python
+
+    fillables = oamap.fill.fromdata([6, 7, None, None, 10], fillables=fillables)
+
+    oamap.fill.toarrays(fillables)
+    # {'object-B': array([0, 5], dtype=int32),
+    #  'object-E': array([ 5, 10], dtype=int32),
+    #  'object-L-M': array([ 0,  1,  2, -1,  3,  4,  5, -1, -1,  6], dtype=int32),
+    #  'object-L-Du1': array([ 1,  2,  3,  5,  6,  7, 10], dtype=uint8)}
+
+For convenience, we've allowed the schema to be inferred by ``oamap.inference.fromdata``:
+
+.. code-block:: python
+
+    import oamap.inference
+    schema = oamap.inference.fromdata([1, 2, 3, None, 5])
+    schema.show()
+    # List(
+    #   content = Primitive(dtype('uint8'), nullable=True)
+    # )
+
+But we could have passed that in.
+
+.. code-block:: python
+
+    from oamap.schema import *
+
+    fillables = oamap.fill.fromdata(
+        ["one", "two", "three", "four", "five"],
+        List(List("u1", name="UTF8String"))
+        )
+
+    oamap.fill.toarrays(fillables)
+    # {'object-B': array([0], dtype=int32),
+    #  'object-E': array([5], dtype=int32)
+    #  'object-L-NUTF8String-B': array([ 0,  3,  6, 11, 15], dtype=int32),
+    #  'object-L-NUTF8String-E': array([ 3,  6, 11, 15, 19], dtype=int32),
+    #  'object-L-NUTF8String-L-Du1':
+    #    array([111, 110, 101, 116, 119, 111, 116, 104, 114, 101, 101, 102, 111,
+    #           117, 114, 102, 105, 118, 101], dtype=uint8)}
+
+Usually only identical references (Python ``is`` returns ``True``) are considered the same object for pointers, but the ``pointer_fromequal`` option allows data that are merely equal to be considered the same. This is helpful for filling categorical variables/enumerations:
+
+.. code-block:: python
+
+    fillables = oamap.fill.fromdata(
+        ["zero", "one", "two", "zero", "two", "one", "one", "three", "two"],
+
+        List(Pointer(List("u1", name="UTF8String"))),
+
+        pointer_fromequal = True)
+
+    oamap.fill.toarrays(fillables)
+    # {'object-B': array([0], dtype=int32),
+    #  'object-E': array([9], dtype=int32),
+    #  'object-L-P': array([0, 1, 2, 0, 2, 1, 1, 3, 2], dtype=int32),
+    #  'object-L-X-NUTF8String-B': array([ 0,  4,  7, 10], dtype=int32),
+    #  'object-L-X-NUTF8String-E': array([ 4,  7, 10, 15], dtype=int32),
+    #  'object-L-X-NUTF8String-L-Du1':
+    #    array([122, 101, 114, 111, 111, 110, 101, 116, 119, 111, 116, 104, 114,
+    #           101, 101], dtype=uint8)}
+
+but be forewarned— this algorithm is quadratic in the size of the dataset. Specifically, all of the possible values for a pointer are stored in a hashmap during the fill and then checked for equality at the end of the fill.
+
+A second fill does not use the same pointer values:
+
+.. code-block:: python
+
+    fillables = oamap.fill.fromdata(
+        ["zero", "one", "two", "zero", "two", "one", "one", "three", "two"],
+        List(Pointer(List("u1", name="UTF8String"))),
+        pointer_fromequal = True,
+        fillables = fillables)
+
+    oamap.fill.toarrays(fillables)
+    {'object-B': array([0, 0], dtype=int32),
+     'object-E': array([9, 9], dtype=int32),
+     'object-L-P': array([0, 1, 2, 0, 2, 1, 1, 3, 2, 4, 5, 6, 4, 6, 5, 5, 7, 6], dtype=int32),
+     'object-L-X-NUTF8String-B': array([ 0,  4,  7, 10, 15, 19, 22, 25], dtype=int32),
+     'object-L-X-NUTF8String-E': array([ 4,  7, 10, 15, 19, 22, 25, 30], dtype=int32),
+     'object-L-X-NUTF8String-L-Du1': array([122, 101, 114, 111, 111, 110, 101, 116, 119, 111, 116, 104, 114,
+           101, 101, 122, 101, 114, 111, 111, 110, 101, 116, 119, 111, 116,
+           104, 114, 101, 101], dtype=uint8)}
+
+    oamap.fill.toarrays(fillables)["object-L-X-NUTF8String-L-Du1"].tostring()
+    # 'zeroonetwothreezeroonetwothree'
 
 Viewing common data formats as OAMaps
 """""""""""""""""""""""""""""""""""""

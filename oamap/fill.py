@@ -166,7 +166,7 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
         elif isinstance(gen, oamap.generator.ExtendedGenerator):
             return forefront(gen.generic)
 
-    if forefront(generator) != 0 and not isinstance(generator, ListGenerator):
+    if forefront(generator) != 0 and not isinstance(generator, oamap.generator.ListGenerator):
         raise TypeError("non-Lists can only be filled from data once")
 
     def unionnullable(union):
