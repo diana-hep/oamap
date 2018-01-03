@@ -457,7 +457,7 @@ List contents are stored in arrays that ignore list boundaries and the boundarie
 - an **offsets array**, which is a cumulative sum of the counts array, permitting random access;
 - **starts** and **stops arrays**, which individually indicate the start and stop of each list (also random accessible).
 
-ROOT uses counts and offsets, Arrow uses offsets, and Parquet uses something altogether different (repetition level). OAMap converts any of these into starts and stops arrays because that form is the most powerful: the physical data may contain gaps to emulate stencils, may be in a different physical order than the logical order for database-style indexing, and may contain data accessible by pointer but not in the main list (e.g. it's part of a tree). When OAMap fails to find a starts or stops array (names usually end with ``-B`` or ``-E``), it searches for a counts array (name usually ends with ``-c``). For simplicity, all of the examples we have considered have been in that fallback case. Arrow and Parquet are handled with special dict-like objects— offsets arrays can be turned into starts and stops without even copying data.
+ROOT uses counts and offsets, `Arrow uses offsets <https://github.com/apache/arrow/blob/master/format/Layout.md#list-type>`_, and Parquet uses something altogether different (repetition level). OAMap converts any of these into starts and stops arrays because that form is the most powerful: the physical data may contain gaps to emulate stencils, may be in a different physical order than the logical order for database-style indexing, and may contain data accessible by pointer but not in the main list (e.g. it's part of a tree). When OAMap fails to find a starts or stops array (names usually end with ``-B`` or ``-E``), it searches for a counts array (name usually ends with ``-c``). For simplicity, all of the examples we have considered have been in that fallback case. Arrow and Parquet are handled with special dict-like objects— offsets arrays can be turned into starts and stops without even copying data.
 
 Most datasets are lists at the top level— lists of *something—* so they have one silly looking single-element array containing nothing but the total number of entries. The total number of entries is sometimes found in metadata, rather than data, so this array is often created on demand (as in the ROOT example above).
 
@@ -506,6 +506,32 @@ Unions can emulate a popular object-oriented concept: class inheritance. If we w
     obj
     # [<ChargedParticle at index 0>, <ChargedParticle at index 1>, <NeutralParticle at index 0>,
     #  <ChargedParticle at index 2>, <NeutralParticle at index 1>]
+
+The tags array (``-T``) and contents (``-U*``) in these examples are sufficient to express the types and data, but not to randomly access an element (without counting the number of times that tag has appeared before, to find the offset into the contents arrays). If not provided (by ``-O``), OAMap creates an offsets array for random access, similar to the way that it creates list starts and stops from a counts array.
+
+An offsets array may point to compact contents (Arrow's "`dense union <https://github.com/apache/arrow/blob/master/format/Layout.md#dense-union-type>`_"):
+
+    schema = List(Union(["float", "bool"]))
+    obj = schema({"object-c": [5],
+                  "object-L-T": [0, 0, 0, 1, 1],
+                  "object-L-O": [0, 1, 2, 0, 1],                # counting, masked by tag
+                  "object-L-U0": [1.1, 2.2, 3.3],
+                  "object-L-U1": [True, False]})
+    obj
+    # [1.1, 2.2, 3.3, True, False]
+
+or padded contents (Arrow's "`sparse union <https://github.com/apache/arrow/blob/master/format/Layout.md#sparse-union-type>`_"):
+
+    schema = List(Union(["float", "bool"]))
+    obj = schema({"object-c": [5],
+                  "object-L-T": [0, 0, 0, 1, 1],
+                  "object-L-O": [0, 1, 2, 3, 4],                # just counting
+                  "object-L-U0": [1.1, 2.2, 3.3, -999, -999],   # need to pad unused values
+                  "object-L-U1": [-1, -1, -1, True, False]})
+    obj
+    # [1.1, 2.2, 3.3, True, False]
+
+In both cases, the offsets can be computed from the tags, so we often avoid saving them.
 
 Record
 ~~~~~~
