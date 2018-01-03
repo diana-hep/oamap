@@ -1108,7 +1108,7 @@ Everything named in the pattern has to match the type. For instance, if you use 
 .. code-block:: python
 
     schema = List(
-        List(name = "UTF8String", content = Primitive("int8"))   # wrong primitive dtype: int8 instead of uint8
+        List(name = "UTF8String", content = Primitive("int8"))   # wrong primitive dtype: should be uint8
         )
     obj = schema({
         "object-c": [2],
