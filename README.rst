@@ -1071,7 +1071,37 @@ These strings are now effectively enumeration constants (except that you didn't 
 Extension
 ~~~~~~~~~
 
-Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to fully specify how the data are to be used at runtime. For instance, we don't have an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we want to interpret text strings differently from lists of 1-byte numbers in data analysis.
+Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to fully specify how the data are to be used at runtime. For instance, we don't have an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we would want to interpret text strings differently from lists of 1-byte numbers in a data analysis.
+
+All schemas have a ``name`` attribute to make that distinction. Record names were discussed above as a way to distinguish records that have the same field names and types, but names can be used to distinguish any type.
+
+Some names, when applied to the right types, modify runtime behavior. Anything matching the pattern
+
+.. code-block:: python
+
+    {"name": "UTF8String",
+     "type": "list",
+     "content": {
+       "type": "primitive",
+       "dtype": "uint8",
+       "dims": [],
+       "nullable": False}}
+
+is interpreted as a UTF-8 encoded string at runtime.
+
+.. code-block:: python
+
+    schema = List(
+        List(name = "UTF8String", content = Primitive("uint8"))
+        )
+    obj = schema({
+        "object-c": [2],
+        "object-L-NUTF8String-c": [11, 8],
+        "object-L-NUTF8String-L-Du1": [104, 101, 108, 108, 111, 32, 116, 104, 101, 114, 101,
+                                       121, 111, 117, 32, 103, 117, 121, 115]
+        })
+    obj
+    # ['hello there', 'you guys']
 
 
 
