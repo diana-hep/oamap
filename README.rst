@@ -588,6 +588,12 @@ You've already seen several examples of record types, so here's one drawn from t
 
 .. code-block:: python
 
+    import codecs
+    try:
+        from urllib.request import urlopen   # Python 3
+    except ImportError:
+        from urllib2 import urlopen          # Python 2
+
     remotefile = urlopen("http://diana-hep.org/oamap/examples/planets/schema.json")
     remotefile = codecs.getreader("utf-8")(remotefile)
     schema = Schema.fromjsonfile(remotefile)
@@ -1005,6 +1011,12 @@ Just wrap this in a ``Pointer`` constructor and the storage is entirely differen
 These strings are now effectively enumeration constants (except that you didn't have to specify the possible values in the schema). The identity of a categorical variable is represented by an integer— the descriptive name can be as long as you like, it's only saved once. The exoplanets dataset used this feature:
 
 .. code-block:: python
+
+    import codecs
+    try:
+        from urllib.request import urlopen   # Python 3
+    except ImportError:
+        from urllib2 import urlopen          # Python 2
 
     baseurl = "http://diana-hep.org/oamap/examples/planets/"
     remotefile = urlopen(baseurl + "schema.json")
