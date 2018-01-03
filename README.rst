@@ -482,11 +482,11 @@ A union is expressed by a list of possibilities:
 
     schema = List(Union(["float", List("int")]))
 
-    obj = schema({"object-c": [3],                   # length of outer list
-                  "object-L-T": [0, 1, 0],           # tags: possibility 0 (float) or 1 (list of int)?
-                  "object-L-U0": [1.1, 3.3],         # data for possibility 0
-                  "object-L-U1-c": [4],              # list lengths for possibility 1
-                  "object-L-U1-L": [1, 2, 3, 4]})    # list content for possibility 1
+    obj = schema({"object-c": [3],                          # length of outer list
+                  "object-L-T": [0, 1, 0],                  # tags: possibility 0 (float) or 1 (list of int)?
+                  "object-L-U0": [1.1, 3.3],                # data for possibility 0
+                  "object-L-U1-c": [4],                     # list lengths for possibility 1
+                  "object-L-U1-L": [1, 2, 3, 4]})           # list content for possibility 1
     obj
     # [1.1, [1, 2, 3, 4], 3.3]
 
@@ -622,11 +622,11 @@ Here's an example of a tuple:
 
     schema = List(Tuple(["int", "float", List("int")]))
 
-    obj = schema({"object-c": [3],                   # length of outer list
-                  "object-L-F0": [1, 2, 3],          # tuple field 0 contents
-                  "object-L-F1": [1.1, 2.2, 3.3],    # tuple field 1 contents
-                  "object-L-F2-c": [3, 0, 2],        # tuple field 2 list lengths
-                  "object-L-F2-L": [1, 2, 3, 4, 5]}) # tuple field 2 list contents
+    obj = schema({"object-c": [3],                          # length of outer list
+                  "object-L-F0": [1, 2, 3],                 # tuple field 0 contents
+                  "object-L-F1": [1.1, 2.2, 3.3],           # tuple field 1 contents
+                  "object-L-F2-c": [3, 0, 2],               # tuple field 2 list lengths
+                  "object-L-F2-L": [1, 2, 3, 4, 5]})        # tuple field 2 list contents
     obj
     # [(1, 1.1, [1, 2, 3]), (2, 2.2, []), (3, 3.3, [4, 5])]
 
