@@ -532,9 +532,9 @@ Unions can emulate a popular object-oriented concept: class inheritance. If you 
         ]))
     obj = schema({"object-c": [5],
                   "object-L-T": [1, 1, 0, 1, 0, 0],
-                  "object-L-U0-Fenergy-Df8": [1.1, 2.2, 3.3],
-                  "object-L-U1-Fenergy-Df8": [1.1, 2.2, 3.3],
-                  "object-L-U1-Fcharge-Di8": [1, -1, -1]})
+                  "object-L-U0-NNeutralParticle-Fenergy-Df8": [1.1, 2.2, 3.3],
+                  "object-L-U1-NChargedParticle-Fenergy-Df8": [1.1, 2.2, 3.3],
+                  "object-L-U1-NChargedParticle-Fcharge-Di8": [1, -1, -1]})
     obj
     # [<ChargedParticle at index 0>, <ChargedParticle at index 1>, <NeutralParticle at index 0>,
     #  <ChargedParticle at index 2>, <NeutralParticle at index 1>]
