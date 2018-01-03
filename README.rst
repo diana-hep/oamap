@@ -1071,7 +1071,7 @@ These strings are now effectively enumeration constants (except that you didn't 
 Extension
 ~~~~~~~~~
 
-Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to make fully specify how the data are to be used at runtime. For instance, we don't have an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we want to interpret text strings differently from lists of 1-byte numbers in data analyses.
+Six generators (primitive, list, union, record, tuple, and pointer) are enough to *encode* a wide variety of data, but not enough to fully specify how the data are to be used at runtime. For instance, we don't have an explicit "string" type because a string is just a ``List("uint8")`` and it's better to not repeat the logic of how to encode variable-length lists for a special case like strings. However, we want to interpret text strings differently from lists of 1-byte numbers in data analysis.
 
 
 
