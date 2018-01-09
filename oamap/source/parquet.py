@@ -53,7 +53,8 @@ try:
 except ImportError:
     snappy = None
 
-from oamap.schema import *
+import oamap.schema
+import oamap.generator
 
 class ParquetFile(object):
     def __init__(self, file):
@@ -72,18 +73,18 @@ class ParquetFile(object):
         if hasattr(self, "memmap"):
             headermagic = self.memmap[:4].tostring()
             footermagic = self.memmap[-4:].tostring()
-            footersize, = self.memmap[-8:-4].view("<i4")
-            index = len(self.memmap) - (footersize + 8)
+            footerbytes, = self.memmap[-8:-4].view("<i4")
+            index = len(self.memmap) - (footerbytes + 8)
 
             class TFileTransport(thriftpy.transport.TTransportBase):
                 def __init__(self, memmap, index):
                     self._memmap = memmap
                     self._index = index
-                def _read(self, size):
+                def _read(self, bytes):
                     if not (0 <= self._index < len(self._memmap)):
                         raise IOError("seek point {0} is beyond array with {1} bytes".format(self._index, len(self._memmap)))
-                    out = self._memmap[self._index : self._index + size]
-                    self._index += size
+                    out = self._memmap[self._index : self._index + bytes]
+                    self._index += bytes
                     if len(out) == 0:
                         return b""
                     else:
@@ -99,16 +100,16 @@ class ParquetFile(object):
             footermagic = file.read(4)
 
             self.file.seek(-8, os.SEEK_END)
-            footersize, = struct.unpack(b"<i", file.read(4))
+            footerbytes, = struct.unpack(b"<i", file.read(4))
 
-            self.file.seek(-(footersize + 8), os.SEEK_END)
+            self.file.seek(-(footerbytes + 8), os.SEEK_END)
             index = None
 
             class TFileTransport(thriftpy.transport.TTransportBase):
                 def __init__(self, file, index):
                     self._file = file
-                def _read(self, size):
-                    return self._file.read(size)
+                def _read(self, bytes):
+                    return self._file.read(bytes)
 
             self.TFileTransport = TFileTransport
 
@@ -122,17 +123,20 @@ class ParquetFile(object):
         self.footer = parquet_thrift.FileMetaData()
         self.footer.read(pin)
 
-        def recurse(index, path):
+        def recurse(index, path, maxdef, maxrep):
             schema = self.footer.schema[index]
-            schema.children = []
-            schema.path = path + [schema.name]
             if schema.num_children is None:
                 schema.num_children = 0
+            schema.children = []
+            schema.path = path + [schema.name]
+            schema.required = schema.repetition_type == parquet_thrift.FieldRepetitionType.REQUIRED
+            schema.maxdef = maxdef + (0 if schema.required else 1)
+            schema.maxrep = maxrep + (1 if schema.required else 0)
 
             for i in range(schema.num_children):
                 index += 1
                 schema.children.append(self.footer.schema[index])
-                index = recurse(index, schema.path)
+                index = recurse(index, schema.path, schema.maxdef, schema.maxrep)
             return index
 
         index = 0
@@ -140,10 +144,10 @@ class ParquetFile(object):
         while index + 1 < len(self.footer.schema):
             index += 1
             self.fields.append(self.footer.schema[index])
-            index = recurse(index, [])
+            index = recurse(index, [], 0, 0)
 
-    def column(self, rowgroupid, schema, deflevels=True, replevels=True, data=True, executor=None, blocking=True):
-        if executor is not None:
+    def column(self, rowgroupid, schema, deflevels=True, replevels=True, data=True, parallel=False):
+        if parallel:
             raise NotImplementedError
 
         footercolumn = None
@@ -156,8 +160,9 @@ class ParquetFile(object):
         
         if hasattr(self, "memmap"):
             def pagereader(index):
-                num_values = 0
-                while num_values < footercolumn.meta_data.num_values:
+                # always safe for parallelization
+                start = stop = 0
+                while start < footercolumn.meta_data.num_values:
                     tin = self.TFileTransport(self.memmap, index)
                     pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
                     header = parquet_thrift.PageHeader()
@@ -165,56 +170,133 @@ class ParquetFile(object):
                     index = tin._index
                     compressed = self.memmap[index : index + header.compressed_page_size]
                     index += 0 if header.compressed_page_size is None else header.compressed_page_size
-                    num_values += header.data_page_header.num_values
-                    yield header, compressed
+                    stop = start + header.data_page_header.num_values
+                    yield header, compressed, start, stop
+                    start = stop
 
         else:
             def pagereader(index):
-                # if parallel, open new files
+                # if parallel, open a new file to avoid conflicts with other threads
                 file = self.file
                 file.seek(index, os.SEEK_SET)
-                num_values = 0
-                while num_values < footercolumn.meta_data.num_values:
+                start = stop = 0
+                while start < footercolumn.meta_data.num_values:
                     tin = self.TFileTransport(file, index)
                     pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
                     header = parquet_thrift.PageHeader()
                     header.read(pin)
                     compressed = file.read(header.compressed_page_size)
-                    num_values += header.data_page_header.num_values
-                    yield header, compressed
+                    stop = start + header.data_page_header.num_values
+                    yield header, compressed, start, stop
+                    start = stop
         
         if footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.UNCOMPRESSED:
-            def decompress(compressed):
+            def decompress(compressed, compressedbytes, uncompressedbytes):
                 return compressed
-
         elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.SNAPPY:
             if snappy is None:
                 raise ImportError("\n\nTo read Parquet files with snappy compression, install snappy package with:\n\n    pip install python-snappy --user\nor\n    conda install -c conda-forge python-snappy")
-            def decompress(compressed):
+            def decompress(compressed, compressedbytes, uncompressedbytes):
                 return snappy.decompress(compressed)
-
         elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.GZIP:
-            def decompress(compressed):
+            def decompress(compressed, compressedbytes, uncompressedbytes):
                 return gzip.GzipFile(fileobj=io.BytesIO(compresseddata), mode="rb").read()
-
         elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.LZO:
-            raise NotImplementedError
-
+            raise NotImplementedError("LZO decompression")
         elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.BROTLI:
-            raise NotImplementedError
-
+            raise NotImplementedError("BROTLI decompression")
         elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.LZ4:
+            raise NotImplementedError("LZ4 decompression")
+        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.ZSTD:
+            raise NotImplementedError("ZSTD decompression")
+        else:
+            raise AssertionError("unrecognized codec: {0}".format(footercolumn.meta_data.codec))
+        
+        deflevelsegs = []
+        replevelsegs = []
+        datasegs = []
+
+        for header, compressed, start, stop in pagereader(footercolumn.file_offset):
+            uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
+            index = 0
+
+            deflevelseg = None
+            replevelseg = None
+            dataseg = None
+
+            if not schema.required:
+                bitwidth = self._bitwidth(schema.maxdef)
+                if bitwidth > 0:
+                    raise NotImplementedError
+
+            if len(schema.path) > 1:
+                bitwidth = self._bitwidth(schema.maxrep)
+                raise NotImplementedError
+
+            if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
+                dataseg = self._plain(uncompressed[index:], column.meta_data)
+
+            elif header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN_DICTIONARY:
+                raise NotImplementedError
+
+            else:
+                raise AssertionError("unexpected encoding: {0}".format(header.data_page_header.encoding))
+
+                
+            if deflevels and deflevelseg is not None:
+                deflevelsegs.append(deflevelseg)
+            if replevels and replevelseg is not None:
+                replevelsegs.append(replevelseg)
+            if data and dataseg is not None:
+                datasegs.append(dataseg)
+
+        out = ()
+        if deflevels:
+            if len(deflevelsegs) == 0:
+                out += (None,)
+            else:
+                out += (numpy.concatenate(deflevelsegs),)
+        if replevels:
+            if len(replevelsegs) == 0:
+                out += (None,)
+            else:
+                out += (numpy.concatenate(replevelsegs),)
+        if data:
+            if len(datasegs) == 0:
+                out += (None,)
+            else:
+                out += (numpy.concatenate(datasegs),)
+        return out
+
+    @staticmethod
+    def _bitwidth(maxvalue):
+        raise NotImplementedError
+
+    @staticmethod
+    def _plain(data, metadata):
+        if metadata.type == parquet_thrift.Type.BOOLEAN:
             raise NotImplementedError
 
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.ZSTD:
+        elif metadata.type == parquet_thrift.Type.INT32:
+            return data.view("<i4")
+
+        elif metadata.type == parquet_thrift.Type.INT64:
+            return data.view("<i8")
+
+        elif metadata.type == parquet_thrift.Type.INT96:
+            return data.view("S12")
+
+        elif metadata.type == parquet_thrift.Type.FLOAT:
+            return data.view("<f4")
+
+        elif metadata.type == parquet_thrift.Type.DOUBLE:
+            return data.view("<f8")
+
+        elif metadata.type == parquet_thrift.Type.BYTE_ARRAY:
+            raise NotImplementedError
+
+        elif metadata.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
             raise NotImplementedError
 
         else:
-            raise AssertionError("unrecognized codec: {0}".format(footercolumn.meta_data.codec))
-
-        for header, compressed in pagereader(footercolumn.file_offset):
-            uncompressed = decompress(compressed)
-            print
-            print header
-            print repr(uncompressed)
-
+            raise AssertionError("unrecognized column type: {0}".format(metadata.type))
