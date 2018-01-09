@@ -161,8 +161,8 @@ class ParquetFile(object):
         if hasattr(self, "memmap"):
             def pagereader(index):
                 # always safe for parallelization
-                start = stop = 0
-                while start < footercolumn.meta_data.num_values:
+                num_values = 0
+                while num_values < footercolumn.meta_data.num_values:
                     tin = self.TFileTransport(self.memmap, index)
                     pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
                     header = parquet_thrift.PageHeader()
@@ -170,25 +170,23 @@ class ParquetFile(object):
                     index = tin._index
                     compressed = self.memmap[index : index + header.compressed_page_size]
                     index += 0 if header.compressed_page_size is None else header.compressed_page_size
-                    stop = start + header.data_page_header.num_values
-                    yield header, compressed, start, stop
-                    start = stop
+                    num_values += header.data_page_header.num_values
+                    yield header, compressed
 
         else:
             def pagereader(index):
                 # if parallel, open a new file to avoid conflicts with other threads
                 file = self.file
                 file.seek(index, os.SEEK_SET)
-                start = stop = 0
-                while start < footercolumn.meta_data.num_values:
+                num_values = 0
+                while num_values < footercolumn.meta_data.num_values:
                     tin = self.TFileTransport(file, index)
                     pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
                     header = parquet_thrift.PageHeader()
                     header.read(pin)
                     compressed = file.read(header.compressed_page_size)
-                    stop = start + header.data_page_header.num_values
-                    yield header, compressed, start, stop
-                    start = stop
+                    num_values += header.data_page_header.num_values
+                    yield header, compressed
         
         if footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.UNCOMPRESSED:
             def decompress(compressed, compressedbytes, uncompressedbytes):
@@ -216,7 +214,7 @@ class ParquetFile(object):
         replevelsegs = []
         datasegs = []
 
-        for header, compressed, start, stop in pagereader(footercolumn.file_offset):
+        for header, compressed in pagereader(footercolumn.file_offset):
             uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
             index = 0
 
@@ -224,25 +222,30 @@ class ParquetFile(object):
             replevelseg = None
             dataseg = None
 
+            # interpret definition levels, if any
+            num_nulls = 0
             if not schema.required:
-                bitwidth = self._bitwidth(schema.maxdef)
+                bitwidth = _bitwidth(schema.maxdef)
                 if bitwidth > 0:
                     raise NotImplementedError
+                    num_nulls = numpy.count_nonzero(deflevelseg != schema.maxdef)
 
+            # interpret repetition levels, if any
             if len(schema.path) > 1:
-                bitwidth = self._bitwidth(schema.maxrep)
+                bitwidth = _bitwidth(schema.maxrep)
                 raise NotImplementedError
 
+            # interpret the data (plain)
             if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
-                dataseg = self._plain(uncompressed[index:], column.meta_data)
+                dataseg = _plain(uncompressed[index:], column.meta_data, header.data_page_header.num_values - num_nulls)
 
+            # interpret the data (plain dictionary)
             elif header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN_DICTIONARY:
                 raise NotImplementedError
 
             else:
                 raise AssertionError("unexpected encoding: {0}".format(header.data_page_header.encoding))
 
-                
             if deflevels and deflevelseg is not None:
                 deflevelsegs.append(deflevelseg)
             if replevels and replevelseg is not None:
@@ -254,49 +257,53 @@ class ParquetFile(object):
         if deflevels:
             if len(deflevelsegs) == 0:
                 out += (None,)
+            elif len(deflevelsegs) == 1:
+                out += (deflevelsegs,)
             else:
-                out += (numpy.concatenate(deflevelsegs),)
+                out += (numpy.concatenate(),)
         if replevels:
             if len(replevelsegs) == 0:
                 out += (None,)
+            elif len(replevelsegs) == 1:
+                out += (replevelsegs,)
             else:
                 out += (numpy.concatenate(replevelsegs),)
         if data:
             if len(datasegs) == 0:
                 out += (None,)
+            elif len(datasegs) == 1:
+                out += (datasegs,)
             else:
                 out += (numpy.concatenate(datasegs),)
         return out
 
-    @staticmethod
-    def _bitwidth(maxvalue):
+def _bitwidth(maxvalue):
+    raise NotImplementedError
+
+def _plain(data, metadata, count):
+    if metadata.type == parquet_thrift.Type.BOOLEAN:
+        return numpy.unpackbits(data).reshape((-1, 8))[:,::-1].ravel().astype(numpy.bool_)[:count]
+
+    elif metadata.type == parquet_thrift.Type.INT32:
+        return data.view("<i4")
+
+    elif metadata.type == parquet_thrift.Type.INT64:
+        return data.view("<i8")
+
+    elif metadata.type == parquet_thrift.Type.INT96:
+        return data.view("S12")
+
+    elif metadata.type == parquet_thrift.Type.FLOAT:
+        return data.view("<f4")
+
+    elif metadata.type == parquet_thrift.Type.DOUBLE:
+        return data.view("<f8")
+
+    elif metadata.type == parquet_thrift.Type.BYTE_ARRAY:
         raise NotImplementedError
 
-    @staticmethod
-    def _plain(data, metadata):
-        if metadata.type == parquet_thrift.Type.BOOLEAN:
-            raise NotImplementedError
+    elif metadata.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
+        raise NotImplementedError
 
-        elif metadata.type == parquet_thrift.Type.INT32:
-            return data.view("<i4")
-
-        elif metadata.type == parquet_thrift.Type.INT64:
-            return data.view("<i8")
-
-        elif metadata.type == parquet_thrift.Type.INT96:
-            return data.view("S12")
-
-        elif metadata.type == parquet_thrift.Type.FLOAT:
-            return data.view("<f4")
-
-        elif metadata.type == parquet_thrift.Type.DOUBLE:
-            return data.view("<f8")
-
-        elif metadata.type == parquet_thrift.Type.BYTE_ARRAY:
-            raise NotImplementedError
-
-        elif metadata.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
-            raise NotImplementedError
-
-        else:
-            raise AssertionError("unrecognized column type: {0}".format(metadata.type))
+    else:
+        raise AssertionError("unrecognized column type: {0}".format(metadata.type))
