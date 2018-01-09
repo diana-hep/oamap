@@ -222,7 +222,7 @@ Format                   Nested? Binary? Schema? Columnar? Nullable? Uncompresse
 **BSON**                 yes     yes                                 11  MB       1.5  MB
 **Avro**                 yes     yes     yes                          3.0 MB      0.95 MB
 **ROOT**                 yes     yes     yes     yes                  5.7 MB      1.6  MB
-**Parquet**              yes     yes     yes     yes       yes        1.1 MB      0.84 MB
+**Parquet**              yes     yes     yes     yes       yes        1.7 MB      0.82 MB
 **OAMap in Numpy (npz)** yes     yes     yes     yes       yes        2.9 MB      0.86 MB
 ======================== ======= ======= ======= ========= ========= ============ ============
 
