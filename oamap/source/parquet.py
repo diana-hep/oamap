@@ -209,14 +209,15 @@ class ParquetFile(object):
             if not schema.required:
                 bitwidth = int(math.ceil(math.log(schema.maxdef + 1, 2)))
                 if bitwidth > 0:
-                    deflevelseg, index = _interpret(uncompressed, index, header.data_page_header.num_values, bitwidth, header.data_page_header.definition_level_encoding)
+                    deflevelseg, index = _interpret(uncompressed, header.data_page_header.num_values, bitwidth, header.data_page_header.definition_level_encoding)
                     num_nulls = numpy.count_nonzero(deflevelseg != schema.maxdef)
 
             # interpret repetition levels, if any
             if len(schema.path) > 1:
                 bitwidth = int(math.ceil(math.log(schema.maxrep + 1, 2)))
                 if bitwidth > 0:
-                    replevelseg, index = _interpret(uncompressed, index, header.data_page_header.num_values, bitwidth, header.data_page_header.repetition_level_encoding)
+                    replevelseg, i = _interpret(uncompressed[index:], header.data_page_header.num_values, bitwidth, header.data_page_header.repetition_level_encoding)
+                    index += i
 
             # interpret the data (plain)
             if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
@@ -346,7 +347,7 @@ def _plain(data, metadata, num_values):
     else:
         raise AssertionError("unrecognized column type: {0}".format(metadata.type))
 
-def _interpret(data, index, count, bitwidth, encoding):
+def _interpret(data, count, bitwidth, encoding):
     if bitwidth <= 8:
         out = numpy.empty(count, dtype=numpy.uint8)
     elif bitwidth <= 16:
@@ -357,11 +358,9 @@ def _interpret(data, index, count, bitwidth, encoding):
         out = numpy.empty(count, dtype=numpy.uint64)
     else:
         raise AssertionError("bitwidth > 64")
-    outdex = 0
 
     if encoding == parquet_thrift.Encoding.RLE:
-        while outdex < count:
-            index, outdex = _interpret_rle_bitpacked_hybrid(data, index, out, outdex, bitwidth)
+        return _interpret_rle_bitpacked_hybrid(data, out, bitwidth)
 
     elif encoding == parquet_thrift.Encoding.BIT_PACKED:
         raise NotImplementedError
@@ -369,7 +368,50 @@ def _interpret(data, index, count, bitwidth, encoding):
     else:
         raise AssertionError("unexpected encoding: {0}".format(encoding))
 
+def _interpret_rle_bitpacked_hybrid(data, out, bitwidth):
+    index = 0
+    outdex = 0
+    while outdex < len(out):
+        length = data[index] + data[index + 1]*256 + data[index + 2]*256*256 + data[index + 3]*256*256*256
+        index += 4
+
+        start = index
+        while index - start < length and outdex < len(out):
+            header, index = _interpret_unsigned_varint(data, index)
+            if header & 1 == 0:
+                index = _interpret_rle(data, index, header, bitwidth, out, outdex)
+            else:
+                index = _interpret_bitpacked(data, index, header, bitwidth, out, outdex)
+        index = start + length
+
     return out, index
 
-def _interpret_rle_bitpacked_hybrid(indata, index, outdata, outdex, bitwidth):
-    raise Exception
+def _interpret_unsigned_varint(data, index):
+    out = 0
+    shift = 0
+    while True:
+        byte = data[index]
+        index += 1
+        out |= ((byte & 0x7f) << shift)
+        if (byte & 0x80) == 0:
+            break
+        shift += 7
+    return out, index
+
+def _interpret_rle(data, index, header, bitwidth, out, outdex):
+    raise NotImplementedError
+    return index
+
+def _interpret_bitpacked(data, index, header, bitwidth, out, outdex):
+    # HERE
+
+
+    raise NotImplementedError
+    return index
+
+# if numba is not None:
+#     njit = numba.jit(nopython=True, nogil=True)
+#     _interpret_rle_bitpacked_hybrid = njit(_interpret_rle_bitpacked_hybrid)
+#     _interpret_unsigned_varint      = njit(_interpret_unsigned_varint)
+#     _interpret_rle                  = njit(_interpret_rle)
+#     _interpret_bitpacked            = njit(_interpret_bitpacked)
