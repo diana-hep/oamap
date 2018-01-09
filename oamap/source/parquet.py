@@ -29,15 +29,22 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import gzip
-import io
+import math
 import os
 import struct
+import sys
+import zlib
 # try:
 #     from urlparse import urlparse
 # except ImportError:
 #     from urllib.parse import urlparse
 
 import numpy
+
+try:
+    import numba
+except ImportError:
+    numba = None
 
 try:
     import thriftpy
@@ -47,11 +54,6 @@ except ImportError:
 else:
     THRIFT_FILE = os.path.join(os.path.dirname(__file__), "parquet.thrift")
     parquet_thrift = thriftpy.load(THRIFT_FILE, module_name="parquet_thrift")
-
-try:
-    import snappy
-except ImportError:
-    snappy = None
 
 import oamap.schema
 import oamap.generator
@@ -188,27 +190,7 @@ class ParquetFile(object):
                     num_values += header.data_page_header.num_values
                     yield header, compressed
         
-        if footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.UNCOMPRESSED:
-            def decompress(compressed, compressedbytes, uncompressedbytes):
-                return compressed
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.SNAPPY:
-            if snappy is None:
-                raise ImportError("\n\nTo read Parquet files with snappy compression, install snappy package with:\n\n    pip install python-snappy --user\nor\n    conda install -c conda-forge python-snappy")
-            def decompress(compressed, compressedbytes, uncompressedbytes):
-                return snappy.decompress(compressed)
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.GZIP:
-            def decompress(compressed, compressedbytes, uncompressedbytes):
-                return gzip.GzipFile(fileobj=io.BytesIO(compresseddata), mode="rb").read()
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.LZO:
-            raise NotImplementedError("LZO decompression")
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.BROTLI:
-            raise NotImplementedError("BROTLI decompression")
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.LZ4:
-            raise NotImplementedError("LZ4 decompression")
-        elif footercolumn.meta_data.codec == parquet_thrift.CompressionCodec.ZSTD:
-            raise NotImplementedError("ZSTD decompression")
-        else:
-            raise AssertionError("unrecognized codec: {0}".format(footercolumn.meta_data.codec))
+        decompress = _decompression(footercolumn.meta_data.codec)
         
         deflevelsegs = []
         replevelsegs = []
@@ -225,15 +207,16 @@ class ParquetFile(object):
             # interpret definition levels, if any
             num_nulls = 0
             if not schema.required:
-                bitwidth = _bitwidth(schema.maxdef)
+                bitwidth = int(math.ceil(math.log(schema.maxdef + 1, 2)))
                 if bitwidth > 0:
-                    raise NotImplementedError
+                    deflevelseg, index = _interpret(uncompressed, index, header.data_page_header.num_values, bitwidth, header.data_page_header.definition_level_encoding)
                     num_nulls = numpy.count_nonzero(deflevelseg != schema.maxdef)
 
             # interpret repetition levels, if any
             if len(schema.path) > 1:
-                bitwidth = _bitwidth(schema.maxrep)
-                raise NotImplementedError
+                bitwidth = int(math.ceil(math.log(schema.maxrep + 1, 2)))
+                if bitwidth > 0:
+                    replevelseg, index = _interpret(uncompressed, index, header.data_page_header.num_values, bitwidth, header.data_page_header.repetition_level_encoding)
 
             # interpret the data (plain)
             if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
@@ -277,12 +260,67 @@ class ParquetFile(object):
                 out += (numpy.concatenate(datasegs),)
         return out
 
-def _bitwidth(maxvalue):
-    raise NotImplementedError
+try:
+    import snappy
+except ImportError:
+    snappy = None
+try:
+    import lzo
+except ImportError:
+    lzo = None
+try:
+    import brotli
+except ImportError:
+    brotli = None
+try:
+    import lz4.block
+except ImportError:
+    lz4 = None
 
-def _plain(data, metadata, count):
+def _decompression(codec):
+    if codec == parquet_thrift.CompressionCodec.UNCOMPRESSED:
+        return lambda compressed, compressedbytes, uncompressedbytes: compressed
+
+    elif codec == parquet_thrift.CompressionCodec.SNAPPY:
+        if snappy is None:
+            raise ImportError("\n\nTo read Parquet files with snappy compression, install snappy package with:\n\n    pip install python-snappy --user\nor\n    conda install -c conda-forge python-snappy")
+        return lambda compressed, compressedbytes, uncompressedbytes: snappy.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.GZIP:
+        # return gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb").read()
+        if sys.version_info[0] <= 2:
+            return lambda compressed, compressedbytes, uncompressedbytes: zlib.decompress(compressed, 16 + 15)
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: gzip.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.LZO:
+        if lzo is None:
+            raise ImportError("install lzo")      # FIXME: provide installation instructions
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: lzo.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.BROTLI:
+        if brotli is None:
+            raise ImportError("install brotli")   # FIXME: provide installation instructions
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: brotli.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.LZ4:
+        if lz4 is None:
+            raise ImportError("\n\nTo read Parquet files with lz4 compression, install lz4 package with:\n\n    pip install lz4 --user\nor\n    conda install -c anaconda lz4")
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: lz4.block.decompress(compressed, uncompressed_size=uncompressedbytes)
+
+    elif codec == parquet_thrift.CompressionCodec.ZSTD:
+        # FIXME: find the Python zstd package
+        raise NotImplementedError("ZSTD decompression")
+
+    else:
+        raise AssertionError("unrecognized codec: {0}".format(codec))
+
+def _plain(data, metadata, num_values):
     if metadata.type == parquet_thrift.Type.BOOLEAN:
-        return numpy.unpackbits(data).reshape((-1, 8))[:,::-1].ravel().astype(numpy.bool_)[:count]
+        return numpy.unpackbits(data).reshape((-1, 8))[:,::-1].ravel().astype(numpy.bool_)[:num_values]
 
     elif metadata.type == parquet_thrift.Type.INT32:
         return data.view("<i4")
@@ -307,3 +345,31 @@ def _plain(data, metadata, count):
 
     else:
         raise AssertionError("unrecognized column type: {0}".format(metadata.type))
+
+def _interpret(data, index, count, bitwidth, encoding):
+    if bitwidth <= 8:
+        out = numpy.empty(count, dtype=numpy.uint8)
+    elif bitwidth <= 16:
+        out = numpy.empty(count, dtype=numpy.uint16)
+    elif bitwidth <= 32:
+        out = numpy.empty(count, dtype=numpy.uint32)
+    elif bitwidth <= 64:
+        out = numpy.empty(count, dtype=numpy.uint64)
+    else:
+        raise AssertionError("bitwidth > 64")
+    outdex = 0
+
+    if encoding == parquet_thrift.Encoding.RLE:
+        while outdex < count:
+            index, outdex = _interpret_rle_bitpacked_hybrid(data, index, out, outdex, bitwidth)
+
+    elif encoding == parquet_thrift.Encoding.BIT_PACKED:
+        raise NotImplementedError
+
+    else:
+        raise AssertionError("unexpected encoding: {0}".format(encoding))
+
+    return out, index
+
+def _interpret_rle_bitpacked_hybrid(indata, index, outdata, outdex, bitwidth):
+    raise Exception
