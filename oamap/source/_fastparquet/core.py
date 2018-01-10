@@ -1,5 +1,18 @@
 #!/usr/bin/env python
 
+# fastparquet is part of the Dask project with Apache v2.0 license.
+# 
+#     https://github.com/dask/fastparquet
+#     https://github.com/dask/fastparquet/blob/master/LICENSE
+#     https://fastparquet.readthedocs.io/en/latest/
+# 
+# It's better to copy parts of fastparquet than to include it as a
+# dependency. We want a very small fraction of its functionality (just
+# the raw columns!) without all of its dependencies. This copy is
+# limited to the functions we actually use, and the OAMap maintainer
+# is responsible for keeping this copy up-to-date. For this reason,
+# the copy is almost exactly literal, to make comparisons easier.
+
 import io
 import os
 import re
@@ -44,7 +57,7 @@ def read_def(io_obj, daph, helper, metadata):
                     daph.num_values, bit_width)[:daph.num_values]
             num_nulls = daph.num_values - (definition_levels ==
                                            max_definition_level).sum()
-            ### don't drop it: I want to concatenate all the definition levels
+            ### OAMap don't drop it: I want to concatenate all the definition levels
             # if num_nulls == 0:
             #     definition_levels = None
     return definition_levels, num_nulls
@@ -63,7 +76,7 @@ def read_rep(io_obj, daph, helper, metadata):
             repetition_levels = read_data(io_obj, daph.repetition_level_encoding,
                                           daph.num_values,
                                           bit_width)[:daph.num_values]
-            ### don't drop it: I want to concatenate all the repetition levels
+            ### OAMap don't drop it: I want to concatenate all the repetition levels
             # if repetition_levels.max() == 0:
             #     repetition_levels = None
     return repetition_levels

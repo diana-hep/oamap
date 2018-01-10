@@ -46,9 +46,11 @@ from oamap.source._fastparquet.thrift import parquet_thrift
 
 class ParquetFile(object):
     def __init__(self, file):
+        # raise ImportError late, when the user actually tries to read a ParquetFile
         if parquet_thrift is None:
             raise ImportError("\n\nTo read Parquet files, install thriftpy package with:\n\n    pip install thriftpy --user\nor\n    conda install -c conda-forge thriftpy")
 
+        # file object may be an array (probably memmap) or a real file (thing with a read/seek interface)
         if isinstance(file, numpy.ndarray):
             if file.dtype.itemsize != 1 or len(file.shape) != 1:
                 raise TypeError("if file is a Numpy array, the item size must be 1 (such as numpy.uint8) and shape must be flat, not {0} and {1}".format(file.dtype, file.shape))
@@ -58,6 +60,7 @@ class ParquetFile(object):
         else:
             raise TypeError("file must be a Numpy array (e.g. memmap) or a file-like object with read and seek methods")
 
+        # check for magic and footer in both cases
         if hasattr(self, "memmap"):
             headermagic = self.memmap[:4].tostring()
             footermagic = self.memmap[-4:].tostring()
@@ -106,14 +109,23 @@ class ParquetFile(object):
         if footermagic != b"PAR1":
             raise ValueError("not a Parquet-formatted file: footer magic is {0}".format(repr(footermagic)))
 
+        # actually read in the footer
         tin = self.TFileTransport(file, index)
         pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
         self.footer = parquet_thrift.FileMetaData()
         self.footer.read(pin)
 
+        # pass over schema elements: find the top-level fields (fastparquet's schema_helper makes the tree structure)
+        self.path_to_schema = {}
+
         def recurse(index, path):
             schema = self.footer.schema[index]
-            schema.path = path + [schema.name]
+
+            schema.path = path + (schema.name,)
+            self.path_to_schema[schema.path] = schema
+            schema.chunks = []
+            schema.hasdictionary = False
+
             if schema.num_children is not None:
                 for i in range(schema.num_children):
                     index += 1
@@ -125,23 +137,27 @@ class ParquetFile(object):
         while index + 1 < len(self.footer.schema):
             index += 1
             self.fields.append(self.footer.schema[index])
-            index = recurse(index, [])
+            index = recurse(index, ())
 
+        # pass over rowgroup/column elements, linking to schema and checking for dictionary encodings
+        for rowgroupid, rowgroup in enumerate(self.footer.row_groups):
+            for columnchunk in rowgroup.columns:
+                schema = self.path_to_schema[tuple(columnchunk.meta_data.path_in_schema)]
+                assert len(schema.chunks) == rowgroupid
+                schema.chunks.append(columnchunk)
+                if any(x == parquet_thrift.Encoding.PLAIN_DICTIONARY or x == parquet_thrift.Encoding.RLE_DICTIONARY for x in columnchunk.meta_data.encodings):
+                    schema.hasdictionary = True
+
+        # fastparquet's schema_helper makes the tree structure
         self.schema_helper = oamap.source._fastparquet.schema.SchemaHelper(self.footer.schema)
 
-    def column(self, rowgroupid, schema, parallel=False):
+        # TODO: make an OAMap schema
+
+    def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
             raise NotImplementedError
 
-        print "schema.path", schema.path
-        found = False
-        for column in self.footer.row_groups[rowgroupid].columns:
-            print "column.meta_data.path_in_schema", column.meta_data.path_in_schema
-            if column.meta_data.path_in_schema == schema.path:
-                found = True
-                break
-        if not found:
-            raise AssertionError("columnpath not found: {0}".format(columnpath))
+        columnchunk = parquetschema.chunks[rowgroupid]
 
         def get_num_values(header):
             if header.type == parquet_thrift.PageType.DATA_PAGE:
@@ -159,7 +175,7 @@ class ParquetFile(object):
             def pagereader(index):
                 # always safe for parallelization
                 num_values = 0
-                while num_values < column.meta_data.num_values:
+                while num_values < columnchunk.meta_data.num_values:
                     tin = self.TFileTransport(self.memmap, index)
                     pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
                     header = parquet_thrift.PageHeader()
@@ -176,7 +192,7 @@ class ParquetFile(object):
                 file = self.file
                 file.seek(index, os.SEEK_SET)
                 num_values = 0
-                while num_values < column.meta_data.num_values:
+                while num_values < columnchunk.meta_data.num_values:
                     tin = self.TFileTransport(file, index)
                     pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
                     header = parquet_thrift.PageHeader()
@@ -185,19 +201,19 @@ class ParquetFile(object):
                     num_values += get_num_values(header)
                     yield header, compressed
         
-        decompress = _decompression(column.meta_data.codec)
+        decompress = _decompression(columnchunk.meta_data.codec)
         
         dictionary = None
         deflevelsegs = []
         replevelsegs = []
         datasegs = []
 
-        for header, compressed in pagereader(column.file_offset):
+        for header, compressed in pagereader(columnchunk.file_offset):
             uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
 
             # data page
             if header.type == parquet_thrift.PageType.DATA_PAGE:
-                deflevelseg, replevelseg, dataseg = oamap.source._fastparquet.core.read_data_page(uncompressed, self.schema_helper, header, column.meta_data)
+                deflevelseg, replevelseg, dataseg = oamap.source._fastparquet.core.read_data_page(uncompressed, self.schema_helper, header, columnchunk.meta_data)
                 
                 if deflevelseg is not None:
                     deflevelsegs.append(deflevelseg)
@@ -212,8 +228,7 @@ class ParquetFile(object):
 
             # dictionary page
             elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
-                dictionary = oamap.source._fastparquet.core.read_dictionary_page(uncompressed, self.schema_helper, header, column.meta_data)
-                # dictionary = _plain(uncompressed, column.meta_data, header.dictionary_page_header.num_values)
+                dictionary = oamap.source._fastparquet.core.read_dictionary_page(uncompressed, self.schema_helper, header, columnchunk.meta_data)
 
             # data page version 2
             elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
@@ -222,6 +237,7 @@ class ParquetFile(object):
             else:
                 raise AssertionError("unrecognized header type: {0}".format(header.type))
 
+        # concatenate pages into a column
         if len(deflevelsegs) == 0:
             deflevel = None
         elif len(deflevelsegs) == 1:
@@ -242,6 +258,13 @@ class ParquetFile(object):
             data = datasegs[0]
         else:
             data = numpy.concatenate(datasegs)
+
+        # deal with cases in which the footer lied to us
+        if parquetschema.hasdictionary and dictionary is None:
+            raise NotImplementedError
+
+        if not parquetschema.hasdictionary and dictionary is not None:
+            raise NotImplementedError
 
         return dictionary, deflevel, replevel, data
 
@@ -272,7 +295,6 @@ def _decompression(codec):
         return lambda compressed, compressedbytes, uncompressedbytes: snappy.decompress(compressed)
 
     elif codec == parquet_thrift.CompressionCodec.GZIP:
-        # return gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb").read()
         if sys.version_info[0] <= 2:
             return lambda compressed, compressedbytes, uncompressedbytes: zlib.decompress(compressed, 16 + 15)
         else:
@@ -302,181 +324,3 @@ def _decompression(codec):
 
     else:
         raise AssertionError("unrecognized codec: {0}".format(codec))
-
-###############################
-
-
-
-
-
-
-
-
-
-###############################
-
-                # # interpret definition levels, if any
-                # num_nulls = 0
-                # if not schema.required:
-                #     bitwidth = int(math.ceil(math.log(schema.maxdef + 1, 2)))
-                #     if bitwidth > 0:
-                #         deflevelseg, index = _interpret(uncompressed, header.data_page_header.num_values, bitwidth, header.data_page_header.definition_level_encoding)
-                #         num_nulls = numpy.count_nonzero(deflevelseg != schema.maxdef)
-                #         print "deflevelseg", deflevelseg, "num_nulls", num_nulls
-
-                # # interpret repetition levels, if any
-                # if len(schema.path) > 1:
-                #     bitwidth = int(math.ceil(math.log(schema.maxrep + 1, 2)))
-                #     if bitwidth > 0:
-                #         replevelseg, i = _interpret(uncompressed[index:], header.data_page_header.num_values, bitwidth, header.data_page_header.repetition_level_encoding)
-                #         index += i
-                #         print "replevelseg", replevelseg
-
-                # # interpret the data (plain)
-                # if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
-                #     dataseg = _plain(uncompressed[index:], column.meta_data, header.data_page_header.num_values - num_nulls)
-
-                # # interpret the data (plain dictionary)
-                # elif header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN_DICTIONARY or header.data_page_header.encoding == parquet_thrift.Encoding.RLE:
-                #     if header.data_page_header.encoding == parquet_thrift.Encoding.RLE:
-                #         bitwidth = schema.type_length
-                #     else:
-                #         bitwidth = uncompressed[index]
-                #         index += 1
-                #     print "bitwidth", bitwidth
-                #     print "data", uncompressed[index:]
-
-                #     out = numpy.empty(header.data_page_header.num_values - num_nulls, dtype=numpy.int32)
-                #     print "BEFORE", out
-                #     _interpret_rle_bitpacked_hybrid(uncompressed[index:], out, bitwidth)
-                #     print "AFTER", out
-
-
-                #     raise NotImplementedError
-
-
-
-
-                # else:
-                #     raise AssertionError("unexpected encoding: {0}".format(header.data_page_header.encoding))
-
-# def _plain(data, metadata, num_values):
-#     if metadata.type == parquet_thrift.Type.BOOLEAN:
-#         return numpy.unpackbits(data).reshape((-1, 8))[:,::-1].ravel().astype(numpy.bool_)[:num_values]
-
-#     elif metadata.type == parquet_thrift.Type.INT32:
-#         return data.view("<i4")
-
-#     elif metadata.type == parquet_thrift.Type.INT64:
-#         return data.view("<i8")
-
-#     elif metadata.type == parquet_thrift.Type.INT96:
-#         return data.view("S12")
-
-#     elif metadata.type == parquet_thrift.Type.FLOAT:
-#         return data.view("<f4")
-
-#     elif metadata.type == parquet_thrift.Type.DOUBLE:
-#         return data.view("<f8")
-
-#     elif metadata.type == parquet_thrift.Type.BYTE_ARRAY:
-#         raise NotImplementedError
-
-#     elif metadata.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
-#         raise NotImplementedError
-
-#     else:
-#         raise AssertionError("unrecognized column type: {0}".format(metadata.type))
-
-# def _interpret(data, count, bitwidth, encoding):
-#     out = numpy.empty(count, dtype=numpy.int32)
-
-#     if encoding == parquet_thrift.Encoding.RLE:
-#         return _interpret_rle_bitpacked_hybrid(data, out, bitwidth)
-
-#     elif encoding == parquet_thrift.Encoding.BIT_PACKED:
-#         raise NotImplementedError
-
-#     else:
-#         raise AssertionError("unexpected encoding: {0}".format(encoding))
-
-# def _interpret_rle_bitpacked_hybrid(data, out, bitwidth):
-#     index = 0
-#     outdex = 0
-#     while outdex < len(out):
-#         length = data[index] + data[index + 1]*256 + data[index + 2]*256*256 + data[index + 3]*256*256*256
-#         index += 4
-
-#         start = index
-#         while index - start < length and outdex < len(out):
-#             header, index = _interpret_unsigned_varint(data, index)
-#             if header & 1 == 0:
-#                 index, outdex = _interpret_rle(data, index, header, bitwidth, out, outdex)
-#             else:
-#                 index, outdex = _interpret_bitpacked(data, index, header, bitwidth, out, outdex)
-#         index = start + length
-
-#     return out, index
-
-# def _interpret_unsigned_varint(data, index):
-#     out = 0
-#     shift = 0
-#     while True:
-#         byte = data[index]
-#         index += 1
-#         out |= ((byte & 0x7f) << shift)
-#         if (byte & 0x80) == 0:
-#             break
-#         shift += 7
-#     return out, index
-
-# def _interpret_rle(data, index, header, bitwidth, out, outdex):
-#     print "_interpret_rle"
-
-#     count = (header >> 1)
-#     width = (bitwidth + 7) // 8
-#     zero = numpy.zeros(4, dtype=numpy.int8)
-#     zero[:width] = data[:width]
-#     index += width
-#     value = zero.view(numpy.int32)
-#     out[outdex : outdex + count] = value
-#     outdex += count
-#     return index, outdex
-
-# def _interpret_bitpacked(data, index, header, bitwidth, out, outdex):
-#     print "_interpret_bitpacked"
-
-#     num_groups = header >> 1
-#     count = num_groups * 8
-#     byte_count = (bitwidth * count) // 8
-#     raw_bytes = data[index : index + byte_count]
-#     index += byte_count
-#     mask = (1 << bitwidth) - 1
-#     current_byte = 0
-#     byte = raw_bytes[current_byte]
-#     bits_wnd_l = 8
-#     bits_wnd_r = 0
-#     total = byte_count * 8
-#     while total >= bitwidth:
-#         if bits_wnd_r >= 8:
-#             bits_wnd_r -= 8
-#             bits_wnd_l -= 8
-#             byte >>= 8
-#         elif bits_wnd_l - bits_wnd_r >= bitwidth:
-#             if outdex < len(out):
-#                 out[outdex] = (byte >> bits_wnd_r) & mask
-#                 outdex += 1
-#             total -= bitwidth
-#             bits_wnd_r += bitwidth
-#         elif current_byte + 1 < byte_count:
-#             current_byte += 1
-#             byte |= (raw_bytes[current_byte] << bits_wnd_l)
-#             bits_wnd_l += 8
-#     return index, outdex
-
-# # if numba is not None:
-# #     njit = numba.jit(nopython=True, nogil=True)
-# #     _interpret_rle_bitpacked_hybrid = njit(_interpret_rle_bitpacked_hybrid)
-# #     _interpret_unsigned_varint      = njit(_interpret_unsigned_varint)
-# #     _interpret_rle                  = njit(_interpret_rle)
-# #     _interpret_bitpacked            = njit(_interpret_bitpacked)

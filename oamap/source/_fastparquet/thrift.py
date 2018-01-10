@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# This part is not in fastparquet (they Pythonify the Thrift a different way).
+
 import os
 
 try:
