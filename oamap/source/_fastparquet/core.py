@@ -44,8 +44,9 @@ def read_def(io_obj, daph, helper, metadata):
                     daph.num_values, bit_width)[:daph.num_values]
             num_nulls = daph.num_values - (definition_levels ==
                                            max_definition_level).sum()
-        if num_nulls == 0:
-            definition_levels = None
+            ### don't drop it: I want to concatenate all the definition levels
+            # if num_nulls == 0:
+            #     definition_levels = None
     return definition_levels, num_nulls
 
 
@@ -58,11 +59,13 @@ def read_rep(io_obj, daph, helper, metadata):
         max_repetition_level = helper.max_repetition_level(
             metadata.path_in_schema)
         bit_width = encoding.width_from_max_int(max_repetition_level)
-        repetition_levels = read_data(io_obj, daph.repetition_level_encoding,
-                                      daph.num_values,
-                                      bit_width)[:daph.num_values]
-        if repetition_levels.max() == 0:
-            repetition_levels = None
+        if bit_width:
+            repetition_levels = read_data(io_obj, daph.repetition_level_encoding,
+                                          daph.num_values,
+                                          bit_width)[:daph.num_values]
+            ### don't drop it: I want to concatenate all the repetition levels
+            # if repetition_levels.max() == 0:
+            #     repetition_levels = None
     return repetition_levels
 
 
