@@ -200,6 +200,8 @@ class ParquetFile(object):
             uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
             index = 0
 
+            print uncompressed
+
             deflevelseg = None
             replevelseg = None
             dataseg = None
@@ -348,16 +350,7 @@ def _plain(data, metadata, num_values):
         raise AssertionError("unrecognized column type: {0}".format(metadata.type))
 
 def _interpret(data, count, bitwidth, encoding):
-    if bitwidth <= 8:
-        out = numpy.empty(count, dtype=numpy.uint8)
-    elif bitwidth <= 16:
-        out = numpy.empty(count, dtype=numpy.uint16)
-    elif bitwidth <= 32:
-        out = numpy.empty(count, dtype=numpy.uint32)
-    elif bitwidth <= 64:
-        out = numpy.empty(count, dtype=numpy.uint64)
-    else:
-        raise AssertionError("bitwidth > 64")
+    out = numpy.empty(count, dtype=numpy.int32)
 
     if encoding == parquet_thrift.Encoding.RLE:
         return _interpret_rle_bitpacked_hybrid(data, out, bitwidth)
@@ -379,9 +372,9 @@ def _interpret_rle_bitpacked_hybrid(data, out, bitwidth):
         while index - start < length and outdex < len(out):
             header, index = _interpret_unsigned_varint(data, index)
             if header & 1 == 0:
-                index = _interpret_rle(data, index, header, bitwidth, out, outdex)
+                index, outdex = _interpret_rle(data, index, header, bitwidth, out, outdex)
             else:
-                index = _interpret_bitpacked(data, index, header, bitwidth, out, outdex)
+                index, outdex = _interpret_bitpacked(data, index, header, bitwidth, out, outdex)
         index = start + length
 
     return out, index
@@ -399,15 +392,48 @@ def _interpret_unsigned_varint(data, index):
     return out, index
 
 def _interpret_rle(data, index, header, bitwidth, out, outdex):
-    raise NotImplementedError
-    return index
+    print "_interpret_rle"
+
+    count = (header >> 1)
+    width = (bitwidth + 7) // 8
+    zero = numpy.zeros(4, dtype=numpy.int8)
+    zero[:width] = data[:width]
+    index += width
+    value = zero.view(numpy.int32)
+    out[outdex : outdex + count] = value
+    outdex += count
+    return index, outdex
 
 def _interpret_bitpacked(data, index, header, bitwidth, out, outdex):
-    # HERE
+    print "_interpret_bitpacked"
 
-
-    raise NotImplementedError
-    return index
+    num_groups = header >> 1
+    count = num_groups * 8
+    byte_count = (bitwidth * count) // 8
+    raw_bytes = data[index : index + byte_count]
+    index += byte_count
+    mask = (1 << bitwidth) - 1
+    current_byte = 0
+    byte = raw_bytes[current_byte]
+    bits_wnd_l = 8
+    bits_wnd_r = 0
+    total = byte_count * 8
+    while total >= bitwidth:
+        if bits_wnd_r >= 8:
+            bits_wnd_r -= 8
+            bits_wnd_l -= 8
+            byte >>= 8
+        elif bits_wnd_l - bits_wnd_r >= bitwidth:
+            if outdex < len(out):
+                out[outdex] = (byte >> bits_wnd_r) & mask
+                outdex += 1
+            total -= bitwidth
+            bits_wnd_r += bitwidth
+        elif current_byte + 1 < byte_count:
+            current_byte += 1
+            byte |= (raw_bytes[current_byte] << bits_wnd_l)
+            bits_wnd_l += 8
+    return index, outdex
 
 # if numba is not None:
 #     njit = numba.jit(nopython=True, nogil=True)
