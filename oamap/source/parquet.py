@@ -152,16 +152,35 @@ class ParquetFile(object):
         if parallel:
             raise NotImplementedError
 
+        print "schema.path", schema.path
+
         footercolumn = None
         for column in self.footer.row_groups[rowgroupid].columns:
+            print "column.meta_data.path_in_schema", column.meta_data.path_in_schema
+
             if column.meta_data.path_in_schema == schema.path:
                 footercolumn = column
                 break
         if footercolumn is None:
             raise AssertionError("columnpath not found: {0}".format(columnpath))
-        
+
+        def get_num_values(header):
+            if header.type == parquet_thrift.PageType.DATA_PAGE:
+                return header.data_page_header.num_values
+            ### doesn't exist in Parquet yet, either
+            # elif header.type == parquet_thrift.PageType.INDEX_PAGE:
+            #     return header.index_page_header.num_values
+            elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
+                return header.dictionary_page_header.num_values
+            elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
+                return header.data_page_header_v2.num_values
+            else:
+                raise AssertionError("unrecognized header type: {0}".format(header.type))
+
         if hasattr(self, "memmap"):
             def pagereader(index):
+                print "index", index
+
                 # always safe for parallelization
                 num_values = 0
                 while num_values < footercolumn.meta_data.num_values:
@@ -171,8 +190,8 @@ class ParquetFile(object):
                     header.read(pin)
                     index = tin._index
                     compressed = self.memmap[index : index + header.compressed_page_size]
-                    index += 0 if header.compressed_page_size is None else header.compressed_page_size
-                    num_values += header.data_page_header.num_values
+                    index += header.compressed_page_size
+                    num_values += get_num_values(header)
                     yield header, compressed
 
         else:
@@ -187,7 +206,7 @@ class ParquetFile(object):
                     header = parquet_thrift.PageHeader()
                     header.read(pin)
                     compressed = file.read(header.compressed_page_size)
-                    num_values += header.data_page_header.num_values
+                    num_values += get_num_values(header)
                     yield header, compressed
         
         decompress = _decompression(footercolumn.meta_data.codec)
@@ -196,48 +215,96 @@ class ParquetFile(object):
         replevelsegs = []
         datasegs = []
 
+        print "schema.required", schema.required, "schema.maxdef", schema.maxdef, "schema.maxrep", schema.maxrep
+
+        # for header, compressed in pagereader(footercolumn.file_offset):
+        #     uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
+        #     print
+        #     print "header", header
+        #     print "uncompressed", uncompressed
+        # raise Exception
+
         for header, compressed in pagereader(footercolumn.file_offset):
             uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
-            index = 0
 
-            print uncompressed
+            print
+            print "header", header
+            print "uncompressed", uncompressed
 
-            deflevelseg = None
-            replevelseg = None
-            dataseg = None
+            # data page
+            if header.type == parquet_thrift.PageType.DATA_PAGE:
+                index = 0
+                deflevelseg = None
+                replevelseg = None
+                dataseg = None
 
-            # interpret definition levels, if any
-            num_nulls = 0
-            if not schema.required:
-                bitwidth = int(math.ceil(math.log(schema.maxdef + 1, 2)))
-                if bitwidth > 0:
-                    deflevelseg, index = _interpret(uncompressed, header.data_page_header.num_values, bitwidth, header.data_page_header.definition_level_encoding)
-                    num_nulls = numpy.count_nonzero(deflevelseg != schema.maxdef)
+                # interpret definition levels, if any
+                num_nulls = 0
+                if not schema.required:
+                    bitwidth = int(math.ceil(math.log(schema.maxdef + 1, 2)))
+                    if bitwidth > 0:
+                        deflevelseg, index = _interpret(uncompressed, header.data_page_header.num_values, bitwidth, header.data_page_header.definition_level_encoding)
+                        num_nulls = numpy.count_nonzero(deflevelseg != schema.maxdef)
+                        print "deflevelseg", deflevelseg, "num_nulls", num_nulls
 
-            # interpret repetition levels, if any
-            if len(schema.path) > 1:
-                bitwidth = int(math.ceil(math.log(schema.maxrep + 1, 2)))
-                if bitwidth > 0:
-                    replevelseg, i = _interpret(uncompressed[index:], header.data_page_header.num_values, bitwidth, header.data_page_header.repetition_level_encoding)
-                    index += i
+                # interpret repetition levels, if any
+                if len(schema.path) > 1:
+                    bitwidth = int(math.ceil(math.log(schema.maxrep + 1, 2)))
+                    if bitwidth > 0:
+                        replevelseg, i = _interpret(uncompressed[index:], header.data_page_header.num_values, bitwidth, header.data_page_header.repetition_level_encoding)
+                        index += i
+                        print "replevelseg", replevelseg
 
-            # interpret the data (plain)
-            if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
-                dataseg = _plain(uncompressed[index:], column.meta_data, header.data_page_header.num_values - num_nulls)
+                # interpret the data (plain)
+                if header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN:
+                    dataseg = _plain(uncompressed[index:], column.meta_data, header.data_page_header.num_values - num_nulls)
 
-            # interpret the data (plain dictionary)
-            elif header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN_DICTIONARY:
+                # interpret the data (plain dictionary)
+                elif header.data_page_header.encoding == parquet_thrift.Encoding.PLAIN_DICTIONARY or header.data_page_header.encoding == parquet_thrift.Encoding.RLE:
+                    if header.data_page_header.encoding == parquet_thrift.Encoding.RLE:
+                        bitwidth = schema.type_length
+                    else:
+                        bitwidth = uncompressed[index]
+                        index += 1
+                    print "bitwidth", bitwidth
+                    print "data", uncompressed[index:]
+
+                    out = numpy.empty(header.data_page_header.num_values - num_nulls, dtype=numpy.int32)
+                    print "BEFORE", out
+                    _interpret_rle_bitpacked_hybrid(uncompressed[index:], out, bitwidth)
+                    print "AFTER", out
+
+
+                    raise NotImplementedError
+
+
+
+
+                else:
+                    raise AssertionError("unexpected encoding: {0}".format(header.data_page_header.encoding))
+
+                if deflevels and deflevelseg is not None:
+                    deflevelsegs.append(deflevelseg)
+                if replevels and replevelseg is not None:
+                    replevelsegs.append(replevelseg)
+                if data and dataseg is not None:
+                    datasegs.append(dataseg)
+
+            # index page (doesn't exist in Parquet yet, either)
+            elif header.type == parquet_thrift.PageType.INDEX_PAGE:
+                raise NotImplementedError
+
+            # dictionary page
+            elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
+                dictionary = _plain(uncompressed, column.meta_data, header.dictionary_page_header.num_values)
+                print "dictionary", dictionary
+
+            # data page version 2
+            elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
                 raise NotImplementedError
 
             else:
-                raise AssertionError("unexpected encoding: {0}".format(header.data_page_header.encoding))
-
-            if deflevels and deflevelseg is not None:
-                deflevelsegs.append(deflevelseg)
-            if replevels and replevelseg is not None:
-                replevelsegs.append(replevelseg)
-            if data and dataseg is not None:
-                datasegs.append(dataseg)
+                raise AssertionError("unrecognized header type: {0}".format(header.type))
 
         out = ()
         if deflevels:
