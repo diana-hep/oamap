@@ -20,11 +20,9 @@ import struct
 
 import numpy as np
 
-from fastparquet.speedups import unpack_byte_array    # FIXME!!!
-
 from oamap.source._fastparquet import encoding
-from oamap.source._fastparquet.util import byte_buffer
-from oamap.source._fastparquet.thrift import parquet_thrift
+from oamap.source._fastparquet.extra import parquet_thrift
+from oamap.source._fastparquet.extra import unpack_byte_array
 
 def read_data(fobj, coding, count, bit_width):
     """For definition and repetition levels
@@ -90,8 +88,10 @@ def read_data_page(raw_bytes, helper, header, metadata, skip_nulls=False,
     field.
     """
     daph = header.data_page_header
-    io_obj = encoding.Numpy8(np.frombuffer(byte_buffer(raw_bytes),
-                                           dtype=np.uint8))
+    # OAMap: we're giving it a uint8 buffer--- stop making unnecessary copies!
+    io_obj = encoding.Numpy8(raw_bytes)
+    # io_obj = encoding.Numpy8(np.frombuffer(byte_buffer(raw_bytes),
+    #                                        dtype=np.uint8))
 
     repetition_levels = read_rep(io_obj, daph, helper, metadata)
 

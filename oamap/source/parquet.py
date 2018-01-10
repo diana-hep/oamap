@@ -41,8 +41,8 @@ import oamap.schema
 import oamap.generator
 import oamap.source._fastparquet.schema
 import oamap.source._fastparquet.core
-from oamap.source._fastparquet.thrift import thriftpy
-from oamap.source._fastparquet.thrift import parquet_thrift
+from oamap.source._fastparquet.extra import thriftpy
+from oamap.source._fastparquet.extra import parquet_thrift
 
 class ParquetFile(object):
     def __init__(self, file):
@@ -207,6 +207,7 @@ class ParquetFile(object):
         deflevelsegs = []
         replevelsegs = []
         datasegs = []
+        sizesegs = []
 
         for header, compressed in pagereader(columnchunk.file_offset):
             uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
@@ -219,7 +220,10 @@ class ParquetFile(object):
                     deflevelsegs.append(deflevelseg)
                 if replevelseg is not None:
                     replevelsegs.append(replevelseg)
-                if dataseg is not None:
+                if isinstance(dataseg, tuple) and len(dataseg) == 2:
+                    datasegs.append(dataseg[0])
+                    sizesegs.append(dataseg[1])
+                else:
                     datasegs.append(dataseg)
 
             # index page (doesn't exist in Parquet yet, either)
@@ -259,6 +263,13 @@ class ParquetFile(object):
         else:
             data = numpy.concatenate(datasegs)
 
+        if len(sizesegs) == 0:
+            size = None
+        elif len(sizesegs) == 1:
+            size = sizesegs[0]
+        else:
+            size = numpy.concatenate(sizesegs)
+
         # deal with cases in which the footer lied to us
         if parquetschema.hasdictionary and dictionary is None:
             raise NotImplementedError
@@ -266,7 +277,7 @@ class ParquetFile(object):
         if not parquetschema.hasdictionary and dictionary is not None:
             raise NotImplementedError
 
-        return dictionary, deflevel, replevel, data
+        return dictionary, deflevel, replevel, data, size
 
 try:
     import snappy

@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import unicode_literals
 
-from oamap.schema import OrderedDict
+import sys
 
-from oamap.source._fastparquet.util import PY2
-from oamap.source._fastparquet.thrift import parquet_thrift
+from oamap.source._fastparquet.extra import parquet_thrift
+from oamap.source._fastparquet.extra import OrderedDict
 
-if PY2:
+if sys.version_info[0] <= 2:
     text_type = unicode
 else:
     text_type = str

@@ -26,15 +26,8 @@ import os
 import struct
 import sys
 
-try:
-    import numba
-except ImportError:
-    numba = None
-
-from fastparquet.speedups import unpack_byte_array    # FIXME!!!
-
-from oamap.source._fastparquet.thrift import parquet_thrift
-from oamap.source._fastparquet.util import byte_buffer
+from oamap.source._fastparquet.extra import parquet_thrift
+from oamap.source._fastparquet.extra import unpack_byte_array
 
 
 def read_plain_boolean(raw_bytes, count):
@@ -54,23 +47,39 @@ DECODE_TYPEMAP = {
 def read_plain(raw_bytes, type_, count, width=0):
     if type_ in DECODE_TYPEMAP:
         dtype = DECODE_TYPEMAP[type_]
-        return np.frombuffer(byte_buffer(raw_bytes), dtype=dtype, count=count)
+        # OAMap: we're giving it a uint8 buffer--- stop making unnecessary copies!
+        return np.frombuffer(raw_bytes, dtype=dtype, count=count)
+        # return np.frombuffer(byte_buffer(raw_bytes), dtype=dtype, count=count)
+
     if type_ == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
         if count == 1:
             width = len(raw_bytes)
         dtype = np.dtype('S%i' % width)
-        return np.frombuffer(byte_buffer(raw_bytes), dtype=dtype, count=count)
+        # OAMap: we're giving it a uint8 buffer--- stop making unnecessary copies!
+        return np.frombuffer(raw_bytes, dtype=dtype, count=count)
+        # return np.frombuffer(byte_buffer(raw_bytes), dtype=dtype, count=count)
+
     if type_ == parquet_thrift.Type.BOOLEAN:
         return read_plain_boolean(raw_bytes, count)
+
     # variable byte arrays (rare)
+    # OAMap: no object arrays! ever!
     try:
-        return np.array(unpack_byte_array(raw_bytes, count), dtype='O')
+        return unpack_byte_array(raw_bytes, count)
     except RuntimeError:
         if count == 1:
             # e.g., for statistics
-            return np.array([raw_bytes], dtype='O')
+            return raw_bytes, numpy.array([len(raw_bytes)], dtype=numpy.int32)
         else:
             raise
+    # try:
+    #     return np.array(unpack_byte_array(raw_bytes, count), dtype='O')
+    # except RuntimeError:
+    #     if count == 1:
+    #         # e.g., for statistics
+    #         return np.array([raw_bytes], dtype='O')
+    #     else:
+    #         raise
 
 
 def read_unsigned_var_int(file_obj):  # pragma: no cover
@@ -176,7 +185,7 @@ def read_length(file_obj):  # pragma: no cover
     Equivalent to struct.unpack('<i'), but suitable for numba-jit
     """
     sub = file_obj.read(4)
-    return sub[0] + sub[1]*256 + sub[2]*256*256 + sub[3]*256*256*256
+    return sub[0] + (sub[1] << 8) + (sub[2] << 16) + (sub[3] << 24)
 
 
 class NumpyIO(object):  # pragma: no cover
@@ -222,8 +231,15 @@ class NumpyIO(object):  # pragma: no cover
         """
         return self.data[:self.loc]
 
-# if numba is not None:
-if False:   # FIXME
+
+Numpy8 = NumpyIO
+Numpy32 = NumpyIO
+
+try:
+    import numba
+except ImportError:
+    pass
+else:
     njit = numba.jit(nopython=True, nogil=True)
 
     read_unsigned_var_int      = njit(read_unsigned_var_int)
@@ -235,10 +251,6 @@ if False:   # FIXME
     read_length                = njit(read_length)
 
     spec8 = [('data', numba.uint8[:]), ('loc', numba.int64), ('len', numba.int64)]
-    Numpy8 = numba.jitclass(spec8)(NumpyIO)
+    Numpy8 = numba.jitclass(spec8)(Numpy8)
     spec32 = [('data', numba.uint32[:]), ('loc', numba.int64), ('len', numba.int64)]
-    Numpy32 = numba.jitclass(spec32)(NumpyIO)
-
-else:
-    Numpy8 = NumpyIO
-    Numpy32 = NumpyIO
+    Numpy32 = numba.jitclass(spec32)(Numpy32)
