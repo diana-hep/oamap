@@ -106,22 +106,31 @@ def _parquet2oamap(parquetschema):
     # type
     if parquetschema.type == parquet_thrift.Type.BOOLEAN:
         oamapschema = oamap.schema.Primitive(numpy.bool_)
+
     elif parquetschema.type == parquet_thrift.Type.INT32:
         oamapschema = oamap.schema.Primitive(numpy.int32)
+
     elif parquetschema.type == parquet_thrift.Type.INT64:
         oamapschema = oamap.schema.Primitive(numpy.int64)
+
     elif parquetschema.type == parquet_thrift.Type.INT96:
         oamapschema = oamap.schema.Primitive("S12")
+
     elif parquetschema.type == parquet_thrift.Type.FLOAT:
         oamapschema = oamap.schema.Primitive(numpy.float32)
+
     elif parquetschema.type == parquet_thrift.Type.DOUBLE:
         oamapschema = oamap.schema.Primitive(numpy.float64)
+
     elif parquetschema.type == parquet_thrift.Type.BYTE_ARRAY:
         oamapschema = oamap.schema.List(oamap.schema.Primitive(numpy.uint8), name="ByteString")
+
     elif parquetschema.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
         oamapschema = oamap.schema.Primitive("S%d" % parquetschema.type_length)
+
     elif parquetschema.type is None:
         oamapschema = oamap.schema.Record(OrderedDict((n, _parquet2oamap(x)) for n, x in parquetschema.children.items()))
+
     else:
         raise AssertionError("unrecognized Parquet schema type: {0}".format(parquetschema.type))
 
@@ -220,7 +229,7 @@ def _parquet2oamap(parquetschema):
     return oamapschema
 
 class ParquetFile(object):
-    def __init__(self, file):
+    def __init__(self, file, prefix="object", delimiter="-"):
         # raise ImportError late, when the user actually tries to read a ParquetFile
         if parquet_thrift is None:
             raise ImportError("\n\nTo read Parquet files, install thriftpy package with:\n\n    pip install thriftpy --user\nor\n    conda install -c conda-forge thriftpy")
@@ -327,6 +336,7 @@ class ParquetFile(object):
         self.schema_helper = oamap.source._fastparquet.schema.SchemaHelper(self.footer.schema)
 
         self.oamapschema = oamap.schema.List(oamap.schema.Record(OrderedDict((x.name, _parquet2oamap(x)) for x in self.fields)))
+        self.oamapschema.defaultnames(prefix, delimiter)
 
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
@@ -454,12 +464,10 @@ class ParquetFile(object):
 
         return dictionary, deflevel, replevel, data, size
 
-class ParquetArrays(object):
-    def __init__(self, parquetfile, rowgroupid, prefix="object", delimiter="-"):
+class ParquetRowGroupArrays(object):
+    def __init__(self, parquetfile, rowgroupid):
         self._parquetfile = parquetfile
         self._rowgroupid = rowgroupid
-        self._prefix = prefix
-        self._delimiter = delimiter
         self._arrays = {}
 
     def _getarray(self, request, curname, parquetschema):
@@ -468,10 +476,10 @@ class ParquetArrays(object):
     def __getitem__(self, name):
         if name in self._arrays:
             return self._arrays[name]
+
         else:
+            self._parquetfile.oamapschema._get_field()
 
 
-
-
-
-            return self._getarray(name, self._prefix, self._parquetfile)
+            
+            # return self._getarray(name, self._prefix, )
