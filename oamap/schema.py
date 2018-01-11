@@ -624,15 +624,18 @@ class List(Schema):
                 args.append("packmask" + eq + repr(self._packmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
-            if indent is not None:
-                if len(args) > 0:
-                    args[0] = "\n" + indent + "  " + args[0]
-                args.append("\n" + indent + "  content" + eq + self._content.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+
+            if indent is None:
+                argstr = ", ".join(args)
+            else:
+                args.append("content" + eq + self._content.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+                args[0] = "\n" + indent + "  " + args[0]
+                argstr = ("," + "\n" + indent + "  ").join(args)
 
             if label is None:
-                return "List(" + ", ".join(args) + ")"
+                return "List(" + argstr + ")"
             else:
-                return label + ": List(" + ", ".join(args) + ")"
+                return label + ": List(" + argstr + ")"
 
         else:
             return label
@@ -922,15 +925,18 @@ class Union(Schema):
                 args.append("packmask" + eq + repr(self._packmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
-            if indent is not None:
-                if len(args) > 0:
-                    args[0] = "\n" + indent + "  " + args[0]
-                args.append("\n" + indent + "  possibilities" + eq + "[\n" + indent + "    " + (",\n" + indent + "    ").join(x.__repr__(labels, shown, indent + "    ").lstrip() for x in self._possibilities) + "\n" + indent + "  ]")
+
+            if indent is None:
+                argstr = ", ".join(args)
+            else:
+                args.append("possibilities" + eq + "[\n" + indent + "    " + (",\n" + indent + "    ").join(x.__repr__(labels, shown, indent + "    ").lstrip() for x in self._possibilities) + "\n" + indent + "  ]")
+                args[0] = "\n" + indent + "  " + args[0]
+                argstr = ("," + "\n" + indent + "  ").join(args)
 
             if label is None:
-                return "Union(" + ", ".join(args) + ")"
+                return "Union(" + argstr + ")"
             else:
-                return label + ": Union(" + ", ".join(args) + ")"
+                return label + ": Union(" + argstr + ")"
 
         else:
             return label
@@ -1162,15 +1168,18 @@ class Record(Schema):
                 args.append("packmask" + eq + repr(self._packmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
-            if indent is not None:
-                if len(args) > 0:
-                    args[0] = "\n" + indent + "  " + args[0]
-                args.append("\n" + indent + "  fields" + eq + "{\n" + indent + "    " + (",\n" + indent + "    ").join("{0}: {1}".format(repr(n), x.__repr__(labels, shown, indent + "    ").lstrip()) for n, x in self._fields.items()) + "\n" + indent + "  }")
+
+            if indent is None:
+                argstr = ", ".join(args)
+            else:
+                args.append("fields" + eq + "{\n" + indent + "    " + (",\n" + indent + "    ").join("{0}: {1}".format(repr(n), x.__repr__(labels, shown, indent + "    ").lstrip()) for n, x in self._fields.items()) + "\n" + indent + "  }")
+                args[0] = "\n" + indent + "  " + args[0]
+                argstr = ("," + "\n" + indent + "  ").join(args)
 
             if label is None:
-                return "Record(" + ", ".join(args) + ")"
+                return "Record(" + argstr + ")"
             else:
-                return label + ": Record(" + ", ".join(args) + ")"
+                return label + ": Record(" + argstr + ")"
 
         else:
             return label
@@ -1398,15 +1407,18 @@ class Tuple(Schema):
                 args.append("packmask" + eq + repr(self._packmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
-            if indent is not None:
-                if len(args) > 0:
-                    args[0] = "\n" + indent + "  " + args[0]
-                args.append("\n" + indent + "  types" + eq + "[\n" + indent + "    " + (",\n" + indent + "    ").join(x.__repr__(labels, shown, indent + "    ").lstrip() for x in self._types) + "\n" + indent + "  ]")
+
+            if indent is None:
+                argstr = ", ".join(args)
+            else:
+                args.append("types" + eq + "[\n" + indent + "    " + (",\n" + indent + "    ").join(x.__repr__(labels, shown, indent + "    ").lstrip() for x in self._types) + "\n" + indent + "  ]")
+                args[0] = "\n" + indent + "  " + args[0]
+                argstr = ("," + "\n" + indent + "  ").join(args)
 
             if label is None:
-                return "Tuple(" + ", ".join(args) + ")"
+                return "Tuple(" + argstr + ")"
             else:
-                return label + ": Tuple(" + ", ".join(args) + ")"
+                return label + ": Tuple(" + argstr + ")"
 
         return label
 
@@ -1604,15 +1616,18 @@ class Pointer(Schema):
                 args.append("packmask" + eq + repr(self._packmask))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
-            if indent is not None:
-                if len(args) > 0:
-                    args[0] = "\n" + indent + "  " + args[0]
-                args.append("\n" + indent + "  target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+
+            if indent is None:
+                argstr = ", ".join(args)
+            else:
+                args.append("target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+                args[0] = "\n" + indent + "  " + args[0]
+                argstr = ("," + "\n" + indent + "  ").join(args)
                 
             if label is None:
-                return "Pointer(" + ", ".join(args) + ")"
+                return "Pointer(" + argstr + ")"
             else:
-                return label + ": Pointer(" + ", ".join(args) + ")"
+                return label + ": Pointer(" + argstr + ")"
 
         else:
             return label
