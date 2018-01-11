@@ -270,14 +270,15 @@ class Schema(object):
                 if id(target) in memo:
                     # the target points elsewhere in the type tree: link to that
                     generator._internal = True
-                    generator.positions = generator.positions + delimiter + memo[id(target)].derivedname
+                    if generator.schema.positions is None:
+                        generator.positions = generator.positions + delimiter + memo[id(target)].derivedname
                     generator.target = memo[id(target)]
                     generator.schema.target = generator.target.schema
                 else:
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
                     generator._internal = False
-                    generator.target = target._finalizegenerator(target._generator(prefix + delimiter + "X", delimiter, cacheidx, memo2, set(), extension), cacheidx, memo2, extension)
+                    generator.target = target._finalizegenerator(target._generator(generator.schema._get_external(prefix, delimiter), delimiter, cacheidx, memo2, set(), extension), cacheidx, memo2, extension)
                     generator.schema.target = generator.target.schema
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
@@ -491,29 +492,14 @@ class Primitive(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
 
-        # if self._name is not None:
-        #     prefix = prefix + delimiter + "N" + self._name
-
         if self._nullable:
             cls = oamap.generator.MaskedPrimitiveGenerator
-            # if self._mask is None:
-            #     args.append(prefix + delimiter + "M")
-            # else:
-            #     args.append(self._mask)
             args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            # if self._packmask is None:
-            #     args.append(prefix + delimiter + "m")
-            # else:
-            #     args.append(self._packmask)
             args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.PrimitiveGenerator
 
-        # if self._data is None:
-        #     args.append(prefix + delimiter + "D" + self.strdtype + "".join(delimiter + repr(x) for x in self.dims))
-        # else:
-        #     args.append(self._data)
         args.append(self._get_data(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
@@ -738,44 +724,44 @@ class List(Schema):
                     return False
             return True
 
+    def _get_starts(self, prefix, delimiter):
+        if self._starts is None:
+            return self._get_name(prefix, delimiter) + delimiter + "B"
+        else:
+            return self._starts
+
+    def _get_stops(self, prefix, delimiter):
+        if self._stops is None:
+            return self._get_name(prefix, delimiter) + delimiter + "E"
+        else:
+            return self._stops
+
+    def _get_counts(self, prefix, delimiter):
+        if self._counts is None:
+            return self._get_name(prefix, delimiter) + delimiter + "c"
+        else:
+            return self._counts
+
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
 
-        if self._name is not None:
-            prefix = prefix + delimiter + "N" + self._name
-
         if self._nullable:
             cls = oamap.generator.MaskedListGenerator
-            if self._mask is None:
-                args.append(prefix + delimiter + "M")
-            else:
-                args.append(self._mask)
+            args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            if self._packmask is None:
-                args.append(prefix + delimiter + "m")
-            else:
-                args.append(self._packmask)
+            args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.ListGenerator
 
-        if self._starts is None:
-            args.append(prefix + delimiter + "B")
-        else:
-            args.append(self._starts)
+        args.append(self._get_starts(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        if self._stops is None:
-            args.append(prefix + delimiter + "E")
-        else:
-            args.append(self._stops)
+        args.append(self._get_stops(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        if self._counts is None:
-            args.append(prefix + delimiter + "c")
-        else:
-            args.append(self._counts)
+        args.append(self._get_counts(prefix, delimiter))
 
         contentgen = self._content._generator(prefix + delimiter + "L", delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)
         args.append(contentgen)
@@ -1012,41 +998,41 @@ class Union(Schema):
             return self.nullable or any(x.nullable for x in self.possibilities)
         return any(x.__contains__(value, memo) for x in self.possibilities)
 
+    def _get_tags(self, prefix, delimiter):
+        if self._tags is None:
+            return self._get_name(prefix, delimiter) + delimiter + "T"
+        else:
+            return self._tags
+
+    def _get_offsets(self, prefix, delimiter):
+        if self._offsets is None:
+            return self._get_name(prefix, delimiter) + delimiter + "O"
+        else:
+            return self._offsets
+
+    def _get_possibility(self, prefix, delimiter, i):
+        return self._get_name(prefix, delimiter) + delimiter + "U" + repr(i)
+
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
 
-        if self._name is not None:
-            prefix = prefix + delimiter + "N" + self._name
-
         if self._nullable:
             cls = oamap.generator.MaskedUnionGenerator
-            if self._mask is None:
-                args.append(prefix + delimiter + "M")
-            else:
-                args.append(self._mask)
+            args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            if self._packmask is None:
-                args.append(prefix + delimiter + "m")
-            else:
-                args.append(self._packmask)
+            args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.UnionGenerator
 
-        if self._tags is None:
-            args.append(prefix + delimiter + "T")
-        else:
-            args.append(self._tags)
+        args.append(self._get_tags(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        if self._offsets is None:
-            args.append(prefix + delimiter + "O")
-        else:
-            args.append(self._offsets)
+        args.append(self._get_offsets(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        possibilitiesgen = [x._generator(prefix + delimiter + "U" + repr(i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._possibilities)]
+        possibilitiesgen = [x._generator(self._get_possibility(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._possibilities)]
         args.append(possibilitiesgen)
         args.append(self._name)
         args.append(prefix)
@@ -1241,6 +1227,9 @@ class Record(Schema):
         else:
             return all(hasattr(value, n) and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
 
+    def _get_field(self, prefix, delimiter, n):
+        return self._get_name(prefix, delimiter) + delimiter + "F" + n
+
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._fields) == 0:
             raise TypeError("Record has no fields")
@@ -1248,24 +1237,15 @@ class Record(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
 
-        if self._name is not None:
-            prefix = prefix + delimiter + "N" + self._name
-
         if self._nullable:
             cls = oamap.generator.MaskedRecordGenerator
-            if self._mask is None:
-                args.append(prefix + delimiter + "M")
-            else:
-                args.append(self._mask)
+            args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            if self._packmask is None:
-                args.append(prefix + delimiter + "m")
-            else:
-                args.append(self._packmask)
+            args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.RecordGenerator
 
-        fieldsgen = OrderedDict([(n, self._fields[n]._generator(prefix + delimiter + "F" + n, delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)) for n in sorted(self._fields)])
+        fieldsgen = OrderedDict([(n, self._fields[n]._generator(self._get_field(prefix, delimiter, n), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)) for n in sorted(self._fields)])
         args.append(fieldsgen)
         args.append(self._name)
         args.append(prefix)
@@ -1466,6 +1446,9 @@ class Tuple(Schema):
         else:
             return False
 
+    def _get_field(self, prefix, delimiter, i):
+        return self._get_name(prefix, delimiter) + delimiter + "F" + repr(i)
+
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
@@ -1473,24 +1456,15 @@ class Tuple(Schema):
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
 
-        if self._name is not None:
-            prefix = prefix + delimiter + "N" + self._name
-
         if self._nullable:
             cls = oamap.generator.MaskedTupleGenerator
-            if self._mask is None:
-                args.append(prefix + delimiter + "M")
-            else:
-                args.append(self._mask)
+            args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            if self._packmask is None:
-                args.append(prefix + delimiter + "m")
-            else:
-                args.append(self._packmask)
+            args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.TupleGenerator
 
-        typesgen = [x._generator(prefix + delimiter + "F" + repr(i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._types)]
+        typesgen = [x._generator(self._get_field(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._types)]
         args.append(typesgen)
         args.append(self._name)
         args.append(prefix)
@@ -1671,32 +1645,29 @@ class Pointer(Schema):
             return self.nullable
         return self.target.__contains__(value, memo)
 
+    def _get_positions(self, prefix, delimiter):
+        if self._positions is None:
+            return self._get_name(prefix, delimiter) + delimiter + "P"
+        else:
+            return self._positions
+
+    def _get_external(self, prefix, delimiter):
+        return self._get_name(prefix, delimiter) + delimiter + "X"
+
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
         args = []
 
-        if self._name is not None:
-            prefix = prefix + delimiter + "N" + self._name
-
         if self._nullable:
             cls = oamap.generator.MaskedPointerGenerator
-            if self._mask is None:
-                args.append(prefix + delimiter + "M")
-            else:
-                args.append(self._mask)
+            args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            if self._packmask is None:
-                args.append(prefix + delimiter + "m")
-            else:
-                args.append(self._packmask)
+            args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.PointerGenerator
 
-        if self._positions is None:
-            args.append(prefix + delimiter + "P")
-        else:
-            args.append(self._positions)
+        args.append(self._get_positions(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
         args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
