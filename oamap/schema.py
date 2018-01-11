@@ -235,6 +235,32 @@ class Schema(object):
     def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
         return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
 
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
+        if self._baddelimiter.match(delimiter) is not None:
+            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
+        cacheidx = [0]
+        memo = OrderedDict()
+        extension = self._normalize_extension(extension)
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
+
+    def _get_name(self, prefix, delimiter):
+        if self._name is not None:
+            return prefix + delimiter + "N" + self._name
+        else:
+            return prefix
+
+    def _get_mask(self, prefix, delimiter):
+        if self._mask is None:
+            return self._get_name(prefix, delimiter) + delimiter + "M"
+        else:
+            return self._mask
+
+    def _get_packmask(self, prefix, delimiter):
+        if self._packmask is None:
+            return self._get_name(prefix, delimiter) + delimiter + "m"
+        else:
+            return self._packmask
+
     def _finalizegenerator(self, out, cacheidx, memo, extension):
         allgenerators = list(memo.values())
         for generator in memo.values():
@@ -454,40 +480,41 @@ class Primitive(Schema):
 
         return recurse(value, self.dims)
 
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
-        if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
-        cacheidx = [0]
-        memo = OrderedDict()
-        extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
+    def _get_data(self, prefix, delimiter):
+        if self._data is None:
+            return self._get_name(prefix, delimiter) + delimiter + "D" + self.strdtype + "".join(delimiter + repr(x) for x in self.dims)
+        else:
+            return self._data
 
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
 
-        if self._name is not None:
-            prefix = prefix + delimiter + "N" + self._name
+        # if self._name is not None:
+        #     prefix = prefix + delimiter + "N" + self._name
 
         if self._nullable:
             cls = oamap.generator.MaskedPrimitiveGenerator
-            if self._mask is None:
-                args.append(prefix + delimiter + "M")
-            else:
-                args.append(self._mask)
+            # if self._mask is None:
+            #     args.append(prefix + delimiter + "M")
+            # else:
+            #     args.append(self._mask)
+            args.append(self._get_mask(prefix, delimiter))
             args.append(cacheidx[0]); cacheidx[0] += 1
-            if self._packmask is None:
-                args.append(prefix + delimiter + "m")
-            else:
-                args.append(self._packmask)
+            # if self._packmask is None:
+            #     args.append(prefix + delimiter + "m")
+            # else:
+            #     args.append(self._packmask)
+            args.append(self._get_packmask(prefix, delimiter))
         else:
             cls = oamap.generator.PrimitiveGenerator
 
-        if self._data is None:
-            args.append(prefix + delimiter + "D" + self.strdtype + "".join(delimiter + repr(x) for x in self.dims))
-        else:
-            args.append(self._data)
+        # if self._data is None:
+        #     args.append(prefix + delimiter + "D" + self.strdtype + "".join(delimiter + repr(x) for x in self.dims))
+        # else:
+        #     args.append(self._data)
+        args.append(self._get_data(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
         args.append(self._dtype)
@@ -710,14 +737,6 @@ class List(Schema):
                 if not self.content.__contains__(x, memo2):
                     return False
             return True
-
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
-        if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
-        cacheidx = [0]
-        memo = OrderedDict()
-        extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
@@ -993,14 +1012,6 @@ class Union(Schema):
             return self.nullable or any(x.nullable for x in self.possibilities)
         return any(x.__contains__(value, memo) for x in self.possibilities)
 
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
-        if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
-        cacheidx = [0]
-        memo = OrderedDict()
-        extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
-
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
@@ -1230,14 +1241,6 @@ class Record(Schema):
         else:
             return all(hasattr(value, n) and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
 
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
-        if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
-        cacheidx = [0]
-        memo = OrderedDict()
-        extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
-
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._fields) == 0:
             raise TypeError("Record has no fields")
@@ -1463,14 +1466,6 @@ class Tuple(Schema):
         else:
             return False
 
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
-        if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
-        cacheidx = [0]
-        memo = OrderedDict()
-        extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
-
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
@@ -1675,14 +1670,6 @@ class Pointer(Schema):
         if value is None:
             return self.nullable
         return self.target.__contains__(value, memo)
-
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
-        if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
-        cacheidx = [0]
-        memo = OrderedDict()
-        extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
 
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if self._target is None:

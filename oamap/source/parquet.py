@@ -125,11 +125,8 @@ def _parquet2oamap(parquetschema):
     else:
         raise AssertionError("unrecognized Parquet schema type: {0}".format(parquetschema.type))
 
-    # repetition_type
-    if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.REPEATED:
-        oamapschema = oamap.schema.List(oamapschema)
-
-    elif parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
+    # repetition_type for nullability (only; list annotation comes from converted_type)
+    if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
         oamapschema.nullable = True
 
     # converted_type
@@ -456,3 +453,25 @@ class ParquetFile(object):
             raise NotImplementedError
 
         return dictionary, deflevel, replevel, data, size
+
+class ParquetArrays(object):
+    def __init__(self, parquetfile, rowgroupid, prefix="object", delimiter="-"):
+        self._parquetfile = parquetfile
+        self._rowgroupid = rowgroupid
+        self._prefix = prefix
+        self._delimiter = delimiter
+        self._arrays = {}
+
+    def _getarray(self, request, curname, parquetschema):
+        pass
+
+    def __getitem__(self, name):
+        if name in self._arrays:
+            return self._arrays[name]
+        else:
+
+
+
+
+
+            return self._getarray(name, self._prefix, self._parquetfile)
