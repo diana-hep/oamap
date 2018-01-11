@@ -43,6 +43,184 @@ import oamap.source._fastparquet.schema
 import oamap.source._fastparquet.core
 from oamap.source._fastparquet.extra import thriftpy
 from oamap.source._fastparquet.extra import parquet_thrift
+from oamap.source._fastparquet.extra import OrderedDict
+
+try:
+    import snappy
+except ImportError:
+    snappy = None
+try:
+    import lzo
+except ImportError:
+    lzo = None
+try:
+    import brotli
+except ImportError:
+    brotli = None
+try:
+    import lz4.block
+except ImportError:
+    lz4 = None
+
+def _decompression(codec):
+    if codec == parquet_thrift.CompressionCodec.UNCOMPRESSED:
+        return lambda compressed, compressedbytes, uncompressedbytes: compressed
+
+    elif codec == parquet_thrift.CompressionCodec.SNAPPY:
+        if snappy is None:
+            raise ImportError("\n\nTo read Parquet files with snappy compression, install snappy package with:\n\n    pip install python-snappy --user\nor\n    conda install -c conda-forge python-snappy")
+        return lambda compressed, compressedbytes, uncompressedbytes: snappy.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.GZIP:
+        if sys.version_info[0] <= 2:
+            return lambda compressed, compressedbytes, uncompressedbytes: zlib.decompress(compressed, 16 + 15)
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: gzip.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.LZO:
+        if lzo is None:
+            raise ImportError("install lzo")      # FIXME: provide installation instructions
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: lzo.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.BROTLI:
+        if brotli is None:
+            raise ImportError("install brotli")   # FIXME: provide installation instructions
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: brotli.decompress(compressed)
+
+    elif codec == parquet_thrift.CompressionCodec.LZ4:
+        if lz4 is None:
+            raise ImportError("\n\nTo read Parquet files with lz4 compression, install lz4 package with:\n\n    pip install lz4 --user\nor\n    conda install -c anaconda lz4")
+        else:
+            return lambda compressed, compressedbytes, uncompressedbytes: lz4.block.decompress(compressed, uncompressed_size=uncompressedbytes)
+
+    elif codec == parquet_thrift.CompressionCodec.ZSTD:
+        # FIXME: find the Python zstd package
+        raise NotImplementedError("ZSTD decompression")
+
+    else:
+        raise AssertionError("unrecognized codec: {0}".format(codec))
+
+def _parquet2oamap(parquetschema):
+    # type
+    if parquetschema.type == parquet_thrift.Type.BOOLEAN:
+        oamapschema = oamap.schema.Primitive(numpy.bool_)
+    elif parquetschema.type == parquet_thrift.Type.INT32:
+        oamapschema = oamap.schema.Primitive(numpy.int32)
+    elif parquetschema.type == parquet_thrift.Type.INT64:
+        oamapschema = oamap.schema.Primitive(numpy.int64)
+    elif parquetschema.type == parquet_thrift.Type.INT96:
+        oamapschema = oamap.schema.Primitive("S12")
+    elif parquetschema.type == parquet_thrift.Type.FLOAT:
+        oamapschema = oamap.schema.Primitive(numpy.float32)
+    elif parquetschema.type == parquet_thrift.Type.DOUBLE:
+        oamapschema = oamap.schema.Primitive(numpy.float64)
+    elif parquetschema.type == parquet_thrift.Type.BYTE_ARRAY:
+        oamapschema = oamap.schema.List(oamap.schema.Primitive(numpy.uint8), name="ByteString")
+    elif parquetschema.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
+        oamapschema = oamap.schema.Primitive("S%d" % parquetschema.type_length)
+    elif parquetschema.type is None:
+        oamapschema = oamap.schema.Record(OrderedDict((n, _parquet2oamap(x)) for n, x in parquetschema.children.items()))
+    else:
+        raise AssertionError("unrecognized Parquet schema type: {0}".format(parquetschema.type))
+
+    # repetition_type
+    if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.REPEATED:
+        oamapschema = oamap.schema.List(oamapschema)
+
+    elif parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
+        oamapschema.nullable = True
+
+    # converted_type
+    if parquetschema.converted_type is None:
+        pass
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.UTF8:
+        assert parquetschema.type == parquet_thrift.Type.BYTE_ARRAY
+        oamapschema.name = "UTF8String"
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.MAP:
+        # assert optional field containing repeated key/value pair
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.MAP_KEY_VALUE:
+        # assert group of two fields
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.LIST:
+        assert isinstance(oamapschema, oamap.schema.Record) and len(oamapschema.fields) == 1
+        content, = oamapschema.fields.values()
+        oamapschema = oamap.schema.List(content, nullable=False)
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.ENUM:
+        # assert binary field
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.DECIMAL:
+        # assert binary or fixed primitive
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.DATE:
+        assert parquetschema.type == parquet_thrift.Type.INT32
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.TIME_MILLIS:
+        assert parquetschema.type == parquet_thrift.Type.INT32
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.TIME_MICROS:
+        assert parquetschema.type == parquet_thrift.Type.INT64
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.TIMESTAMP_MILLIS:
+        assert parquetschema.type == parquet_thrift.Type.INT64
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.TIMESTAMP_MICROS:
+        assert parquetschema.type == parquet_thrift.Type.INT64
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.UINT_8 or \
+         parquetschema.converted_type == parquet_thrift.ConvertedType.UINT_16 or \
+         parquetschema.converted_type == parquet_thrift.ConvertedType.UINT_32:
+        assert parquetschema.type == parquet_thrift.Type.INT32
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.UINT_64:
+        assert parquetschema.type == parquet_thrift.Type.INT64
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.INT_8 or \
+         parquetschema.converted_type == parquet_thrift.ConvertedType.INT_16 or \
+         parquetschema.converted_type == parquet_thrift.ConvertedType.INT_32:
+        assert parquetschema.type == parquet_thrift.Type.INT32
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.INT_64:
+        assert parquetschema.type == parquet_thrift.Type.INT64
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.JSON:
+        assert parquetschema.type == parquet_thrift.Type.BYTE_ARRAY
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.BSON:
+        assert parquetschema.type == parquet_thrift.Type.BYTE_ARRAY
+        raise NotImplementedError
+
+    elif parquetschema.converted_type == parquet_thrift.ConvertedType.INTERVAL:
+        assert parquetschema.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY and parquetschema.type_length == 12
+        raise NotImplementedError
+
+    else:
+        raise AssertionError("unrecognized Parquet converted_type: {0}".format(parquetschema.converted_type))
+
+    if parquetschema.hasdictionary:
+        oamapschema = oamap.schema.Pointer(oamapschema)
+
+    parquetschema.oamapschema = oamapschema
+    return oamapschema
 
 class ParquetFile(object):
     def __init__(self, file):
@@ -151,7 +329,7 @@ class ParquetFile(object):
         # fastparquet's schema_helper makes the tree structure
         self.schema_helper = oamap.source._fastparquet.schema.SchemaHelper(self.footer.schema)
 
-        # TODO: make an OAMap schema
+        self.oamapschema = oamap.schema.List(oamap.schema.Record(OrderedDict((x.name, _parquet2oamap(x)) for x in self.fields)))
 
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
@@ -278,60 +456,3 @@ class ParquetFile(object):
             raise NotImplementedError
 
         return dictionary, deflevel, replevel, data, size
-
-try:
-    import snappy
-except ImportError:
-    snappy = None
-try:
-    import lzo
-except ImportError:
-    lzo = None
-try:
-    import brotli
-except ImportError:
-    brotli = None
-try:
-    import lz4.block
-except ImportError:
-    lz4 = None
-
-def _decompression(codec):
-    if codec == parquet_thrift.CompressionCodec.UNCOMPRESSED:
-        return lambda compressed, compressedbytes, uncompressedbytes: compressed
-
-    elif codec == parquet_thrift.CompressionCodec.SNAPPY:
-        if snappy is None:
-            raise ImportError("\n\nTo read Parquet files with snappy compression, install snappy package with:\n\n    pip install python-snappy --user\nor\n    conda install -c conda-forge python-snappy")
-        return lambda compressed, compressedbytes, uncompressedbytes: snappy.decompress(compressed)
-
-    elif codec == parquet_thrift.CompressionCodec.GZIP:
-        if sys.version_info[0] <= 2:
-            return lambda compressed, compressedbytes, uncompressedbytes: zlib.decompress(compressed, 16 + 15)
-        else:
-            return lambda compressed, compressedbytes, uncompressedbytes: gzip.decompress(compressed)
-
-    elif codec == parquet_thrift.CompressionCodec.LZO:
-        if lzo is None:
-            raise ImportError("install lzo")      # FIXME: provide installation instructions
-        else:
-            return lambda compressed, compressedbytes, uncompressedbytes: lzo.decompress(compressed)
-
-    elif codec == parquet_thrift.CompressionCodec.BROTLI:
-        if brotli is None:
-            raise ImportError("install brotli")   # FIXME: provide installation instructions
-        else:
-            return lambda compressed, compressedbytes, uncompressedbytes: brotli.decompress(compressed)
-
-    elif codec == parquet_thrift.CompressionCodec.LZ4:
-        if lz4 is None:
-            raise ImportError("\n\nTo read Parquet files with lz4 compression, install lz4 package with:\n\n    pip install lz4 --user\nor\n    conda install -c anaconda lz4")
-        else:
-            return lambda compressed, compressedbytes, uncompressedbytes: lz4.block.decompress(compressed, uncompressed_size=uncompressedbytes)
-
-    elif codec == parquet_thrift.CompressionCodec.ZSTD:
-        # FIXME: find the Python zstd package
-        raise NotImplementedError("ZSTD decompression")
-
-    else:
-        raise AssertionError("unrecognized codec: {0}".format(codec))
