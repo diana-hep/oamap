@@ -124,6 +124,7 @@ def _parquet2oamap(parquetschema):
 
     elif parquetschema.type == parquet_thrift.Type.BYTE_ARRAY:
         oamapschema = oamap.schema.List(oamap.schema.Primitive(numpy.uint8), name="ByteString")
+        parquetschema.hassize = True
 
     elif parquetschema.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
         oamapschema = oamap.schema.Primitive("S%d" % parquetschema.type_length)
@@ -490,7 +491,12 @@ class ParquetFile(object):
 
         else:
             if parquetschema.hassize:
-                raise NotImplementedError
+                assert isinstance(parquetschema.oamapschema, oamap.schema.List)
+                assert isinstance(parquetschema.oamapschema.content, oamap.schema.Primitive)
+                assert parquetschema.oamapschema.content.dtype == numpy.dtype(numpy.uint8)
+                assert size is not None
+                out[parquetschema.oamapschema._get_counts(prefix, delimiter)] = size
+                out[parquetschema.oamapschema.content._get_data(parquetschema.oamapschema._get_content(prefix, delimiter), delimiter)] = data
 
             else:
                 out[parquetschema.oamapschema._get_data(prefix, delimiter)] = data
