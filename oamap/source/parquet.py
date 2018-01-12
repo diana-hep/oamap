@@ -532,27 +532,54 @@ class ParquetFile(object):
 
         if len(parquetschema.repsequence) > 0:
             assert replevel is not None
+            assert len(deflevel) == len(replevel)
             
             print "deflevel", deflevel.tolist()
             print "replevel", replevel.tolist()
-            
-            laststarts = None
-            for repdepth, name in reversed(list(enumerate(parquetschema.repsequence))):
-                defdepth = parquetschema.defsequence.index(name)
-                print "repdepth", repdepth, "defdepth", defdepth
 
-                reps = replevel[deflevel > defdepth]
-                if laststarts is not None:
-                    reps = reps[laststarts]
+            offsets = ([], [], [])
 
-                starts, = numpy.where(reps < repdepth + 1)
-                stops = numpy.append(starts[1:], len(reps))
+            length = 0
+            for d, r in zip(deflevel, replevel):
+                for offseti in range(len(offsets)):
+                    if r < offseti + 1:
+                        if offseti + 1 < len(offsets):
+                            offsets[offseti].append(len(offsets[offseti + 1]))
+                        else:
+                            offsets[offseti].append(length)
 
-                print "reps", reps.tolist()
-                print "starts", starts.tolist()
-                print "stops", stops.tolist()
+                if d == 3:
+                    length += 1
 
-                laststarts = starts
+            # for offseti in range(len(offsets) - 1, -1, -1):
+            #     if offseti + 1 < len(offsets):
+            #         offsets[offseti].append(len(offsets[offseti + 1]))
+            #     else:
+            #         offsets[offseti].append(length)
+
+            print "offsets[0]", offsets[0]
+            print "offsets[1]", offsets[1]
+            print "offsets[2]", offsets[2]
+
+
+                
+            # laststarts = None
+            # for repdepth, name in reversed(list(enumerate(parquetschema.repsequence))):
+            #     defdepth = parquetschema.defsequence.index(name)
+            #     print "repdepth", repdepth, "defdepth", defdepth
+
+            #     reps = replevel[deflevel > defdepth]
+            #     if laststarts is not None:
+            #         reps = reps[laststarts]
+
+            #     starts, = numpy.where(reps < repdepth + 1)
+            #     stops = numpy.append(starts[1:], len(reps))
+
+            #     print "reps", reps.tolist()
+            #     print "starts", starts.tolist()
+            #     print "stops", stops.tolist()
+
+            #     laststarts = starts
 
             raise Exception
 
