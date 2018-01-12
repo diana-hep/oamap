@@ -537,19 +537,59 @@ class ParquetFile(object):
             print "deflevel", deflevel.tolist()
             print "replevel", replevel.tolist()
 
-            offsets = ([], [], [])
 
-            length = 0
-            for d, r in zip(deflevel, replevel):
-                for offseti in range(len(offsets)):
-                    if r < offseti + 1:
-                        if offseti + 1 < len(offsets):
-                            offsets[offseti].append(len(offsets[offseti + 1]))
-                        else:
-                            offsets[offseti].append(length)
 
+
+
+
+
+            count = [0, 0, 0]
+            counts = ([], [], [])
+            for d, r in reversed(zip(deflevel, replevel)):
                 if d == 3:
-                    length += 1
+                    count[2] += 1
+                if d >= 2 and r < 3:
+                    counts[2].append(count[2])
+                    count[2] = 0
+
+                # if d == 3:
+                #     count[2] += 1
+                # if r < 3:
+                #     counts[2].append(count[2])
+                #     count[2] = 0
+                #     count[1] += 1
+
+                # if d == 2:
+                #     count[1] += 1
+                # if r < 2:
+                #     counts[1].append(count[1])
+                #     count[1] = 0
+                #     count[0] += 1
+
+                # if d == 1:
+                #     count[0] += 1
+                # if r < 1:
+                #     counts[0].append(count[0])
+                #     count[0] = 0
+
+            print "counts[0]", counts[0]
+            print "counts[1]", counts[1]
+            print "counts[2]", counts[2]
+
+
+            # offsets = ([], [], [])
+
+            # length = 0
+            # for d, r in zip(deflevel, replevel):
+            #     for offseti in range(len(offsets)):
+            #         if r < offseti + 1:
+            #             if offseti + 1 < len(offsets):
+            #                 offsets[offseti].append(len(offsets[offseti + 1]))
+            #             else:
+            #                 offsets[offseti].append(length)
+
+            #     if d == 3:
+            #         length += 1
 
             # for offseti in range(len(offsets) - 1, -1, -1):
             #     if offseti + 1 < len(offsets):
@@ -557,9 +597,9 @@ class ParquetFile(object):
             #     else:
             #         offsets[offseti].append(length)
 
-            print "offsets[0]", offsets[0]
-            print "offsets[1]", offsets[1]
-            print "offsets[2]", offsets[2]
+            # print "offsets[0]", offsets[0]
+            # print "offsets[1]", offsets[1]
+            # print "offsets[2]", offsets[2]
 
 
                 
@@ -581,7 +621,7 @@ class ParquetFile(object):
 
             #     laststarts = starts
 
-            raise Exception
+            # raise Exception
 
         oamapschema = parquetschema.oamapschema
 
