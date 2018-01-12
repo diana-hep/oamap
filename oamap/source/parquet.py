@@ -124,7 +124,6 @@ def _parquet2oamap(parquetschema):
 
     elif parquetschema.type == parquet_thrift.Type.BYTE_ARRAY:
         oamapschema = oamap.schema.List(oamap.schema.Primitive(numpy.uint8), name="ByteString")
-        parquetschema.hassize = True
 
     elif parquetschema.type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
         oamapschema = oamap.schema.Primitive("S%d" % parquetschema.type_length)
@@ -230,7 +229,7 @@ def _parquet2oamap(parquetschema):
     return oamapschema
 
 class ParquetFile(object):
-    def __init__(self, file):
+    def __init__(self, file, prefix="object", delimiter="-"):
         # raise ImportError late, when the user actually tries to read a ParquetFile
         if parquet_thrift is None:
             raise ImportError("\n\nTo read Parquet files, install thriftpy package with:\n\n    pip install thriftpy --user\nor\n    conda install -c conda-forge thriftpy")
@@ -304,43 +303,58 @@ class ParquetFile(object):
         self.path_to_schema = {}
 
         def recurse(index, path):
-            schema = self.footer.schema[index]
+            parquetschema = self.footer.schema[index]
 
-            schema.path = path + (schema.name,)
-            self.path_to_schema[schema.path] = schema
-            schema.chunks = []
-            schema.defsequence = ()
-            schema.repsequence = ()
-            schema.hasdictionary = False
-            schema.hassize = False
+            parquetschema.path = path + (parquetschema.name,)
+            self.path_to_schema[parquetschema.path] = parquetschema
+            parquetschema.chunks = []
+            parquetschema.hasdictionary = False
+            parquetschema.hassize = (parquetschema.type == parquet_thrift.Type.BYTE_ARRAY)
 
-            if schema.num_children is not None:
-                for i in range(schema.num_children):
+            if parquetschema.num_children is not None:
+                for i in range(parquetschema.num_children):
                     index += 1
-                    index = recurse(index, schema.path)
+                    index = recurse(index, parquetschema.path)
             return index
 
         index = 0
         self.fields = OrderedDict()
         while index + 1 < len(self.footer.schema):
             index += 1
-            schema = self.footer.schema[index]
-            self.fields[schema.name] = schema
+            parquetschema = self.footer.schema[index]
+            self.fields[parquetschema.name] = parquetschema
             index = recurse(index, ())
 
         # pass over rowgroup/column elements, linking to schema and checking for dictionary encodings
         for rowgroupid, rowgroup in enumerate(self.footer.row_groups):
             for columnchunk in rowgroup.columns:
-                schema = self.path_to_schema[tuple(columnchunk.meta_data.path_in_schema)]
-                assert len(schema.chunks) == rowgroupid
-                schema.chunks.append(columnchunk)
+                parquetschema = self.path_to_schema[tuple(columnchunk.meta_data.path_in_schema)]
+                assert len(parquetschema.chunks) == rowgroupid
+                parquetschema.chunks.append(columnchunk)
                 if any(x == parquet_thrift.Encoding.PLAIN_DICTIONARY or x == parquet_thrift.Encoding.RLE_DICTIONARY for x in columnchunk.meta_data.encodings):
-                    schema.hasdictionary = True
+                    parquetschema.hasdictionary = True
 
         # fastparquet's schema_helper makes the tree structure
         self.schema_helper = oamap.source._fastparquet.schema.SchemaHelper(self.footer.schema)
 
         self.oamapschema = oamap.schema.List(oamap.schema.Record(OrderedDict((x.name, _parquet2oamap(x)) for x in self.fields.values())))
+        self.oamapschema.defaultnames(prefix=prefix, delimiter=delimiter)
+        self._prefix = prefix
+        self._delimiter = delimiter
+
+        def recurse2(parquetschema, defsequence, repsequence):
+            if parquetschema.oamapschema.nullable:
+                defsequence = defsequence + (parquetschema.oamapschema.mask,)
+
+            parquetschema.defsequence = defsequence
+            parquetschema.repsequence = repsequence
+
+            if parquetschema.num_children is not None:
+                for child in parquetschema.children:
+                    recurse2(child, defsequence, repsequence)
+
+        for field in self.fields.values():
+            recurse2(field, (), ())
 
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
@@ -468,25 +482,42 @@ class ParquetFile(object):
 
         return dictionary, deflevel, replevel, data, size
 
-    def rowgroup(self, rowgroupid, prefix="object", delimiter="-"):
-        return self.oamapschema(ParquetRowGroupArrays(self, rowgroupid, prefix=prefix, delimiter=delimiter))
+    def rowgroup(self, rowgroupid):
+        return self.oamapschema(ParquetRowGroupArrays(self, rowgroupid))
 
     def __iter__(self):
         for rowgroupid in range(len(self.footer.row_groups)):
             for x in self.rowgroup(rowgroupid):
                 yield x
 
-    def _arrays(self, parquetschema, rowgroupid, prefix, delimiter, parallel):
+    def arrays(self, parquetschema, rowgroupid, parallel):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
         out = {}
 
         if len(parquetschema.defsequence) > 0:
-            raise NotImplementedError
+            assert deflevel is not None
+
+            length = len(deflevel)
+            for depth, maskname in enumerate(parquetschema.defsequence):
+                masked = (deflevel == depth)
+                if length != len(deflevel):
+                    masked = masked[notmasked]
+                notmasked = numpy.bitwise_not(masked)
+                oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)
+                oamapmask[masked] = oamap.generator.Masked.maskedvalue
+                length = numpy.count_nonzero(notmasked)
+                oamapmask[notmasked] = numpy.arange(length, dtype=oamap.generator.Masked.maskdtype)
+                out[maskname] = oamapmask
+
+            # print "deflevel", deflevel
+            # print "parquetschema.defsequence", parquetschema.defsequence
 
         if len(parquetschema.repsequence) > 0:
+            assert replevel is not None
             raise NotImplementedError
 
         if parquetschema.hasdictionary:
+            assert dictionary is not None
             raise NotImplementedError
 
         else:
@@ -495,40 +526,38 @@ class ParquetFile(object):
                 assert isinstance(parquetschema.oamapschema.content, oamap.schema.Primitive)
                 assert parquetschema.oamapschema.content.dtype == numpy.dtype(numpy.uint8)
                 assert size is not None
-                out[parquetschema.oamapschema._get_counts(prefix, delimiter)] = size
-                out[parquetschema.oamapschema.content._get_data(parquetschema.oamapschema._get_content(prefix, delimiter), delimiter)] = data
+                out[parquetschema.oamapschema.counts] = size
+                out[parquetschema.oamapschema.content.data] = data
 
             else:
-                out[parquetschema.oamapschema._get_data(prefix, delimiter)] = data
+                out[parquetschema.oamapschema.data] = data
 
         return out
 
 class ParquetRowGroupArrays(object):
-    def __init__(self, parquetfile, rowgroupid, prefix="object", delimiter="-"):
+    def __init__(self, parquetfile, rowgroupid):
         self._parquetfile = parquetfile
         self._rowgroupid = rowgroupid
-        self._prefix = prefix
-        self._delimiter = delimiter
         self._arrays = {}
         
     def __getitem__(self, request):
         if request in self._arrays:
             return self._arrays[request]
 
-        elif request.startswith(self._parquetfile.oamapschema._get_starts(self._prefix, self._delimiter)):
+        elif request.startswith(self._parquetfile.oamapschema.starts):
             self._arrays[request] = numpy.array([0], numpy.int32)
             return self._arrays[request]
             
-        elif request.startswith(self._parquetfile.oamapschema._get_stops(self._prefix, self._delimiter)):
+        elif request.startswith(self._parquetfile.oamapschema.stops):
             self._arrays[request] = numpy.array([self._parquetfile.footer.row_groups[self._rowgroupid].num_rows], numpy.int32)
             return self._arrays[request]
 
         else:
-            contentprefix = self._parquetfile.oamapschema._get_content(self._prefix, self._delimiter)
+            contentprefix = self._parquetfile.oamapschema._get_content(self._parquetfile._prefix, self._parquetfile._delimiter)
 
             found = False
             for n in self._parquetfile.oamapschema.content.fields:
-                fieldprefix = self._parquetfile.oamapschema.content._get_field(contentprefix, self._delimiter, n)
+                fieldprefix = self._parquetfile.oamapschema.content._get_field(contentprefix, self._parquetfile._delimiter, n)
                 if request.startswith(fieldprefix):
                     found = True
                     break
@@ -540,7 +569,7 @@ class ParquetRowGroupArrays(object):
 
     def _getarrays(self, request, prefix, parquetschema):
         if parquetschema.num_children is None:
-            self._arrays.update(self._parquetfile._arrays(parquetschema, self._rowgroupid, prefix, self._delimiter, parallel=False))
+            self._arrays.update(self._parquetfile.arrays(parquetschema, self._rowgroupid, parallel=False))
             return self._arrays[request]
 
         else:

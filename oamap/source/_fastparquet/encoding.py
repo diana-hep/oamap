@@ -235,22 +235,23 @@ class NumpyIO(object):  # pragma: no cover
 Numpy8 = NumpyIO
 Numpy32 = NumpyIO
 
-try:
-    import numba
-except ImportError:
-    pass
-else:
-    njit = numba.jit(nopython=True, nogil=True)
+### FIXME!
+# try:
+#     import numba
+# except ImportError:
+#     pass
+# else:
+#     njit = numba.jit(nopython=True, nogil=True)
 
-    read_unsigned_var_int      = njit(read_unsigned_var_int)
-    read_rle                   = njit(read_rle)
-    width_from_max_int         = njit(width_from_max_int)
-    _mask_for_bits             = njit(_mask_for_bits)
-    read_bitpacked             = njit(read_bitpacked)
-    read_rle_bit_packed_hybrid = njit(read_rle_bit_packed_hybrid)
-    read_length                = njit(read_length)
+#     read_unsigned_var_int      = njit(read_unsigned_var_int)
+#     read_rle                   = njit(read_rle)
+#     width_from_max_int         = njit(width_from_max_int)
+#     _mask_for_bits             = njit(_mask_for_bits)
+#     read_bitpacked             = njit(read_bitpacked)
+#     read_rle_bit_packed_hybrid = njit(read_rle_bit_packed_hybrid)
+#     read_length                = njit(read_length)
 
-    spec8 = [('data', numba.uint8[:]), ('loc', numba.int64), ('len', numba.int64)]
-    Numpy8 = numba.jitclass(spec8)(Numpy8)
-    spec32 = [('data', numba.uint32[:]), ('loc', numba.int64), ('len', numba.int64)]
-    Numpy32 = numba.jitclass(spec32)(Numpy32)
+#     spec8 = [('data', numba.uint8[:]), ('loc', numba.int64), ('len', numba.int64)]
+#     Numpy8 = numba.jitclass(spec8)(Numpy8)
+#     spec32 = [('data', numba.uint32[:]), ('loc', numba.int64), ('len', numba.int64)]
+#     Numpy32 = numba.jitclass(spec32)(Numpy32)
