@@ -344,10 +344,14 @@ class ParquetFile(object):
         self._prefix = prefix
         self._delimiter = delimiter
 
-        self.oamapschema.show()
+        # self.oamapschema.show()
 
         def recurse2(parquetschema, defsequence, repsequence):
-            if parquetschema.oamapschema.nullable:
+            if parquetschema.converted_type == parquet_thrift.ConvertedType.LIST:
+                defsequence = defsequence + (parquetschema.oamapschema.starts,)
+                repsequence = repsequence + (parquetschema.oamapschema.starts,)
+
+            elif parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
                 defsequence = defsequence + (parquetschema.oamapschema.mask,)
 
             parquetschema.defsequence = defsequence
@@ -498,27 +502,59 @@ class ParquetFile(object):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
         out = {}
 
+        print "defsequence", parquetschema.defsequence
+        print "repsequence", parquetschema.repsequence
+
         if len(parquetschema.defsequence) > 0:
             assert deflevel is not None
 
+            first = True
             length = len(deflevel)
             for depth, maskname in enumerate(parquetschema.defsequence):
                 masked = (deflevel == depth)
-                if length != len(deflevel):
+                if not first:
                     masked = masked[stencil]
                 notmasked = numpy.bitwise_not(masked)
 
-                oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)
-                oamapmask[masked] = oamap.generator.Masked.maskedvalue
-                length = numpy.count_nonzero(notmasked)
-                oamapmask[notmasked] = numpy.arange(length, dtype=oamap.generator.Masked.maskdtype)
-                out[maskname] = oamapmask
+                if maskname in parquetschema.repsequence:
+                    # this is a list, not a nullable type; we need to process it only to compactify properly
+                    length = numpy.count_nonzero(notmasked)                                   # new length
+                else:
+                    # this is a nullable type; need to create and store a mask
+                    oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)   # old length
+                    length = numpy.count_nonzero(notmasked)                                   # new length
+                    oamapmask[masked] = oamap.generator.Masked.maskedvalue
+                    oamapmask[notmasked] = numpy.arange(length, dtype=oamap.generator.Masked.maskdtype)
+                    out[maskname] = oamapmask
 
+                first = False
                 stencil = (deflevel > depth)
 
         if len(parquetschema.repsequence) > 0:
             assert replevel is not None
-            raise NotImplementedError
+            
+            print "deflevel", deflevel.tolist()
+            print "replevel", replevel.tolist()
+            
+            laststarts = None
+            for repdepth, name in reversed(list(enumerate(parquetschema.repsequence))):
+                defdepth = parquetschema.defsequence.index(name)
+                print "repdepth", repdepth, "defdepth", defdepth
+
+                reps = replevel[deflevel > defdepth]
+                if laststarts is not None:
+                    reps = reps[laststarts]
+
+                starts, = numpy.where(reps < repdepth + 1)
+                stops = numpy.append(starts[1:], len(reps))
+
+                print "reps", reps.tolist()
+                print "starts", starts.tolist()
+                print "stops", stops.tolist()
+
+                laststarts = starts
+
+            raise Exception
 
         oamapschema = parquetschema.oamapschema
 
