@@ -224,7 +224,9 @@ def _parquet2oamap(parquetschema):
 
     if parquetschema.hasdictionary:
         oamapschema = oamap.schema.Pointer(oamapschema)
-
+        oamapschema.nullable = oamapschema.target.nullable
+        oamapschema.target.nullable = False
+        
     parquetschema.oamapschema = oamapschema
     return oamapschema
 
@@ -342,6 +344,8 @@ class ParquetFile(object):
         self._prefix = prefix
         self._delimiter = delimiter
 
+        self.oamapschema.show()
+
         def recurse2(parquetschema, defsequence, repsequence):
             if parquetschema.oamapschema.nullable:
                 defsequence = defsequence + (parquetschema.oamapschema.mask,)
@@ -350,7 +354,7 @@ class ParquetFile(object):
             parquetschema.repsequence = repsequence
 
             if parquetschema.num_children is not None:
-                for child in parquetschema.children:
+                for child in parquetschema.children.values():
                     recurse2(child, defsequence, repsequence)
 
         for field in self.fields.values():
@@ -490,7 +494,7 @@ class ParquetFile(object):
             for x in self.rowgroup(rowgroupid):
                 yield x
 
-    def arrays(self, parquetschema, rowgroupid, parallel):
+    def arrays(self, parquetschema, rowgroupid, parallel=False):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
         out = {}
 
@@ -501,36 +505,48 @@ class ParquetFile(object):
             for depth, maskname in enumerate(parquetschema.defsequence):
                 masked = (deflevel == depth)
                 if length != len(deflevel):
-                    masked = masked[notmasked]
+                    masked = masked[stencil]
                 notmasked = numpy.bitwise_not(masked)
+
                 oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)
                 oamapmask[masked] = oamap.generator.Masked.maskedvalue
                 length = numpy.count_nonzero(notmasked)
                 oamapmask[notmasked] = numpy.arange(length, dtype=oamap.generator.Masked.maskdtype)
                 out[maskname] = oamapmask
 
-            # print "deflevel", deflevel
-            # print "parquetschema.defsequence", parquetschema.defsequence
+                stencil = (deflevel > depth)
 
         if len(parquetschema.repsequence) > 0:
             assert replevel is not None
             raise NotImplementedError
 
+        oamapschema = parquetschema.oamapschema
+
         if parquetschema.hasdictionary:
+            assert isinstance(oamapschema, oamap.schema.Pointer)            
             assert dictionary is not None
-            raise NotImplementedError
+            assert size is None
+
+            out[oamapschema.positions] = data
+            oamapschema = oamapschema.target
+
+            if isinstance(dictionary, tuple) and len(dictionary) == 2:
+                data, size = dictionary
+            else:
+                data = dictionary
+
+        if parquetschema.hassize:
+            assert isinstance(oamapschema, oamap.schema.List)
+            assert isinstance(oamapschema.content, oamap.schema.Primitive)
+            assert oamapschema.content.dtype == numpy.dtype(numpy.uint8)
+            assert size is not None
+            out[oamapschema.counts] = size
+            out[oamapschema.content.data] = data
 
         else:
-            if parquetschema.hassize:
-                assert isinstance(parquetschema.oamapschema, oamap.schema.List)
-                assert isinstance(parquetschema.oamapschema.content, oamap.schema.Primitive)
-                assert parquetschema.oamapschema.content.dtype == numpy.dtype(numpy.uint8)
-                assert size is not None
-                out[parquetschema.oamapschema.counts] = size
-                out[parquetschema.oamapschema.content.data] = data
-
-            else:
-                out[parquetschema.oamapschema.data] = data
+            assert isinstance(oamapschema, oamap.schema.Primitive)
+            assert oamapschema.dtype == data.dtype
+            out[oamapschema.data] = data
 
         return out
 
