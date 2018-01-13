@@ -537,44 +537,101 @@ class ParquetFile(object):
             print "deflevel", deflevel.tolist()
             print "replevel", replevel.tolist()
 
+# {"list3": [[[0, 1, 2], [], [], [3, 4]]]}
+# {"list3": [[[5, 6]], [], [], [[7, 8]]]}
+# {"list3": [[[9, 10, 11], []], []]}
 
-
-
-
-
-
-            count = [0, 0, 0]
-            counts = ([], [], [])
+            count = [0, 0, 0, 0]
+            counts = ([], [], [], [])
             for d, r in reversed(zip(deflevel, replevel)):
+                print "d =", d, "r =", r
+
                 if d == 3:
+                    if r == 3:
+                        count[3] += 1
+                    if r == 2:
+                        count[3] += 1
+                        counts[3].append(count[3])
+                        count[3] = 0
+                        count[2] += 1
+                    if r == 1:
+                        count[3] += 1
+                        counts[3].append(count[3])
+                        count[3] = 0
+                        count[2] += 1
+                        counts[2].append(count[2])
+                        count[2] = 0
+                        count[1] += 1
+                    if r == 0:
+                        count[3] += 1
+                        counts[3].append(count[3])
+                        count[3] = 0
+                        count[2] += 1
+                        counts[2].append(count[2])
+                        count[2] = 0
+                        count[1] += 1
+                        counts[1].append(count[1])
+                        count[1] = 0
+                        count[0] += 1
+                if d == 2:
+                    assert r == 2
+                    counts[3].append(0)
+                    count[3] = 0
                     count[2] += 1
-                if d >= 2 and r < 3:
-                    counts[2].append(count[2])
+                if d == 1:
+                    assert r == 1
+                    counts[2].append(0)
+                    count[3] = 0
                     count[2] = 0
+                    count[1] += 1
+                if d == 0:
+                    assert r == 0
+                    counts[1].append(0)
+                    count[3] = 0
+                    count[2] = 0
+                    count[1] = 0
+                    count[0] += 1
 
-                # if d == 3:
-                #     count[2] += 1
-                # if r < 3:
-                #     counts[2].append(count[2])
-                #     count[2] = 0
-                #     count[1] += 1
+            counts[0].append(count[0])
 
-                # if d == 2:
-                #     count[1] += 1
-                # if r < 2:
-                #     counts[1].append(count[1])
-                #     count[1] = 0
-                #     count[0] += 1
+            print "count[0]", count[0], "counts[0]", counts[0]
+            print "count[1]", count[1], "counts[1]", counts[1]
+            print "count[2]", count[2], "counts[2]", counts[2]
+            print "count[3]", count[3], "counts[3]", counts[3]
 
-                # if d == 1:
-                #     count[0] += 1
-                # if r < 1:
-                #     counts[0].append(count[0])
-                #     count[0] = 0
 
-            print "counts[0]", counts[0]
-            print "counts[1]", counts[1]
-            print "counts[2]", counts[2]
+            # count = [0, 0, 0]
+            # counts = ([], [], [])
+            # for d, r in reversed(zip(deflevel, replevel)):
+            #     if d == 3:
+            #         count[2] += 1
+            #     if d >= 2 and r < 3:
+            #         counts[2].append(count[2])
+            #         count[2] = 0
+
+            #     # if d == 3:
+            #     #     count[2] += 1
+            #     # if r < 3:
+            #     #     counts[2].append(count[2])
+            #     #     count[2] = 0
+            #     #     count[1] += 1
+
+            #     # if d == 2:
+            #     #     count[1] += 1
+            #     # if r < 2:
+            #     #     counts[1].append(count[1])
+            #     #     count[1] = 0
+            #     #     count[0] += 1
+
+            #     # if d == 1:
+            #     #     count[0] += 1
+            #     # if r < 1:
+            #     #     counts[0].append(count[0])
+            #     #     count[0] = 0
+
+            # print "counts[0]", counts[0]
+            # print "counts[1]", counts[1]
+            # print "counts[2]", counts[2]
 
 
             # offsets = ([], [], [])
