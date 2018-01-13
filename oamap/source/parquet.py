@@ -544,60 +544,73 @@ class ParquetFile(object):
             count = [0, 0, 0, 0]
             counts = ([], [], [], [])
             for d, r in reversed(zip(deflevel, replevel)):
-                print "d =", d, "r =", r
-
                 if d == 3:
+                    assert r <= 3
                     if r == 3:
                         count[3] += 1
                     if r == 2:
                         count[3] += 1
-                        counts[3].append(count[3])
-                        count[3] = 0
+                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
                     if r == 1:
                         count[3] += 1
-                        counts[3].append(count[3])
-                        count[3] = 0
+                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
-                        counts[2].append(count[2])
-                        count[2] = 0
+                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
                     if r == 0:
                         count[3] += 1
-                        counts[3].append(count[3])
-                        count[3] = 0
+                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
-                        counts[2].append(count[2])
-                        count[2] = 0
+                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
-                        counts[1].append(count[1])
-                        count[1] = 0
+                        counts[1].append(count[1]); count[1] = 0
                         count[0] += 1
                 if d == 2:
-                    assert r == 2
-                    counts[3].append(0)
-                    count[3] = 0
-                    count[2] += 1
+                    assert r <= 2
+                    if r == 2:
+                        counts[3].append(0); count[3] = 0
+                        count[2] += 1
+                    if r == 1:
+                        counts[3].append(0); count[3] = 0
+                        count[2] += 1
+                    if r == 0:
+                        counts[3].append(0); count[3] = 0
+                        count[2] += 1
                 if d == 1:
-                    assert r == 1
-                    counts[2].append(0)
-                    count[3] = 0
-                    count[2] = 0
-                    count[1] += 1
+                    assert r <= 1
+                    if r == 1:
+                        counts[2].append(0); count[3] = 0
+                        count[2] = 0
+                        count[1] += 1
+                    if r == 0:
+                        counts[2].append(0); count[3] = 0
+                        count[2] = 0
+                        count[1] += 1
                 if d == 0:
-                    assert r == 0
-                    counts[1].append(0)
-                    count[3] = 0
-                    count[2] = 0
-                    count[1] = 0
-                    count[0] += 1
+                    assert r <= 0
+                    if r == 0:
+                        counts[1].append(0); count[3] = 0
+                        count[2] = 0
+                        count[1] = 0
+                        count[0] += 1
 
+                print
+                print "count[1]", count[1], "counts[1]", counts[1]
+                print "count[2]", count[2], "counts[2]", counts[2]
+                print "count[3]", count[3], "counts[3]", counts[3]
+                
             counts[0].append(count[0])
 
             print "count[0]", count[0], "counts[0]", counts[0]
-            print "count[1]", count[1], "counts[1]", counts[1]
-            print "count[2]", count[2], "counts[2]", counts[2]
-            print "count[3]", count[3], "counts[3]", counts[3]
+
+                    # if r == 1:
+                    #     counts[2].append(count[2]); count[2] = 0
+                    # if r == 0:
+                    #     counts[2].append(count[2]); count[2] = 0
+                    #     counts[1].append(count[1]); count[1] = 0
+
+
 
 
             # count = [0, 0, 0]
