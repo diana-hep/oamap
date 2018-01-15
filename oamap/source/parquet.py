@@ -134,10 +134,6 @@ def _parquet2oamap(parquetschema):
     else:
         raise AssertionError("unrecognized Parquet schema type: {0}".format(parquetschema.type))
 
-    # repetition_type for nullability (only; list annotation comes from converted_type)
-    if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
-        oamapschema.nullable = True
-
     # converted_type
     if parquetschema.converted_type is None:
         pass
@@ -221,6 +217,10 @@ def _parquet2oamap(parquetschema):
 
     else:
         raise AssertionError("unrecognized Parquet converted_type: {0}".format(parquetschema.converted_type))
+
+    # repetition_type for nullability (only; list annotation comes from converted_type)
+    if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
+        oamapschema.nullable = True
 
     if parquetschema.hasdictionary:
         oamapschema = oamap.schema.Pointer(oamapschema)
@@ -351,7 +351,7 @@ class ParquetFile(object):
                 defsequence = defsequence + (parquetschema.oamapschema.starts,)
                 repsequence = repsequence + (parquetschema.oamapschema.starts,)
 
-            elif parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
+            if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
                 defsequence = defsequence + (parquetschema.oamapschema.mask,)
 
             parquetschema.defsequence = defsequence
@@ -505,6 +505,7 @@ class ParquetFile(object):
         print "defsequence", parquetschema.defsequence
         print "repsequence", parquetschema.repsequence
 
+        defmap = []
         if len(parquetschema.defsequence) > 0:
             assert deflevel is not None
 
@@ -519,7 +520,10 @@ class ParquetFile(object):
                 if maskname in parquetschema.repsequence:
                     # this is a list, not a nullable type; we need to process it only to compactify properly
                     length = numpy.count_nonzero(notmasked)                                   # new length
+                    defmap.append(depth)
                 else:
+                    print "def"
+
                     # this is a nullable type; need to create and store a mask
                     oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)   # old length
                     length = numpy.count_nonzero(notmasked)                                   # new length
@@ -533,175 +537,80 @@ class ParquetFile(object):
         if len(parquetschema.repsequence) > 0:
             assert replevel is not None
             assert len(deflevel) == len(replevel)
-            
+
+            defmap.append(len(parquetschema.defsequence))
+            print "defmap", defmap
+
             print "deflevel", deflevel.tolist()
             print "replevel", replevel.tolist()
-
-# {"list3": [[[0, 1, 2], [], [], [3, 4]]]}
-# {"list3": [[[5, 6]], [], [], [[7, 8]]]}
-# {"list3": [[[9, 10, 11], []], []]}
 
             count = [0, 0, 0, 0]
             counts = ([], [], [], [])
             for d, r in reversed(zip(deflevel, replevel)):
-                if d == 3:
-                    assert r <= 3
+                assert r <= d
+                if d == defmap[3]:
                     if r == 3:
                         count[3] += 1
                     if r == 2:
                         count[3] += 1
-                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
+                        counts[3].append(count[3]); count[3] = 0
                     if r == 1:
                         count[3] += 1
-                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
-                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
+                        counts[3].append(count[3]); count[3] = 0
+                        counts[2].append(count[2]); count[2] = 0
                     if r == 0:
                         count[3] += 1
-                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
-                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
-                        counts[1].append(count[1]); count[1] = 0
                         count[0] += 1
-                if d == 2:
-                    assert r <= 2
+                        counts[3].append(count[3]); count[3] = 0
+                        counts[2].append(count[2]); count[2] = 0
+                        counts[1].append(count[1]); count[1] = 0
+                if d == defmap[2]:
                     if r == 2:
                         assert count[3] == 0
-                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
+                        counts[3].append(count[3]); count[3] = 0
                     if r == 1:
                         assert count[3] == 0
-                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
-                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
+                        counts[3].append(count[3]); count[3] = 0
+                        counts[2].append(count[2]); count[2] = 0
                     if r == 0:
                         assert count[3] == 0
-                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
-                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
-                        counts[1].append(count[1]); count[1] = 0
                         count[0] += 1
-                if d == 1:
-                    assert r <= 1
+                        counts[3].append(count[3]); count[3] = 0
+                        counts[2].append(count[2]); count[2] = 0
+                        counts[1].append(count[1]); count[1] = 0
+                if d == defmap[1]:
                     if r == 1:
                         assert count[2] == 0
-                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
+                        counts[2].append(count[2]); count[2] = 0
                     if r == 0:
                         assert count[2] == 0
-                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
-                        counts[1].append(count[1]); count[1] = 0
                         count[0] += 1
-                if d == 0:
-                    assert r <= 0
+                        counts[2].append(count[2]); count[2] = 0
+                        counts[1].append(count[1]); count[1] = 0
+                if d == defmap[0]:
                     if r == 0:
                         assert count[1] == 0
-                        counts[1].append(count[1]); count[1] = 0
                         count[0] += 1
-
-                print
-                print "count[1]", count[1], "counts[1]", counts[1]
-                print "count[2]", count[2], "counts[2]", counts[2]
-                print "count[3]", count[3], "counts[3]", counts[3]
+                        counts[1].append(count[1]); count[1] = 0
                 
             counts[0].append(count[0])
 
             print "count[0]", count[0], "counts[0]", counts[0]
-
-                    # if r == 1:
-                    #     counts[2].append(count[2]); count[2] = 0
-                    # if r == 0:
-                    #     counts[2].append(count[2]); count[2] = 0
-                    #     counts[1].append(count[1]); count[1] = 0
-
-
-
-
-            # count = [0, 0, 0]
-            # counts = ([], [], [])
-            # for d, r in reversed(zip(deflevel, replevel)):
-            #     if d == 3:
-            #         count[2] += 1
-            #     if d >= 2 and r < 3:
-            #         counts[2].append(count[2])
-            #         count[2] = 0
-
-            #     # if d == 3:
-            #     #     count[2] += 1
-            #     # if r < 3:
-            #     #     counts[2].append(count[2])
-            #     #     count[2] = 0
-            #     #     count[1] += 1
-
-            #     # if d == 2:
-            #     #     count[1] += 1
-            #     # if r < 2:
-            #     #     counts[1].append(count[1])
-            #     #     count[1] = 0
-            #     #     count[0] += 1
-
-            #     # if d == 1:
-            #     #     count[0] += 1
-            #     # if r < 1:
-            #     #     counts[0].append(count[0])
-            #     #     count[0] = 0
-
-            # print "counts[0]", counts[0]
-            # print "counts[1]", counts[1]
-            # print "counts[2]", counts[2]
-
-
-            # offsets = ([], [], [])
-
-            # length = 0
-            # for d, r in zip(deflevel, replevel):
-            #     for offseti in range(len(offsets)):
-            #         if r < offseti + 1:
-            #             if offseti + 1 < len(offsets):
-            #                 offsets[offseti].append(len(offsets[offseti + 1]))
-            #             else:
-            #                 offsets[offseti].append(length)
-
-            #     if d == 3:
-            #         length += 1
-
-            # for offseti in range(len(offsets) - 1, -1, -1):
-            #     if offseti + 1 < len(offsets):
-            #         offsets[offseti].append(len(offsets[offseti + 1]))
-            #     else:
-            #         offsets[offseti].append(length)
-
-            # print "offsets[0]", offsets[0]
-            # print "offsets[1]", offsets[1]
-            # print "offsets[2]", offsets[2]
-
-
-                
-            # laststarts = None
-            # for repdepth, name in reversed(list(enumerate(parquetschema.repsequence))):
-            #     defdepth = parquetschema.defsequence.index(name)
-            #     print "repdepth", repdepth, "defdepth", defdepth
-
-            #     reps = replevel[deflevel > defdepth]
-            #     if laststarts is not None:
-            #         reps = reps[laststarts]
-
-            #     starts, = numpy.where(reps < repdepth + 1)
-            #     stops = numpy.append(starts[1:], len(reps))
-
-            #     print "reps", reps.tolist()
-            #     print "starts", starts.tolist()
-            #     print "stops", stops.tolist()
-
-            #     laststarts = starts
-
-            # raise Exception
+            print "count[1]", count[1], "counts[1]", counts[1]
+            print "count[2]", count[2], "counts[2]", counts[2]
+            print "count[3]", count[3], "counts[3]", counts[3]
 
         oamapschema = parquetschema.oamapschema
 
