@@ -334,7 +334,11 @@ class ParquetFile(object):
 
             parquetschema.path = path + (parquetschema.name,)
             self.path_to_schema[parquetschema.path] = parquetschema
+
             parquetschema.chunks = []
+            parquetschema.total_uncompressed_size = 0
+            parquetschema.total_compressed_size = 0
+
             parquetschema.hasdictionary = False
             parquetschema.hassize = (parquetschema.type == parquet_thrift.Type.BYTE_ARRAY)
 
@@ -356,8 +360,12 @@ class ParquetFile(object):
         for rowgroupid, rowgroup in enumerate(self.footer.row_groups):
             for columnchunk in rowgroup.columns:
                 parquetschema = self.path_to_schema[tuple(columnchunk.meta_data.path_in_schema)]
+
                 assert len(parquetschema.chunks) == rowgroupid
                 parquetschema.chunks.append(columnchunk)
+                parquetschema.total_uncompressed_size += columnchunk.meta_data.total_uncompressed_size
+                parquetschema.total_compressed_size += columnchunk.meta_data.total_compressed_size
+
                 if any(x == parquet_thrift.Encoding.PLAIN_DICTIONARY or x == parquet_thrift.Encoding.RLE_DICTIONARY for x in columnchunk.meta_data.encodings):
                     parquetschema.hasdictionary = True
 
@@ -369,25 +377,32 @@ class ParquetFile(object):
         self._prefix = prefix
         self._delimiter = delimiter
 
-        # self.oamapschema.show()
-
-        def recurse2(parquetschema, defsequence, repsequence):
+        self.triggers = {}
+        def recurse2(parquetschema, defsequence, repsequence, repsequence2):
             if parquetschema.converted_type == parquet_thrift.ConvertedType.LIST:
-                defsequence = defsequence + (parquetschema.oamapschema.counts,)
-                repsequence = repsequence + (parquetschema.oamapschema.counts,)
+                defsequence = defsequence + (parquetschema.oamapschema.starts,)
+                repsequence = repsequence + (parquetschema.oamapschema.starts,)
+                repsequence2 = repsequence2 + (parquetschema.oamapschema.stops,)
 
             if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
                 defsequence = defsequence + (parquetschema.oamapschema.mask,)
 
             parquetschema.defsequence = defsequence
             parquetschema.repsequence = repsequence
+            parquetschema.repsequence2 = repsequence2
 
-            if parquetschema.num_children is not None:
+            if parquetschema.num_children is None or parquetschema.num_children == 0:
+                self.triggers[id(parquetschema)] = parquetschema
+            else:
+                besttrigger = None
                 for child in parquetschema.children.values():
-                    recurse2(child, defsequence, repsequence)
+                    recurse2(child, defsequence, repsequence, repsequence2)
+                    if besttrigger is None or self.triggers[id(child)].total_compressed_size < besttrigger.total_compressed_size:
+                        besttrigger = self.triggers[id(child)]
+                self.triggers[id(parquetschema)] = besttrigger
 
         for field in self.fields.values():
-            recurse2(field, (), ())
+            recurse2(field, (), (), ())
 
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
@@ -527,9 +542,6 @@ class ParquetFile(object):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
         out = {}
 
-        print "defsequence", parquetschema.defsequence
-        print "repsequence", parquetschema.repsequence
-
         defmap = []
         if len(parquetschema.defsequence) > 0:
             assert deflevel is not None
@@ -574,7 +586,11 @@ class ParquetFile(object):
             _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, counts)
 
             for i in range(defmax - 1):
-                out[parquetschema.repsequence[i]] = counts[i][counti[i]:]
+                offsets = numpy.empty((len(deflevel) - counti[i]) + 1, dtype=oamap.generator.ListGenerator.posdtype)
+                offsets[0] = 0
+                numpy.cumsum(counts[i][counti[i]:], out=offsets[1:])
+                out[parquetschema.repsequence[i]] = offsets[:-1]
+                out[parquetschema.repsequence2[i]] = offsets[1:]
 
         oamapschema = parquetschema.oamapschema
 
@@ -596,7 +612,11 @@ class ParquetFile(object):
             assert isinstance(oamapschema.content, oamap.schema.Primitive)
             assert oamapschema.content.dtype == numpy.dtype(numpy.uint8)
             assert size is not None
-            out[oamapschema.counts] = size
+            offsets = numpy.empty(len(size) + 1, dtype=oamap.generator.ListGenerator.posdtype)
+            offsets[0] = 0
+            numpy.cumsum(size, out=offsets[1:])
+            out[oamapschema.starts] = offsets[:-1]
+            out[oamapschema.stops] = offsets[1:]
             out[oamapschema.content.data] = data
 
         else:
@@ -637,12 +657,24 @@ class ParquetRowGroupArrays(object):
             if not found:
                 raise KeyError(repr(request))
             else:
-                return self._getarrays(request, fieldprefix, self._parquetfile.fields[n])
+                def recurse(parquetschema, prefix):
+                    oamapschema = parquetschema.oamapschema
 
-    def _getarrays(self, request, prefix, parquetschema):
-        if parquetschema.num_children is None:
-            self._arrays.update(self._parquetfile.arrays(parquetschema, self._rowgroupid, parallel=False))
-            return self._arrays[request]
+                    if isinstance(oamapschema, oamap.schema.List):
+                        contentprefix = oamapschema._get_content(prefix, self._parquetfile._delimiter)
+                        if request.startswith(contentprefix):
+                            content, = parquetschema.children.values()
+                            return recurse(content, contentprefix)
 
-        else:
-            raise NotImplementedError
+                    elif isinstance(oamapschema, oamap.schema.Record):
+                        for n, x in parquetschema.children.items():
+                            fieldprefix = oamapschema._get_field(prefix, self._parquetfile._delimiter, n)
+                            if request.startswith(fieldprefix):
+                                return recurse(x, fieldprefix)
+
+                    return parquetschema
+
+                parquetschema = recurse(self._parquetfile.fields[n], fieldprefix)
+
+                self._arrays.update(self._parquetfile.arrays(self._parquetfile.triggers[id(parquetschema)], self._rowgroupid, parallel=False))
+                return self._arrays[request]
