@@ -538,7 +538,10 @@ class ParquetFile(object):
             assert replevel is not None
             assert len(deflevel) == len(replevel)
 
+            # finish defmap
             defmap.append(len(parquetschema.defsequence))
+            # invert defmap
+            defmap = [defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1)]
             print "defmap", defmap
 
             print "deflevel", deflevel.tolist()
@@ -547,8 +550,8 @@ class ParquetFile(object):
             count = [0, 0, 0, 0]
             counts = ([], [], [], [])
             for d, r in reversed(zip(deflevel, replevel)):
-                assert r <= d
-                if d == defmap[3]:
+                assert r <= defmap[d]
+                if defmap[d] == 3:
                     if r == 3:
                         count[3] += 1
                     if r == 2:
@@ -569,7 +572,7 @@ class ParquetFile(object):
                         counts[3].append(count[3]); count[3] = 0
                         counts[2].append(count[2]); count[2] = 0
                         counts[1].append(count[1]); count[1] = 0
-                if d == defmap[2]:
+                if defmap[d] == 2:
                     if r == 2:
                         assert count[3] == 0
                         count[2] += 1
@@ -588,7 +591,7 @@ class ParquetFile(object):
                         counts[3].append(count[3]); count[3] = 0
                         counts[2].append(count[2]); count[2] = 0
                         counts[1].append(count[1]); count[1] = 0
-                if d == defmap[1]:
+                if defmap[d] == 1:
                     if r == 1:
                         assert count[2] == 0
                         count[1] += 1
@@ -599,12 +602,12 @@ class ParquetFile(object):
                         count[0] += 1
                         counts[2].append(count[2]); count[2] = 0
                         counts[1].append(count[1]); count[1] = 0
-                if d == defmap[0]:
+                if defmap[d] == 0:
                     if r == 0:
                         assert count[1] == 0
                         count[0] += 1
                         counts[1].append(count[1]); count[1] = 0
-                
+
             counts[0].append(count[0])
 
             print "count[0]", count[0], "counts[0]", counts[0]
