@@ -522,8 +522,6 @@ class ParquetFile(object):
                     length = numpy.count_nonzero(notmasked)                                   # new length
                     defmap.append(depth)
                 else:
-                    print "def"
-
                     # this is a nullable type; need to create and store a mask
                     oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)   # old length
                     length = numpy.count_nonzero(notmasked)                                   # new length
@@ -540,80 +538,89 @@ class ParquetFile(object):
 
             # finish defmap
             defmap.append(len(parquetschema.defsequence))
-            # invert defmap
+            defmax = len(defmap)
+            # invert defmap (its length becomes len(parquetschema.defsequence))
             defmap = [defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1)]
             print "defmap", defmap
 
             print "deflevel", deflevel.tolist()
             print "replevel", replevel.tolist()
 
-            count = [0, 0, 0, 0]
-            counts = ([], [], [], [])
+            count = [0 for i in range(defmax)]
+            counts = tuple([] for i in range(defmax))
             for d, r in reversed(zip(deflevel, replevel)):
                 assert r <= defmap[d]
-                if defmap[d] == 3:
-                    if r == 3:
-                        count[3] += 1
-                    if r == 2:
-                        count[3] += 1
-                        count[2] += 1
-                        counts[3].append(count[3]); count[3] = 0
-                    if r == 1:
-                        count[3] += 1
-                        count[2] += 1
-                        count[1] += 1
-                        counts[3].append(count[3]); count[3] = 0
-                        counts[2].append(count[2]); count[2] = 0
-                    if r == 0:
-                        count[3] += 1
-                        count[2] += 1
-                        count[1] += 1
-                        count[0] += 1
-                        counts[3].append(count[3]); count[3] = 0
-                        counts[2].append(count[2]); count[2] = 0
-                        counts[1].append(count[1]); count[1] = 0
-                if defmap[d] == 2:
-                    if r == 2:
-                        assert count[3] == 0
-                        count[2] += 1
-                        counts[3].append(count[3]); count[3] = 0
-                    if r == 1:
-                        assert count[3] == 0
-                        count[2] += 1
-                        count[1] += 1
-                        counts[3].append(count[3]); count[3] = 0
-                        counts[2].append(count[2]); count[2] = 0
-                    if r == 0:
-                        assert count[3] == 0
-                        count[2] += 1
-                        count[1] += 1
-                        count[0] += 1
-                        counts[3].append(count[3]); count[3] = 0
-                        counts[2].append(count[2]); count[2] = 0
-                        counts[1].append(count[1]); count[1] = 0
-                if defmap[d] == 1:
-                    if r == 1:
-                        assert count[2] == 0
-                        count[1] += 1
-                        counts[2].append(count[2]); count[2] = 0
-                    if r == 0:
-                        assert count[2] == 0
-                        count[1] += 1
-                        count[0] += 1
-                        counts[2].append(count[2]); count[2] = 0
-                        counts[1].append(count[1]); count[1] = 0
-                if defmap[d] == 0:
-                    if r == 0:
-                        assert count[1] == 0
-                        count[0] += 1
-                        counts[1].append(count[1]); count[1] = 0
+                if defmap[d] + 2 < defmax:
+                    for i in range(r + 1, defmap[d] + 2):
+                        assert count[i] == 0
+
+                for i in range(r, defmap[d] + 1):
+                    count[i] += 1
+                for i in range(r + 1, min(defmap[d] + 2, defmax)):
+                    counts[i].append(count[i])
+                    count[i] = 0
+
+                # if defmap[d] == 3:
+                #     if r == 3:
+                #         count[3] += 1
+                #     if r == 2:
+                #         count[3] += 1
+                #         count[2] += 1
+                #         counts[3].append(count[3]); count[3] = 0
+                #     if r == 1:
+                #         count[3] += 1
+                #         count[2] += 1
+                #         count[1] += 1
+                #         counts[3].append(count[3]); count[3] = 0
+                #         counts[2].append(count[2]); count[2] = 0
+                #     if r == 0:
+                #         count[3] += 1
+                #         count[2] += 1
+                #         count[1] += 1
+                #         count[0] += 1
+                #         counts[3].append(count[3]); count[3] = 0
+                #         counts[2].append(count[2]); count[2] = 0
+                #         counts[1].append(count[1]); count[1] = 0
+                # if defmap[d] == 2:
+                #     if r == 2:
+                #         assert count[3] == 0
+                #         count[2] += 1
+                #         counts[3].append(count[3]); count[3] = 0
+                #     if r == 1:
+                #         assert count[3] == 0
+                #         count[2] += 1
+                #         count[1] += 1
+                #         counts[3].append(count[3]); count[3] = 0
+                #         counts[2].append(count[2]); count[2] = 0
+                #     if r == 0:
+                #         assert count[3] == 0
+                #         count[2] += 1
+                #         count[1] += 1
+                #         count[0] += 1
+                #         counts[3].append(count[3]); count[3] = 0
+                #         counts[2].append(count[2]); count[2] = 0
+                #         counts[1].append(count[1]); count[1] = 0
+                # if defmap[d] == 1:
+                #     if r == 1:
+                #         assert count[2] == 0
+                #         count[1] += 1
+                #         counts[2].append(count[2]); count[2] = 0
+                #     if r == 0:
+                #         assert count[2] == 0
+                #         count[1] += 1
+                #         count[0] += 1
+                #         counts[2].append(count[2]); count[2] = 0
+                #         counts[1].append(count[1]); count[1] = 0
+                # if defmap[d] == 0:
+                #     if r == 0:
+                #         assert count[1] == 0
+                #         count[0] += 1
+                #         counts[1].append(count[1]); count[1] = 0
 
             counts[0].append(count[0])
 
-            print "count[0]", count[0], "counts[0]", counts[0]
-            print "count[1]", count[1], "counts[1]", counts[1]
-            print "count[2]", count[2], "counts[2]", counts[2]
-            print "count[3]", count[3], "counts[3]", counts[3]
+            for i in range(defmax):
+                print "counts[", i, "]", counts[i]
 
         oamapschema = parquetschema.oamapschema
 
