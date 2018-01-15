@@ -569,30 +569,40 @@ class ParquetFile(object):
                 if d == 2:
                     assert r <= 2
                     if r == 2:
-                        counts[3].append(0); count[3] = 0
+                        assert count[3] == 0
+                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
                     if r == 1:
-                        counts[3].append(0); count[3] = 0
+                        assert count[3] == 0
+                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
+                        counts[2].append(count[2]); count[2] = 0
+                        count[1] += 1
                     if r == 0:
-                        counts[3].append(0); count[3] = 0
+                        assert count[3] == 0
+                        counts[3].append(count[3]); count[3] = 0
                         count[2] += 1
+                        counts[2].append(count[2]); count[2] = 0
+                        count[1] += 1
+                        counts[1].append(count[1]); count[1] = 0
+                        count[0] += 1
                 if d == 1:
                     assert r <= 1
                     if r == 1:
-                        counts[2].append(0); count[3] = 0
-                        count[2] = 0
+                        assert count[2] == 0
+                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
                     if r == 0:
-                        counts[2].append(0); count[3] = 0
-                        count[2] = 0
+                        assert count[2] == 0
+                        counts[2].append(count[2]); count[2] = 0
                         count[1] += 1
+                        counts[1].append(count[1]); count[1] = 0
+                        count[0] += 1
                 if d == 0:
                     assert r <= 0
                     if r == 0:
-                        counts[1].append(0); count[3] = 0
-                        count[2] = 0
-                        count[1] = 0
+                        assert count[1] == 0
+                        counts[1].append(count[1]); count[1] = 0
                         count[0] += 1
 
                 print
