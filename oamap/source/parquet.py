@@ -230,6 +230,34 @@ def _parquet2oamap(parquetschema):
     parquetschema.oamapschema = oamapschema
     return oamapschema
 
+def _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, counts):
+    for j in range(len(deflevel) - 1, -1, -1):
+        d = defmap[deflevel[j]]
+        r = replevel[j]
+
+        # assert r <= d
+        # if d + 2 < defmax:
+        #     for i in range(r + 1, d + 2):
+        #         assert count[i] == 0
+
+        for i in range(r, d + 1):
+            count[i] += 1
+        for i in range(r + 1, min(d + 2, defmax)):
+            counti[i] -= 1
+            counts[i][counti[i]] = count[i]
+            count[i] = 0
+
+    counti[0] -= 1
+    counts[0][counti[0]] = count[0]
+
+### FIXME!
+# try:
+#     import numba
+# except ImportError:
+#     pass
+# else:
+#     _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
+
 class ParquetFile(object):
     def __init__(self, file, prefix="object", delimiter="-"):
         # raise ImportError late, when the user actually tries to read a ParquetFile
@@ -348,8 +376,8 @@ class ParquetFile(object):
 
         def recurse2(parquetschema, defsequence, repsequence):
             if parquetschema.converted_type == parquet_thrift.ConvertedType.LIST:
-                defsequence = defsequence + (parquetschema.oamapschema.starts,)
-                repsequence = repsequence + (parquetschema.oamapschema.starts,)
+                defsequence = defsequence + (parquetschema.oamapschema.counts,)
+                repsequence = repsequence + (parquetschema.oamapschema.counts,)
 
             if parquetschema.repetition_type == parquet_thrift.FieldRepetitionType.OPTIONAL:
                 defsequence = defsequence + (parquetschema.oamapschema.mask,)
@@ -540,35 +568,16 @@ class ParquetFile(object):
             defmap.append(len(parquetschema.defsequence))
             defmax = len(defmap)
             # invert defmap (its length becomes len(parquetschema.defsequence))
-            defmap = [defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1)]
-
-            print "deflevel", deflevel.tolist()
-            print "replevel", replevel.tolist()
+            defmap = tuple(defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1))
 
             count = [0 for i in range(defmax)]
             counti = [len(deflevel) for i in range(defmax)]
             counts = tuple(numpy.empty(len(deflevel), dtype=oamap.generator.ListGenerator.posdtype) for i in range(defmax))
-            for j in range(len(deflevel) - 1, -1, -1):
-                d = defmap[deflevel[j]]
-                r = replevel[j]
 
-                assert r <= d
-                if d + 2 < defmax:
-                    for i in range(r + 1, d + 2):
-                        assert count[i] == 0
+            _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, counts)
 
-                for i in range(r, d + 1):
-                    count[i] += 1
-                for i in range(r + 1, min(d + 2, defmax)):
-                    counti[i] -= 1
-                    counts[i][counti[i]] = count[i]
-                    count[i] = 0
-
-            counti[0] -= 1
-            counts[0][counti[0]] = count[0]
-
-            for i in range(defmax):
-                print "counts[", i, "]", counts[i][counti[i]:]
+            for i in range(1, defmax):
+                out[parquetschema.repsequence[i - 1]] = counts[i][counti[i]:]
 
         oamapschema = parquetschema.oamapschema
 
