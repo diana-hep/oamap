@@ -64,21 +64,19 @@ class Generator(object):
         else:
             return numpy.array(maybearray, dtype=dtype)
 
-    def _getarray(self, arrays, name, cache, cacheidx, dtype, dims):
-        if cache.arraylist[cacheidx] is None:
-            try:
-                array = self._toarray(arrays[name], dtype)
-            except KeyError as err:
-                array = self._fallback(arrays, cache, name, err)
-            cache.arraylist[cacheidx] = array
-            if cache.arraylist[cacheidx].dtype != dtype:
-                array = numpy.array(array, dtype=dtype)
-            if cache.arraylist[cacheidx].shape[1:] != dims:
-                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), cache.arraylist[cacheidx].shape[1:], dims))
-        return cache.arraylist[cacheidx]
+    def _fill(self, arrays, cache, name2idx, dtypes, dims):
+        if hasattr(arrays, "getall"):
+            out = arrays.getall(*name2idx)
+        else:
+            out = dict((name, arrays[name]) for name in name2idx)
 
-    def _fallback(self, arrays, cache, name, err):
-        raise err
+        for name, array in out.items():
+            if not isinstance(array, numpy.ndarray) or array.dtype != dtypes[name]:
+                array = numpy.array(array, dtype=dtypes[name])
+            if array.shape[1:] != dims[name]:
+                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), array.shape[1:], dims[name]))
+
+            cache.arraylist[name2idx[name]] = array
 
     def __init__(self, name, derivedname, schema):
         self.name = name
@@ -87,12 +85,6 @@ class Generator(object):
 
     def __call__(self, arrays):
         return self._generate(arrays, 0, Cache(self._cachelen))
-
-    def save(self, input, output=None, packed=True):
-        if output is None:
-            output = {}
-        self._save(input, output, packed, set())
-        return output
 
 # mix-in for all generators of nullable types
 class Masked(object):
@@ -104,43 +96,17 @@ class Masked(object):
         self.maskidx = maskidx
         self.packmask = packmask
 
-    def _fallback(self, arrays, cache, name, err):
-        # packmask = numpy.packbits(mask != self.maskedvalue)
-        if name == self.mask:
-            try:
-                packmask = arrays[self.packmask]
-            except KeyError:
-                raise err
-            else:
-                if not isinstance(packmask, numpy.ndarray):
-                    packmask = numpy.array(packmask, dtype=numpy.dtype(numpy.uint8))
-                if packmask.dtype != numpy.dtype(numpy.uint8):
-                    raise TypeError("arrays[{0}].dtype is {1} but expected {2}".format(repr(self.packmask), packmask.dtype, numpy.dtype(numpy.uint8)))
-                if packmask.shape[1:] != ():
-                    raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.packmask), packmask.shape[1:]))
-                unmasked = numpy.unpackbits(packmask).view(numpy.bool_)
-                mask = numpy.empty(len(unmasked), dtype=self.maskdtype)
-                mask[unmasked] = numpy.arange(unmasked.sum(), dtype=self.maskdtype)
-                mask[~unmasked] = self.maskedvalue
-                return mask                             # may have excess self.maskedvalue values at the end due to zero-padding in numpy.packbits
-        else:
-            return self.__class__.__bases__[1]._fallback(self, arrays, cache, name, err)
-
     def _generate(self, arrays, index, cache):
-        value = self._getarray(arrays, self.mask, cache, self.maskidx, self.maskdtype, ())[index]
+        if cache.arraylist[self.maskidx] is None:
+            self._fill(arrays, cache, {self.mask: self.maskidx}, {self.mask: self.maskdtype}, {self.mask: ()})
+
+        mask = cache.arraylist[self.maskidx]
+        value = mask[index]
         if value == self.maskedvalue:
             return None
         else:
-            # otherwise, the value is the index for packed data
+            # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
-
-    def _save(self, input, output, packed, memo):
-        mask = self._toarray(input[self.mask], self.maskdtype)
-        if packed:
-            output[self.packmask] = numpy.packbits(mask != self.maskedvalue)
-        else:
-            output[self.mask] = mask
-        self.__class__.__bases__[1]._save(self, input, output, packed, memo)
 
 ################################################################ Primitives
 
@@ -153,10 +119,11 @@ class PrimitiveGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        return self._getarray(arrays, self.data, cache, self.dataidx, self.dtype, self.dims)[index]
+        if cache.arraylist[self.dataidx] is None:
+            self._fill(arrays, cache, {self.data: self.dataidx}, {self.data: self.dtype}, {self.data: self.dims})
 
-    def _save(self, input, output, packed, memo):
-        output[self.data] = self._toarray(input[self.data], self.dtype)
+        data = cache.arraylist[self.dataidx]
+        return data[index]
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
     def __init__(self, mask, maskidx, packmask, data, dataidx, dtype, dims, name, derivedname, schema):
@@ -177,42 +144,13 @@ class ListGenerator(Generator):
         self.content = content
         Generator.__init__(self, name, derivedname, schema)
 
-    def _fallback(self, arrays, cache, name, err):
-        # counts = stops - starts
-        if name == self.starts:
-            try:
-                counts = arrays[self.counts]
-            except KeyError:
-                raise err
-            else:
-                if getattr(counts, "dtype", None) != self.posdtype:
-                    counts = numpy.array(counts, dtype=self.posdtype)
-                if counts.shape[1:] != ():
-                    raise TypeError("arrays[{0}].shape[1:] is {1} but expected ()".format(repr(self.counts), counts.shape[1:]))
-                offsets = numpy.empty(len(counts) + 1, dtype=self.posdtype)
-                offsets[0] = 0
-                offsets[1:] = numpy.cumsum(counts)
-                return offsets                          # offsets is a starts array with an excess value (total length) at the end
-        elif name == self.stops:
-            # already filled starts with offsets
-            return cache.arraylist[self.startsidx][1:]  # take off the initial zero (now we need that excess value at the end!)
-        else:
-            raise err
-
     def _generate(self, arrays, index, cache):
-        starts = self._getarray(arrays, self.starts, cache, self.startsidx, self.posdtype, ())
-        stops  = self._getarray(arrays, self.stops,  cache, self.stopsidx,  self.posdtype, ())
-        return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
+        if cache.arraylist[self.startsidx] is None or cache.arraylist[self.stopsidx] is None:
+            self._fill(arrays, cache, {self.starts: self.startsidx, self.stops: self.stopsidx}, {self.starts: self.posdtype, self.stops: self.posdtype}, {self.starts: (), self.stops: ()})
 
-    def _save(self, input, output, packed, memo):
-        starts = self._toarray(input[self.starts], self.posdtype)
-        stops  = self._toarray(input[self.stops], self.posdtype)
-        if packed and starts[0] == 0 and numpy.array_equal(starts[1:], stops[:-1]):
-            output[self.counts] = stops - starts
-        else:
-            output[self.starts] = starts
-            output[self.stops]  = stops
-        self.content._save(input, output, packed, memo)
+        starts = cache.arraylist[self.startsidx]
+        stops = cache.arraylist[self.stopsidx]
+        return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, packmask, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema):
@@ -233,30 +171,13 @@ class UnionGenerator(Generator):
         self.possibilities = possibilities
         Generator.__init__(self, name, derivedname, schema)
 
-    def _fallback(self, arrays, cache, name, err):
-        if name == self.offsets:
-            # already filled tags
-            tags = cache.arraylist[self.tagsidx]
-            offsets = numpy.empty(len(tags), dtype=self.offsetdtype)
-            for tag in range(len(self.possibilities)):
-                hastag = (tags == tag)
-                offsets[hastag] = numpy.arange(hastag.sum(), dtype=self.offsetdtype)
-            # assume that every value in tags is associated with one of the possibilities (i.e. tags is well-formed)
-            return offsets
-        else:
-            raise err
-
     def _generate(self, arrays, index, cache):
-        tags    = self._getarray(arrays, self.tags,    cache, self.tagsidx,    self.tagdtype,    ())
-        offsets = self._getarray(arrays, self.offsets, cache, self.offsetsidx, self.offsetdtype, ())
-        return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
+        if cache.arraylist[self.tagsidx] is None or cache.arraylist[self.offsetsidx] is None:
+            self._fill(arrays, cache, {self.tags: self.tagsidx, self.offsets: self.offsetsidx}, {self.tags: self.tagdtype, self.offsets: self.offsetdtype}, {self.tags: (), self.offsets: ()})
 
-    def _save(self, input, output, packed, memo):
-        output[self.tags] = self._toarray(input[self.tags], self.tagdtype)
-        if not packed:
-            output[self.offsets] = self._toarray(input[self.offsets], self.offsetdtype)
-        for x in self.possibilities:
-            x._save(input, output, packed, memo)
+        tags = cache.arraylist[self.tagsidx]
+        offsets = cache.arraylist[self.offsetsidx]
+        return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, packmask, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
@@ -273,10 +194,6 @@ class RecordGenerator(Generator):
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
-    def _save(self, input, output, packed, memo):
-        for x in self.fields.values():
-            x._save(input, output, packed, memo)
-
 class MaskedRecordGenerator(Masked, RecordGenerator):
     def __init__(self, mask, maskidx, packmask, fields, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx, packmask)
@@ -291,10 +208,6 @@ class TupleGenerator(Generator):
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
-
-    def _save(self, input, output, packed, memo):
-        for x in self.types:
-            x._save(input, output, packed, memo)
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
     def __init__(self, mask, maskidx, packmask, types, name, derivedname, schema):
@@ -313,14 +226,11 @@ class PointerGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        positions = self._getarray(arrays, self.positions, cache, self.positionsidx, self.posdtype, ())
-        return self.target._generate(arrays, positions[index], cache)
+        if cache.arraylist[self.positionsidx] is None:
+            self._fill(arrays, cache, {self.positions: self.positionsidx}, {self.positions: self.posdtype}, {self.positions: ()})
 
-    def _save(self, input, output, packed, memo):
-        if id(self) not in memo:
-            memo.add(id(self))
-            output[self.positions] = self._toarray(input[self.positions], self.posdtype)
-            self.target._save(input, output, packed, memo)
+        positions = cache.arraylist[self.positionsidx]
+        return self.target._generate(arrays, positions[index], cache)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
     def __init__(self, mask, maskidx, packmask, positions, positionsidx, target, name, derivedname, schema):
@@ -411,12 +321,6 @@ class ExtendedGenerator(Generator):
                     assert pattern["type"] in ("primitive", "list", "union", "record", "tuple", "pointer")
 
         return recurse(cls.pattern, schema.tojson(explicit=True))
-
-    def _fallback(self, arrays, cache, name, err):
-        return self.generic._fallback(arrays, cache, name, err)
-
-    def _save(self, input, output, packed, memo):
-        self.generic._save(input, output, packed, memo)
         
 ################################################################ for assigning unique strings to types (used to distinguish Numba types)
 
