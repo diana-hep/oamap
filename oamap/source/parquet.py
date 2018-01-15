@@ -237,18 +237,15 @@ def _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, count
 
         # assert r <= d
         # if d + 2 < defmax:
-        #     for i in range(r + 1, d + 2):
+        #     for i in range(r, d + 1):
         #         assert count[i] == 0
 
-        for i in range(r, d + 1):
+        for i in range(max(r - 1, 0), d):
             count[i] += 1
-        for i in range(r + 1, min(d + 2, defmax)):
+        for i in range(r, min(d + 1, defmax - 1)):
             counti[i] -= 1
             counts[i][counti[i]] = count[i]
             count[i] = 0
-
-    counti[0] -= 1
-    counts[0][counti[0]] = count[0]
 
 ### FIXME!
 # try:
@@ -570,14 +567,14 @@ class ParquetFile(object):
             # invert defmap (its length becomes len(parquetschema.defsequence))
             defmap = tuple(defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1))
 
-            count = [0 for i in range(defmax)]
-            counti = [len(deflevel) for i in range(defmax)]
-            counts = tuple(numpy.empty(len(deflevel), dtype=oamap.generator.ListGenerator.posdtype) for i in range(defmax))
+            count = [0 for i in range(defmax - 1)]
+            counti = [len(deflevel) for i in range(defmax - 1)]
+            counts = tuple(numpy.empty(len(deflevel), dtype=oamap.generator.ListGenerator.posdtype) for i in range(defmax - 1))
 
             _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, counts)
 
-            for i in range(1, defmax):
-                out[parquetschema.repsequence[i - 1]] = counts[i][counti[i]:]
+            for i in range(defmax - 1):
+                out[parquetschema.repsequence[i]] = counts[i][counti[i]:]
 
         oamapschema = parquetschema.oamapschema
 
