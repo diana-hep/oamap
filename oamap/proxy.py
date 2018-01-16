@@ -197,6 +197,7 @@ class ListProxy(Proxy):
 class PartitionedListProxy(ListProxy):
     def __init__(self, partitions, offsets=None):
         self._partitions = partitions
+
         if offsets is None:
             self._offsets = []
             partitionindex = 0
@@ -206,6 +207,8 @@ class PartitionedListProxy(ListProxy):
             self._offsets.append(partitionindex)
         else:
             self._offsets = offsets
+
+        assert len(self._partitions) + 1 == len(self._offsets)
 
     def __repr__(self):
         if len(self) > 10:

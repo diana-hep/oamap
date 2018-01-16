@@ -555,34 +555,30 @@ class ParquetFile(object):
             if start == self.rowoffsets[-1]:
                 assert step > 0
                 assert stop == self.rowoffsets[-1]
-                return oamap.proxy.PartitionedListProxy([], [0])
+                return oamap.proxy.PartitionedListProxy([])
 
             elif start == -1:
                 assert step < 0
                 assert stop == -1
-                return oamap.proxy.PartitionedListProxy([], [0])
+                return oamap.proxy.PartitionedListProxy([])
 
             else:
-                firstid = bisect.bisect_right(self.rowoffsets, start) - 1
-                if stop == -1:
-                    lastid = 0
-                else:
-                    lastid = bisect.bisect_right(self.rowoffsets, stop) - 1
-
-                partitions = []
-                offsets = []
                 if step > 0:
-                    for rowgroupid in range(firstid, lastid + 1):
-                        partitions.append(self.rowgroup(rowgroupid))
-                        offsets.append(self.rowoffsets[rowgroupid])
-                    offsets.append(self.rowoffsets[lastid + 1])
+                    firstid = bisect.bisect_right(self.rowoffsets, start) - 1
+                    lastid = bisect.bisect_right(self.rowoffsets, stop) - 1
+                    if stop > self.rowoffsets[lastid]:
+                        lastid += 1
                 else:
-                    for rowgroupid in range(lastid, firstid + 1):
-                        partitions.append(self.rowgroup(rowgroupid))
-                        offsets.append(self.rowoffsets[rowgroupid])
-                    offsets.append(self.rowoffsets[firstid + 1]) 
+                    firstid = max(0, bisect.bisect_right(self.rowoffsets, stop) - 1)
+                    lastid = bisect.bisect_left(self.rowoffsets, start)
 
-                return oamap.proxy.PartitionedListProxy(partitions, offsets)[start:stop:step]
+                rowgroups = []
+                for rowgroupid in range(firstid, lastid):
+                    rowgroups.append(self.rowgroup(rowgroupid))
+                    offsets.append(self.rowoffsets[rowgroupid])
+                offsets.append(self.rowoffsets[lastid])
+
+                return oamap.proxy.PartitionedListProxy(rowgroups, offsets)[start:stop:step]
 
         else:
             normalindex = index if index >= 0 else index + self.rowoffsets[-1]
