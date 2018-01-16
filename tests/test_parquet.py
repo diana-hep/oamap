@@ -48,10 +48,24 @@ class TestParquet(unittest.TestCase):
              {"u1": False, "u4": 5, "u8": 5, "f4": 5.5,               "f8": 5.5, "raw": b"five", "utf8": "five"}])
 
     def test_nullable_record_primitives_simple(self):
-        "tests/samples/nullable-record-primitives-simple.parquet"
+        f = ParquetFile(open("tests/samples/nullable-record-primitives-simple.parquet", "rb"))
+        self.assertEqual(
+            tojson(f[:]),
+            [{"u4": None, "u8": 1},
+             {"u4": None, "u8": 2},
+             {"u4": None, "u8": 3},
+             {"u4": None, "u8": 4},
+             {"u4": None, "u8": 5}])
 
     def test_nullable_record_primitives(self):
-        "tests/samples/nullable-record-primitives.parquet"
+        f = ParquetFile(open("tests/samples/nullable-record-primitives.parquet", "rb"))
+        self.assertEqual(
+            tojson(f[:]),
+            [{"u1": None,  "u4": 1,    "u8": None, "f4": 1.100000023841858, "f8": None, "raw": b"one",   "utf8": "one"},
+             {"u1": True,  "u4": None, "u8": 2,    "f4": 2.200000047683716, "f8": None, "raw": None,     "utf8": None},
+             {"u1": None,  "u4": None, "u8": 3,    "f4": None,              "f8": None, "raw": b"three", "utf8": None},
+             {"u1": False, "u4": None, "u8": 4,    "f4": None,              "f8": 4.4,  "raw": None,     "utf8": None},
+             {"u1": None,  "u4": 5,    "u8": None, "f4": None,              "f8": 5.5,  "raw": None,     "utf8": "five"}])
 
     def test_nullable_levels(self):
         "tests/samples/nullable-levels.parquet"

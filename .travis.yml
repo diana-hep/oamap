@@ -14,6 +14,7 @@ addons:
   apt:
     packages:
       - python-setuptools
+      - snappy
 
 install:
   - pip install --upgrade pip

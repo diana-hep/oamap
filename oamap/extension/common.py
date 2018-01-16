@@ -40,7 +40,12 @@ class _GenerateBytes(object):
 
     def _generatebytes(self, arrays, index, cache):
         if self.schema.nullable:
-            value = self._getarray(arrays, self.generic.mask, cache, self.generic.maskidx, self.generic.maskdtype, ())[index]
+            mask = cache.arraylist[self.generic.maskidx]
+            if mask is None:
+                self._getarrays(arrays, cache, {self.generic.mask: self.generic.maskidx}, {self.generic.mask: self.generic.maskdtype}, {self.generic.mask: ()})
+                mask = cache.arraylist[self.generic.maskidx]
+
+            value = mask[index]
             if value == self.generic.maskedvalue:
                 return None
             else:
