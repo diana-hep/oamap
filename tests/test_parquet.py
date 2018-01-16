@@ -152,30 +152,19 @@ class TestParquet(unittest.TestCase):
                  {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
                  {"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}}])
 
-#     def test_nullable_depths(self):
-#         f = ParquetFile(open("tests/samples/nullable-depths.parquet", "rb"))
-
-#         self.assertEqual(
-#             tojson(f[:]),
-#             [{"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}},
-#              {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
-#              {"whatever": {"r0": [{"r1": []}]}},
-#              {"whatever": {"r0": []}},
-#              {"whatever": None},
-#              {"whatever": {"r0": []}},
-#              {"whatever": {"r0": [{"r1": []}]}},
-#              {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
-#              {"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}}])
-
-# # [{u'whatever': {u'r0': [{u'r1': [{u'r2': [0, 1, 2, 3]}]}]}},
-# #  {u'whatever': {u'r0': [{u'r1': [{u'r2': []}]}]}},
-# #  {u'whatever': {u'r0': [{u'r1': []}]}},
-# #  {u'whatever': {u'r0': []}},
-# #  {u'whatever': {u'r0': []}},
-# #  {u'whatever': {u'r0': [{u'r1': []}]}},
-# #  {u'whatever': {u'r0': [{u'r1': [{u'r2': []}]}]}},
-# #  {u'whatever': None},
-# #  {u'whatever': {u'r0': [{u'r1': [{u'r2': [0, 1, 2, 3]}]}]}}]
+    def test_nullable_depths(self):
+        with ParquetFile(open("tests/samples/nullable-depths.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}},
+                 {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
+                 {"whatever": {"r0": [{"r1": []}]}},
+                 {"whatever": {"r0": []}},
+                 {"whatever": None},
+                 {"whatever": {"r0": []}},
+                 {"whatever": {"r0": [{"r1": []}]}},
+                 {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
+                 {"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}}])
 
     def test_list_depths_records(self):
         "tests/samples/list-depths-records.parquet"

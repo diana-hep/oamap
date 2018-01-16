@@ -616,28 +616,25 @@ class ParquetFile(object):
         if len(parquetschema.defsequence) > 0:
             assert deflevel is not None
 
-            first = True
-            length = len(deflevel)
             for depth, maskname in enumerate(parquetschema.defsequence):
-                masked = (deflevel == depth)
-                if not first:
-                    masked = masked[stencil]
-                notmasked = numpy.bitwise_not(masked)
-
                 if maskname in parquetschema.repsequence:
-                    # this is a list, not a nullable type; we need to process it only to compactify properly
-                    length = numpy.count_nonzero(notmasked)                                   # new length
+                    # this is a list, not a nullable type
                     defmap.append(depth)
+
                 else:
                     # this is a nullable type; need to create and store a mask
-                    oamapmask = numpy.empty(length, dtype=oamap.generator.Masked.maskdtype)   # old length
-                    length = numpy.count_nonzero(notmasked)                                   # new length
-                    oamapmask[masked] = oamap.generator.Masked.maskedvalue
-                    oamapmask[notmasked] = numpy.arange(length, dtype=oamap.generator.Masked.maskdtype)
-                    out[maskname] = oamapmask
+                    masked = (deflevel == depth)
+                    if replevel is not None:
+                        # FIXME: not sure if len(defmap) is the right threshold; need examples of data with nullable elements inside lists
+                        masked = masked[replevel <= len(defmap)]
+                    if depth > 0:
+                        masked = masked[deflevel > depth - 1]
+                    notmasked = numpy.bitwise_not(masked)
 
-                first = False
-                stencil = (deflevel > depth)
+                    oamapmask = numpy.empty(len(notmasked), dtype=oamap.generator.Masked.maskdtype)
+                    oamapmask[masked] = oamap.generator.Masked.maskedvalue
+                    oamapmask[notmasked] = numpy.arange(numpy.count_nonzero(notmasked), dtype=oamap.generator.Masked.maskdtype)
+                    out[maskname] = oamapmask
 
         if len(parquetschema.repsequence) > 0:
             assert replevel is not None
