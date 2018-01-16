@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import bisect
 import gzip
 import math
 import os
@@ -39,6 +40,8 @@ import numpy
 
 import oamap.schema
 import oamap.generator
+import oamap.proxy
+import oamap.util
 import oamap.source._fastparquet.schema
 import oamap.source._fastparquet.core
 from oamap.source._fastparquet.extra import thriftpy
@@ -357,7 +360,12 @@ class ParquetFile(object):
             index = recurse(index, ())
 
         # pass over rowgroup/column elements, linking to schema and checking for dictionary encodings
+        rowindex = 0
+        self.rowoffsets = []
         for rowgroupid, rowgroup in enumerate(self.footer.row_groups):
+            self.rowoffsets.append(rowindex)
+            rowindex += rowgroup.num_rows
+
             for columnchunk in rowgroup.columns:
                 parquetschema = self.path_to_schema[tuple(columnchunk.meta_data.path_in_schema)]
 
@@ -368,6 +376,8 @@ class ParquetFile(object):
 
                 if any(x == parquet_thrift.Encoding.PLAIN_DICTIONARY or x == parquet_thrift.Encoding.RLE_DICTIONARY for x in columnchunk.meta_data.encodings):
                     parquetschema.hasdictionary = True
+
+        self.rowoffsets.append(rowindex)
 
         # fastparquet's schema_helper makes the tree structure
         self.schema_helper = oamap.source._fastparquet.schema.SchemaHelper(self.footer.schema)
@@ -537,6 +547,47 @@ class ParquetFile(object):
         for rowgroupid in range(len(self.footer.row_groups)):
             for x in self.rowgroup(rowgroupid):
                 yield x
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            start, stop, step = oamap.util.slice2sss(index, self.rowoffsets[-1])
+
+            if start == self.rowoffsets[-1]:
+                assert step > 0
+                assert stop == self.rowoffsets[-1]
+                return oamap.proxy.ChunkedListProxy([], [0])
+
+            elif start == -1:
+                assert step < 0
+                assert stop == -1
+                return oamap.proxy.ChunkedListProxy([], [0])
+
+            else:
+                firstid = bisect.bisect_left(self.rowoffsets, start)
+                if stop == -1:
+                    lastid = 0
+                else:
+                    lastid = bisect.bisect_left(self.rowoffsets, stop)
+
+                chunks = []
+                offsets = []
+                if step > 0:
+                    for rowgroupid in range(firstid, lastid + 1):
+                        chunks.append(self.rowgroup(rowgroupid))
+                        offsets.append(self.rowoffsets[rowgroupid])
+                    offsets.append(self.rowoffsets[lastid + 1])
+                else:
+                    for rowgroupid in range(lastid, firstid + 1):
+                        chunks.append(self.rowgroup(rowgroupid))
+                        offsets.append(self.rowoffsets[rowgroupid])
+                    offsets.append(self.rowoffsets[firstid + 1]) 
+
+                return oamap.proxy.ChunkedListProxy(chunks, offsets)[start:stop:step]
+
+        else:
+            rowgroupid = bisect.bisect_left(self.rowoffsets, index)
+            localindex = index - self.rowoffsets[rowgroupid]
+            return self.rowgroup(rowgroupid)[localindex]
 
     def arrays(self, parquetschema, rowgroupid, parallel=False):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)

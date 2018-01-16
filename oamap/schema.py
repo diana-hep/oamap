@@ -33,37 +33,13 @@ import sys
 import numbers
 import json
 from types import ModuleType
-try:
-    from collections import OrderedDict
-except ImportError:
-    # simple OrderedDict implementation for Python 2.6
-    class OrderedDict(dict):
-        def __init__(self, items=(), **kwds):
-            items = list(items)
-            self._order = [k for k, v in items] + [k for k, v in kwds.items()]
-            super(OrderedDict, self).__init__(items)
-        def keys(self):
-            return self._order
-        def values(self):
-            return [self[k] for k in self._order]
-        def items(self):
-            return [(k, self[k]) for k in self._order]
-        def __setitem__(self, name, value):
-            if name not in self._order:
-                self._order.append(name)
-            super(OrderedDict, self).__setitem__(name, value)
-        def __delitem__(self, name):
-            if name in self._order:
-                self._order.remove(name)
-            super(OrderedDict, self).__delitem__(name)
-        def __repr__(self):
-            return "OrderedDict([{0}])".format(", ".join("({0}, {1})".format(repr(k), repr(v)) for k, v in self.items()))
 
 import numpy
 
 import oamap.generator
 import oamap.compiler
 import oamap.extension.common
+from oamap.util import OrderedDict
 
 if sys.version_info[0] > 2:
     basestring = str

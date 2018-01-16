@@ -28,12 +28,15 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import bisect
 import json
 import numbers
 import sys
 import math
 
 import numpy
+
+import oamap.util
 
 if sys.version_info[0] > 2:
     xrange = range
@@ -113,46 +116,15 @@ class ListProxy(Proxy):
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            step = 1 if index.step is None else index.step
-
-            if step == 0:
-                raise ValueError("slice step cannot be zero")
-
-            elif step > 0:
-                if index.start is None:
-                    start = 0                                     # valid
-                elif index.start >= 0:
-                    start = min(index.start, self._length)        # valid or self._length
-                else:
-                    start = max(0, index.start + self._length)    # valid
-
-                if index.stop is None:
-                    stop = self._length
-                elif index.stop >= 0:
-                    stop = max(start, min(self._length, index.stop))
-                else:
-                    stop = max(start, index.stop + self._length)
-
-            else:
-                if index.start is None:
-                    start = self._length - 1                      # valid
-                elif index.start >= 0:
-                    start = min(index.start, self._length - 1)    # valid
-                else:
-                    start = max(index.start + self._length, -1)   # valid or -1
-
-                if index.stop is None:
-                    stop = -1
-                elif index.stop >= 0:
-                    stop = min(start, index.stop)
-                else:
-                    stop = min(start, max(-1, index.stop + self._length))
+            start, stop, step = oamap.util.slice2sss(index, self._length)
 
             whence = self._whence + self._stride*start
             stride = self._stride*step
+
             # length = int(math.ceil(float(abs(stop - start)) / abs(step)))
             d, m = divmod(abs(start - stop), abs(step))
             length = d + (1 if m != 0 else 0)
+
             return ListProxy(self._generator, self._arrays, self._cache, whence, stride, length)
 
         else:
@@ -221,6 +193,106 @@ class ListProxy(Proxy):
             if x == value:
                 return True
         return False
+
+class ChunkedListProxy(ListProxy):
+    def __init__(self, chunks, offsets):
+        self._chunks = chunks
+        self._offsets = offsets
+
+    def __repr__(self):
+        if len(self) > 10:
+            return "[{0}, ..., {1}]".format(", ".join([repr(x) for x in self[:5]], [repr(x) for x in self[-5:]]))
+        else:
+            return "[{0}]".format(", ".join(repr(x) for x in self))
+
+    def __len__(self):
+        return self._offsets[-1]
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            start, stop, step = oamap.util.slice2sss(index, self._offsets[-1])
+
+            if start == self._offsets[-1]:
+                assert step > 0
+                assert stop == self.offsets[-1]
+                return ChunkedListProxy([], [0])
+
+            elif start == -1:
+                assert step < 0
+                assert stop == -1
+                return ChunkedListProxy([], [0])
+
+            else:
+                firstid = bisect.bisect_left(self._offsets, start)
+                lastid = bisect.bisect_left(self._offsets, stop)
+
+                chunks = []
+                if step > 0:
+                    skip = 0
+                    for chunkid in range(firstid, lastid + 1):
+                        chunk = self._chunks[chunkid]
+                        assert len(chunk) == self._offsets[chunkid + 1] - self._offsets[chunkid]
+
+                        if chunkid == firstid:
+                            localstart = start - self._offsets[chunkid]
+                        else:
+                            localstart = skip
+
+                        if chunkid == lastid:
+                            localstop = stop - self._offsets[chunkid]
+                        else:
+                            localstop = len(chunk)
+
+                    skip = (step - (len(chunk) - localstart)) % step
+                    chunks.append(chunk[localstart:localstop:step])
+
+                else:
+                    posstep = -step   # avoid negative modulo
+                    skip = 1
+                    for chunkid in range(firstid, lastid - 1, -1):
+                        chunk = self._chunks[chunkid]
+                        assert len(chunk) == self._offsets[chunkid + 1] - self._offsets[chunkid]
+
+                        if chunkid == firstid:
+                            localstart = start - self._offsets[chunkid]
+                        else:
+                            localstart = len(chunk) - skip
+
+                        if chunkid == lastid:
+                            localstop = stop - self._offsets[chunkid]
+                        else:
+                            localstop = 0
+
+                        skip = (((posstep - 1) - localstart) % posstep) + 1
+                        if localstop == -1:
+                            chunks.append(chunk[localstart::step])
+                        else:
+                            chunks.append(chunk[localstart:localstop:step])
+
+                offsets = []
+                chunkindex = 0
+                for chunk in chunks:
+                    offsets.append(chunkindex)
+                    chunkindex += len(chunk)
+                offsets.append(chunkindex)
+
+                return ChunkedListProxy(chunks, offsets)
+
+        else:
+            normalindex = index if index >= 0 else index + self._offsets[-1]
+            if not 0 <= normalindex < self._offsets[-1]:
+                raise IndexError("index {0} is out of bounds for size {1}".format(index, self._offsets[-1]))
+
+            chunkid = bisect.bisect_left(self._offsets, index)
+            assert 0 <= chunkid < len(self._chunks)
+
+            localindex = index - self._offsets[chunkid]
+            return self._chunks[chunkid][localindex]
+
+    def __iter__(self):
+        for chunk in self._chunks:
+            for x in chunk:
+                yield x
 
 ################################################################ Records
 

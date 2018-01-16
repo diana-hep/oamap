@@ -37,7 +37,7 @@ import os
 
 import numpy
 
-from oamap.schema import OrderedDict
+from oamap.util import OrderedDict
 
 try:
     import thriftpy
