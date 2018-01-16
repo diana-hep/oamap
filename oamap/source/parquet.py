@@ -416,6 +416,15 @@ class ParquetFile(object):
         for field in self.fields.values():
             recurse2(field, (), (), ())
 
+    def __enter__(self, *args, **kwds):
+        return self
+
+    def __exit__(self, *args, **kwds):
+        if hasattr(self, "memmap"):
+            pass   # don't close a memory map
+        else:
+            self.file.close()
+
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
             raise NotImplementedError
@@ -596,6 +605,13 @@ class ParquetFile(object):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
         out = {}
 
+        # print "parquetschema.name", parquetschema.name
+        # print "dictionary", dictionary, len(dictionary) if dictionary is not None else 0
+        # print "deflevel", deflevel, len(deflevel) if deflevel is not None else 0
+        # print "replevel", replevel, len(replevel) if replevel is not None else 0
+        # print "data", data, len(data) if data is not None else 0
+        # print "size", size, len(size) if size is not None else 0
+
         defmap = []
         if len(parquetschema.defsequence) > 0:
             assert deflevel is not None
@@ -678,6 +694,9 @@ class ParquetFile(object):
             assert oamapschema.dtype == data.dtype
             out[oamapschema.data] = data
 
+        # for n in sorted(out):
+        #     print n, out[n], len(out[n])
+
         return out
 
 class ParquetRowGroupArrays(object):
@@ -714,7 +733,7 @@ class ParquetRowGroupArrays(object):
                 def recurse(parquetschema, prefix):
                     oamapschema = parquetschema.oamapschema
 
-                    if isinstance(oamapschema, oamap.schema.List):
+                    if parquetschema.converted_type == parquet_thrift.ConvertedType.LIST:
                         contentprefix = oamapschema._get_content(prefix, self._parquetfile._delimiter)
                         if request.startswith(contentprefix):
                             content, = parquetschema.children.values()

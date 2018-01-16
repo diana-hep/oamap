@@ -38,61 +38,144 @@ class TestParquet(unittest.TestCase):
         pass
 
     def test_record_primitives(self):
-        f = ParquetFile(open("tests/samples/record-primitives.parquet", "rb"))
-        self.assertEqual(
-            tojson(f[:]),
-            [{"u1": False, "u4": 1, "u8": 1, "f4": 1.100000023841858, "f8": 1.1, "raw": b"one", "utf8": "one"},
-             {"u1": True,  "u4": 2, "u8": 2, "f4": 2.200000047683716, "f8": 2.2, "raw": b"two", "utf8": "two"},
-             {"u1": True,  "u4": 3, "u8": 3, "f4": 3.299999952316284, "f8": 3.3, "raw": b"three", "utf8": "three"},
-             {"u1": False, "u4": 4, "u8": 4, "f4": 4.400000095367432, "f8": 4.4, "raw": b"four", "utf8": "four"},
-             {"u1": False, "u4": 5, "u8": 5, "f4": 5.5,               "f8": 5.5, "raw": b"five", "utf8": "five"}])
+        with ParquetFile(open("tests/samples/record-primitives.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"u1": False, "u4": 1, "u8": 1, "f4": 1.100000023841858, "f8": 1.1, "raw": b"one", "utf8": "one"},
+                 {"u1": True,  "u4": 2, "u8": 2, "f4": 2.200000047683716, "f8": 2.2, "raw": b"two", "utf8": "two"},
+                 {"u1": True,  "u4": 3, "u8": 3, "f4": 3.299999952316284, "f8": 3.3, "raw": b"three", "utf8": "three"},
+                 {"u1": False, "u4": 4, "u8": 4, "f4": 4.400000095367432, "f8": 4.4, "raw": b"four", "utf8": "four"},
+                 {"u1": False, "u4": 5, "u8": 5, "f4": 5.5,               "f8": 5.5, "raw": b"five", "utf8": "five"}])
 
     def test_nullable_record_primitives_simple(self):
-        f = ParquetFile(open("tests/samples/nullable-record-primitives-simple.parquet", "rb"))
-        self.assertEqual(
-            tojson(f[:]),
-            [{"u4": None, "u8": 1},
-             {"u4": None, "u8": 2},
-             {"u4": None, "u8": 3},
-             {"u4": None, "u8": 4},
-             {"u4": None, "u8": 5}])
+        with ParquetFile(open("tests/samples/nullable-record-primitives-simple.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"u4": None, "u8": 1},
+                 {"u4": None, "u8": 2},
+                 {"u4": None, "u8": 3},
+                 {"u4": None, "u8": 4},
+                 {"u4": None, "u8": 5}])
 
     def test_nullable_record_primitives(self):
-        f = ParquetFile(open("tests/samples/nullable-record-primitives.parquet", "rb"))
-        self.assertEqual(
-            tojson(f[:]),
-            [{"u1": None,  "u4": 1,    "u8": None, "f4": 1.100000023841858, "f8": None, "raw": b"one",   "utf8": "one"},
-             {"u1": True,  "u4": None, "u8": 2,    "f4": 2.200000047683716, "f8": None, "raw": None,     "utf8": None},
-             {"u1": None,  "u4": None, "u8": 3,    "f4": None,              "f8": None, "raw": b"three", "utf8": None},
-             {"u1": False, "u4": None, "u8": 4,    "f4": None,              "f8": 4.4,  "raw": None,     "utf8": None},
-             {"u1": None,  "u4": 5,    "u8": None, "f4": None,              "f8": 5.5,  "raw": None,     "utf8": "five"}])
+        with ParquetFile(open("tests/samples/nullable-record-primitives.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"u1": None,  "u4": 1,    "u8": None, "f4": 1.100000023841858, "f8": None, "raw": b"one",   "utf8": "one"},
+                 {"u1": True,  "u4": None, "u8": 2,    "f4": 2.200000047683716, "f8": None, "raw": None,     "utf8": None},
+                 {"u1": None,  "u4": None, "u8": 3,    "f4": None,              "f8": None, "raw": b"three", "utf8": None},
+                 {"u1": False, "u4": None, "u8": 4,    "f4": None,              "f8": 4.4,  "raw": None,     "utf8": None},
+                 {"u1": None,  "u4": 5,    "u8": None, "f4": None,              "f8": 5.5,  "raw": None,     "utf8": "five"}])
 
     def test_nullable_levels(self):
-        "tests/samples/nullable-levels.parquet"
+        with ParquetFile(open("tests/samples/nullable-levels.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"whatever": {"r0": {"r1": {"r2": {"r3": 1}}}}},
+                 {"whatever": {"r0": {"r1": {"r2": {"r3": None}}}}},
+                 {"whatever": {"r0": {"r1": {"r2": None}}}},
+                 {"whatever": {"r0": None}},
+                 {"whatever": None},
+                 {"whatever": {"r0": None}},
+                 {"whatever": {"r0": {"r1": {"r2": None}}}},
+                 {"whatever": {"r0": {"r1": {"r2": {"r3": None}}}}},
+                 {"whatever": {"r0": {"r1": {"r2": {"r3": 1}}}}}])
 
     def test_list_lengths(self):
-        "tests/samples/list-lengths.parquet"
+        with ParquetFile(open("tests/samples/list-lengths.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list3": [[[0, 1, 2], [], [], [3, 4]]]},
+                 {"list3": [[[5, 6]], [], [], [[7, 8]]]},
+                 {"list3": [[[9, 10, 11], []], []]}])
 
     def test_list_depths_simple(self):
-        "tests/samples/list-depths-simple.parquet"
+        with ParquetFile(open("tests/samples/list-depths-simple.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list0": 1, "list1": [1]},
+                 {"list0": 2, "list1": [1, 2]},
+                 {"list0": 3, "list1": [1, 2, 3]},
+                 {"list0": 4, "list1": [1, 2, 3, 4]},
+                 {"list0": 5, "list1": [1, 2, 3, 4, 5]}])
 
     def test_list_depths(self):
-        "tests/samples/list-depths.parquet"
+        with ParquetFile(open("tests/samples/list-depths.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list0": 1, "list1": [], "list2": [], "list3": []},
+                 {"list0": 2, "list1": [2], "list2": [[]], "list3": [[]]},
+                 {"list0": 3, "list1": [2, 3], "list2": [[3]], "list3": [[[]]]},
+                 {"list0": 4, "list1": [2, 3, 4], "list2": [[3, 4]], "list3": [[[4]]]},
+                 {"list0": 5, "list1": [2, 3, 4, 5], "list2": [[3, 4, 5]], "list3": [[[4, 5]]]}])
 
     def test_nullable_list_depths(self):
-        "tests/samples/nullable-list-depths.parquet"
+        with ParquetFile(open("tests/samples/nullable-list-depths.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list0": 1, "list1": [], "list2": [], "list3": []},
+                 {"list0": 2, "list1": [2], "list2": [[]], "list3": [[]]},
+                 {"list0": 3, "list1": [2, 3], "list2": [[3]], "list3": [[[]]]},
+                 {"list0": 4, "list1": [2, 3, 4], "list2": [[3, 4]], "list3": [[[4]]]},
+                 {"list0": 5, "list1": [2, 3, 4, 5], "list2": [[3, 4, 5]], "list3": [[[4, 5]]]}])
 
     def test_list_depths_strings(self):
-        "tests/samples/list-depths-strings.parquet"
+        with ParquetFile(open("tests/samples/list-depths-strings.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list0": "one", "list1": [], "list2": [], "list3": []},
+                 {"list0": "two", "list1": ["two"], "list2": [[]], "list3": [[]]},
+                 {"list0": "three", "list1": ["two", "three"], "list2": [["three"]], "list3": [[[]]]},
+                 {"list0": "four", "list1": ["two", "three", "four"], "list2": [["three", "four"]], "list3": [[["four"]]]},
+                 {"list0": "five", "list1": ["two", "three", "four", "five"], "list2": [["three", "four", "five"]], "list3": [[["four", "five"]]]}])
 
     def test_nullable_list_depths_strings(self):
-        "tests/samples/nullable-list-depths-strings.parquet"
+        with ParquetFile(open("tests/samples/nullable-list-depths-strings.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list0": "one", "list1": [], "list2": [], "list3": []},
+                 {"list0": "two", "list1": ["two"], "list2": [[]], "list3": [[]]},
+                 {"list0": "three", "list1": ["two", "three"], "list2": [["three"]], "list3": [[[]]]},
+                 {"list0": "four", "list1": ["two", "three", "four"], "list2": [["three", "four"]], "list3": [[["four"]]]},
+                 {"list0": "five", "list1": ["two", "three", "four", "five"], "list2": [["three", "four", "five"]], "list3": [[["four", "five"]]]}])
 
     def test_nonnullable_depths(self):
-        "tests/samples/nonnullable-depths.parquet"
+        with ParquetFile(open("tests/samples/nonnullable-depths.parquet", "rb")) as f:
+            self.assertEqual(
+                tojson(f[:]),
+                [{"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}},
+                 {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
+                 {"whatever": {"r0": [{"r1": []}]}},
+                 {"whatever": {"r0": []}},
+                 {"whatever": {"r0": []}},
+                 {"whatever": {"r0": [{"r1": []}]}},
+                 {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
+                 {"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}}])
 
-    def test_nullable_depths(self):
-        "tests/samples/nullable-depths.parquet"
+#     def test_nullable_depths(self):
+#         f = ParquetFile(open("tests/samples/nullable-depths.parquet", "rb"))
+
+#         self.assertEqual(
+#             tojson(f[:]),
+#             [{"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}},
+#              {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
+#              {"whatever": {"r0": [{"r1": []}]}},
+#              {"whatever": {"r0": []}},
+#              {"whatever": None},
+#              {"whatever": {"r0": []}},
+#              {"whatever": {"r0": [{"r1": []}]}},
+#              {"whatever": {"r0": [{"r1": [{"r2": []}]}]}},
+#              {"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}}])
+
+# # [{u'whatever': {u'r0': [{u'r1': [{u'r2': [0, 1, 2, 3]}]}]}},
+# #  {u'whatever': {u'r0': [{u'r1': [{u'r2': []}]}]}},
+# #  {u'whatever': {u'r0': [{u'r1': []}]}},
+# #  {u'whatever': {u'r0': []}},
+# #  {u'whatever': {u'r0': []}},
+# #  {u'whatever': {u'r0': [{u'r1': []}]}},
+# #  {u'whatever': {u'r0': [{u'r1': [{u'r2': []}]}]}},
+# #  {u'whatever': None},
+# #  {u'whatever': {u'r0': [{u'r1': [{u'r2': [0, 1, 2, 3]}]}]}}]
 
     def test_list_depths_records(self):
         "tests/samples/list-depths-records.parquet"
