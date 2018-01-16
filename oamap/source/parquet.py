@@ -555,38 +555,42 @@ class ParquetFile(object):
             if start == self.rowoffsets[-1]:
                 assert step > 0
                 assert stop == self.rowoffsets[-1]
-                return oamap.proxy.ChunkedListProxy([], [0])
+                return oamap.proxy.PartitionedListProxy([], [0])
 
             elif start == -1:
                 assert step < 0
                 assert stop == -1
-                return oamap.proxy.ChunkedListProxy([], [0])
+                return oamap.proxy.PartitionedListProxy([], [0])
 
             else:
-                firstid = bisect.bisect_left(self.rowoffsets, start)
+                firstid = bisect.bisect_right(self.rowoffsets, start) - 1
                 if stop == -1:
                     lastid = 0
                 else:
-                    lastid = bisect.bisect_left(self.rowoffsets, stop)
+                    lastid = bisect.bisect_right(self.rowoffsets, stop) - 1
 
-                chunks = []
+                partitions = []
                 offsets = []
                 if step > 0:
                     for rowgroupid in range(firstid, lastid + 1):
-                        chunks.append(self.rowgroup(rowgroupid))
+                        partitions.append(self.rowgroup(rowgroupid))
                         offsets.append(self.rowoffsets[rowgroupid])
                     offsets.append(self.rowoffsets[lastid + 1])
                 else:
                     for rowgroupid in range(lastid, firstid + 1):
-                        chunks.append(self.rowgroup(rowgroupid))
+                        partitions.append(self.rowgroup(rowgroupid))
                         offsets.append(self.rowoffsets[rowgroupid])
                     offsets.append(self.rowoffsets[firstid + 1]) 
 
-                return oamap.proxy.ChunkedListProxy(chunks, offsets)[start:stop:step]
+                return oamap.proxy.PartitionedListProxy(partitions, offsets)[start:stop:step]
 
         else:
-            rowgroupid = bisect.bisect_left(self.rowoffsets, index)
-            localindex = index - self.rowoffsets[rowgroupid]
+            normalindex = index if index >= 0 else index + self.rowoffsets[-1]
+            if not 0 <= normalindex < self.rowoffsets[-1]:
+                raise IndexError("index {0} is out of bounds for size {1}".format(index, self.rowoffsets[-1]))
+
+            rowgroupid = bisect.bisect_right(self.rowoffsets, normalindex) - 1
+            localindex = normalindex - self.rowoffsets[rowgroupid]
             return self.rowgroup(rowgroupid)[localindex]
 
     def arrays(self, parquetschema, rowgroupid, parallel=False):
