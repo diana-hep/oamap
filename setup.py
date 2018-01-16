@@ -62,7 +62,7 @@ Also, a similar object array mapping could be implemented in any language--- Pyt
       license = "BSD 3-clause",
       test_suite = "tests",
       install_requires = ["numpy"],
-      tests_require = [],
+      tests_require = ["thriftpy", "python-snappy"],
       classifiers = [
           "Development Status :: 3 - Alpha",
           "Intended Audience :: Developers",

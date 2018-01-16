@@ -49,9 +49,19 @@ class _GenerateBytes(object):
         listgen = self.generic
         primgen = self.generic.content
 
-        starts = self._getarray(arrays, listgen.starts, cache, listgen.startsidx, listgen.posdtype, ())
-        stops  = self._getarray(arrays, listgen.stops,  cache, listgen.stopsidx,  listgen.posdtype, ())
-        data   = self._getarray(arrays, primgen.data,   cache, primgen.dataidx,   primgen.dtype, ())
+        starts = cache.arraylist[listgen.startsidx]
+        stops  = cache.arraylist[listgen.stopsidx]
+        data   = cache.arraylist[primgen.dataidx]
+        if starts is None or stops is None or data is None:
+            self._getarrays(arrays,
+                            cache,
+                            {listgen.starts: listgen.startsidx, listgen.stops: listgen.stopsidx, primgen.data: primgen.dataidx},
+                            {listgen.starts: listgen.posdtype,  listgen.stops: listgen.posdtype, primgen.data: primgen.dtype},
+                            {listgen.starts: (),                listgen.stops: (),               primgen.data: ()})
+            starts = cache.arraylist[listgen.startsidx]
+            stops  = cache.arraylist[listgen.stopsidx]
+            data   = cache.arraylist[primgen.dataidx]
+
         array  = data[starts[index]:stops[index]]
 
         if isinstance(array, numpy.ndarray):

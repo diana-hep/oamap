@@ -42,11 +42,13 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 import oamap.util
-import oamap.source._fastparquet.schema
-import oamap.source._fastparquet.core
-from oamap.source._fastparquet.extra import thriftpy
+
 from oamap.source._fastparquet.extra import parquet_thrift
-from oamap.source._fastparquet.extra import OrderedDict
+if parquet_thrift is not None:
+    import oamap.source._fastparquet.schema
+    import oamap.source._fastparquet.core
+    from oamap.source._fastparquet.extra import thriftpy
+    from oamap.source._fastparquet.extra import OrderedDict
 
 try:
     import snappy
@@ -573,6 +575,7 @@ class ParquetFile(object):
                     lastid = bisect.bisect_left(self.rowoffsets, start)
 
                 rowgroups = []
+                offsets = []
                 for rowgroupid in range(firstid, lastid):
                     rowgroups.append(self.rowgroup(rowgroupid))
                     offsets.append(self.rowoffsets[rowgroupid])
