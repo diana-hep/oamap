@@ -90,10 +90,11 @@ class Masked(object):
         self.maskidx = maskidx
 
     def _generate(self, arrays, index, cache):
-        if cache.arraylist[self.maskidx] is None:
-            self._getarrays(arrays, cache, {self.mask: self.maskidx}, {self.mask: self.maskdtype}, {self.mask: ()})
-
         mask = cache.arraylist[self.maskidx]
+        if mask is None:
+            self._getarrays(arrays, cache, {self.mask: self.maskidx}, {self.mask: self.maskdtype}, {self.mask: ()})
+            mask = cache.arraylist[self.maskidx]
+
         value = mask[index]
         if value == self.maskedvalue:
             return None
@@ -112,10 +113,11 @@ class PrimitiveGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        if cache.arraylist[self.dataidx] is None:
-            self._getarrays(arrays, cache, {self.data: self.dataidx}, {self.data: self.dtype}, {self.data: self.dims})
-
         data = cache.arraylist[self.dataidx]
+        if data is None:
+            self._getarrays(arrays, cache, {self.data: self.dataidx}, {self.data: self.dtype}, {self.data: self.dims})
+            data = cache.arraylist[self.dataidx]
+        
         return data[index]
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
@@ -128,27 +130,28 @@ class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
 class ListGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema):
+    def __init__(self, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):
         self.starts = starts
         self.startsidx = startsidx
         self.stops = stops
         self.stopsidx = stopsidx
-        self.counts = counts
         self.content = content
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        if cache.arraylist[self.startsidx] is None or cache.arraylist[self.stopsidx] is None:
-            self._getarrays(arrays, cache, {self.starts: self.startsidx, self.stops: self.stopsidx}, {self.starts: self.posdtype, self.stops: self.posdtype}, {self.starts: (), self.stops: ()})
-
         starts = cache.arraylist[self.startsidx]
         stops = cache.arraylist[self.stopsidx]
+        if starts is None or stops is None:
+            self._getarrays(arrays, cache, {self.starts: self.startsidx, self.stops: self.stopsidx}, {self.starts: self.posdtype, self.stops: self.posdtype}, {self.starts: (), self.stops: ()})
+            starts = cache.arraylist[self.startsidx]
+            stops = cache.arraylist[self.stopsidx]
+
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
 class MaskedListGenerator(Masked, ListGenerator):
-    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema):
+    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, counts, content, name, derivedname, schema)
+        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, name, derivedname, schema)
 
 ################################################################ Unions
 
@@ -165,11 +168,13 @@ class UnionGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        if cache.arraylist[self.tagsidx] is None or cache.arraylist[self.offsetsidx] is None:
-            self._getarrays(arrays, cache, {self.tags: self.tagsidx, self.offsets: self.offsetsidx}, {self.tags: self.tagdtype, self.offsets: self.offsetdtype}, {self.tags: (), self.offsets: ()})
-
         tags = cache.arraylist[self.tagsidx]
         offsets = cache.arraylist[self.offsetsidx]
+        if tags is None or offsets is None:
+            self._getarrays(arrays, cache, {self.tags: self.tagsidx, self.offsets: self.offsetsidx}, {self.tags: self.tagdtype, self.offsets: self.offsetdtype}, {self.tags: (), self.offsets: ()})
+            tags = cache.arraylist[self.tagsidx]
+            offsets = cache.arraylist[self.offsetsidx]
+
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
@@ -219,10 +224,11 @@ class PointerGenerator(Generator):
         Generator.__init__(self, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        if cache.arraylist[self.positionsidx] is None:
-            self._getarrays(arrays, cache, {self.positions: self.positionsidx}, {self.positions: self.posdtype}, {self.positions: ()})
-
         positions = cache.arraylist[self.positionsidx]
+        if positions is None:
+            self._getarrays(arrays, cache, {self.positions: self.positionsidx}, {self.positions: self.posdtype}, {self.positions: ()})
+            positions = cache.arraylist[self.positionsidx]
+
         return self.target._generate(arrays, positions[index], cache)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
@@ -352,11 +358,11 @@ def _uniquestr(generator, memo):
 
         elif isinstance(generator, ListGenerator):
             _uniquestr(generator.content, memo)
-            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6})".format(givenname, generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), repr(generator.counts), generator.content._uniquestr)
+            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5})".format(givenname, generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), generator.content._uniquestr)
 
         elif isinstance(generator, MaskedListGenerator):
             _uniquestr(generator.content, memo)
-            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5} {6})".format(givenname, generator.maskidx, repr(generator.mask), generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), repr(generator.counts), generator.content._uniquestr)
+            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5})".format(givenname, generator.maskidx, repr(generator.mask), generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), generator.content._uniquestr)
 
         elif isinstance(generator, UnionGenerator):
             for t in generator.possibilities:

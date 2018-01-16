@@ -311,7 +311,6 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
         mask      = prefixdelimiter + "M"
         starts    = prefixdelimiter + "B"
         stops     = prefixdelimiter + "E"
-        counts    = prefixdelimiter + "c"
         content   = prefixdelimiter + "L"
         tags      = prefixdelimiter + "T"
         offsets   = prefixdelimiter + "O"
@@ -325,9 +324,9 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
         if not nullable:
             mask = None
 
-        if (starts in arraynames and stops in arraynames) or counts in arraynames:
+        if starts in arraynames and stops in arraynames:
             byname[prefix] = None
-            byname[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, byname, internalpointers), nullable=nullable, starts=None, stops=None, counts=None, mask=None, name=name, doc=None)
+            byname[prefix] = oamap.schema.List(recurse(filter(arraynames, content), content, byname, internalpointers), nullable=nullable, starts=None, stops=None, mask=None, name=name, doc=None)
 
         elif tags in arraynames:
             possibilities = []
