@@ -859,6 +859,8 @@ class Union(Schema):
         return self._possibilities[index]
 
     def __setitem__(self, index, value):
+        if not isinstance(index, numbers.Integral):
+            raise TypeError("possibility index must be an integer, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)
         if not isinstance(value, Schema):
@@ -1106,6 +1108,8 @@ class Record(Schema):
         return self._fields[index]
 
     def __setitem__(self, index, value):
+        if not isinstance(index, basestring):
+            raise TypeError("field keys must be strings, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)
         if not isinstance(value, Schema):
@@ -1345,6 +1349,8 @@ class Tuple(Schema):
         return self._types[index]
 
     def __setitem__(self, index, value):
+        if not isinstance(index, numbers.Integral):
+            raise TypeError("types index must be an integer, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)
         if not isinstance(item, Schema):
@@ -1850,14 +1856,16 @@ class SuffixPartitioning(PrefixSuffixPartitioning):
         else:
             raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self._numpartitions))
 
-################################################################ Data are schemas with optional Packings
+################################################################ Datasets are Schemas with optional Partitionings and Packings
 
-class Data(object):
-    def __init__(self, schema, packing=None, name=None, doc=None):
+class Dataset(object):
+    def __init__(self, schema, partitioning=None, packing=None, name=None, doc=None, metadata=None):
         self.schema = schema
+        self.partitioning = partitioning
         self.packing = packing
         self.name = name
         self.doc = doc
+        self.metadata = metadata
 
     @property
     def schema(self):
@@ -1867,7 +1875,21 @@ class Data(object):
     def schema(self, value):
         if not isinstance(value, Schema):
             raise TypeError("schema must be a Schema, not {0}".format(repr(value)))
+        if self._partitioning is not None and not isinstance(value, List):
+            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a List")
         self._schema = value
+
+    @property
+    def partitioning(self):
+        return self._partitioning
+
+    @partitioning.setter
+    def partitioning(self, value):
+        if not (value is None or isinstance(value, Partitioning)):
+            raise TypeError("partitioning must be None or a Partitioning, not {0}".format(repr(value)))
+        if value is not None and not isinstance(self._schema, List):
+            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a List")
+        self._partitioning = partitioning
 
     @property
     def packing(self):
@@ -1878,6 +1900,19 @@ class Data(object):
         if not (value is None or isinstance(value, oamap.source.packing.PackedSource)):
             raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
         self._packing = value
+
+    def _partitioningtojson(self):
+        if self._partitioning is None:
+            return None
+        else:
+            return self._partitioning.tojson()
+
+    @staticmethod
+    def _partitioningfromjson(partitioning):
+        if partitioning is None:
+            return None
+        else:
+            return Partitioning.fromjson(partitioning)
 
     def _packingtojson(self):
         if self._packing is None:
@@ -1918,18 +1953,40 @@ class Data(object):
             raise TypeError("doc must be None or a string, not {0}".format(repr(value)))
         self._doc = value
 
+    @property
+    def metadata(self):
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, value):
+        if value is not None and not (isinstance(value, dict) and all(isinstance(n, basestring) for n in value)):
+            raise TypeError("metadata must be None or a dict of string-valued keys, not {0}".format(repr(value)))
+        self._metadata = value
+
+    def __getitem__(self, index):
+        return self._metadata[index]
+
+    def __setitem__(self, index, value):
+        if not isinstance(index, basestring):
+            raise TypeError("metadata keys must be strings, not {0}".format(repr(index)))
+        self._metadata[index] = value
+
     def __repr__(self, indent=None):
         eq = "=" if indent is None else " = "
 
         args = []
         if indent is None:
             args.append(self._schema.__repr__(indent=indent))
+        if self._partitioning is not None:
+            args.append("partitioning" + eq + repr(self._partitioning))
         if self._packing is not None:
             args.append("packing" + eq + repr(self._packing))
         if self._name is not None:
             args.append("name" + eq + repr(self._name))
         if self._doc is not None:
             args.append("doc" + eq + repr(self._doc))
+        if self._metadata is not None:
+            args.append("metadata" + eq + repr(self._metadata))
 
         if indent is None:
             argstr = ", ".join(args)
@@ -1938,7 +1995,7 @@ class Data(object):
             args[0] = "\n" + indent + "  " + args[0]
             argstr = ("," + "\n" + indent + "  ").join(args)
 
-        return "Data(" + argstr + ")"
+        return "Dataset(" + argstr + ")"
 
     def show(self, stream=sys.stdout):
         out = self.__repr__(indent="")
@@ -1956,85 +2013,35 @@ class Data(object):
 
     def tojson(self, explicit=False):
         out = {"schema": self._schema.tojson(explicit=explicit)}
+        if explicit or self._partitioning is not None:
+            out["partitioning"] = self._partitioningtojson()
         if explicit or self._packing is not None:
             out["packing"] = self._packingtojson()
         if explicit or self._name is not None:
             out["name"] = self._name
         if explicit or self._doc is not None:
             out["doc"] = self._doc
+        if explicit or self._metadata is not None:
+            out["metadata"] = self._metadata
         return out
 
     @staticmethod
     def fromjsonfile(file, *args, **kwds):
-        return Data.fromjson(json.load(file, *args, **kwds))
+        return Dataset.fromjson(json.load(file, *args, **kwds))
 
     @staticmethod
     def fromjsonstring(data, *args, **kwds):
-        return Data.fromjson(json.loads(data, *args, **kwds))
+        return Dataset.fromjson(json.loads(data, *args, **kwds))
 
     @staticmethod
     def fromjson(data):
         if isinstance(data, dict):
             schema = Schema.fromjson(data["schema"])
-            packing = Data._packingfromjson(data.get("packing", None))
+            partitioning = Dataset._partitioningfromjson(data.get("partitioning", None))
+            packing = Dataset._packingfromjson(data.get("packing", None))
             name = data.get("data", None)
             doc = data.get("doc", None)
-            if "partitioning" in data:
-                return Dataset(schema, Partitioning.fromjson(data["partitioning"]), packing=packing, name=name, doc=doc)
-            else:
-                return Data(schema, packing=packing, name=name, doc=doc)
+            metadata = data.get("metadata", None)
+            return Dataset(schema, partitioning=partitioning, packing=packing, name=name, doc=doc, metadata=metadata)
         else:
-            raise TypeError("JSON for Data or Dataset must be a dict, not {0}".format(repr(data)))
-
-################################################################ Datasets are Data with a Partitioning
-
-class Dataset(Data):
-    def __init__(self, schema, partitioning, packing=None, name=None, doc=None):
-        self.schema = schema
-        self.partitioning = partitioning
-        self.packing = packing
-        self.name = name
-        self.doc = doc
-
-    @property
-    def schema(self):
-        return self._schema
-
-    @schema.setter
-    def schema(self, value):
-        if not isinstance(value, Schema):
-            raise TypeError("schema for a Dataset must be a List Schema, not {0}".format(repr(value)))
-        self._schema = value
-
-    def __repr__(self, indent=None):
-        eq = "=" if indent is None else " = "
-
-        args = []
-        if indent is None:
-            args.append(self._schema.__repr__(indent=indent))
-        args.append(repr(self._partitioning))
-        if self._packing is not None:
-            args.append("packing" + eq + repr(self._packing))
-        if self._name is not None:
-            args.append("name" + eq + repr(self._name))
-        if self._doc is not None:
-            args.append("doc" + eq + repr(self._doc))
-
-        if indent is None:
-            argstr = ", ".join(args)
-        else:
-            args.append("schema" + eq + self._schema.__repr__(indent=(indent + "  ")).lstrip() + "\n" + indent)
-            args[0] = "\n" + indent + "  " + args[0]
-            argstr = ("," + "\n" + indent + "  ").join(args)
-
-        return "Dataset(" + argstr + ")"
-
-    def tojson(self, explicit=False):
-        out = {"schema": self._schema.tojson(explicit=explicit), "partitioning": self._partitioning.tojson()}
-        if explicit or self._packing is not None:
-            out["packing"] = self._packingtojson()
-        if explicit or self._name is not None:
-            out["name"] = self._name
-        if explicit or self._doc is not None:
-            out["doc"] = self._doc
-        return out
+            raise TypeError("JSON for Dataset must be a dict, not {0}".format(repr(data)))
