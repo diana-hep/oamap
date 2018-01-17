@@ -37,6 +37,35 @@ import oamap.proxy
 if sys.version_info[0] > 2:
     basestring = str
 
+# for sources that perform specialized actions on particular kinds of arrays
+class Role(object):
+    def __init__(self, name):
+        self._name = name
+    def __repr__(self):
+        return self._name
+    def __eq__(self, other):
+        return self is other
+    def __ne__(self, other):
+        return self is not other
+    def __hash__(self):
+        return id(self)
+
+MASK      = Role("MASK")
+DATA      = Role("DATA")
+STARTS    = Role("STARTS")
+STOPS     = Role("STOPS")
+TAGS      = Role("TAGS")
+OFFSETS   = Role("OFFSETS")
+POSITIONS = Role("POSITIONS")
+
+Role.byname = {"MASK":      MASK,
+               "DATA":      DATA,
+               "STARTS":    STARTS,
+               "STOPS":     STOPS,
+               "TAGS":      TAGS,
+               "OFFSETS":   OFFSETS,
+               "POSITIONS": POSITIONS}
+
 # array cache, so that arrays are only loaded once (might be an expensive network operation)
 class Cache(object):
     def __init__(self, cachelen):
@@ -58,9 +87,9 @@ class Cache(object):
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
-    def _getarrays(self, arrays, cache, name2idx, dtypes, dims):
+    def _getarrays(self, arrays, cache, name2idx, dtypes, dims, roles):
         if hasattr(arrays, "getall"):
-            out = arrays.getall(*name2idx)
+            out = arrays.getall(name2idx, roles)
         else:
             out = dict((name, arrays[name]) for name in name2idx)
 
@@ -92,7 +121,12 @@ class Masked(object):
     def _generate(self, arrays, index, cache):
         mask = cache.arraylist[self.maskidx]
         if mask is None:
-            self._getarrays(arrays, cache, {self.mask: self.maskidx}, {self.mask: self.maskdtype}, {self.mask: ()})
+            self._getarrays(arrays,
+                            cache,
+                            {self.mask: self.maskidx},
+                            {self.mask: self.maskdtype},
+                            {self.mask: ()},
+                            {self.mask: MASK})
             mask = cache.arraylist[self.maskidx]
 
         value = mask[index]
@@ -115,7 +149,12 @@ class PrimitiveGenerator(Generator):
     def _generate(self, arrays, index, cache):
         data = cache.arraylist[self.dataidx]
         if data is None:
-            self._getarrays(arrays, cache, {self.data: self.dataidx}, {self.data: self.dtype}, {self.data: self.dims})
+            self._getarrays(arrays,
+                            cache,
+                            {self.data: self.dataidx},
+                            {self.data: self.dtype},
+                            {self.data: self.dims},
+                            {self.data: DATA})
             data = cache.arraylist[self.dataidx]
         
         return data[index]
@@ -142,7 +181,12 @@ class ListGenerator(Generator):
         starts = cache.arraylist[self.startsidx]
         stops = cache.arraylist[self.stopsidx]
         if starts is None or stops is None:
-            self._getarrays(arrays, cache, {self.starts: self.startsidx, self.stops: self.stopsidx}, {self.starts: self.posdtype, self.stops: self.posdtype}, {self.starts: (), self.stops: ()})
+            self._getarrays(arrays,
+                            cache,
+                            {self.starts: self.startsidx, self.stops: self.stopsidx},
+                            {self.starts: self.posdtype, self.stops: self.posdtype},
+                            {self.starts: (), self.stops: ()},
+                            {self.starts: STARTS, self.stops: STOPS})
             starts = cache.arraylist[self.startsidx]
             stops = cache.arraylist[self.stopsidx]
 
@@ -171,7 +215,12 @@ class UnionGenerator(Generator):
         tags = cache.arraylist[self.tagsidx]
         offsets = cache.arraylist[self.offsetsidx]
         if tags is None or offsets is None:
-            self._getarrays(arrays, cache, {self.tags: self.tagsidx, self.offsets: self.offsetsidx}, {self.tags: self.tagdtype, self.offsets: self.offsetdtype}, {self.tags: (), self.offsets: ()})
+            self._getarrays(arrays,
+                            cache,
+                            {self.tags: self.tagsidx, self.offsets: self.offsetsidx},
+                            {self.tags: self.tagdtype, self.offsets: self.offsetdtype},
+                            {self.tags: (), self.offsets: ()},
+                            {self.tags: TAGS, self.offsets: OFFSETS})
             tags = cache.arraylist[self.tagsidx]
             offsets = cache.arraylist[self.offsetsidx]
 
@@ -226,7 +275,12 @@ class PointerGenerator(Generator):
     def _generate(self, arrays, index, cache):
         positions = cache.arraylist[self.positionsidx]
         if positions is None:
-            self._getarrays(arrays, cache, {self.positions: self.positionsidx}, {self.positions: self.posdtype}, {self.positions: ()})
+            self._getarrays(arrays,
+                            cache,
+                            {self.positions: self.positionsidx},
+                            {self.positions: self.posdtype},
+                            {self.positions: ()},
+                            {self.positions: POSITIONS})
             positions = cache.arraylist[self.positionsidx]
 
         return self.target._generate(arrays, positions[index], cache)

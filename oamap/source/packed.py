@@ -28,76 +28,106 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import json
+import sys
+
 import numpy
 
 import oamap.generator
 
+if sys.version_info[0] > 2:
+    basestring = str
+
 class PackedSource(object):
-    roles = ()
-
-    def __init__(self, source, isapplicable, topackedname):
+    def __init__(self, source, suffix):
         self.source = source
-        self.isapplicable = isapplicable
-        self.topackedname = topackedname
+        self.suffix = suffix
 
-    def getall(self, *names):
-        packednames = []
-        unpackednames = []
-        toget = []
-        for name in names:
-            if self.isapplicable(name):
-                packednames.append(self.topackedname(name))
-                unpackednames.append(name)
-            else:
-                toget.append(name)
-
-        for packedname in packednames:
-            if packedname not in toget:
-                toget.append(packedname)
-
+    def getall(self, names, roles):
         if hasattr(self.source, "getall"):
-            out = self.source.getall(*toget)
+            return self.source.getall(names, roles)
         else:
-            out = dict((n, self.source[n]) for n in toget)
+            return dict((n, self.source[n]) for n in names)
 
-        for packedname, unpackedname in zip(packednames, unpackednames):
-            array = out[packedname]
-            out[unpackedname] = self.unpack(unpackedname, array, out)
-
-        for packedname in packednames:
-            del out[packedname]
-
-        return out
-
-    def putall(self, **arrays):
-        out = {}
-        for name, array in arrays.items():
-            if self.isapplicable(name):
-                packed = self.pack(name, array, arrays)
-                if packed is not None:
-                    out[self.topackedname(name)] = packed
-            else:
-                out[name] = array
-
+    def putall(self, names2arrays, roles):
         if hasattr(self.source, "putall"):
-            self.source.putall(**out)
+            self.source.putall(names2arrays, roles)
         else:
-            for n, x in out.items():
+            for n, x in names2arrays.items():
                 self.source[n] = x
 
-    def unpack(self, unpackedname, array, arrays):
-        return array
+    def tojsonfile(self, file, *args, **kwds):
+        json.dump(self.tojson(), file, *args, **kwds)
 
-    def pack(self, unpackedname, array, arrays):
-        return array
+    def tojsonstring(self, *args, **kwds):
+        return json.dumps(self.tojson(), *args, **kwds)
+
+    def tojson(self):
+        out = []
+        node = self
+        while isinstance(node, PackedSource):
+            args = self._tojsonargs()
+            if len(args) == 0:
+                out.insert(0, self.__class__.__name__)
+            else:
+                out.insert(0, {self.__class__.__name__: args})
+            node = node.source
+        return out
+
+    @staticmethod
+    def fromjsonfile(file, *args, **kwds):
+        return PackedSource.fromjson(json.load(file, *args, **kwds))
+
+    @staticmethod
+    def fromjsonstring(data, *args, **kwds):
+        return PackedSource.fromjson(json.loads(data, *args, **kwds))
+
+    @staticmethod
+    def fromjson(data):
+        if isinstance(data, list):
+            source = None
+            for datum in reversed(data):
+                if isinstance(datum, basestring):
+                    classname = datum
+                    args = ()
+                elif isinstance(datum, dict) and len(datum) == 1:
+                    classname, = datum.keys()
+                    args, = datum.values()
+                else:
+                    raise ValueError("source packings JSON must be a list of strings or {\"classname\": [args]} dicts")
+                try:
+                    cls = globals()[classname]
+                except KeyError:
+                    raise ValueError("source packing class {0} not found".format(repr(classname)))
+                source = cls(source, *args)
+            return source
+        else:
+            raise ValueError("source packings JSON must be a list of strings or {\"classname\": [args]} dicts")
 
 ################################################################ BitPackMasks
 
-class BitPackMasks(PackedSource):
-    def __init__(self, source, isapplicable=lambda name: name.endswith("-M"), topackedname=lambda name: name[:-2] + "-m"):
-        super(MaskBitPacked, self).__init__(source, isapplicable, topackedname)
+class MaskBitPack(PackedSource):
+    def __init__(self, source, suffix="-bitpacked"):
+        super(MaskBitPack, self).__init__(source, suffix)
 
-    def unpack(self, unpackedname, array, arrays):
+    def getall(self, names, roles):
+        notmasks = [n for n in names if roles.get(n, None) is not oamap.generator.MASK]
+        masks    = [n for n in names if roles.get(n, None) is oamap.generator.MASK]
+
+        out = super(MaskBitPack, self).getall(notmasks, roles)
+        for n in masks:
+            out[n] = self.unpack(super(MaskBitPack, self).getall([n + self.suffix], {}))
+        return out
+
+    def putall(self, names2arrays, roles):
+        notmasks = dict((n, x) for n, x in names2arrays.items() if roles.get(n, None) is not oamap.generator.MASK)
+        masks    = dict((n, x) for n, x in names2arrays.items() if roles.get(n, None) is oamap.generator.MASK)
+
+        for n, x in masks.items():
+            super(MaskBitPack, self).putall({n + self.suffix: pack(x)}, {})
+        super(MaskBitPack, self).putall(notmasks, roles)
+        
+    def unpack(self, array):
         if not isinstance(array, numpy.ndarray):
             array = numpy.array(array, dtype=numpy.dtype(numpy.uint8))
         unmasked = numpy.unpackbits(array).view(numpy.bool_)
@@ -106,7 +136,7 @@ class BitPackMasks(PackedSource):
         mask[~unmasked] = oamap.generator.Masked.maskedvalue
         return mask
 
-    def pack(self, unpackedname, array, arrays):
+    def pack(self, array):
         if not isinstance(array, numpy.ndarray):
             array = numpy.array(array, dtype=oamap.generator.Masked.maskdtype)
         return numpy.packbits(array != oamap.generator.Masked.maskedvalue)
@@ -117,35 +147,46 @@ class BitPackMasks(PackedSource):
 
 ################################################################ ListsAsCounts
 
-class ListsAsCounts(PackedSource):
-    class _UniqueKey(object):
-        def __hash__(self):
-            return hash(ListsAsCounts._UniqueKey)
-        def __eq__(self, other):
-            return self is other
-    _uniquekey = _UniqueKey()
+class ListCounts(PackedSource):
+    def __init__(self, source, suffix="-counts"):
+        super(ListCounts, self).__init__(source, suffix)
 
-    def __init__(self, source, isstarts=lambda name: name.endswith("-B"), isstops=lambda name: name.endswith("-E"), topackedname=lambda name: name[:-2] + "-c"):
-        super(ListAsCounts, self).__init__(source, lambda name: isstarts(name) or isstops(name), topackedname)
-        self.isstarts = isstarts
-        self.isstops = isstops
+    def getall(self, names, roles):
+        others = [n for n in names if roles.get(n, None) is not oamap.generator.STARTS and roles.get(n, None) is not oamap.generator.STOPS]
+        starts = [n for n in names if roles.get(n, None) is oamap.generator.STARTS]
+        stops  = [n for n in names if roles.get(n, None) is oamap.generator.STOPS]
+
+        out = super(ListCounts, self).getall(others, roles)
+        if len(starts) == len(stops) == 0:
+            pass
+        elif len(starts) == len(stops) == 1:
+            startsname, = starts
+            stopsname,  = stops
+            out[startsname], out[stopsname] = self.fromcounts(super(ListCounts, self).getall([startsname + self.suffix], {}))
+        else:
+            raise RuntimeError("cannot determine which starts ({0}) corresponds to which stops ({1})".format(", ".join(repr(n) for n in starts), ", ".join(repr(n) for n in stops)))
+        return out
+
+    def putall(self, names2arrays, roles):
+        others = dict((n, x) for n, x in names.items() if roles.get(n, None) is not oamap.generator.STARTS and roles.get(n, None) is not oamap.generator.STOPS)
+        starts = dict((n, x) for n, x in names.items() if roles.get(n, None) is oamap.generator.STARTS)
+        stops  = dict((n, x) for n, x in names.items() if roles.get(n, None) is oamap.generator.STOPS)
+
+        if len(starts) == len(stops) == 0:
+            pass
+        elif len(starts) == len(stops) == 1:
+            (startsname, startsarray), = starts.items()
+            (stopsname,  stopsarray),  = stops.items()
+            super(ListCounts, self).putall({startsname + self.suffix: self.tocounts(startsarray, stopsarray)}, {})
+        else:
+            raise RuntimeError("cannot determine which starts ({0}) corresponds to which stops ({1})".format(", ".join(repr(n) for n in starts), ", ".join(repr(n) for n in stops)))
+        super(ListCounts, self).putall(others, roles)
 
     def fromcounts(self, array):
         offsets = numpy.empty(len(array) + 1, dtype=oamap.generator.ListGenerator.posdtype)
         offsets[0] = 0
         offsets[1:] = numpy.cumsum(counts)
         return offsets[:-1], offsets[1:]
-
-    def unpack(self, unpackedname, array, arrays):
-        if self.isstarts(unpackedname):
-            if self._uniquekey not in arrays:
-                arrays[self._uniquekey] = self.fromcounts(array)
-            return arrays[self._uniquekey][0]
-
-        elif isstops(unpackedname):
-            if self._uniquekey not in arrays:
-                arrays[self._uniquekey] = self.fromcounts(array)
-            return arrays[self._uniquekey][1]
 
     def tocounts(self, starts, stops):
         if not isinstance(starts, numpy.ndarray):
@@ -156,48 +197,38 @@ class ListsAsCounts(PackedSource):
             raise ValueError("starts and stops cannot be converted to a single counts array")
         return stops - starts
 
-    def pack(self, unpackedname, array, arrays):
-        if self.isstarts(unpackedname):
-            if self._uniquekey not in arrays:
-                stops = None
-                for n, a in arrays.items():
-                    if self.isstops(n):
-                        stops = a
-                        break
-                if stops is None:
-                    raise KeyError("stops not found for starts: {0}".format(repr(unpackedname)))
-                arrays[self._uniquekey] = self.tocounts(array, stops)
-            return arrays[self._uniquekey]
-
-        elif self.isstops(unpackedname):
-            if self._uniquekey not in arrays:
-                starts = None
-                for n, a in arrays.items():
-                    if self.isstarts(n):
-                        starts = a
-                        break
-                if starts is None:
-                    raise KeyError("starts not found for stops: {0}".format(repr(unpackedname)))
-                arrays[self._uniquekey] = self.tocounts(starts, array)
-            return arrays[self._uniquekey]
-
 ################################################################ DropUnionOffsets
 
-class DropUnionOffsets(PackedSource):
-    def __init__(self, source, isapplicable=lambda name: name.endswith("-O"), topackedname=lambda name: name[:-2] + "-T"):
-        super(DropUnionOffsets, self).__init__(source, isapplicable, topackedname)
+class UnionDropOffsets(PackedSource):
+    def __init__(self, source, suffix=""):
+        super(DropUnionOffsets, self).__init__(source, suffix)
 
-    def unpack(self, unpackedname, array, arrays):
-        if not isinstance(array, numpy.ndarray):
-            array = numpy.array(array, dtype=oamap.generator.UnionGenerator.tagdtype)
-        offsets = numpy.empty(len(array), dtype=oamap.generator.UnionGenerator.offsetdtype)
-        for tag in numpy.unique(array):
-            hastag = (array == tag)
+    def getall(self, names, roles):
+        tags    = [n for n in names if roles.get(n, None) is oamap.generator.TAGS]
+        offsets = [n for n in names if roles.get(n, None) is oamap.generator.OFFSETS]
+
+        out = super(UnionDropOffsets, self).getall([n for n in names if n not in offsets], roles)
+        if len(tags) == len(offsets) == 0:
+            pass
+        elif len(tags) == len(offsets) == 1:
+            tagsname,    = tags
+            offsetsname, = offsets
+            out[offsetsname] = self.tags2offsets(out[tagsname])
+        else:
+            raise RuntimeError("cannot determine which tags ({0}) corresponds to which offsets ({1})".format(", ".join(repr(n) for n in tags), ", ".join(repr(n) for n in offsets)))
+        return out
+
+    def putall(self, names2arrays, roles):
+        super(UnionDropOffsets, self).putall(dict((n, x) for n, x in names2arrays.items() if roles.get(n, None) is not oamap.generator.OFFSETS), roles)
+
+    def tags2offsets(self, tags):
+        if not isinstance(tags, numpy.ndarray):
+            tags = numpy.array(tags, dtype=oamap.generator.UnionGenerator.tagdtype)
+        offsets = numpy.empty(len(tags), dtype=oamap.generator.UnionGenerator.offsetdtype)
+        for tag in numpy.unique(tags):
+            hastag = (tags == tag)
             offsets[hastag] = numpy.arange(hastag.sum(), dtype=offsets.dtype)
         return offsets
-
-    def pack(self, unpackedname, array, arrays):
-        return None
 
 ################################################################ CompressAll
 
