@@ -131,6 +131,12 @@ class MaskBitPack(PackedSource):
     def __init__(self, source, suffix="-bitpacked"):
         super(MaskBitPack, self).__init__(source, suffix)
 
+    def _tojsonargs(self):
+        if self.suffix == "-bitpacked":
+            return []
+        else:
+            return [self.suffix]
+
     def getall(self, names, roles):
         notmasks = [n for n in names if roles.get(n, None) is not oamap.generator.MASK]
         masks    = [n for n in names if roles.get(n, None) is oamap.generator.MASK]
@@ -171,6 +177,12 @@ class MaskBitPack(PackedSource):
 class ListCounts(PackedSource):
     def __init__(self, source, suffix="-counts"):
         super(ListCounts, self).__init__(source, suffix)
+
+    def _tojsonargs(self):
+        if self.suffix == "-counts":
+            return []
+        else:
+            return [self.suffix]
 
     def getall(self, names, roles):
         others = [n for n in names if roles.get(n, None) is not oamap.generator.STARTS and roles.get(n, None) is not oamap.generator.STOPS]
@@ -221,8 +233,11 @@ class ListCounts(PackedSource):
 ################################################################ DropUnionOffsets
 
 class UnionDropOffsets(PackedSource):
-    def __init__(self, source, suffix=""):
-        super(DropUnionOffsets, self).__init__(source, suffix)
+    def __init__(self, source):
+        super(DropUnionOffsets, self).__init__(source, "")
+
+    def _tojsonargs(self):
+        return []
 
     def getall(self, names, roles):
         tags    = [n for n in names if roles.get(n, None) is oamap.generator.TAGS]
