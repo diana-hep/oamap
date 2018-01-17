@@ -163,7 +163,7 @@ def _is_map_like(helper, column):
         return False
     if se2.repetition_type != parquet_thrift.FieldRepetitionType.REPEATED:
         return False
-    if set(se2.children) != {'key', 'value'}:
+    if set(se2.children) != set(["key", "value"]):
         return False
     se3 = se2.children['key']
     if se3.repetition_type != parquet_thrift.FieldRepetitionType.REQUIRED:
