@@ -605,14 +605,6 @@ class ParquetFile(object):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
         out = {}
 
-        print
-        print "parquetschema.name", parquetschema.name
-        print "dictionary", dictionary, len(dictionary) if dictionary is not None else 0
-        print "deflevel", deflevel, len(deflevel) if deflevel is not None else 0
-        print "replevel", replevel, len(replevel) if replevel is not None else 0
-        print "data", data, len(data) if data is not None else 0
-        print "size", size, len(size) if size is not None else 0
-
         defmap = []
         if len(parquetschema.defsequence) > 0:
             assert deflevel is not None
@@ -691,9 +683,6 @@ class ParquetFile(object):
             assert isinstance(oamapschema, oamap.schema.Primitive)
             assert oamapschema.dtype == data.dtype
             out[oamapschema.data] = data
-
-        for n in sorted(out):
-            print n, out[n], len(out[n])
 
         return out
 

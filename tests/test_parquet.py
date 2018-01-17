@@ -198,12 +198,10 @@ class TestParquet(unittest.TestCase):
 
     def test_nullable_list_depths_records_list(self):
         with ParquetFile(open("tests/samples/nullable-list-depths-records-list.parquet", "rb")) as f:
-            y = [{"list0": {"one": 1, "two": 1.100000023841858, "three": []}, "list1": [], "list2": [], "list3": []},
+            self.assertEqual(
+                tojson(f[:]),
+                [{"list0": {"one": 1, "two": 1.100000023841858, "three": []}, "list1": [], "list2": [], "list3": []},
                  {"list0": {"one": 2, "two": 2.200000047683716, "three": [2]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}], "list2": [[]], "list3": [[]]},
-                 {"list0": {"one": 3, "two": 3.299999952316284, "three": [3, 3]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}, {"one": 3, "two": 3.299999952316284, "three": [3, 3]}], "list2": [[{"one": 3, "two": 3.299999952316284, "three": [3, 3]}]], "list3": [[[]]]},
-                 {"list0": {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}, {"one": 3, "two": 3.299999952316284, "three": [3, 3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}], "list2": [[{"one": 3, "two": 3.299999952316284, "three": [3, 3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}]], "list3": [[[{"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}]]]},
-                 {"list0": {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}, {"one": 3, "two": 3.299999952316284, "three": [3, 3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}], "list2": [[{"one": 3, "two": 3.299999952316284, "three": [3, 3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}]], "list3": [[[{"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}]]]}]
-            z = tojson(f[:])
-
-            for yi, zi in zip(y, z):
-                self.assertEqual(yi["list2"], zi["list2"])
+                 {"list0": {"one": 3, "two": 3.299999952316284, "three": [3]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}, {"one": 3, "two": 3.299999952316284, "three": [3]}], "list2": [[{"one": 3, "two": 3.299999952316284, "three": [3]}]], "list3": [[[]]]},
+                 {"list0": {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}, {"one": 3, "two": 3.299999952316284, "three": [3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}], "list2": [[{"one": 3, "two": 3.299999952316284, "three": [3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}]], "list3": [[[{"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}]]]},
+                 {"list0": {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}, "list1": [{"one": 2, "two": 2.200000047683716, "three": [2]}, {"one": 3, "two": 3.299999952316284, "three": [3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}], "list2": [[{"one": 3, "two": 3.299999952316284, "three": [3]}, {"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}]], "list3": [[[{"one": 4, "two": 4.400000095367432, "three": [4, 4, 4]}, {"one": 5, "two": 5.5, "three": [5, 5, 5, 5]}]]]}])
