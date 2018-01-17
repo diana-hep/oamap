@@ -59,6 +59,15 @@ class PackedSource(object):
             for n, x in names2arrays.items():
                 self.source[n] = x
 
+    def copy(self):
+        return self.__class__(self.source, self.suffix)
+
+    def anchor(self, source):
+        if self.source is None:
+            return self.__class__(source, self.suffix)
+        else:
+            return self.__class__(self.source.anchor(source), self.suffix)
+
     def __eq__(self, other):
         return self.__class__.__name__ == other.__class__.__name__ and self._tojsonargs() == other._tojsonargs()
 

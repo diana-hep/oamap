@@ -84,11 +84,17 @@ class Schema(object):
             raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
         self._packing = value
 
-    def _packingtojson(self, packing):
-        if packing is None:
+    def _packingcopy(self):
+        if self._packing is None:
             return None
         else:
-            return packing.tojson()
+            return self._packing.copy()
+
+    def _packingtojson(self):
+        if self._packing is None:
+            return None
+        else:
+            return self._packing.tojson()
 
     @staticmethod
     def _packingfromjson(packing):
@@ -397,7 +403,7 @@ class Primitive(Schema):
                 if explicit or self._mask is not None:
                     out["mask"] = self._mask
                 if explicit or self._packing is not None:
-                    out["packing"] = self._packingtojson(self._packing)
+                    out["packing"] = self._packingtojson()
                 if explicit or self._name is not None:
                     out["name"] = self._name
                 if explicit or self._doc is not None:
@@ -510,9 +516,10 @@ class Primitive(Schema):
 
         args.append(self._dtype)
         args.append(self._dims)
+        args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy())
+        args.append(self.copy(packing=self._packingcopy()))
 
         for ext in extension:
             if ext.matches(self):
@@ -625,7 +632,7 @@ class List(Schema):
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
             if explicit or self._packing is not None:
-                out["packing"] = self._packingtojson(self._packing)
+                out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -759,9 +766,10 @@ class List(Schema):
 
         contentgen = self._content._generator(self._get_content(prefix, delimiter), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)
         args.append(contentgen)
+        args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(content=contentgen.schema))
+        args.append(self.copy(content=contentgen.schema, packing=self._packingcopy()))
 
         for ext in extension:
             if ext.matches(self):
@@ -911,7 +919,7 @@ class Union(Schema):
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
             if explicit or self._packing is not None:
-                out["packing"] = self._packingtojson(self._packing)
+                out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1041,9 +1049,10 @@ class Union(Schema):
 
         possibilitiesgen = [x._generator(self._get_possibility(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._possibilities)]
         args.append(possibilitiesgen)
+        args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen]))
+        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen], packing=self._packingcopy()))
 
         for ext in extension:
             if ext.matches(self):
@@ -1149,7 +1158,7 @@ class Record(Schema):
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
             if explicit or self._packing is not None:
-                out["packing"] = self._packingtojson(self._packing)
+                out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1265,9 +1274,10 @@ class Record(Schema):
 
         fieldsgen = OrderedDict([(n, self._fields[n]._generator(self._get_field(prefix, delimiter, n), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)) for n in sorted(self._fields)])
         args.append(fieldsgen)
+        args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items())))
+        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items()), packing=self._packingcopy()))
 
         for ext in extension:
             if ext.matches(self):
@@ -1386,7 +1396,7 @@ class Tuple(Schema):
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
             if explicit or self._packing is not None:
-                out["packing"] = self._packingtojson(self._packing)
+                out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1495,9 +1505,10 @@ class Tuple(Schema):
 
         typesgen = [x._generator(self._get_field(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._types)]
         args.append(typesgen)
+        args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(types=[x.schema for x in typesgen]))
+        args.append(self.copy(types=[x.schema for x in typesgen], packing=self._packingcopy()))
 
         for ext in extension:
             if ext.matches(self):
@@ -1597,7 +1608,7 @@ class Pointer(Schema):
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
             if explicit or self._packing is not None:
-                out["packing"] = self._packingtojson(self._packing)
+                out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1709,9 +1720,10 @@ class Pointer(Schema):
         args.append(cacheidx[0]); cacheidx[0] += 1
 
         args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
+        args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy())
+        args.append(self.copy(packing=self._packingcopy()))
 
         for ext in extension:
             if ext.matches(self):

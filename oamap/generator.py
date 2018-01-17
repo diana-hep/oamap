@@ -88,6 +88,9 @@ class Cache(object):
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
     def _getarrays(self, arrays, cache, name2idx, dtypes, dims, roles):
+        if self.packing is not None:
+            arrays = self.packing.anchor(arrays)
+
         if hasattr(arrays, "getall"):
             out = arrays.getall(name2idx, roles)
         else:
@@ -101,7 +104,8 @@ class Generator(object):
 
             cache.arraylist[name2idx[name]] = array
 
-    def __init__(self, name, derivedname, schema):
+    def __init__(self, packing, name, derivedname, schema):
+        self.packing = packing
         self.name = name
         self.derivedname = derivedname
         self.schema = schema
@@ -139,12 +143,12 @@ class Masked(object):
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
-    def __init__(self, data, dataidx, dtype, dims, name, derivedname, schema):
+    def __init__(self, data, dataidx, dtype, dims, packing, name, derivedname, schema):
         self.data = data
         self.dataidx = dataidx
         self.dtype = dtype
         self.dims = dims
-        Generator.__init__(self, name, derivedname, schema)
+        Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         data = cache.arraylist[self.dataidx]
@@ -160,22 +164,22 @@ class PrimitiveGenerator(Generator):
         return data[index]
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
-    def __init__(self, mask, maskidx, data, dataidx, dtype, dims, name, derivedname, schema):
+    def __init__(self, mask, maskidx, data, dataidx, dtype, dims, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, name, derivedname, schema)
+        PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, packing, name, derivedname, schema)
 
 ################################################################ Lists
 
 class ListGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):
+    def __init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
         self.starts = starts
         self.startsidx = startsidx
         self.stops = stops
         self.stopsidx = stopsidx
         self.content = content
-        Generator.__init__(self, name, derivedname, schema)
+        Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         starts = cache.arraylist[self.startsidx]
@@ -193,9 +197,9 @@ class ListGenerator(Generator):
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
 class MaskedListGenerator(Masked, ListGenerator):
-    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, name, derivedname, schema):
+    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, name, derivedname, schema)
+        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema)
 
 ################################################################ Unions
 
@@ -203,13 +207,13 @@ class UnionGenerator(Generator):
     tagdtype = numpy.dtype(numpy.int8)
     offsetdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
+    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
         self.tags = tags
         self.tagsidx = tagsidx
         self.offsets = offsets
         self.offsetsidx = offsetsidx
         self.possibilities = possibilities
-        Generator.__init__(self, name, derivedname, schema)
+        Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         tags = cache.arraylist[self.tagsidx]
@@ -227,50 +231,50 @@ class UnionGenerator(Generator):
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
-    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema):
+    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, name, derivedname, schema)
+        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema)
 
 ################################################################ Records
 
 class RecordGenerator(Generator):
-    def __init__(self, fields, name, derivedname, schema):
+    def __init__(self, fields, packing, name, derivedname, schema):
         self.fields = fields
-        Generator.__init__(self, name, derivedname, schema)
+        Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
 class MaskedRecordGenerator(Masked, RecordGenerator):
-    def __init__(self, mask, maskidx, fields, name, derivedname, schema):
+    def __init__(self, mask, maskidx, fields, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        RecordGenerator.__init__(self, fields, name, derivedname, schema)
+        RecordGenerator.__init__(self, fields, packing, name, derivedname, schema)
 
 ################################################################ Tuples
 
 class TupleGenerator(Generator):
-    def __init__(self, types, name, derivedname, schema):
+    def __init__(self, types, packing, name, derivedname, schema):
         self.types = types
-        Generator.__init__(self, name, derivedname, schema)
+        Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
-    def __init__(self, mask, maskidx, types, name, derivedname, schema):
+    def __init__(self, mask, maskidx, types, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        TupleGenerator.__init__(self, types, name, derivedname, schema)
+        TupleGenerator.__init__(self, types, packing, name, derivedname, schema)
 
 ################################################################ Pointers
 
 class PointerGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, positions, positionsidx, target, name, derivedname, schema):
+    def __init__(self, positions, positionsidx, target, packing, name, derivedname, schema):
         self.positions = positions
         self.positionsidx = positionsidx
         self.target = target
-        Generator.__init__(self, name, derivedname, schema)
+        Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
         positions = cache.arraylist[self.positionsidx]
@@ -286,9 +290,9 @@ class PointerGenerator(Generator):
         return self.target._generate(arrays, positions[index], cache)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
-    def __init__(self, mask, maskidx, positions, positionsidx, target, name, derivedname, schema):
+    def __init__(self, mask, maskidx, positions, positionsidx, target, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PointerGenerator.__init__(self, positions, positionsidx, target, name, derivedname, schema)
+        PointerGenerator.__init__(self, positions, positionsidx, target, packing, name, derivedname, schema)
 
 ################################################################ for extensions: domain-specific and user
 
@@ -307,6 +311,10 @@ class ExtendedGenerator(Generator):
 
     def __init__(self, genericclass, *args):
         self.generic = genericclass(*args)
+
+    @property
+    def packing(self):
+        return self.generic.packing
 
     @property
     def name(self):
