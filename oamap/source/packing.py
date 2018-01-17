@@ -43,6 +43,9 @@ class PackedSource(object):
         self.source = source
         self.suffix = suffix
 
+    def __repr__(self):
+        return "{0}({1}{2})".format(self.__class__.__name__, repr(self.source), "".join(", " + repr(x) for x in self._tojsonargs()))
+
     def getall(self, names, roles):
         if hasattr(self.source, "getall"):
             return self.source.getall(names, roles)
@@ -56,6 +59,15 @@ class PackedSource(object):
             for n, x in names2arrays.items():
                 self.source[n] = x
 
+    def __eq__(self, other):
+        return self.__class__.__name__ == other.__class__.__name__ and self._tojsonargs() == other._tojsonargs()
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((PackedSource, self.__class__.__name__, tuple(self._tojsonargs())))
+
     def tojsonfile(self, file, *args, **kwds):
         json.dump(self.tojson(), file, *args, **kwds)
 
@@ -68,9 +80,9 @@ class PackedSource(object):
         while isinstance(node, PackedSource):
             args = self._tojsonargs()
             if len(args) == 0:
-                out.insert(0, self.__class__.__name__)
+                out.append(self.__class__.__name__)
             else:
-                out.insert(0, {self.__class__.__name__: args})
+                out.append({self.__class__.__name__: args})
             node = node.source
         return out
 

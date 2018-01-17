@@ -38,6 +38,7 @@ import numpy
 
 import oamap.generator
 import oamap.compiler
+import oamap.source.packing
 import oamap.extension.common
 from oamap.util import OrderedDict
 
@@ -72,6 +73,29 @@ class Schema(object):
         if not (value is None or isinstance(value, basestring)):
             raise TypeError("mask must be None or an array name (string), not {0}".format(repr(value)))
         self._mask = value
+
+    @property
+    def packing(self):
+        return self._packing
+
+    @packing.setter
+    def packing(self, value):
+        if not (value is None or isinstance(value, oamap.source.packing.PackedSource)):
+            raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
+        self._packing = value
+
+    def _packingtojson(self, packing):
+        if packing is None:
+            return None
+        else:
+            return packing.tojson()
+
+    @staticmethod
+    def _packingfromjson(packing):
+        if packing is None:
+            return None
+        else:
+            return oamap.source.packing.PackedSource.fromjson(packing)
 
     @property
     def name(self):
@@ -266,12 +290,13 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, name=None, doc=None):
+    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, packing=None, name=None, doc=None):
         self.dtype = dtype
         self.dims = dims
         self.nullable = nullable
         self.data = data
         self.mask = mask
+        self.packing = packing
         self.name = name
         self.doc = doc
 
@@ -335,6 +360,8 @@ class Primitive(Schema):
                 args.append("data" + eq + repr(self._data))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packing is not None:
+                args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -357,7 +384,7 @@ class Primitive(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if not explicit and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._name is None:
+            if not explicit and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._packing is None and self._name is None:
                 return str(self._dtype)
             else:
                 out = {"type": "primitive", "dtype": str(self._dtype)}
@@ -369,6 +396,8 @@ class Primitive(Schema):
                     out["data"] = self._data
                 if explicit or self._mask is not None:
                     out["mask"] = self._mask
+                if explicit or self._packing is not None:
+                    out["packing"] = self._packingtojson(self._packing)
                 if explicit or self._name is not None:
                     out["name"] = self._name
                 if explicit or self._doc is not None:
@@ -386,7 +415,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), name=data.get("name", None), doc=data.get("doc", None))
+            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -405,15 +434,17 @@ class Primitive(Schema):
             replacements["data"] = self._data
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
         if "name" not in replacements:
             replacements["name"] = self._name
         return Primitive(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Primitive(self._dtype, dims=self._dims, nullable=self._nullable, data=self._data, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Primitive(self._dtype, dims=self._dims, nullable=self._nullable, data=self._data, mask=self._mask, packing=self._packing, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
-        return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.name == other.name
+        return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.packing == other.packing and self.name == other.name
 
     def __contains__(self, value, memo=None):
         if value is None:
@@ -495,12 +526,13 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, name=None, doc=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, packing=None, name=None, doc=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
         self.stops = stops
         self.mask = mask
+        self.packing = packing
         self.name = name
         self.doc = doc
 
@@ -558,6 +590,8 @@ class List(Schema):
                 args.append("stops" + eq + repr(self._stops))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packing is not None:
+                args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -590,6 +624,8 @@ class List(Schema):
                 out["stops"] = self._stops
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packing is not None:
+                out["packing"] = self._packingtojson(self._packing)
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -610,6 +646,7 @@ class List(Schema):
         out.starts = data.get("starts", None)
         out.stops = data.get("stops", None)
         out.mask = data.get("mask", None)
+        out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -642,19 +679,21 @@ class List(Schema):
             replacements["stops"] = self._stops
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
         if "name" not in replacements:
             replacements["name"] = self._name
         return List(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, packing=self._packing, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.mask == other.mask and self.packing == other.packing and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return self.content.__eq__(other.content, memo)
@@ -736,12 +775,13 @@ class List(Schema):
 ################################################################ Unions may be one of several types
 
 class Union(Schema):
-    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, name=None, doc=None):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, packing=None, name=None, doc=None):
         self.possibilities = possibilities
         self.nullable = nullable
         self.tags = tags
         self.offsets = offsets
         self.mask = mask
+        self.packing = packing
         self.name = name
         self.doc = doc
 
@@ -836,6 +876,8 @@ class Union(Schema):
                 args.append("offsets" + eq + repr(self._offsets))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packing is not None:
+                args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -868,6 +910,8 @@ class Union(Schema):
                 out["offsets"] = self._offsets
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packing is not None:
+                out["packing"] = self._packingtojson(self._packing)
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -890,6 +934,7 @@ class Union(Schema):
         out.tags = data.get("tags", None)
         out.offsets = data.get("offsets", None)
         out.mask = data.get("mask", None)
+        out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -924,19 +969,21 @@ class Union(Schema):
             replacements["offsets"] = self._offsets
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
         if "name" not in replacements:
             replacements["name"] = self._name
         return Union(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, packing=self._packing, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Union) and len(self.possibilities) == len(other.possibilities) and self.nullable == other.nullable and self.tags == other.tags and self.offsets == other.offsets and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Union) and len(self.possibilities) == len(other.possibilities) and self.nullable == other.nullable and self.tags == other.tags and self.offsets == other.offsets and self.mask == other.mask and self.packing == other.packing and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self.possibilities, other.possibilities))
@@ -1010,10 +1057,11 @@ class Union(Schema):
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
-    def __init__(self, fields, nullable=False, mask=None, name=None, doc=None):
+    def __init__(self, fields, nullable=False, mask=None, packing=None, name=None, doc=None):
         self.fields = fields
         self.nullable = nullable
         self.mask = mask
+        self.packing = packing
         self.name = name
         self.doc = doc
 
@@ -1070,6 +1118,8 @@ class Record(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packing is not None:
+                args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -1098,6 +1148,8 @@ class Record(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packing is not None:
+                out["packing"] = self._packingtojson(self._packing)
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1121,6 +1173,7 @@ class Record(Schema):
             raise TypeError("argument 'fields' for Record Schema from JSON should be a list or dict of key-value pairs (in which the keys are strings), not {0}".format(repr(data["fields"])))
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
+        out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -1151,19 +1204,21 @@ class Record(Schema):
             replacements["nullable"] = self._nullable
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
         if "name" not in replacements:
             replacements["name"] = self._name
         return Record(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, packing=self._packing, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self.nullable == other.nullable and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self.nullable == other.nullable and self.mask == other.mask and self.packing == other.packing and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return all(self._fields[n].__eq__(other._fields[n], memo) for n in self._fields)
@@ -1226,10 +1281,11 @@ class Record(Schema):
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, types, nullable=False, mask=None, name=None, doc=None):
+    def __init__(self, types, nullable=False, mask=None, packing=None, name=None, doc=None):
         self.types = types
         self.nullable = nullable
         self.mask = mask
+        self.packing = packing
         self.name = name
         self.doc = doc
 
@@ -1300,6 +1356,8 @@ class Tuple(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packing is not None:
+                args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -1327,6 +1385,8 @@ class Tuple(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packing is not None:
+                out["packing"] = self._packingtojson(self._packing)
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1347,6 +1407,7 @@ class Tuple(Schema):
         out._types = [Schema._fromjson(x, labels) for x in data["types"]]
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
+        out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -1377,19 +1438,21 @@ class Tuple(Schema):
             replacements["nullable"] = self._nullable
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
         if "name" not in replacements:
             replacements["name"] = self._name
         return Tuple(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, packing=self._packing, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self.nullable == other.nullable and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self.nullable == other.nullable and self.mask == other.mask and self.packing == other.packing and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self._types, other._types))
@@ -1448,11 +1511,12 @@ class Tuple(Schema):
 ################################################################ Pointers redirect to the contents of other types
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None, name=None, doc=None):
+    def __init__(self, target, nullable=False, positions=None, mask=None, packing=None, name=None, doc=None):
         self.target = target
         self.nullable = nullable
         self.positions = positions
         self.mask = mask
+        self.packing = packing
         self.name = name
         self.doc = doc
 
@@ -1500,6 +1564,8 @@ class Pointer(Schema):
                 args.append("positions" + eq + repr(self._positions))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._packing is not None:
+                args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
                 args.append("name" + eq + repr(self._name))
 
@@ -1530,6 +1596,8 @@ class Pointer(Schema):
                 out["positions"] = self._positions
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._packing is not None:
+                out["packing"] = self._packingtojson(self._packing)
             if explicit or self._name is not None:
                 out["name"] = self._name
             if explicit or self._doc is not None:
@@ -1549,6 +1617,7 @@ class Pointer(Schema):
         out.nullable = data.get("nullable", False)
         out.positions = data.get("positions", None)
         out.mask = data.get("mask", None)
+        out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
         if "label" in data:
@@ -1579,19 +1648,21 @@ class Pointer(Schema):
             replacements["positions"] = self._positions
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
         if "name" not in replacements:
             replacements["name"] = self._name
         return Pointer(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, name=self._name), *args, **kwds)
+        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, packing=self._packing, name=self._name), *args, **kwds)
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Pointer) and self.nullable == other.nullable and self.positions == other.positions and self.mask == other.mask and self.name == other.name):
+        if not (isinstance(other, Pointer) and self.nullable == other.nullable and self.positions == other.positions and self.mask == other.mask and self.packing == other.packing and self.name == other.name):
             return False
         memo[id(self)] = id(other)
         return self.target.__eq__(other.target, memo)
