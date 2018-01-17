@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import bisect
 import re
 import sys
 import numbers
@@ -1746,11 +1747,44 @@ class Pointer(Schema):
 ################################################################ Partitionings are descriptions of of to map partition numbers and column names to array names
 
 class Partitioning(object):
-    def array(self, id, column):
-        if not isinstance(id, numbers.Integral):
-            raise TypeError("id must be an integer, not {0}".format(repr(id)))
+    def __init__(self, offsets):
+        self.offsets = offsets
+
+    @property
+    def offsets(self):
+        return list(self._offsets)
+
+    @offsets.setter
+    def offsets(self, value):
+        try:
+            last = 0
+            offsets = []
+            for x in value:
+                if not isinstance(x, numbers.Integral):
+                    raise TypeError
+                if not x >= last:
+                    raise TypeError
+                last = x
+                offsets.append(x)
+        except TypeError:
+            raise TypeError("offsets must be an iterable of increasing integers")
+        else:
+            self._offsets = offsets
+
+    def __repr__(self):
+        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(x) for x in self._tojsonargs()))
+
+    def arrayid(self, column, id):
         if not isinstance(column, basestring):
             raise TypeError("column must be a string, not {0}".format(repr(column)))
+        if not isinstance(id, numbers.Integral):
+            raise TypeError("id must be an integer, not {0}".format(repr(id)))
+
+    def arrayat(self, column, index):
+        normalindex = index if index >= 0 else index + self._offsets[-1]
+        if not 0 <= normalindex < self._offsets[-1]:
+            raise IndexError("index {0} is out of bounds for size {1}".format(index, self._offsets[-1]))
+        return arrayid(column, bisect.bisect_right(self._offsets, normalindex) - 1)
 
     def tojsonfile(self, file, *args, **kwds):
         json.dump(self.tojson(), file, *args, **kwds)
@@ -1783,53 +1817,50 @@ class Partitioning(object):
             raise TypeError("JSON for a Partitioning must be a one-item dict, not {0}".format(repr(data)))
 
 class ExplicitPartitioning(Partitioning):
-    def __init__(self, partitions):
+    def __init__(self, offsets, partitions):
+        super(ExplicitPartitioning, self).__init__(offsets)
         self.partitions = partitions
 
     def _tojsonargs(self):
-        return [self._partitions]
+        return [self._offsets, self._partitions]
 
     @property
     def partitions(self):
-        return self._partitions
+        return [dict(x) for x in self._partitions]
 
     @partitions.setter
     def partitions(self, value):
         try:
+            partitions = []
             for item in value:
                 if not isinstance(item, dict) and all(isinstance(n, basestring) and isinstance(x, (basestring, int)) for n, x in item.items()):
                     raise TypeError
+                partitions.append(item)
         except TypeError:
             raise TypeError("partitions must be an iterable of dicts from column names to array names or integer lookup values, not {0}".format(repr(value)))
-        self._partitions = value
+        self._partitions = partitions
 
     def __repr__(self):
         return "ExplicitPartitioning({0})".format(self._partitions)
 
-    def array(self, id, column):
-        super(ExplicitPartitioning, self).array(id, column)
+    def arrayid(self, column, id):
+        super(ExplicitPartitioning, self).arrayid(column, id)
         return self._partitions[id][column]
 
 class PrefixSuffixPartitioning(Partitioning):
-    def __init__(self, numpartitions, delimiter="-"):
-        self.numpartitions = numpartitions
+    def __init__(self, offsets, delimiter="-"):
+        super(ExplicitPartitioning, self).__init__(offsets)
         self.delimiter = delimiter
 
     def _tojsonargs(self):
-        out = [self._numpartitions]
+        out = [self._offsets]
         if self._delimiter != "-":
             out.append(self._delimiter)
         return out
 
     @property
     def numpartitions(self):
-        return self._numpartitions
-
-    @numpartitions.setter
-    def numpartitions(self, value):
-        if not isinstance(value, numbers.Integral) or value <= 0:
-            raise TypeError("numpartitions must be a positive integer, not {0}".format(repr(value)))
-        self._numpartitions = value
+        return len(self._offsets) - 1
 
     @property
     def delimiter(self):
@@ -1841,20 +1872,20 @@ class PrefixSuffixPartitioning(Partitioning):
             raise TypeError("delimiter must be a string, not {0}".format(repr(value)))
 
 class PrefixPartitioning(PrefixSuffixPartitioning):
-    def array(self, id, column):
-        super(PrefixPartitioning, self).array(id, column)
-        if 0 <= id < self._numpartitions:
+    def arrayid(self, column, id):
+        super(PrefixPartitioning, self).arrayid(column, id)
+        if 0 <= id < self.numpartitions:
             return repr(id) + self._delimiter + column
         else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self._numpartitions))
+            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
 
 class SuffixPartitioning(PrefixSuffixPartitioning):
-    def array(self, id, column):
-        super(SuffixPartitioning, self).array(id, column)
-        if 0 <= id < self._numpartitions:
+    def array(self, column, id):
+        super(SuffixPartitioning, self).arrayid(column, id)
+        if 0 <= id < self.numpartitions:
             return column + self._delimiter + repr(id)
         else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self._numpartitions))
+            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
 
 ################################################################ Datasets are Schemas with optional Partitionings and Packings
 
