@@ -237,7 +237,7 @@ class Schema(object):
 
     def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
         if self._baddelimiter.match(delimiter) is not None:
-            raise ValueError("delimiters must not contain /{0}/".self._baddelimiter.pattern)
+            raise ValueError("delimiters must not contain /{0}/".format(self._baddelimiter.pattern))
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
@@ -1875,7 +1875,7 @@ class PrefixPartitioning(PrefixSuffixPartitioning):
     def arrayid(self, column, id):
         super(PrefixPartitioning, self).arrayid(column, id)
         if 0 <= id < self.numpartitions:
-            return repr(id) + self._delimiter + column
+            return "{0}{1}{2}".format(id, self._delimiter, column)
         else:
             raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
 
@@ -1883,7 +1883,7 @@ class SuffixPartitioning(PrefixSuffixPartitioning):
     def arrayid(self, column, id):
         super(SuffixPartitioning, self).arrayid(column, id)
         if 0 <= id < self.numpartitions:
-            return column + self._delimiter + repr(id)
+            return "{0}{1}part{2}".format(column, self._delimiter, id)
         else:
             raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
 
@@ -1904,13 +1904,35 @@ class ExternalPartitioning(Partitioning):
 ################################################################ Datasets are Schemas with optional Partitionings and Packings
 
 class Dataset(object):
-    def __init__(self, schema, partitioning=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, schema, prefix=None, delimiter=None, partitioning=None, packing=None, name=None, doc=None, metadata=None):
         self.schema = schema
+        self.prefix = prefix
+        self.delimiter = delimiter
         self.partitioning = partitioning
         self.packing = packing
         self.name = name
         self.doc = doc
         self.metadata = metadata
+
+    @property
+    def prefix(self):
+        return self._prefix
+
+    @prefix.setter
+    def prefix(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("prefix must be None or a string, not {0}".format(repr(value)))
+        self._prefix = value
+
+    @property
+    def delimiter(self):
+        return self._delimiter
+
+    @delimiter.setter
+    def delimiter(self, value):
+        if value is not None or not isinstance(value, basestring) or Schema._baddelimiter.match(value) is not None:
+            raise ValueError("delimiters must not contain /{0}/".format(Schema._baddelimiter.pattern))
+        self._delimiter = value
 
     @property
     def schema(self):
@@ -1978,15 +2000,9 @@ class Dataset(object):
 
     @name.setter
     def name(self, value):
-        if value is None:
-            self._name = value
-            return
-        if isinstance(value, basestring):
-            match = self._identifier.match(value)
-            if match is not None and len(match.group(0)) == len(value):
-                self._name = value
-                return
-        raise TypeError("name must be None or a string matching /{0}/, not {1}".format(repr(value), self._identifier.pattern))
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("name must be None or a string, not {0}".format(repr(value)))
+        self._name = value
 
     @property
     def doc(self):
@@ -2022,6 +2038,10 @@ class Dataset(object):
         args = []
         if indent is None:
             args.append(self._schema.__repr__(indent=indent))
+        if self._prefix is not None:
+            args.append("prefix" + eq + repr(self._prefix))
+        if self._delimiter is not None:
+            args.append("delimiter" + eq + repr(self._delimiter))
         if self._partitioning is not None:
             args.append("partitioning" + eq + repr(self._partitioning))
         if self._packing is not None:
@@ -2058,6 +2078,10 @@ class Dataset(object):
 
     def tojson(self, explicit=False):
         out = {"schema": self._schema.tojson(explicit=explicit)}
+        if explicit or self._prefix is not None:
+            out["prefix"] = self._prefix
+        if explicit or self._delimiter is not None:
+            out["delimiter"] = self._delimiter
         if explicit or self._partitioning is not None:
             out["partitioning"] = self._partitioningtojson()
         if explicit or self._packing is not None:
@@ -2082,11 +2106,13 @@ class Dataset(object):
     def fromjson(data):
         if isinstance(data, dict):
             schema = Schema.fromjson(data["schema"])
+            prefix = data.get("prefix", None)
+            delimiter = data.get("delimiter", None)
             partitioning = Dataset._partitioningfromjson(data.get("partitioning", None))
             packing = Dataset._packingfromjson(data.get("packing", None))
             name = data.get("data", None)
             doc = data.get("doc", None)
             metadata = data.get("metadata", None)
-            return Dataset(schema, partitioning=partitioning, packing=packing, name=name, doc=doc, metadata=metadata)
+            return Dataset(schema, prefix=prefix, delimiter=delimiter, partitioning=partitioning, packing=packing, name=name, doc=doc, metadata=metadata)
         else:
             raise TypeError("JSON for Dataset must be a dict, not {0}".format(repr(data)))

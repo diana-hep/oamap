@@ -39,6 +39,8 @@ import numpy
 import oamap.schema
 import oamap.generator
 import oamap.proxy
+import oamap.fill
+import oamap.inference
 
 class DBMFile(object):
     DATASET      = "@-"
@@ -63,7 +65,14 @@ class DBMFile(object):
         return self
 
     def __exit__(self, *args, **kwds):
+        if not self.dbm.isOpen():
+            self.dbm.close()
+
+    def close(self):
         self.dbm.close()
+
+    def sync(self):
+        self.dbm.sync()
 
     def iterkeys(self):
         for key in self.dbm.keys():
@@ -88,7 +97,10 @@ class DBMFile(object):
         return list(self.iteritems())
 
     def __iter__(self):
-        return iterkeys()
+        return self.iterkeys()
+
+    def __len__(self):
+        return sum(1 for x in self.iterkeys())
 
     def dataset(self, key):
         return oamap.schema.Dataset.fromjsonstring(self.dbm[self.DATASET + key])
@@ -99,34 +111,163 @@ class DBMFile(object):
     def __contains__(self, key):
         return self.DATASET + key in self.dbm
 
+    def get(self, key, default=None):
+        if key in self:
+            return self[key]
+        else:
+            return default
+
     def __getitem__(self, key):
         dataset = self.dataset(key)
+
+        if dataset.prefix is None:
+            prefix = key
+        else:
+            prefix = dataset.prefix
 
         partitioning = dataset.partitioning
         if isinstance(partitioning, oamap.schema.ExternalPartitioning):
             partitioning = self.partitioning(partitioning.lookup)
 
-        if partitioning is None:
-            return dataset.schema(self.ArrayDict(self, lambda key: key))
+        generator = dataset.schema.generator(prefix=prefix, delimiter=dataset.delimiter)
 
+        if partitioning is None:
+            return generator(self.ArrayDict(self, lambda key: key))
         else:
             def makeproxy(i, size):
-                generator = dataset.schema.generator()
                 arrays = self.ArrayDict(self, lambda key: partitioning.arrayid(key, i))
                 cache = oamap.generator.Cache(generator._cachelen)
                 return oamap.proxy.ListProxy(array, cache, 0, 1, size)
 
             listproxies = []
-            for i in range(len(partitioning.offsets) - 1):
+            for i in range(partitioning.numpartitions):
                 listproxies.append(makeproxy(i, partitioning.offsets[i + 1] - partitioning.offsets[i]))
 
             return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitioning.offsets)
 
+    def set(self, key, value, schema=None, limititems=None, limitbytes=None, pointer_fromequal=False):
+        if key in self:
+            del self[key]
+            
+        if schema is None:
+            schema = oamap.inference.fromdata(value, limititems=limititems)
+
+        if isinstance(schema, oamap.schema.Dataset):
+            dataset = schema
+            schema = dataset.schema
+        else:
+            dataset = oamap.schema.Dataset(schema, prefix=key)
+
+        if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
+            partitioning = oamap.schema.PrefixPartitioning()
+            if dataset.delimiter is not None:
+                partitioning.delimiter = dataset.delimiter
+        else:
+            partitioning = dataset.partitioning
+
+        if limitbytes is None:
+            arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, generator=schema, pointer_fromequal=pointer_fromequal))
+
+            if partitioning is None:
+                for n, x in arrays.items():
+                    self.dbm[self.ARRAY + n] = x
+            else:
+                for n, x in arrays.items():
+                    self.dbm[partitioning.arrayid(self.ARRAY + n, 0)] = x
+
+        else:
+            raise NotImplementedError
+
+        if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
+            self.dbm[self.PARTITIONING + key] = partitioning.tojsonstring()
+
+        self.dbm[self.DATASET + key] = dataset.tojsonstring()
+
     def __setitem__(self, key, value):
+        self.set(key, value)
+        
+    def __delitem__(self, key):
+        dataset = oamap.schema.Dataset.fromjsonstring(self.dbm.pop(self.DATASET + key))
+
+        if dataset.prefix is None:
+            prefix = key
+        else:
+            prefix = dataset.prefix
+
+        partitioning = dataset.partitioning
+        if isinstance(partitioning, oamap.schema.ExternalPartitioning):
+            partitioning = oamap.schema.Partitioning.fromjsonstring(self.dbm.pop(self.PARTITIONING + key))
+
+        generator = dataset.schema.generator(prefix=prefix, delimiter=delimiter)
+        names = generator.names()
+
+        if partitioning is None:
+            for name in names:
+                del self.dbm[self.ARRAY + name]
+        else:
+            for i in range(partitioning.numpartitions):
+                del self.dbm[self.ARRAY + partitioning.arrayid(name, i)]
+
+    def __eq__(self, other):
+        return dict(self) == dict(other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        return dict(self) < dict(other)
+
+    def __le__(self, other):
+        return self < other or self == other
+
+    def __ge__(self, other):
+        return not self < other
+
+    def __gt__(self, other):
+        return self >= other and not self == other
+
+    def __cmp__(self, other):
+        if self < other:
+            return -1
+        elif self == other:
+            return 0
+        else:
+            return 1
+
+    def clear(self):
+        for key in [x for x in self.dbm.keys() if x.startswith(self.DATASET) or x.startswith(self.PARTITIONING) or x.startswith(self.ARRAY)]:
+            del self.dbm[key]
+
+    def has_key(self, key):
+        return key in self
+
+    def update(self, items=(), **kwds):
+        if hasattr(items, "keys"):
+            for key in items.keys():
+                self[key] = items[key]
+        else:
+            for key, value in items:
+                self[key] = value
+
+        for key, value in kwds.items():
+            self[key] = value
+    
+    def pop(self, **args):
         raise NotImplementedError
 
-    def append(self, key, datum):
+    def popitem(self, **args):
         raise NotImplementedError
 
-    def extend(self, key, data):
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self[key] = default
+        return self[key]
+
+    def viewkeys(self, *args, **kwds):
+        raise NotImplementedError
+
+    def viewvalues(self, *args, **kwds):
+        raise NotImplementedError
+
+    def viewitems(self, *args, **kwds):
         raise NotImplementedError

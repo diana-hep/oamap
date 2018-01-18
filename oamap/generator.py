@@ -144,6 +144,12 @@ class Masked(object):
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
 
+    def names(self):
+        return list(self.iternames())
+
+    def iternames(self):
+        yield self.mask
+
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
@@ -167,10 +173,17 @@ class PrimitiveGenerator(Generator):
         
         return data[index]
 
+    def iternames(self):
+        yield self.data
+
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
     def __init__(self, mask, maskidx, data, dataidx, dtype, dims, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
         PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, packing, name, derivedname, schema)
+
+    def iternames(self):
+        yield self.mask
+        yield self.data
 
 ################################################################ Lists
 
@@ -200,10 +213,23 @@ class ListGenerator(Generator):
 
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
+    def iternames(self):
+        yield self.starts
+        yield self.stops
+        for x in self.content.iternames():
+            yield x
+
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
         ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema)
+
+    def iternames(self):
+        yield self.mask
+        yield self.starts
+        yield self.stops
+        for x in self.content.iternames():
+            yield x
 
 ################################################################ Unions
 
@@ -234,10 +260,25 @@ class UnionGenerator(Generator):
 
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
+    def iternames(self):
+        yield self.tags
+        yield self.offsets
+        for x in self.possibilities:
+            for y in x.iternames():
+                yield y
+
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
         UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema)
+
+    def iternames(self):
+        yield self.mask
+        yield self.tags
+        yield self.offsets
+        for x in self.possibilities:
+            for y in x.iternames():
+                yield y
 
 ################################################################ Records
 
@@ -249,10 +290,21 @@ class RecordGenerator(Generator):
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
+    def iternames(self):
+        for x in self.fields.values():
+            for y in x.iternames():
+                yield y
+
 class MaskedRecordGenerator(Masked, RecordGenerator):
     def __init__(self, mask, maskidx, fields, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
         RecordGenerator.__init__(self, fields, packing, name, derivedname, schema)
+
+    def iternames(self):
+        yield self.mask
+        for x in self.fields.values():
+            for y in x.iternames():
+                yield y
 
 ################################################################ Tuples
 
@@ -264,10 +316,21 @@ class TupleGenerator(Generator):
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
 
+    def iternames(self):
+        for x in self.types:
+            for y in x.iternames():
+                yield y
+
 class MaskedTupleGenerator(Masked, TupleGenerator):
     def __init__(self, mask, maskidx, types, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
         TupleGenerator.__init__(self, types, packing, name, derivedname, schema)
+
+    def iternames(self):
+        yield self.mask
+        for x in self.types:
+            for y in x.iternames():
+                yield y
 
 ################################################################ Pointers
 
@@ -293,10 +356,23 @@ class PointerGenerator(Generator):
 
         return self.target._generate(arrays, positions[index], cache)
 
+    def iternames(self):
+        yield self.positions
+        if self._internal:
+            for x in self.target.iternames():
+                yield x
+
 class MaskedPointerGenerator(Masked, PointerGenerator):
     def __init__(self, mask, maskidx, positions, positionsidx, target, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
         PointerGenerator.__init__(self, positions, positionsidx, target, packing, name, derivedname, schema)
+
+    def iternames(self):
+        yield self.mask
+        yield self.positions
+        if self._internal:
+            for x in self.target.iternames():
+                yield x
 
 ################################################################ for extensions: domain-specific and user
 
@@ -331,6 +407,10 @@ class ExtendedGenerator(Generator):
     @property
     def schema(self):
         return self.generic.schema
+
+    def iternames(self):
+        for x in self.generic.iternames():
+            yield x
 
     @classmethod
     def matches(cls, schema):
