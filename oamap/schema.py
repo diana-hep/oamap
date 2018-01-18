@@ -222,7 +222,7 @@ class Schema(object):
         try:
             iter(extension)
         except TypeError:
-            return []
+            raise TypeError("extension must be a module containing ExtendedGenerator classes or a dict or list (recursively) containing ExtendedGenerator classes")
         else:
             out = []
             for x in extension:
@@ -1904,10 +1904,12 @@ class ExternalPartitioning(Partitioning):
 ################################################################ Datasets are Schemas with optional Partitionings and Packings
 
 class Dataset(object):
-    def __init__(self, schema, prefix=None, delimiter=None, partitioning=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, schema, prefix=None, delimiter=None, extension=None, partitioning=None, packing=None, name=None, doc=None, metadata=None):
+        self._partitioning = None
         self.schema = schema
         self.prefix = prefix
         self.delimiter = delimiter
+        self.extension = extension
         self.partitioning = partitioning
         self.packing = packing
         self.name = name
@@ -1930,9 +1932,31 @@ class Dataset(object):
 
     @delimiter.setter
     def delimiter(self, value):
-        if value is not None or not isinstance(value, basestring) or Schema._baddelimiter.match(value) is not None:
+        if value is not None and not (isinstance(value, basestring) and Schema._baddelimiter.match(value) is not None):
             raise ValueError("delimiters must not contain /{0}/".format(Schema._baddelimiter.pattern))
         self._delimiter = value
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @extension.setter
+    def extension(self, value):
+        if value is None:
+            self._extension = None
+        elif isinstance(value, basestring):
+            self._extension = value
+        else:
+            try:
+                modules = []
+                for x in value:
+                    if not isinstance(x, basestring):
+                        raise TypeError
+                    modules.append(x)
+            except TypeError:
+                raise ValueError("extension must be None, a string, or a list of strings, not {0}".format(repr(value)))
+            else:
+                self._extension = modules
 
     @property
     def schema(self):
@@ -1956,7 +1980,7 @@ class Dataset(object):
             raise TypeError("partitioning must be None or a Partitioning, not {0}".format(repr(value)))
         if value is not None and not (isinstance(self._schema, List) and not self._schema.nullable):
             raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a non-nullable List")
-        self._partitioning = partitioning
+        self._partitioning = value
 
     @property
     def packing(self):
@@ -2042,6 +2066,8 @@ class Dataset(object):
             args.append("prefix" + eq + repr(self._prefix))
         if self._delimiter is not None:
             args.append("delimiter" + eq + repr(self._delimiter))
+        if self._extension is not None:
+            args.append("extension" + eq + repr(self._extension))
         if self._partitioning is not None:
             args.append("partitioning" + eq + repr(self._partitioning))
         if self._packing is not None:
@@ -2082,6 +2108,8 @@ class Dataset(object):
             out["prefix"] = self._prefix
         if explicit or self._delimiter is not None:
             out["delimiter"] = self._delimiter
+        if explicit or self._extension is not None:
+            out["extension"] = self._extension
         if explicit or self._partitioning is not None:
             out["partitioning"] = self._partitioningtojson()
         if explicit or self._packing is not None:
@@ -2108,6 +2136,7 @@ class Dataset(object):
             schema = Schema.fromjson(data["schema"])
             prefix = data.get("prefix", None)
             delimiter = data.get("delimiter", None)
+            extensions = data.get("extension", None)
             partitioning = Dataset._partitioningfromjson(data.get("partitioning", None))
             packing = Dataset._packingfromjson(data.get("packing", None))
             name = data.get("data", None)

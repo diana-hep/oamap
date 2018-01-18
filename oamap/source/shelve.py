@@ -28,11 +28,17 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import codecs
+import importlib
 from functools import reduce
 try:
     import anydbm as dbm
 except ImportError:
     import dbm
+try:
+    from UserDict import DictMixin as MutableMapping
+except ImportError:
+    from collections import MutableMapping
 
 import numpy
 
@@ -42,7 +48,16 @@ import oamap.proxy
 import oamap.fill
 import oamap.inference
 
-class DBMFile(object):
+def _asbytes(string):
+    if isinstance(string, bytes):
+        return string
+    else:
+        return codecs.utf_8_encode(string)[0]
+
+def open(filename, flag="c", module=dbm):
+    return DbfilenameShelf(filename, flag=flag, module=module)
+
+class DbfilenameShelf(MutableMapping):
     DATASET      = "@-"
     PARTITIONING = ":-"
     ARRAY        = "#-"
@@ -53,31 +68,40 @@ class DBMFile(object):
             self.keytrans = keytrans
 
         def __getitem__(self, key):
-            return self.dbmfile.dbm[self.dbmfile.ARRAY + self.keytrans(key)]
+            return self.dbmfile.dbm[_asbytes(self.dbmfile.ARRAY + self.keytrans(key))]
 
         def __setitem__(self, key, value):
-            self.dbmfile.dbm[self.dbmfile.ARRAY + self.keytrans(key)] = value
+            self.dbmfile.dbm[_asbytes(self.dbmfile.ARRAY + self.keytrans(key))] = value
             
     def __init__(self, filename, flag="c", module=dbm):
         self.dbm = module.open(filename, flag)
+
+    def __repr__(self):
+        return "{" + ", ".join("{0}: <Dataset>".format(repr(n)) for n in self) + "}"
+
+    @property
+    def closed(self):
+        return not self.dbm.isOpen()
+
+    def close(self):
+        self.sync()
+        self.dbm.close()
+
+    def sync(self):
+        if hasattr(self.dbm, "sync"):
+            self.dbm.sync()
 
     def __enter__(self, *args, **kwds):
         return self
 
     def __exit__(self, *args, **kwds):
-        if not self.dbm.isOpen():
-            self.dbm.close()
-
-    def close(self):
-        self.dbm.close()
-
-    def sync(self):
-        self.dbm.sync()
+        if not self.closed:
+            self.close()
 
     def iterkeys(self):
         for key in self.dbm.keys():
             if key.startswith(self.DATASET):
-                yield key[self.DATASET:]
+                yield key[len(self.DATASET):]
 
     def itervalues(self):
         for key in self.iterkeys():
@@ -103,19 +127,16 @@ class DBMFile(object):
         return sum(1 for x in self.iterkeys())
 
     def dataset(self, key):
-        return oamap.schema.Dataset.fromjsonstring(self.dbm[self.DATASET + key])
+        return oamap.schema.Dataset.fromjsonstring(codecs.utf_8_decode(self.dbm[_asbytes(self.DATASET + key)])[0])
 
-    def partitioning(self, key):
-        return oamap.schema.Partitioning.fromjsonstring(self.dbm[self.PARTITIONING + key])
-
+    def schema(self, key):
+        return self.dataset(key).schema
+   
     def __contains__(self, key):
         return self.DATASET + key in self.dbm
 
-    def get(self, key, default=None):
-        if key in self:
-            return self[key]
-        else:
-            return default
+    def has_key(self, key):
+        return key in self
 
     def __getitem__(self, key):
         dataset = self.dataset(key)
@@ -125,11 +146,23 @@ class DBMFile(object):
         else:
             prefix = dataset.prefix
 
+        if dataset.delimiter is None:
+            delimiter = "-"
+        else:
+            delimiter = dataset.delimiter
+
+        if dataset.extension is None:
+            extension = importlib.import_module("oamap.extension.common")
+        elif isinstance(dataset.extension, basestring):
+            extension = importlib.import_module(dataset.extension)
+        else:
+            extension = [importlib.import_module(x) for x in dataset.extension]
+
         partitioning = dataset.partitioning
         if isinstance(partitioning, oamap.schema.ExternalPartitioning):
-            partitioning = self.partitioning(partitioning.lookup)
+            partitioning = oamap.schema.Partitioning.fromjsonstring(codecs.utf_8_decode(self.dbm[_asbytes(self.PARTITIONING + partitioning.lookup)])[0])
 
-        generator = dataset.schema.generator(prefix=prefix, delimiter=dataset.delimiter)
+        generator = dataset.schema.generator(prefix=prefix, delimiter=delimiter, extension=extension)
 
         if partitioning is None:
             return generator(self.ArrayDict(self, lambda key: key))
@@ -158,6 +191,25 @@ class DBMFile(object):
         else:
             dataset = oamap.schema.Dataset(schema, prefix=key)
 
+        if dataset.prefix is None:
+            prefix = key
+        else:
+            prefix = dataset.prefix
+
+        if dataset.delimiter is None:
+            delimiter = "-"
+        else:
+            delimiter = dataset.delimiter
+
+        if dataset.extension is None:
+            extension = importlib.import_module("oamap.extension.common")
+        elif isinstance(dataset.extension, basestring):
+            extension = importlib.import_module(dataset.extension)
+        else:
+            extension = [importlib.import_module(x) for x in dataset.extension]
+
+        generator = schema.generator(prefix=prefix, delimiter=delimiter, extension=extension)
+
         if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
             partitioning = oamap.schema.PrefixPartitioning()
             if dataset.delimiter is not None:
@@ -166,108 +218,53 @@ class DBMFile(object):
             partitioning = dataset.partitioning
 
         if limitbytes is None:
-            arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, generator=schema, pointer_fromequal=pointer_fromequal))
+            arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, generator=generator, pointer_fromequal=pointer_fromequal))
 
             if partitioning is None:
                 for n, x in arrays.items():
-                    self.dbm[self.ARRAY + n] = x
+                    self.dbm[_asbytes(self.ARRAY + n)] = x
             else:
                 for n, x in arrays.items():
-                    self.dbm[partitioning.arrayid(self.ARRAY + n, 0)] = x
+                    self.dbm[_asbytes(partitioning.arrayid(self.ARRAY + n, 0))] = x
 
         else:
             raise NotImplementedError
 
         if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
-            self.dbm[self.PARTITIONING + key] = partitioning.tojsonstring()
+            self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
 
-        self.dbm[self.DATASET + key] = dataset.tojsonstring()
+        self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
 
     def __setitem__(self, key, value):
         self.set(key, value)
         
     def __delitem__(self, key):
-        dataset = oamap.schema.Dataset.fromjsonstring(self.dbm.pop(self.DATASET + key))
+        dataset = oamap.schema.Dataset.fromjsonstring(codecs.utf_8_decode(self.dbm.pop(self.DATASET + key))[0])
 
         if dataset.prefix is None:
             prefix = key
         else:
             prefix = dataset.prefix
 
+        if dataset.delimiter is None:
+            delimiter = "-"
+        else:
+            delimiter = dataset.delimiter
+
         partitioning = dataset.partitioning
         if isinstance(partitioning, oamap.schema.ExternalPartitioning):
-            partitioning = oamap.schema.Partitioning.fromjsonstring(self.dbm.pop(self.PARTITIONING + key))
+            partitioning = oamap.schema.Partitioning.fromjsonstring(codecs.utf_8_decode(self.dbm.pop(self.PARTITIONING + key))[0])
 
         generator = dataset.schema.generator(prefix=prefix, delimiter=delimiter)
         names = generator.names()
 
         if partitioning is None:
             for name in names:
-                del self.dbm[self.ARRAY + name]
+                del self.dbm[_asbytes(self.ARRAY + name)]
         else:
             for i in range(partitioning.numpartitions):
-                del self.dbm[self.ARRAY + partitioning.arrayid(name, i)]
-
-    def __eq__(self, other):
-        return dict(self) == dict(other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __lt__(self, other):
-        return dict(self) < dict(other)
-
-    def __le__(self, other):
-        return self < other or self == other
-
-    def __ge__(self, other):
-        return not self < other
-
-    def __gt__(self, other):
-        return self >= other and not self == other
-
-    def __cmp__(self, other):
-        if self < other:
-            return -1
-        elif self == other:
-            return 0
-        else:
-            return 1
+                del self.dbm[_asbytes(self.ARRAY + partitioning.arrayid(name, i))]
 
     def clear(self):
         for key in [x for x in self.dbm.keys() if x.startswith(self.DATASET) or x.startswith(self.PARTITIONING) or x.startswith(self.ARRAY)]:
-            del self.dbm[key]
-
-    def has_key(self, key):
-        return key in self
-
-    def update(self, items=(), **kwds):
-        if hasattr(items, "keys"):
-            for key in items.keys():
-                self[key] = items[key]
-        else:
-            for key, value in items:
-                self[key] = value
-
-        for key, value in kwds.items():
-            self[key] = value
-    
-    def pop(self, **args):
-        raise NotImplementedError
-
-    def popitem(self, **args):
-        raise NotImplementedError
-
-    def setdefault(self, key, default=None):
-        if key not in self:
-            self[key] = default
-        return self[key]
-
-    def viewkeys(self, *args, **kwds):
-        raise NotImplementedError
-
-    def viewvalues(self, *args, **kwds):
-        raise NotImplementedError
-
-    def viewitems(self, *args, **kwds):
-        raise NotImplementedError
+            del self.dbm[_asbytes(key)]

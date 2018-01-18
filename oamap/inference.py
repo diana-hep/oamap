@@ -30,11 +30,15 @@
 
 import re
 import numbers
+import sys
 
 import numpy
 
 import oamap.schema
 from oamap.schema import OrderedDict
+
+if sys.version_info[0] > 2:
+    basestring = str
 
 ################################################################ inferring schemas from data
 
@@ -131,6 +135,13 @@ def fromdata(obj, limititems=None):
                 t = numpy.complex128
             return oamap.schema.Primitive(numpy.dtype(t), nullable=self.nullable)
 
+    class String(Intermediate):
+        def __init__(self, nullable, utf8):
+            Intermediate.__init__(self, nullable)
+            self.utf8 = utf8
+        def resolve(self):
+            return oamap.schema.List(oamap.schema.Primitive(numpy.uint8), nullable=self.nullable, name=("UTF8String" if self.utf8 else "ByteString"))
+
     class IntermediateList(Intermediate):
         def __init__(self, nullable, content):
             Intermediate.__init__(self, nullable)
@@ -185,6 +196,9 @@ def fromdata(obj, limititems=None):
 
         elif isinstance(x, Number) and isinstance(y, Number):
             return Number(nullable, min(x.min, y.min), max(x.max, y.max), x.whole and y.whole, x.real and y.real)
+
+        elif isinstance(x, String) and isinstance(y, String):
+            return String(nullable, x.utf8 or y.utf8)
 
         elif isinstance(x, IntermediateList) and isinstance(y, IntermediateList):
             return IntermediateList(nullable, unify2(x.content, y.content))
@@ -259,6 +273,12 @@ def fromdata(obj, limititems=None):
 
         elif isinstance(obj, numbers.Complex):
             return Number(False, float("-inf"), float("inf"), False, False)
+
+        elif isinstance(obj, bytes):
+            return String(False, False)
+
+        elif isinstance(obj, basestring):
+            return String(False, True)
 
         elif isinstance(obj, dict):
             return IntermediateRecord(False, dict((n, buildintermediate(x, limititems, memo)) for n, x in obj.items()), None)
