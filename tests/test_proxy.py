@@ -72,7 +72,7 @@ class TestProxy(unittest.TestCase):
 
     def test_Primitive(self):
         self.assertEqual(Primitive("f8")({"object-Df8": [3.14]}), 3.14)
-        self.assertEqual(Primitive("f8", dims=(2, 2))({"object-Df8-2-2": [[[1, 2], [3, 4]]]}).tolist(), [[1, 2], [3, 4]])
+        self.assertEqual(Primitive("f8", dims=(2, 2))({"object-Df8-2-2": [[[1, 2], [3, 4]]]}), [[1, 2], [3, 4]])
         self.assertEqual(Primitive("f8", nullable=True)({"object-Df8": [], "object-M": [-1]}), None)
         self.assertEqual(Primitive("f8", nullable=True)({"object-Df8": [3.14], "object-M": [0]}), 3.14)
 
