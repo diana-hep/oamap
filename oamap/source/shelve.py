@@ -29,7 +29,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import codecs
-import importlib
 from functools import reduce
 try:
     import anydbm as dbm
@@ -39,6 +38,14 @@ try:
     from UserDict import DictMixin as MutableMapping
 except ImportError:
     from collections import MutableMapping
+try:
+    from importlib import import_module
+except ImportError:
+    def import_module(modulename):
+        module = __import__(modulename)
+        for name in modulename.split(".")[1:]:
+            module = module.__dict__[name]
+        return module
 
 import numpy
 
@@ -152,11 +159,11 @@ class DbfilenameShelf(MutableMapping):
             delimiter = dataset.delimiter
 
         if dataset.extension is None:
-            extension = importlib.import_module("oamap.extension.common")
+            extension = import_module("oamap.extension.common")
         elif isinstance(dataset.extension, basestring):
-            extension = importlib.import_module(dataset.extension)
+            extension = import_module(dataset.extension)
         else:
-            extension = [importlib.import_module(x) for x in dataset.extension]
+            extension = [import_module(x) for x in dataset.extension]
 
         partitioning = dataset.partitioning
         if isinstance(partitioning, oamap.schema.ExternalPartitioning):
@@ -170,7 +177,7 @@ class DbfilenameShelf(MutableMapping):
             def makeproxy(i, size):
                 arrays = self.ArrayDict(self, lambda key: partitioning.arrayid(key, i))
                 cache = oamap.generator.Cache(generator._cachelen)
-                return oamap.proxy.ListProxy(array, cache, 0, 1, size)
+                return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
 
             listproxies = []
             for i in range(partitioning.numpartitions):
@@ -178,7 +185,7 @@ class DbfilenameShelf(MutableMapping):
 
             return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitioning.offsets)
 
-    def set(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
+    def put(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
         if schema is None:
             schema = oamap.inference.fromdata(value, limit=inferencelimit)
         if partitionlimit is not None:
@@ -206,16 +213,16 @@ class DbfilenameShelf(MutableMapping):
             delimiter = dataset.delimiter
 
         if dataset.extension is None:
-            extension = importlib.import_module("oamap.extension.common")
+            extension = import_module("oamap.extension.common")
         elif isinstance(dataset.extension, basestring):
-            extension = importlib.import_module(dataset.extension)
+            extension = import_module(dataset.extension)
         else:
-            extension = [importlib.import_module(x) for x in dataset.extension]
+            extension = [import_module(x) for x in dataset.extension]
 
         generator = schema.generator(prefix=prefix, delimiter=delimiter, extension=extension)
 
         if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
-            partitioning = oamap.schema.PrefixPartitioning()
+            partitioning = oamap.schema.PrefixPartitioning([0])
             if dataset.delimiter is not None:
                 partitioning.delimiter = dataset.delimiter
         else:
@@ -232,7 +239,7 @@ class DbfilenameShelf(MutableMapping):
                     self.dbm[_asbytes(self.ARRAY + n)] = x
             else:
                 for n, x in arrays.items():
-                    self.dbm[_asbytes(partitioning.arrayid(self.ARRAY + n, 0))] = x
+                    self.dbm[_asbytes(self.ARRAY + partitioning.arrayid(n, 0))] = x
 
             if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
                 self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
@@ -253,15 +260,16 @@ class DbfilenameShelf(MutableMapping):
 
             entry = 0
             for partitionid, (numentries, arrays) in enumerate(oamap.fill.fromiterdata(values, generator=generator, limit=partitionlimit, pointer_fromequal=pointer_fromequal)):
-                for n, x in arrays.items():
-                    self.dbm[_asbytes(partitioning.arrayid(self.ARRAY + n, partitionid))] = x
-
                 entry += numentries
                 partitioning._offsets.append(entry)
+
+                for n, x in arrays.items():
+                    self.dbm[_asbytes(self.ARRAY + partitioning.arrayid(n, partitionid))] = x
+
                 self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
 
     def __setitem__(self, key, value):
-        self.set(key, value)
+        self.put(key, value)
         
     def __delitem__(self, key):
         dataset = oamap.schema.Dataset.fromjsonstring(codecs.utf_8_decode(self.dbm.pop(self.DATASET + key))[0])

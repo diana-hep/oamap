@@ -69,3 +69,16 @@ class TestShelve(unittest.TestCase):
         finally:
             d.close()
             shutil.rmtree(tmpdir)
+
+    def test_partitioned(self):
+        try:
+            tmpdir = tempfile.mkdtemp()
+            d = oamap.source.shelve.open(os.path.join(tmpdir, "database"))
+
+            d.put("test", range(100), schema=List(Primitive("u1")), partitionlimit=lambda entries, arrayitems, arraybytes: entries <= 30)
+
+            self.assertEqual(list(d["test"]), list(range(100)))
+
+        finally:
+            d.close()
+            shutil.rmtree(tmpdir)

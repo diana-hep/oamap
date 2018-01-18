@@ -170,11 +170,11 @@ def _fromdata_fill(obj, gen, fillables, targetids, pointerobjs, at, pointerat):
         try:
             if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
                 raise TypeError
-            iter(obj)
+            it = iter(obj)
         except TypeError:
             raise TypeError("cannot fill {0} where expecting type {1} at {2}".format(repr(obj), gen.schema, at))
         else:
-            for x in obj:
+            for x in it:
                 _fromdata_fill(x, gen.content, fillables, targetids, pointerobjs, at + (stop - start,), pointerat)
                 stop += 1
 
@@ -296,11 +296,10 @@ def fromdatamore(value, fillables, generator=None, pointer_fromequal=False):
 def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
     if generator is None:
         generator = oamap.inference.fromdata(values).generator()
-    if not isinstance(generator, oamap.generator.ListGenerator):
-        raise TypeError("non-Lists cannot be filled iteratively")
-
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
+    if not isinstance(generator, oamap.generator.ListGenerator):
+        raise TypeError("non-Lists cannot be filled iteratively")
 
     # starting set of fillables
     fillables = oamap.fillable.arrays(generator)
@@ -318,10 +317,11 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
     targetids = dict((x, {}) for x in targetids_keys)
     pointerobjs = dict((x, []) for x in pointerobjs_keys)
 
-    entries = 0
+    start = stop = _fromdata_forefront(generator.content, fillables)
+
     for value in values:
         # prospectively fill a value
-        _fromdata_fill(value, generator, fillables, targetids, pointerobjs, (), pointerat)
+        _fromdata_fill(value, generator.content, fillables, targetids, pointerobjs, (), pointerat)
 
         # criteria for ending a limit based on forefront (_potential_ size), rather than len (_accepted_ size)
         arrayitems = {}
@@ -333,11 +333,13 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
                 arrayitems[n] = x.forefront()
             arraybytes[n] = arrayitems[n]*factor[n]
 
-        if limit(entries + 1, arrayitems, arraybytes):
+        if not limit((stop - start) + 1, arrayitems, arraybytes):
             # accepting this entry would make the limit too large
-            # yield a new limit of arrays
+            fillables[generator.starts].append(start)
+            fillables[generator.stops].append(stop)
             _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
-            yield entries, toarrays(fillables)
+            # yield a new limit of arrays
+            yield stop - start, toarrays(fillables)
 
             # and make a new set of fillables (along with everything that depends on it)
             fillables = oamap.fillable.arrays(generator)
@@ -354,15 +356,25 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
             targetids = dict((x, {}) for x in targetids_keys)
             pointerobjs = dict((x, []) for x in pointerobjs_keys)
 
+            start = stop = _fromdata_forefront(generator.content, fillables)
+
+            # really fill it in this new partition
+            _fromdata_fill(value, generator.content, fillables, targetids, pointerobjs, (), pointerat)
+            stop += 1
+            for fillable in fillables_leaf_to_root:
+                fillable.update()
+
         else:
             # else accept the data into the fillables and move on
-            entries += 1
+            stop += 1
             for fillable in fillables_leaf_to_root:
                 fillable.update()
             
     # always yield at the end
     _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
-    yield entries, toarrays(fillables)
+    fillables[generator.starts].append(start)
+    fillables[generator.stops].append(stop)
+    yield (stop - start), toarrays(fillables)
 
 ################################################################ helper functions for JSON-derived data and iterables
 

@@ -1849,7 +1849,7 @@ class ExplicitPartitioning(Partitioning):
 
 class PrefixSuffixPartitioning(Partitioning):
     def __init__(self, offsets, delimiter="-"):
-        super(ExplicitPartitioning, self).__init__(offsets)
+        super(PrefixSuffixPartitioning, self).__init__(offsets)
         self.delimiter = delimiter
 
     def _tojsonargs(self):
@@ -1868,8 +1868,9 @@ class PrefixSuffixPartitioning(Partitioning):
 
     @delimiter.setter
     def delimiter(self, value):
-        if not isinstance(value, basestring):
-            raise TypeError("delimiter must be a string, not {0}".format(repr(value)))
+        if not isinstance(value, basestring) or Schema._baddelimiter.match(value) is not None:
+            raise ValueError("delimiters must not contain /{0}/".format(Schema._baddelimiter.pattern))
+        self._delimiter = value
 
 class PrefixPartitioning(PrefixSuffixPartitioning):
     def arrayid(self, column, id):
@@ -1890,6 +1891,9 @@ class SuffixPartitioning(PrefixSuffixPartitioning):
 class ExternalPartitioning(Partitioning):
     def __init__(self, lookup):
         self.lookup = lookup
+
+    def _tojsonargs(self):
+        return [self._lookup]
 
     @property
     def lookup(self):
