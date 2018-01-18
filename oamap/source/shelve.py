@@ -96,6 +96,9 @@ class DBMFile(object):
     def partitioning(self, key):
         return oamap.schema.Partitioning.fromjsonstring(self.dbm[self.PARTITIONING + key])
 
+    def __contains__(self, key):
+        return self.DATASET + key in self.dbm
+
     def __getitem__(self, key):
         dataset = self.dataset(key)
 
@@ -120,4 +123,10 @@ class DBMFile(object):
             return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitioning.offsets)
 
     def __setitem__(self, key, value):
+        raise NotImplementedError
+
+    def append(self, key, datum):
+        raise NotImplementedError
+
+    def extend(self, key, data):
         raise NotImplementedError
