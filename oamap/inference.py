@@ -65,14 +65,14 @@ def jsonconventions(value):
 
     return recurse(value, {})
 
-def fromjson(obj, limititems=None):
-    return fromdata(jsonconventions(obj), limititems=limititems)
+def fromjson(obj, limit=None):
+    return fromdata(jsonconventions(obj), limit=limit)
 
-def fromdata(obj, limititems=None):
-    if limititems is None or (isinstance(limititems, numbers.Integral) and limititems >= 0):
+def fromdata(obj, limit=None):
+    if limit is None or (isinstance(limit, numbers.Integral) and limit >= 0):
         pass
     else:
-        raise TypeError("limititems must be None or a non-negative integer, not {0}".format(limititems))
+        raise TypeError("limit must be None or a non-negative integer, not {0}".format(limit))
 
     class Intermediate(object):
         def __init__(self, nullable):
@@ -252,7 +252,7 @@ def fromdata(obj, limititems=None):
             else:
                 return IntermediateUnion(False, flatten(distinct))
 
-    def buildintermediate(obj, limititems, memo):
+    def buildintermediate(obj, limit, memo):
         if id(obj) in memo:
             raise ValueError("cyclic reference in Python object at {0} (Pointer types cannot be inferred)".format(obj))
 
@@ -281,31 +281,31 @@ def fromdata(obj, limititems=None):
             return String(False, True)
 
         elif isinstance(obj, dict):
-            return IntermediateRecord(False, dict((n, buildintermediate(x, limititems, memo)) for n, x in obj.items()), None)
+            return IntermediateRecord(False, dict((n, buildintermediate(x, limit, memo)) for n, x in obj.items()), None)
 
         elif isinstance(obj, tuple) and hasattr(obj, "_fields"):
             # this is a namedtuple; interpret it as a Record, rather than a Tuple
-            return IntermediateRecord(False, dict((n, buildintermediate(getattr(obj, n), limititems, memo)) for n in obj._fields), obj.__class__.__name__)
+            return IntermediateRecord(False, dict((n, buildintermediate(getattr(obj, n), limit, memo)) for n in obj._fields), obj.__class__.__name__)
 
         elif isinstance(obj, tuple):
-            return IntermediateTuple(False, [buildintermediate(x, limititems, memo) for x in obj])
+            return IntermediateTuple(False, [buildintermediate(x, limit, memo) for x in obj])
 
         else:
             try:
                 limited = []
                 for x in obj:
-                    if limititems is None or len(limited) < limititems:
+                    if limit is None or len(limited) < limit:
                         limited.append(x)
                     else:
                         break
             except TypeError:
                 # not iterable, so interpret it as a Record
-                return IntermediateRecord(False, dict((n, buildintermediate(getattr(obj, n), limititems, memo)) for n in dir(obj) if not n.startswith("_") and not callable(getattr(obj, n))), obj.__class__.__name__)
+                return IntermediateRecord(False, dict((n, buildintermediate(getattr(obj, n), limit, memo)) for n in dir(obj) if not n.startswith("_") and not callable(getattr(obj, n))), obj.__class__.__name__)
             else:
                 # iterable, so interpret it as a List
                 return IntermediateList(False, unify([buildintermediate(x, None, memo) for x in obj]))
 
-    return buildintermediate(obj, limititems, set()).resolve()
+    return buildintermediate(obj, limit, set()).resolve()
 
 ################################################################ inferring schemas from a namespace
 

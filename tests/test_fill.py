@@ -44,7 +44,7 @@ class TestFill(unittest.TestCase):
             schema = oamap.inference.fromjson(value)
         if debug:
             print("schema: {0}".format(schema))
-        arrays = oamap.fill.toarrays(oamap.fill.fromjson(value, schema))
+        arrays = oamap.fill.fromjson(value, schema)
         if debug:
             print("arrays:")
             for n in sorted(arrays):
@@ -101,7 +101,7 @@ class TestFill(unittest.TestCase):
         value = Node(0, Node(1, Node(2, None)))
         value.next.next.next = value
 
-        arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, schema))
+        arrays = oamap.fill.fromdata(value, schema)
         columnar = schema(arrays)
 
         self.assertEqual(value.label, columnar.label)

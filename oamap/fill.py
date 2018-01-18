@@ -30,6 +30,7 @@
 
 import re
 import json
+from functools import reduce
 
 import oamap.generator
 import oamap.inference
@@ -40,14 +41,14 @@ def toarrays(fillables):
 
 ################################################################ Python data, possibly made by json.load
 
-def _fromdata_initialize(gen, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root):
+def _fromdata_initialize(gen, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs):
     if isinstance(gen, oamap.generator.PrimitiveGenerator):
         fillables[gen.data].revert()
         forefront = len(fillables[gen.data])
         fillables_leaf_to_root.append(fillables[gen.data])
 
     elif isinstance(gen, oamap.generator.ListGenerator):
-        _fromdata_initialize(gen.content, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root)
+        _fromdata_initialize(gen.content, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
         fillables[gen.starts].revert()
         fillables[gen.stops].revert()
         assert len(fillables[gen.starts]) == len(fillables[gen.stops])
@@ -57,7 +58,7 @@ def _fromdata_initialize(gen, generator, fillables, pointers, pointerobjs_keys, 
 
     elif isinstance(gen, oamap.generator.UnionGenerator):
         for x in gen.possibilities:
-            _fromdata_initialize(x, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root)
+            _fromdata_initialize(x, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
         fillables[gen.tags].revert()
         fillables[gen.offsets].revert()
         assert len(fillables[gen.tags]) == len(fillables[gen.offsets])
@@ -66,12 +67,12 @@ def _fromdata_initialize(gen, generator, fillables, pointers, pointerobjs_keys, 
         fillables_leaf_to_root.append(fillables[gen.offsets])
 
     elif isinstance(gen, oamap.generator.RecordGenerator):
-        uniques = set(_fromdata_initialize(x, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root) for x in gen.fields.values())
+        uniques = set(_fromdata_initialize(x, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs) for x in gen.fields.values())
         assert len(uniques) == 1
         forefront = list(uniques)[0]
 
     elif isinstance(gen, oamap.generator.TupleGenerator):
-        uniques = set(_fromdata_initialize(x, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root) for x in gen.types)
+        uniques = set(_fromdata_initialize(x, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs) for x in gen.types)
         assert len(uniques) == 1
         forefront = list(uniques)[0]
 
@@ -85,13 +86,14 @@ def _fromdata_initialize(gen, generator, fillables, pointers, pointerobjs_keys, 
         targetids_keys.append(id(gen.target))
 
         if not gen._internal:
-            _fromdata_initialize(gen.target, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root)
+            _fromdata_initialize(gen.target, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
         fillables[gen.positions].revert()
         forefront = len(fillables[gen.positions])
         fillables_leaf_to_root.append(fillables[gen.positions])
+        positions_to_pointerobjs[gen.positions] = id(gen)
 
     elif isinstance(gen, oamap.generator.ExtendedGenerator):
-        forefront = _fromdata_initialize(gen.generic, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root)
+        forefront = _fromdata_initialize(gen.generic, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
 
     else:
         raise TypeError("unrecognized generator: {0}".format(repr(gen)))
@@ -257,26 +259,23 @@ def _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, poi
 
             pointerobjs[id(pointer)] = pointerobjs2[id(pointer)]
 
-    # success! (we're still here)
-    for fillable in fillables_leaf_to_root:
-        fillable.update()
+def fromdata(value, generator=None, pointer_fromequal=False):
+    return toarrays(fromdatamore(value, oamap.fillable.arrays(generator), generator=generator, pointer_fromequal=pointer_fromequal))
 
-def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
+def fromdatamore(value, fillables, generator=None, pointer_fromequal=False):
     if generator is None:
         generator = oamap.inference.fromdata(value).generator()
 
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
 
-    if fillables is None:
-        fillables = oamap.fillable.arrays(generator)
-
     pointers = []
     pointerobjs_keys = []
     targetids_keys = []
     fillables_leaf_to_root = []
+    positions_to_pointerobjs = {}
     
-    _fromdata_initialize(generator, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root)
+    _fromdata_initialize(generator, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
 
     if _fromdata_forefront(generator, fillables) != 0 and not isinstance(generator, oamap.generator.ListGenerator):
         raise TypeError("non-Lists can only be filled from data once")
@@ -288,56 +287,104 @@ def fromdata(value, generator=None, fillables=None, pointer_fromequal=False):
     _fromdata_fill(value, generator, fillables, targetids, pointerobjs, (), pointerat)
     _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
 
+    # success! (we're still here)
+    for fillable in fillables_leaf_to_root:
+        fillable.update()
+
     return fillables
 
-def fromiterdata(values, generator=None, fillables=None, pointer_fromequal=False):
+def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
     if generator is None:
         generator = oamap.inference.fromdata(values).generator()
     if not isinstance(generator, oamap.generator.ListGenerator):
-        raise TypeError("non-Lists can only be filled from data once")
+        raise TypeError("non-Lists cannot be filled iteratively")
 
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
 
-    if fillables is None:
-        fillables = oamap.fillable.arrays(generator)
-
+    # starting set of fillables
+    fillables = oamap.fillable.arrays(generator)
+    factor = dict((n, reduce(lambda a, b: a*b, x.dims, x.dtype.itemsize)) for n, x in fillables.items())
+    
     pointers = []
     pointerobjs_keys = []
     targetids_keys = []
     fillables_leaf_to_root = []
+    positions_to_pointerobjs = {}
     
-    _fromdata_initialize(generator, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root)
+    _fromdata_initialize(generator, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
 
     pointerat = {}
     targetids = dict((x, {}) for x in targetids_keys)
     pointerobjs = dict((x, []) for x in pointerobjs_keys)
 
-    def finishpointers():
-        _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
-        pointerat.clear()
-        for x in targetids.values():
-            x.clear()
-        for x in pointerobjs.values():
-            while len(x) > 0:
-                x.pop()
-
+    entries = 0
     for value in values:
+        # prospectively fill a value
         _fromdata_fill(value, generator, fillables, targetids, pointerobjs, (), pointerat)
-        yield fillables, pointerobjs, finishpointers
+
+        # criteria for ending a limit based on forefront (_potential_ size), rather than len (_accepted_ size)
+        arrayitems = {}
+        arraybytes = {}
+        for n, x in fillables.items():
+            if n in positions_to_pointerobjs:
+                arrayitems[n] = len(pointerobjs[positions_to_pointerobjs[n]])
+            else:
+                arrayitems[n] = x.forefront()
+            arraybytes[n] = arrayitems[n]*factor[n]
+
+        if limit(entries + 1, arrayitems, arraybytes):
+            # accepting this entry would make the limit too large
+            # yield a new limit of arrays
+            _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
+            yield entries, toarrays(fillables)
+
+            # and make a new set of fillables (along with everything that depends on it)
+            fillables = oamap.fillable.arrays(generator)
+
+            pointers = []
+            pointerobjs_keys = []
+            targetids_keys = []
+            fillables_leaf_to_root = []
+            positions_to_pointerobjs = {}
+
+            _fromdata_initialize(generator, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
+
+            pointerat = {}
+            targetids = dict((x, {}) for x in targetids_keys)
+            pointerobjs = dict((x, []) for x in pointerobjs_keys)
+
+        else:
+            # else accept the data into the fillables and move on
+            entries += 1
+            for fillable in fillables_leaf_to_root:
+                fillable.update()
+            
+    # always yield at the end
+    _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
+    yield entries, toarrays(fillables)
 
 ################################################################ helper functions for JSON-derived data and iterables
 
-def fromjson(value, generator=None, fillables=None, pointer_fromequal=False):
-    return fromdata(oamap.inference.jsonconventions(value), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+def fromjson(value, generator=None, pointer_fromequal=False):
+    return fromdata(oamap.inference.jsonconventions(value), generator=generator, pointer_fromequal=pointer_fromequal)
 
-def fromjsonfile(value, generator=None, fillables=None, pointer_fromequal=False):
-    return fromdata(oamap.inference.jsonconventions(json.load(value)), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+def fromjsonfile(value, generator=None, pointer_fromequal=False):
+    return fromdata(oamap.inference.jsonconventions(json.load(value)), generator=generator, pointer_fromequal=pointer_fromequal)
 
-def fromjsonstring(value, generator=None, fillables=None, pointer_fromequal=False):
-    return fromdata(oamap.inference.jsonconventions(json.loads(value)), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+def fromjsonstring(value, generator=None, pointer_fromequal=False):
+    return fromdata(oamap.inference.jsonconventions(json.loads(value)), generator=generator, pointer_fromequal=pointer_fromequal)
 
-def fromjsonfilestream(values, generator=None, fillables=None, pointer_fromequal=False):
+def fromjsonmore(value, fillables, generator=None, pointer_fromequal=False):
+    return fromdatamore(oamap.inference.jsonconventions(value), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
+
+def fromjsonfilemore(value, fillables, generator=None, pointer_fromequal=False):
+    return fromdatamore(oamap.inference.jsonconventions(json.load(value)), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
+
+def fromjsonstringmore(value, fillables, generator=None, pointer_fromequal=False):
+    return fromdatamore(oamap.inference.jsonconventions(json.loads(value)), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
+
+def fromiterjsonfile(values, generator=None, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
     def iterator():
         j = json.JSONDecoder()
         buf = ""
@@ -354,9 +401,9 @@ def fromjsonfilestream(values, generator=None, fillables=None, pointer_fromequal
                 yield oamap.inference.jsonconventions(obj)
                 buf = buf[i:].lstrip()
 
-    return fromiterdata(iterator(), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+    return fromiterdata(iterator(), generator=generator, limit=limit, pointer_fromequal=pointer_fromequal)
 
-def fromjsonstream(values, generator=None, fillables=None, pointer_fromequal=False):
+def fromiterjson(values, generator=None, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
     def iterator():
         j = json.JSONDecoder()
         index = 0
@@ -366,8 +413,8 @@ def fromjsonstream(values, generator=None, fillables=None, pointer_fromequal=Fal
             except ValueError:
                 break
             yield oamap.inference.jsonconventions(obj)
-            _, index = fromjsonstream._pattern.match(values, index + i).span()
+            _, index = fromiterjson._pattern.match(values, index + i).span()
 
-    return fromiterdata(iterator(), generator=generator, fillables=fillables, pointer_fromequal=pointer_fromequal)
+    return fromiterdata(iterator(), generator=generator, limit=limit, pointer_fromequal=pointer_fromequal)
 
-fromjsonstream._pattern = re.compile("\s*")
+fromiterjson._pattern = re.compile("\s*")

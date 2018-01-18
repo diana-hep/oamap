@@ -46,7 +46,6 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 import oamap.fill
-import oamap.fillable
 import oamap.inference
 
 def _asbytes(string):
@@ -179,15 +178,22 @@ class DbfilenameShelf(MutableMapping):
 
             return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitioning.offsets)
 
-    def set(self, key, value, schema=None, limititems=None, limitbytes=None, pointer_fromequal=False):
+    def set(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
         if schema is None:
-            schema = oamap.inference.fromdata(value, limititems=limititems)
+            schema = oamap.inference.fromdata(value, limit=inferencelimit)
+        if partitionlimit is not None:
+            if not (isinstance(schema, oamap.schema.List) and not schema.nullable):
+                raise TypeError("if limit is not None, the schema must be a partitionable List")
+            if not callable(partitionlimit):
+                raise TypeError("partitionlimit must be None or a callable function")
 
         if isinstance(schema, oamap.schema.Dataset):
             dataset = schema
             schema = dataset.schema
         else:
             dataset = oamap.schema.Dataset(schema, prefix=key)
+            if partitionlimit is not None:
+                dataset.partitioning = oamap.schema.ExternalPartitioning(key)
 
         if dataset.prefix is None:
             prefix = key
@@ -215,8 +221,8 @@ class DbfilenameShelf(MutableMapping):
         else:
             partitioning = dataset.partitioning
 
-        if limitbytes is None:
-            arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, generator=generator, pointer_fromequal=pointer_fromequal))
+        if partitionlimit is None:
+            arrays = oamap.fill.fromdata(value, generator=generator, pointer_fromequal=pointer_fromequal)
 
             if key in self:
                 del self[key]
@@ -228,23 +234,31 @@ class DbfilenameShelf(MutableMapping):
                 for n, x in arrays.items():
                     self.dbm[_asbytes(partitioning.arrayid(self.ARRAY + n, 0))] = x
 
-        else:
-            if partitioning is None:
-                partitioning = dataset.partitioning = oamap.schema.PrefixPartitioning()
+            if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
+                self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
 
-            iter(value)
+            self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
+
+        else:
+            if not isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
+                raise TypeError("if partitionlimit is not None, data will be partitioning continuously; this requires an external partitioning")
+
+            partitioning = oamap.schema.PrefixPartitioning([0])
+
+            values = iter(value)
             if key in self:
                 del self[key]
-
-            for fillables, pointerobjs, finishpointers in oamap.fill.fromiterdata(value, generator=generator, pointer_fromequal=pointer_fromequal):
-                if any(len(x) > limitbytes for x in list(fillables.values()) + list(pointerobjs.values())):
-                    finishpointers()
-                    # HERE: write a partition
-
-        if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
+            self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
             self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
 
-        self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
+            entry = 0
+            for partitionid, (numentries, arrays) in enumerate(oamap.fill.fromiterdata(values, generator=generator, limit=partitionlimit, pointer_fromequal=pointer_fromequal)):
+                for n, x in arrays.items():
+                    self.dbm[_asbytes(partitioning.arrayid(self.ARRAY + n, partitionid))] = x
+
+                entry += numentries
+                partitioning._offsets.append(entry)
+                self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
 
     def __setitem__(self, key, value):
         self.set(key, value)
