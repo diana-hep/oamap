@@ -1880,12 +1880,26 @@ class PrefixPartitioning(PrefixSuffixPartitioning):
             raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
 
 class SuffixPartitioning(PrefixSuffixPartitioning):
-    def array(self, column, id):
+    def arrayid(self, column, id):
         super(SuffixPartitioning, self).arrayid(column, id)
         if 0 <= id < self.numpartitions:
             return column + self._delimiter + repr(id)
         else:
             raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+class ExternalPartitioning(Partitioning):
+    def __init__(self, lookup):
+        self.lookup = lookup
+
+    @property
+    def lookup(self):
+        return self._lookup
+
+    @lookup.setter
+    def lookup(self, value):
+        if not isinstance(value, basestring):
+            raise TypeError("lookup must be a string, not {0}".format(repr(value)))
+        self._lookup = value
 
 ################################################################ Datasets are Schemas with optional Partitionings and Packings
 
@@ -1906,8 +1920,8 @@ class Dataset(object):
     def schema(self, value):
         if not isinstance(value, Schema):
             raise TypeError("schema must be a Schema, not {0}".format(repr(value)))
-        if self._partitioning is not None and not isinstance(value, List):
-            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a List")
+        if self._partitioning is not None and not (isinstance(value, List) and not value.nullable):
+            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a non-nullable List")
         self._schema = value
 
     @property
@@ -1918,8 +1932,8 @@ class Dataset(object):
     def partitioning(self, value):
         if not (value is None or isinstance(value, Partitioning)):
             raise TypeError("partitioning must be None or a Partitioning, not {0}".format(repr(value)))
-        if value is not None and not isinstance(self._schema, List):
-            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a List")
+        if value is not None and not (isinstance(self._schema, List) and not self._schema.nullable):
+            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a non-nullable List")
         self._partitioning = partitioning
 
     @property

@@ -97,8 +97,12 @@ class Generator(object):
             out = dict((name, arrays[name]) for name in name2idx)
 
         for name, array in out.items():
+            if isinstance(array, bytes):
+                array = numpy.frombuffer(array, dtypes[name]).reshape((-1,) + dims[name])
+
             if not isinstance(array, numpy.ndarray) or array.dtype != dtypes[name]:
                 array = numpy.array(array, dtype=dtypes[name])
+
             if array.shape[1:] != dims[name]:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), array.shape[1:], dims[name]))
 

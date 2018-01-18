@@ -423,7 +423,8 @@ class ParquetFile(object):
         if hasattr(self, "memmap"):
             pass   # don't close a memory map
         else:
-            self.file.close()
+            if not self.file.closed:
+                self.file.close()
 
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
