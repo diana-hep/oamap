@@ -46,6 +46,7 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 import oamap.fill
+import oamap.fillable
 import oamap.inference
 
 def _asbytes(string):
@@ -179,9 +180,6 @@ class DbfilenameShelf(MutableMapping):
             return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitioning.offsets)
 
     def set(self, key, value, schema=None, limititems=None, limitbytes=None, pointer_fromequal=False):
-        if key in self:
-            del self[key]
-            
         if schema is None:
             schema = oamap.inference.fromdata(value, limititems=limititems)
 
@@ -220,6 +218,9 @@ class DbfilenameShelf(MutableMapping):
         if limitbytes is None:
             arrays = oamap.fill.toarrays(oamap.fill.fromdata(value, generator=generator, pointer_fromequal=pointer_fromequal))
 
+            if key in self:
+                del self[key]
+
             if partitioning is None:
                 for n, x in arrays.items():
                     self.dbm[_asbytes(self.ARRAY + n)] = x
@@ -228,7 +229,30 @@ class DbfilenameShelf(MutableMapping):
                     self.dbm[_asbytes(partitioning.arrayid(self.ARRAY + n, 0))] = x
 
         else:
-            raise NotImplementedError
+            if partitioning is None:
+                partitioning = dataset.partitioning = oamap.schema.PrefixPartitioning()
+
+            iter(value)
+            if key in self:
+                del self[key]
+
+            fillables = oamap.fillable.arrays(generator)
+            for item in value:
+                pass
+
+
+                
+            generator.content
+
+
+
+
+
+
+
+
+
+
 
         if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
             self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
