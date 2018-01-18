@@ -236,23 +236,10 @@ class DbfilenameShelf(MutableMapping):
             if key in self:
                 del self[key]
 
-            fillables = oamap.fillable.arrays(generator)
-            for item in value:
-                pass
-
-
-                
-            generator.content
-
-
-
-
-
-
-
-
-
-
+            for fillables, pointerobjs, finishpointers in oamap.fill.fromiterdata(value, generator=generator, pointer_fromequal=pointer_fromequal):
+                if any(len(x) > limitbytes for x in list(fillables.values()) + list(pointerobjs.values())):
+                    finishpointers()
+                    # HERE: write a partition
 
         if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
             self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
