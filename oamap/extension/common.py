@@ -46,8 +46,7 @@ class _GenerateBytes(object):
                                 cache,
                                 {self.generic.mask: self.generic.maskidx},
                                 {self.generic.mask: self.generic.maskdtype},
-                                {self.generic.mask: ()},
-                                {self.generic.mask: oamap.generator.MASK})
+                                {self.generic.mask: ()})
                 mask = cache.arraylist[self.generic.maskidx]
 
             value = mask[index]
@@ -67,8 +66,7 @@ class _GenerateBytes(object):
                             cache,
                             {listgen.starts: listgen.startsidx,      listgen.stops: listgen.stopsidx,      primgen.data: primgen.dataidx},
                             {listgen.starts: listgen.posdtype,       listgen.stops: listgen.posdtype,      primgen.data: primgen.dtype},
-                            {listgen.starts: (),                     listgen.stops: (),                    primgen.data: ()},
-                            {listgen.starts: oamap.generator.STARTS, listgen.stops: oamap.generator.STOPS, primgen.data: oamap.generator.DATA})
+                            {listgen.starts: (),                     listgen.stops: (),                    primgen.data: ()})
             starts = cache.arraylist[listgen.startsidx]
             stops  = cache.arraylist[listgen.stopsidx]
             data   = cache.arraylist[primgen.dataidx]

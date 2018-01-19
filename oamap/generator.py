@@ -38,33 +38,23 @@ if sys.version_info[0] > 2:
     basestring = str
 
 # for sources that perform specialized actions on particular kinds of arrays
-class Role(object):
-    def __init__(self, name):
-        self._name = name
+class Role(str):
     def __repr__(self):
-        return self._name
-    def __eq__(self, other):
-        return self is other
-    def __ne__(self, other):
-        return self is not other
+        return "{0}({1})".format(self.__class__.__name__, repr(str(self)))
     def __hash__(self):
-        return id(self)
+        return hash((Role, str(self)))
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and str(self) == str(other)
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
-MASK      = Role("MASK")
-DATA      = Role("DATA")
-STARTS    = Role("STARTS")
-STOPS     = Role("STOPS")
-TAGS      = Role("TAGS")
-OFFSETS   = Role("OFFSETS")
-POSITIONS = Role("POSITIONS")
-
-Role.byname = {"MASK":      MASK,
-               "DATA":      DATA,
-               "STARTS":    STARTS,
-               "STOPS":     STOPS,
-               "TAGS":      TAGS,
-               "OFFSETS":   OFFSETS,
-               "POSITIONS": POSITIONS}
+class MaskRole(Role): pass
+class DataRole(Role): pass
+class StartsRole(Role): pass
+class StopsRole(Role): pass
+class TagsRole(Role): pass
+class OffsetsRole(Role): pass
+class PositionsRole(Role): pass
 
 # array cache, so that arrays are only loaded once (might be an expensive network operation)
 class Cache(object):
@@ -87,14 +77,14 @@ class Cache(object):
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
-    def _getarrays(self, arrays, cache, name2idx, dtypes, dims, roles):
+    def _getarrays(self, arrays, cache, name2idx, dtypes, dims):
         if self.packing is not None:
             arrays = self.packing.anchor(arrays)
 
         if hasattr(arrays, "getall"):
-            out = arrays.getall(name2idx, roles)
+            out = arrays.getall(name2idx)
         else:
-            out = dict((name, arrays[name]) for name in name2idx)
+            out = dict((name, arrays[str(name)]) for name in name2idx)
 
         for name, array in out.items():
             if isinstance(array, bytes):
@@ -104,7 +94,7 @@ class Generator(object):
                 array = numpy.array(array, dtype=dtypes[name])
 
             if getattr(array, "shape", (-1,) + dims[name])[1:] != dims[name]:
-                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(name), array.shape[1:], dims[name]))
+                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(str(name)), array.shape[1:], dims[name]))
 
             cache.arraylist[name2idx[name]] = array
 
@@ -131,10 +121,9 @@ class Masked(object):
         if mask is None:
             self._getarrays(arrays,
                             cache,
-                            {self.mask: self.maskidx},
-                            {self.mask: self.maskdtype},
-                            {self.mask: ()},
-                            {self.mask: MASK})
+                            {MaskRole(self.mask): self.maskidx},
+                            {MaskRole(self.mask): self.maskdtype},
+                            {MaskRole(self.mask): ()})
             mask = cache.arraylist[self.maskidx]
 
         value = mask[index]
@@ -172,10 +161,9 @@ class PrimitiveGenerator(Generator):
         if data is None:
             self._getarrays(arrays,
                             cache,
-                            {self.data: self.dataidx},
-                            {self.data: self.dtype},
-                            {self.data: self.dims},
-                            {self.data: DATA})
+                            {DataRole(self.data): self.dataidx},
+                            {DataRole(self.data): self.dtype},
+                            {DataRole(self.data): self.dims})
             data = cache.arraylist[self.dataidx]
         
         return data[index]
@@ -211,10 +199,9 @@ class ListGenerator(Generator):
         if starts is None or stops is None:
             self._getarrays(arrays,
                             cache,
-                            {self.starts: self.startsidx, self.stops: self.stopsidx},
-                            {self.starts: self.posdtype, self.stops: self.posdtype},
-                            {self.starts: (), self.stops: ()},
-                            {self.starts: STARTS, self.stops: STOPS})
+                            {StartsRole(self.starts): self.startsidx, StopsRole(self.stops): self.stopsidx},
+                            {StartsRole(self.starts): self.posdtype, StopsRole(self.stops): self.posdtype},
+                            {StartsRole(self.starts): (), StopsRole(self.stops): ()})
             starts = cache.arraylist[self.startsidx]
             stops = cache.arraylist[self.stopsidx]
 
@@ -258,10 +245,9 @@ class UnionGenerator(Generator):
         if tags is None or offsets is None:
             self._getarrays(arrays,
                             cache,
-                            {self.tags: self.tagsidx, self.offsets: self.offsetsidx},
-                            {self.tags: self.tagdtype, self.offsets: self.offsetdtype},
-                            {self.tags: (), self.offsets: ()},
-                            {self.tags: TAGS, self.offsets: OFFSETS})
+                            {TagsRole(self.tags): self.tagsidx, OffsetsRole(self.offsets): self.offsetsidx},
+                            {TagsRole(self.tags): self.tagdtype, OffsetsRole(self.offsets): self.offsetdtype},
+                            {TagsRole(self.tags): (), OffsetsRole(self.offsets): ()})
             tags = cache.arraylist[self.tagsidx]
             offsets = cache.arraylist[self.offsetsidx]
 
@@ -351,10 +337,9 @@ class PointerGenerator(Generator):
         if positions is None:
             self._getarrays(arrays,
                             cache,
-                            {self.positions: self.positionsidx},
-                            {self.positions: self.posdtype},
-                            {self.positions: ()},
-                            {self.positions: POSITIONS})
+                            {PositionsRole(self.positions): self.positionsidx},
+                            {PositionsRole(self.positions): self.posdtype},
+                            {PositionsRole(self.positions): ()})
             positions = cache.arraylist[self.positionsidx]
 
         return self.target._generate(arrays, positions[index], cache)
