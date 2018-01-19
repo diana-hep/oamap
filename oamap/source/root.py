@@ -131,14 +131,17 @@ else:
                 out = oamap.schema.Record({})
 
                 for name, branch in flats:
-                    out[name.split(".")[-1]] = frominterp(name, uproot.interp.auto.interpret(branch))
+                    x = frominterp(name, uproot.interp.auto.interpret(branch))
+                    if x is not None:
+                        out[name.split(".")[-1]] = x
 
                 for leafcount, namebranches in lists.items():
                     rec = oamap.schema.Record({})
                     for name, branch in namebranches:
                         x = frominterp(name, uproot.interp.auto.interpret(branch))
-                        assert isinstance(x, oamap.schema.List)
-                        rec[name.split(".")[-1]] = x.content
+                        if x is not None:
+                            assert isinstance(x, oamap.schema.List)
+                            rec[name.split(".")[-1]] = x.content
 
                     found = False
                     for branchname, branch in self.tree.allitems():
@@ -148,7 +151,8 @@ else:
                     if not found:
                         raise ValueError("could not find a single-leaf branch corresponding to leaf count {0}".format(leafcount))
                     
-                    out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
+                    if len(rec.fields) > 0:
+                        out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
 
                 return out
 
