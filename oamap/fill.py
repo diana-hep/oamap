@@ -379,22 +379,22 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
 ################################################################ helper functions for JSON-derived data and iterables
 
 def fromjson(value, generator=None, pointer_fromequal=False):
-    return fromdata(oamap.inference.jsonconventions(value), generator=generator, pointer_fromequal=pointer_fromequal)
+    return fromdata(oamap.inference.json2python(value), generator=generator, pointer_fromequal=pointer_fromequal)
 
 def fromjsonfile(value, generator=None, pointer_fromequal=False):
-    return fromdata(oamap.inference.jsonconventions(json.load(value)), generator=generator, pointer_fromequal=pointer_fromequal)
+    return fromdata(oamap.inference.json2python(json.load(value)), generator=generator, pointer_fromequal=pointer_fromequal)
 
 def fromjsonstring(value, generator=None, pointer_fromequal=False):
-    return fromdata(oamap.inference.jsonconventions(json.loads(value)), generator=generator, pointer_fromequal=pointer_fromequal)
+    return fromdata(oamap.inference.json2python(json.loads(value)), generator=generator, pointer_fromequal=pointer_fromequal)
 
 def fromjsonmore(value, fillables, generator=None, pointer_fromequal=False):
-    return fromdatamore(oamap.inference.jsonconventions(value), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
+    return fromdatamore(oamap.inference.json2python(value), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
 
 def fromjsonfilemore(value, fillables, generator=None, pointer_fromequal=False):
-    return fromdatamore(oamap.inference.jsonconventions(json.load(value)), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
+    return fromdatamore(oamap.inference.json2python(json.load(value)), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
 
 def fromjsonstringmore(value, fillables, generator=None, pointer_fromequal=False):
-    return fromdatamore(oamap.inference.jsonconventions(json.loads(value)), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
+    return fromdatamore(oamap.inference.json2python(json.loads(value)), fillables, generator=generator, pointer_fromequal=pointer_fromequal)
 
 def fromiterjsonfile(values, generator=None, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
     def iterator():
@@ -410,7 +410,7 @@ def fromiterjsonfile(values, generator=None, limit=lambda entries, arrayitems, a
                 else:
                     buf = buf.lstrip() + extra
             else:
-                yield oamap.inference.jsonconventions(obj)
+                yield oamap.inference.json2python(obj)
                 buf = buf[i:].lstrip()
 
     return fromiterdata(iterator(), generator=generator, limit=limit, pointer_fromequal=pointer_fromequal)
@@ -424,7 +424,7 @@ def fromiterjson(values, generator=None, limit=lambda entries, arrayitems, array
                 obj, i = j.raw_decode(values[index:])
             except ValueError:
                 break
-            yield oamap.inference.jsonconventions(obj)
+            yield oamap.inference.json2python(obj)
             _, index = fromiterjson._pattern.match(values, index + i).span()
 
     return fromiterdata(iterator(), generator=generator, limit=limit, pointer_fromequal=pointer_fromequal)

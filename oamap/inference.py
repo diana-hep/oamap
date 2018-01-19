@@ -31,6 +31,7 @@
 import re
 import numbers
 import sys
+import math
 
 import numpy
 
@@ -42,12 +43,8 @@ if sys.version_info[0] > 2:
 
 ################################################################ inferring schemas from data
 
-def jsonconventions(value):
-    def recurse(value, memo):
-        if id(value) in memo:
-            return memo[id(value)]
-        memo[id(value)] = value
-
+def json2python(value):
+    def recurse(value):
         if isinstance(value, dict) and len(value) == 2 and set(value.keys()) == set(["real", "imag"]) and all(isinstance(x, (int, float)) for x in value.values()):
             return value["real"] + value["imag"]*1j
         elif value == "inf":
@@ -57,16 +54,61 @@ def jsonconventions(value):
         elif value == "nan":
             return float("nan")
         elif isinstance(value, list):
-            return [recurse(x, memo) for x in value]
+            return [recurse(x) for x in value]
         elif isinstance(value, dict):
-            return dict((n, recurse(x, memo)) for n, x in value.items())
+            return dict((n, recurse(x)) for n, x in value.items())
         else:
             return value
+    return recurse(value)
+
+def python2json(value, allowlinks=False):
+    def recurse(value, memo):
+        if id(value) in memo:
+            if allowlinks:
+                return memo[id(value)]
+            else:
+                raise TypeError("cross-linking within an object is not allowed")
+
+        if value is None:
+            memo[id(value)] = None
+
+        elif isinstance(value, numbers.Complex):
+            memo[id(value)] = {"real": float(value.real), "imag": float(value.imag)}
+
+        elif isinstance(value, numbers.Real):
+            if math.isnan(value):
+                memo[id(value)] = "nan"
+            elif math.isinf(value) and value > 0:
+                memo[id(value)] = "inf"
+            elif math.isinf(value):
+                memo[id(value)] = "-inf"
+            else:
+                memo[id(value)] = float(value)
+
+        elif isinstance(value, numbers.Integral):
+            memo[id(value)] = int(value)
+
+        elif isinstance(value, basestring):
+            memo[id(value)] = value
+
+        elif isinstance(value, dict):
+            memo[id(value)] = {}
+            for n, x in value.items():
+                if not isinstance(n, basestring):
+                    raise TypeError("dict keys for JSON must be strings")
+                memo[id(value)][n] = recurse(x, memo)
+
+        else:
+            memo[id(value)] = []
+            for x in value:
+                memo[id(value)].append(recurse(x, memo))
+
+        return memo[id(value)]
 
     return recurse(value, {})
 
 def fromjson(obj, limit=None):
-    return fromdata(jsonconventions(obj), limit=limit)
+    return fromdata(json2python(obj), limit=limit)
 
 def fromdata(obj, limit=None):
     if limit is None or (isinstance(limit, numbers.Integral) and limit >= 0):
