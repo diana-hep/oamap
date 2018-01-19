@@ -33,6 +33,7 @@ import numpy
 import oamap.schema
 import oamap.generator
 import oamap.source.packing
+import oamap.util
 from oamap.util import OrderedDict
 
 try:
@@ -49,55 +50,93 @@ else:
                 self.entrystart = entrystart
                 self.entrystop = entrystop
 
-            def getall(self, names, roles):
-                
-
-
-
-
-
-
-
-
-
-
-
-                slash2 = key.rindex("/")
-                slash1 = key[:slash2].rindex("/")
-                branchname = key[: slash1]
-                role = key[slash1 + 1 : slash2]
-                stride = key[slash2 + 1:]
-
-                if branchname == "":
-                    if role == "-B":
-                        return numpy.array([0], dtype=oamap.generator.ListGenerator.dtype)
-                    elif role == "-E":
-                        return numpy.array([self.entrystop - self.entrystart], dtype=oamap.generator.ListGenerator.dtype)
-                    else:
-                        raise KeyError(key)
-
+            def chop(self, name):
+                try:
+                    slashindex = name.rindex("/")
+                except ValueError:
+                    return str(name), None
                 else:
-                    array = self.parent.tree.array(branchname, entrystart=self.entrystart, entrystop=self.entrystop, cache=self.parent.cache, keycache=self.parent.keycache, executor=self.parent.executor)
+                    return n[:slashindex], n[slashindex + 1 :]
 
-                    if role == "-counts":
-                        return oamap.source.packing.ListCounts.fromcounts(array)
+            def getall(self, names):
+                branchnames = []
+                for name in names:
+                    if len(name) > 0:
+                        branchname, recarrayitem = self.chop(name)
+                        if branchname not in branchnames:
+                            branchnames.append(branchname)
 
-                    elif role == "-B":
-                        assert isinstance(array, uproot.interp.jagged.JaggedArray)
-                        return array.starts
+                if len(branchnames) > 0:
+                    arrays = self.parent.tree.arrays(branchnames, entrystart=self.entrystart, entrystop=self.entrystop, cache=self.parent.cache, keycache=self.parent.keycache, executor=self.parent.executor)
+                else:
+                    arrays = {}
 
-                    elif role == "-E":
-                        assert isinstance(array, uproot.interp.jagged.JaggedArray)
-                        return array.stops
-
-                    elif role == "-D":
-                        if stride == "":
-                            return array
+                out = {}
+                for name in names:
+                    if len(name) == 0:
+                        if isinstance(name, oamap.generator.StartsRole):
+                            out[name] = numpy.array([0], dtype=oamap.generator.ListGenerator.posdtype)
+                        elif isinstance(name, oamap.generator.StopsRole):
+                            out[name] = numpy.array([self.entrystop - self.entrystart], dtype=oamap.generator.ListGenerator.posdtype)
                         else:
-                            return array[stride]
+                            raise AssertionError
 
                     else:
-                        raise KeyError(key)
+                        branchname, recarrayitem = self.chop(name)
+                        array = arrays[branchname]
+                        
+                        if isinstance(array, numpy.ndarray):
+                            if isinstance(name, oamap.generator.StartsRole):
+                                if name not in out:
+                                    starts, stops = oamap.source.packing.ListCounts.fromcounts(array)
+                                    out[name] = starts
+                                    out[oamap.generator.StopsRole(name)] = stops
+
+                            elif isinstance(name, oamap.generator.StopsRole):
+                                if name not in out:
+                                    starts, stops = oamap.source.packing.ListCounts.fromcounts(array)
+                                    out[oamap.generator.StartsRole(name)] = starts
+                                    out[name] = stops
+
+                            elif isinstance(name, oamap.generator.DataRole):
+                                if recarrayitem is None:
+                                    out[name] = array
+                                else:
+                                    out[name] = array[recarrayitem]
+
+                            else:
+                                raise AssertionError
+
+                        elif isinstance(array, uproot.interp.jagged.JaggedArray):
+                            if isinstance(name, oamap.generator.StartsRole):
+                                out[name] = array.starts
+
+                            elif isinstance(name, oamap.generator.StopsRole):
+                                out[name] = array.stops
+
+                            elif isinstance(name, oamap.generator.DataRole):
+                                out[name] = array.contents
+
+                            else:
+                                raise AssertionError
+
+                        elif isinstance(array, uproot.interp.strings.Strings):
+                            if isinstance(name, oamap.generator.StartsRole):
+                                out[name] = array.jaggedarray.starts
+
+                            elif isinstance(name, oamap.generator.StopsRole):
+                                out[name] = array.jaggedarray.stops
+
+                            elif isinstance(name, oamap.generator.DataRole):
+                                out[name] = array.jaggedarray.contents
+
+                            else:
+                                raise AssertionError
+
+                        else:
+                            raise AssertionError
+
+                return out
 
         def __init__(self, tree):
             self.tree = tree
@@ -107,7 +146,7 @@ else:
             self.extension = None
             self.partitions = list(self.tree.clusters())
 
-        def arrays(self, partitionid):
+        def _arrays(self, partitionid):
             entrystart, entrystop = self.partitions[partitionid]
             return self._ArrayDict(self, entrystart, entrystop)
 
@@ -175,11 +214,14 @@ else:
                     if not found:
                         raise ValueError("could not find a single-leaf branch corresponding to leaf count {0}".format(leafcount))
                     
-                    out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, packing=oamap.source.packing.ListCounts(None))
+                    out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
 
                 return out
 
             return oamap.schema.List(recurse(self.tree), starts="", stops="")
+
+        def partition(self, partitionid):
+            return self.schema(self._arrays(partitionid))
 
         def __iter__(self):
             raise NotImplementedError

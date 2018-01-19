@@ -82,7 +82,7 @@ class Generator(object):
             arrays = self.packing.anchor(arrays)
 
         if hasattr(arrays, "getall"):
-            out = arrays.getall(name2idx)
+            out = arrays.getall(list(name2idx))
         else:
             out = dict((name, arrays[str(name)]) for name in name2idx)
 
