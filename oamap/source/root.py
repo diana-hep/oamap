@@ -28,6 +28,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import bisect
+import numbers
+
 import numpy
 
 import oamap.schema
@@ -44,6 +47,163 @@ else:
     uproot.tree.TTreeMethods.oamap = property(lambda self: TTreeMethods_oamap(self))
 
     class TTreeMethods_oamap(object):
+        def __init__(self, tree):
+            self.tree = tree
+            self.cache = {}
+            self.keycache = {}
+            self.executor = None
+            self.extension = None
+
+            offsets = [0]
+            for start, stop in self.tree.clusters():
+                offsets.append(stop)
+            self.offsets = offsets
+
+        @property
+        def offsets(self):
+            return self._offsets
+
+        @offsets.setter
+        def offsets(self, value):
+            try:
+                out = []
+                for x in value:
+                    if not (isinstance(x, numbers.Integral) and x >= 0):
+                        raise Exception
+                    if len(out) > 0 and x <= out[-1]:
+                        raise Exception
+                    out.append(x)
+                if len(out) == 0 or out[-1] > self.tree.numentries:
+                    raise Exception
+            except:
+                raise ValueError("offsets must be a list of non-negative, strictly increasing integers, all less than or equal to numentries")
+
+            self._offsets = value
+
+        def _arrays(self, partitionid):
+            entrystart, entrystop = self._offsets[partitionid], self._offsets[partitionid + 1]
+            return self._ArrayDict(self, entrystart, entrystop)
+
+        @property
+        def dataset(self):
+            return oamap.schema.Dataset(self.schema, extension=self.extension, partitioning=oamap.schema.Partitioning(""), name=self.tree.name, doc=self.tree.title)
+
+        @property
+        def schema(self):
+            def frominterp(name, interpretation):
+                if isinstance(interpretation, uproot.interp.asdtype):
+                    if interpretation.todtype.names is None:
+                        return oamap.schema.Primitive(interpretation.todtype, data=name)
+                    else:
+                        rec = oamap.schema.Record({})
+                        for n in interpretation.todtype.names:
+                            rec[n] = oamap.schema.Primitive(interpretation.todtype[n], data=(name + "/" + n))
+                        return rec
+
+                elif isinstance(interpretation, uproot.interp.asjagged):
+                    if interpretation.asdtype.todtype.names is None:
+                        return oamap.schema.List(oamap.schema.Primitive(interpretation.asdtype.todtype, data=name), starts=name, stops=name)
+                    else:
+                        rec = oamap.schema.Record({})
+                        for n in interpretation.asdtype.todtype.names:
+                            rec[n] = oamap.schema.Primitive(interpretation.asdtype.todtype[n], data=(name + "/" + n))
+                        return oamap.schema.List(rec, starts=name, stops=name)
+
+                elif isinstance(interpretation, uproot.interp.asstrings):
+                    return oamap.schema.List(oamap.schema.Primitive("u1", data=name), starts=name, stops=name, name="ByteString")
+
+                else:
+                    raise NotImplementedError
+
+            def recurse(parent):
+                flats = []
+                lists = OrderedDict()
+
+                for name, branch in parent.items():
+                    if len(branch.fLeaves) == 1 and branch.fLeaves[0].fLeafCount is not None:
+                        leafcount = branch.fLeaves[0].fLeafCount
+                        if leafcount not in lists:
+                            lists[leafcount] = []
+                        lists[leafcount].append((name, branch))
+                    else:
+                        flats.append((name, branch))
+
+                out = oamap.schema.Record({})
+
+                for name, branch in flats:
+                    out[name.split(".")[-1]] = frominterp(name, uproot.interp.auto.interpret(branch))
+
+                for leafcount, namebranches in lists.items():
+                    rec = oamap.schema.Record({})
+                    for name, branch in namebranches:
+                        x = frominterp(name, uproot.interp.auto.interpret(branch))
+                        assert isinstance(x, oamap.schema.List)
+                        rec[name.split(".")[-1]] = x.content
+
+                    found = False
+                    for branchname, branch in self.tree.allitems():
+                        if branch.fLeaves == [leafcount]:
+                            found = True
+                            break
+                    if not found:
+                        raise ValueError("could not find a single-leaf branch corresponding to leaf count {0}".format(leafcount))
+                    
+                    out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
+
+                return out
+
+            return oamap.schema.List(recurse(self.tree), starts="", stops="")
+
+        def partition(self, partitionid):
+            return self.schema(self._arrays(partitionid))
+
+        def __iter__(self):
+            for partitionid in range(len(self._offsets) - 1):
+                for x in self.partition(partitionid):
+                    return x
+
+        def __getitem__(self, index):
+            if isinstance(index, slice):
+                start, stop, step = oamap.util.slice2sss(index, self._offsets[-1])
+
+                if start == self._offsets[-1]:
+                    assert step > 0
+                    assert stop == self._offsets[-1]
+                    return oamap.proxy.PartitionedListProxy([])
+
+                elif start == -1:
+                    assert step < 0
+                    assert stop == -1
+                    return oamap.proxy.PartitionedListProxy([])
+
+                else:
+                    if step > 0:
+                        firstid = bisect.bisect_right(self._offsets, start) - 1
+                        lastid = bisect.bisect_right(self._offsets, stop) - 1
+                        if stop > self._offsets[lastid]:
+                            lastid += 1
+                    else:
+                        firstid = max(0, bisect.bisect_right(self._offsets, stop) - 1)
+                        lastid = bisect.bisect_left(self._offsets, start)
+
+                    partitions = []
+                    offsets = []
+                    for partitionid in range(firstid, lastid):
+                        partitions.append(self.partition(partitionid))
+                        offsets.append(self._offsets[partitionid])
+                    offsets.append(self._offsets[lastid])
+
+                    return oamap.proxy.PartitionedListProxy(partitions, offsets)[start:stop:step]
+
+            else:
+                normalindex = index if index >= 0 else index + self._offsets[-1]
+                if not 0 <= normalindex < self._offsets[-1]:
+                    raise IndexError("index {0} is out of bounds for size {1}".format(index, self._offsets[-1]))
+
+                partitionid = bisect.bisect_right(self._offsets, normalindex) - 1
+                localindex = normalindex - self._offsets[partitionid]
+                return self.partition(partitionid)[localindex]
+
         class _ArrayDict(object):
             def __init__(self, parent, entrystart, entrystop):
                 self.parent = parent
@@ -137,94 +297,3 @@ else:
                             raise AssertionError
 
                 return out
-
-        def __init__(self, tree):
-            self.tree = tree
-            self.cache = {}
-            self.keycache = {}
-            self.executor = None
-            self.extension = None
-            self.partitions = list(self.tree.clusters())
-
-        def _arrays(self, partitionid):
-            entrystart, entrystop = self.partitions[partitionid]
-            return self._ArrayDict(self, entrystart, entrystop)
-
-        @property
-        def dataset(self):
-            return oamap.schema.Dataset(self.schema, extension=self.extension, partitioning=oamap.schema.Partitioning(""), name=self.tree.name, doc=self.tree.title)
-
-        @property
-        def schema(self):
-            def frominterp(name, interpretation):
-                if isinstance(interpretation, uproot.interp.asdtype):
-                    if interpretation.todtype.names is None:
-                        return oamap.schema.Primitive(interpretation.todtype, data=name)
-                    else:
-                        rec = oamap.schema.Record({})
-                        for n in interpretation.todtype.names:
-                            rec[n] = oamap.schema.Primitive(interpretation.todtype[n], data=(name + "/" + n))
-                        return rec
-
-                elif isinstance(interpretation, uproot.interp.asjagged):
-                    if interpretation.asdtype.todtype.names is None:
-                        return oamap.schema.List(oamap.schema.Primitive(interpretation.asdtype.todtype, data=name), starts=name, stops=name)
-                    else:
-                        rec = oamap.schema.Record({})
-                        for n in interpretation.asdtype.todtype.names:
-                            rec[n] = oamap.schema.Primitive(interpretation.asdtype.todtype[n], data=(name + "/" + n))
-                        return oamap.schema.List(rec, starts=name, stops=name)
-
-                elif isinstance(interpretation, uproot.interp.asstrings):
-                    return oamap.schema.List(oamap.schema.Primitive("u1", data=name), starts=name, stops=name, name="ByteString")
-
-                else:
-                    raise NotImplementedError
-
-            def recurse(parent):
-                flats = []
-                lists = OrderedDict()
-
-                for name, branch in parent.items():
-                    if len(branch.fLeaves) == 1 and branch.fLeaves[0].fLeafCount is not None:
-                        leafcount = branch.fLeaves[0].fLeafCount
-                        if leafcount not in lists:
-                            lists[leafcount] = []
-                        lists[leafcount].append((name, branch))
-                    else:
-                        flats.append((name, branch))
-
-                out = oamap.schema.Record({})
-
-                for name, branch in flats:
-                    out[name.split(".")[-1]] = frominterp(name, uproot.interp.auto.interpret(branch))
-
-                for leafcount, namebranches in lists.items():
-                    rec = oamap.schema.Record({})
-                    for name, branch in namebranches:
-                        x = frominterp(name, uproot.interp.auto.interpret(branch))
-                        assert isinstance(x, oamap.schema.List)
-                        rec[name.split(".")[-1]] = x.content
-
-                    found = False
-                    for branchname, branch in self.tree.allitems():
-                        if branch.fLeaves == [leafcount]:
-                            found = True
-                            break
-                    if not found:
-                        raise ValueError("could not find a single-leaf branch corresponding to leaf count {0}".format(leafcount))
-                    
-                    out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
-
-                return out
-
-            return oamap.schema.List(recurse(self.tree), starts="", stops="")
-
-        def partition(self, partitionid):
-            return self.schema(self._arrays(partitionid))
-
-        def __iter__(self):
-            raise NotImplementedError
-
-        def __getitem__(self):
-            raise NotImplementedError
