@@ -259,6 +259,9 @@ def _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, poi
 
             pointerobjs[id(pointer)] = pointerobjs2[id(pointer)]
 
+    for fillable in fillables_leaf_to_root:
+        fillable.update()
+
 def fromdata(value, generator=None, pointer_fromequal=False):
     return toarrays(fromdatamore(value, oamap.fillable.arrays(generator), generator=generator, pointer_fromequal=pointer_fromequal))
 
@@ -286,10 +289,6 @@ def fromdatamore(value, fillables, generator=None, pointer_fromequal=False):
 
     _fromdata_fill(value, generator, fillables, targetids, pointerobjs, (), pointerat)
     _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
-
-    # success! (we're still here)
-    for fillable in fillables_leaf_to_root:
-        fillable.update()
 
     return fillables
 
@@ -371,9 +370,9 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
                 fillable.update()
             
     # always yield at the end
-    _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
     fillables[generator.starts].append(start)
     fillables[generator.stops].append(stop)
+    _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
     yield (stop - start), toarrays(fillables)
 
 ################################################################ helper functions for JSON-derived data and iterables

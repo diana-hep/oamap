@@ -30,6 +30,7 @@
 
 import bisect
 import copy
+import codecs
 import re
 import sys
 import numbers
@@ -46,6 +47,7 @@ from oamap.util import OrderedDict
 
 if sys.version_info[0] > 2:
     basestring = str
+    unicode = str
 
 # The "PLURTP" type system: Primitives, Lists, Unions, Records, Tuples, and Pointers
 
@@ -217,6 +219,9 @@ class Schema(object):
 
         else:
             raise TypeError("unrecognized type for Schema from JSON: {0}".format(repr(data)))
+
+    def deepcopy(self, **replacements):
+        return self.replace(lambda x: x, **replacements)
 
     def _normalize_extension(self, extension):
         if isinstance(extension, ModuleType):
@@ -1826,62 +1831,121 @@ class Pointer(Schema):
 
 ################################################################ Partitionings are descriptions of of to map partition numbers and column names to array names
 
-class Partitioning(object):
-    def __init__(self, offsets):
-        self.offsets = offsets
+class PartitionLookup(object):
+    dtype = numpy.dtype(numpy.int32)
+
+    def __init__(self, array, delimiter, prefix):
+        if isinstance(array, bytes):
+            array = numpy.frombuffer(array, dtype=self.dtype)
+        elif isinstance(array, basestring):
+            array = codecs.utf_8_encode(numpy.frombuffer(array, dtype=self.dtype))[0]
+
+        self.offsets = [int(x) for x in array]
+        self.delimiter = delimiter
+        self.prefix = prefix
+
+    def __array__(self):
+        return numpy.array(self.offsets, dtype=PartitionLookup.dtype)
 
     @property
-    def offsets(self):
-        return list(self._offsets)
+    def numentries(self):
+        return self.offsets[-1]
 
-    @offsets.setter
-    def offsets(self, value):
-        try:
-            last = 0
-            offsets = []
-            for x in value:
-                if not isinstance(x, numbers.Integral):
-                    raise TypeError
-                if not x >= last:
-                    raise TypeError
-                last = x
-                offsets.append(x)
-        except TypeError:
-            raise TypeError("offsets must be an iterable of increasing integers")
+    @property
+    def numpartitions(self):
+        return len(self.offsets) - 1
+
+    def id2size(self, id):
+        if 0 <= id < self.numpartitions:
+            return self.offsets[id + 1] - self.offsets[id]
         else:
-            self._offsets = offsets
+            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+    def index2id(self, index):
+        normalindex = index if index >= 0 else index + self.numentries
+        if not 0 <= normalindex < self.numentries:
+            raise IndexError("index {0} is out of bounds for size {1}".format(index, self.numentries))
+        return bisect.bisect_right(self.offsets, normalindex) - 1
+
+    def id2name(self, column, id):
+        if 0 <= id < self.numpartitions:
+            if self.prefix:
+                return "{0}{1}{2}".format(id, self.delimiter, column)
+            else:
+                return "{0}{1}part{2}".format(column, self.delimiter, id)
+        else:
+            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+    def index2name(self, column, index):
+        return self.id2name(column, self.index2id(index))
+
+    def append(self, numentries, columns):
+        self.offsets.append(self.offsets[-1] + numentries)
+
+class ExplicitPartitionLookup(PartitionLookup):
+    dtype = numpy.dtype(numpy.uint8)
+
+    def __init__(self, array):
+        assert getattr(array, "dtype", self.dtype) == self.dtype
+        assert getattr(array, "shape", (-1,))[1:] == ()
+        if isinstance(array, unicode):
+            data = json.loads(array)
+        else:
+            data = json.loads(codecs.utf_8_decode(array)[0])
+            
+        if "offsets" not in data:
+            raise ValueError("ExplicitPartitionLookup array is missing its 'offsets' field")
+        if not isinstance(data["offsets"], list) or not all(isinstance(x, int) for x in data["offsets"]):
+            raise ValueError("ExplicitPartitionLookup array 'offsets' must be a list of integers")
+        self.offsets = data["offsets"]
+
+        if "names" not in data:
+            raise ValueError("ExplicitPartitionLookup array is missing its 'names' field")
+        if not isinstance(data["names"], list) or not all(isinstance(x, dict) and all(isinstance(y, basestring) and isinstance(z, basestring) for y, z in x.items()) for x in data["names"]):
+            raise ValueError("ExplicitPartitionLookup array 'names' must be a list of string-to-string mappings")
+        self.names = data["names"]
+
+        if len(self.names) + 1 != len(self.offsets):
+            raise ValueError("ExplicitPartitionLookup array 'names' length must be one less than 'offsets'")
+
+    def __array__(self):
+        return numpy.frombuffer(codecs.utf_8_encode(json.dumps({"offsets": self.offsets, "names": self.names}))[0], dtype=self.dtype)
+
+    def id2name(self, column, id):
+        if 0 <= id < self.numpartitions:
+            return self.names[id][column]
+        else:
+            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+    def append(self, numentries, columns):
+        self.offsets.append(self.offsets[-1] + numentries)
+        self.names.append(dict((n, "{0}-{1}".format(len(self.names), n)) for n in columns))
+
+class Partitioning(object):
+    def __init__(self, key):
+        self.key = key
+
+    @property
+    def key(self):
+        return self._key
+
+    @key.setter
+    def key(self, value):
+        if not isinstance(value, basestring):
+            raise TypeError("key must be a string, not {0}".format(repr(value)))
+        self._key = value
 
     def __repr__(self):
-        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(x) for x in self._tojsonargs()))
+        return "{0}({1})".format(self.__class__.__name__, repr(self.key))
 
-    def arrayid(self, column, id):
-        if not isinstance(column, basestring):
-            raise TypeError("column must be a string, not {0}".format(repr(column)))
-        if not isinstance(id, numbers.Integral):
-            raise TypeError("id must be an integer, not {0}".format(repr(id)))
+    def empty_partitionlookup(self, delimiter):
+        return PartitionLookup([0], delimiter, True)
 
-    def arrayat(self, column, index):
-        normalindex = index if index >= 0 else index + self._offsets[-1]
-        if not 0 <= normalindex < self._offsets[-1]:
-            raise IndexError("index {0} is out of bounds for size {1}".format(index, self._offsets[-1]))
-        return arrayid(column, bisect.bisect_right(self._offsets, normalindex) - 1)
-
-    def tojsonfile(self, file, *args, **kwds):
-        json.dump(self.tojson(), file, *args, **kwds)
-
-    def tojsonstring(self, *args, **kwds):
-        return json.dumps(self.tojson(), *args, **kwds)
+    def partitionlookup(self, array, delimiter):
+        return PartitionLookup(array, delimiter, True)
 
     def tojson(self):
-        return {self.__class__.__name__: self._tojsonargs()}
-
-    @staticmethod
-    def fromjsonfile(file, *args, **kwds):
-        return Partitioning.fromjson(json.load(file, *args, **kwds))
-
-    @staticmethod
-    def fromjsonstring(data, *args, **kwds):
-        return Partitioning.fromjson(json.loads(data, *args, **kwds))
+        return {self.__class__.__name__: [self.key]}
 
     @staticmethod
     def fromjson(data):
@@ -1896,94 +1960,19 @@ class Partitioning(object):
         else:
             raise TypeError("JSON for a Partitioning must be a one-item dict, not {0}".format(repr(data)))
 
+class SuffixPartitioning(Partitioning):
+    def empty_partitionlookup(self, delimiter):
+        return PartitionLookup([0], delimiter, False)
+
+    def partitionlookup(self, array, delimiter):
+        return PartitionLookup(array, delimiter, False)
+    
 class ExplicitPartitioning(Partitioning):
-    def __init__(self, offsets, partitions):
-        super(ExplicitPartitioning, self).__init__(offsets)
-        self.partitions = partitions
+    def empty_partitionlookup(self, delimiter):
+        return ExplicitPartitionLookup(codecs.utf_8_encode(json.dumps({"offsets": [0], "names": []}))[0])
 
-    def _tojsonargs(self):
-        return [self._offsets, self._partitions]
-
-    @property
-    def partitions(self):
-        return [dict(x) for x in self._partitions]
-
-    @partitions.setter
-    def partitions(self, value):
-        try:
-            partitions = []
-            for item in value:
-                if not isinstance(item, dict) and all(isinstance(n, basestring) and isinstance(x, (basestring, int)) for n, x in item.items()):
-                    raise TypeError
-                partitions.append(item)
-        except TypeError:
-            raise TypeError("partitions must be an iterable of dicts from column names to array names or integer lookup values, not {0}".format(repr(value)))
-        self._partitions = partitions
-
-    def __repr__(self):
-        return "ExplicitPartitioning({0})".format(self._partitions)
-
-    def arrayid(self, column, id):
-        super(ExplicitPartitioning, self).arrayid(column, id)
-        return self._partitions[id][column]
-
-class PrefixSuffixPartitioning(Partitioning):
-    def __init__(self, offsets, delimiter="-"):
-        super(PrefixSuffixPartitioning, self).__init__(offsets)
-        self.delimiter = delimiter
-
-    def _tojsonargs(self):
-        out = [self._offsets]
-        if self._delimiter != "-":
-            out.append(self._delimiter)
-        return out
-
-    @property
-    def numpartitions(self):
-        return len(self._offsets) - 1
-
-    @property
-    def delimiter(self):
-        return self._delimiter
-
-    @delimiter.setter
-    def delimiter(self, value):
-        if not isinstance(value, basestring) or Schema._baddelimiter.match(value) is not None:
-            raise ValueError("delimiters must not contain /{0}/".format(Schema._baddelimiter.pattern))
-        self._delimiter = value
-
-class PrefixPartitioning(PrefixSuffixPartitioning):
-    def arrayid(self, column, id):
-        super(PrefixPartitioning, self).arrayid(column, id)
-        if 0 <= id < self.numpartitions:
-            return "{0}{1}{2}".format(id, self._delimiter, column)
-        else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-class SuffixPartitioning(PrefixSuffixPartitioning):
-    def arrayid(self, column, id):
-        super(SuffixPartitioning, self).arrayid(column, id)
-        if 0 <= id < self.numpartitions:
-            return "{0}{1}part{2}".format(column, self._delimiter, id)
-        else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-class ExternalPartitioning(Partitioning):
-    def __init__(self, lookup):
-        self.lookup = lookup
-
-    def _tojsonargs(self):
-        return [self._lookup]
-
-    @property
-    def lookup(self):
-        return self._lookup
-
-    @lookup.setter
-    def lookup(self, value):
-        if not isinstance(value, basestring):
-            raise TypeError("lookup must be a string, not {0}".format(repr(value)))
-        self._lookup = value
+    def partitionlookup(self, array, delimiter):
+        return ExplicitPartitionLookup(array)
 
 ################################################################ Datasets are Schemas with optional Partitionings and Packings
 
@@ -2066,6 +2055,18 @@ class Dataset(object):
             raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a non-nullable List")
         self._partitioning = value
 
+    def _partitioningtojson(self):
+        if self._partitioning is None:
+            return None
+        else:
+            return self._partitioning.tojson()
+
+    def _get_partitioning(self, prefix, delimiter):
+        if self._partitioning is None:
+            return Partitioning(prefix + delimiter + "K")
+        else:
+            return self._partitioning
+
     @property
     def packing(self):
         return self._packing
@@ -2075,12 +2076,6 @@ class Dataset(object):
         if not (value is None or isinstance(value, oamap.source.packing.PackedSource)):
             raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
         self._packing = value
-
-    def _partitioningtojson(self):
-        if self._partitioning is None:
-            return None
-        else:
-            return self._partitioning.tojson()
 
     @staticmethod
     def _partitioningfromjson(partitioning):
@@ -2177,6 +2172,42 @@ class Dataset(object):
         else:
             stream.write(out)
             stream.write("\n")
+
+    def copy(self, **replacements):
+        if "schema" not in replacements:
+            replacements["schema"] = self._schema
+        if "prefix" not in replacements:
+            replacements["prefix"] = self._prefix
+        if "delimiter" not in replacements:
+            replacements["delimiter"] = self._delimiter
+        if "extension" not in replacements:
+            replacements["extension"] = self._extension
+        if "partitioning" not in replacements:
+            replacements["partitioning"] = self._partitioning
+        if "packing" not in replacements:
+            replacements["packing"] = self._packing
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        if "doc" not in replacements:
+            replacements["doc"] = self._doc
+        if "metadata" not in replacements:
+            replacements["metadata"] = self._metadata
+        return Dataset(**replacements)
+
+    def deepcopy(self, **replacements):
+        return self.replace(lambda x: x, **replacements)
+
+    def replace(self, fcn, *args, **kwds):
+        return fcn(Dataset(schema=self._schema.deepcopy(),
+                           prefix=self._prefix,
+                           delimiter=self._delimiter,
+                           extension=(None if self._extension is None else list(self._extension)),
+                           partitioning=(None if self._partitioning is None else self._partitioning.__class__(self._partitioning._key)),
+                           packing=self._packingcopy(),
+                           name=self._name,
+                           doc=self._doc,
+                           metadata=copy.deepcopy(self._metadata)),
+                   *args, **kwds)
 
     def tojsonfile(self, file, *args, **kwds):
         json.dump(self.tojson(), file, *args, **kwds)

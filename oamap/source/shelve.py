@@ -65,9 +65,8 @@ def open(filename, flag="c", module=dbm):
     return DbfilenameShelf(filename, flag=flag, module=module)
 
 class DbfilenameShelf(MutableMapping):
-    DATASET      = "@-"
-    PARTITIONING = ":-"
-    ARRAY        = "#-"
+    DATASET = "@-"
+    ARRAY   = "#-"
 
     class ArrayDict(object):
         def __init__(self, dbmfile, keytrans):
@@ -133,12 +132,15 @@ class DbfilenameShelf(MutableMapping):
     def __len__(self):
         return sum(1 for x in self.iterkeys())
 
+    def schema(self, key):
+        return self.dataset(key).schema
+
     def dataset(self, key):
         return oamap.schema.Dataset.fromjsonstring(codecs.utf_8_decode(self.dbm[_asbytes(self.DATASET + key)])[0])
 
-    def schema(self, key):
-        return self.dataset(key).schema
-   
+    def setdataset(self, key, value):
+        self.dbm[_asbytes(self.DATASET + key)] = value.tojsonstring()
+            
     def __contains__(self, key):
         return self.DATASET + key in self.dbm
 
@@ -165,25 +167,22 @@ class DbfilenameShelf(MutableMapping):
         else:
             extension = [import_module(x) for x in dataset.extension]
 
-        partitioning = dataset.partitioning
-        if isinstance(partitioning, oamap.schema.ExternalPartitioning):
-            partitioning = oamap.schema.Partitioning.fromjsonstring(codecs.utf_8_decode(self.dbm[_asbytes(self.PARTITIONING + partitioning.lookup)])[0])
-
         generator = dataset.schema.generator(prefix=prefix, delimiter=delimiter, extension=extension)
 
-        if partitioning is None:
+        if dataset.partitioning is None:
             return generator(self.ArrayDict(self, lambda key: key))
         else:
+            partitionlookup = dataset.partitioning.partitionlookup(self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)], delimiter)
             def makeproxy(i, size):
-                arrays = self.ArrayDict(self, lambda key: partitioning.arrayid(key, i))
+                arrays = self.ArrayDict(self, lambda key: partitionlookup.id2name(key, i))
                 cache = oamap.generator.Cache(generator._cachelen)
                 return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
 
             listproxies = []
-            for i in range(partitioning.numpartitions):
-                listproxies.append(makeproxy(i, partitioning.offsets[i + 1] - partitioning.offsets[i]))
+            for i in range(partitionlookup.numpartitions):
+                listproxies.append(makeproxy(i, partitionlookup.id2size(i)))
 
-            return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitioning.offsets)
+            return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitionlookup.offsets)
 
     def put(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
         if schema is None:
@@ -199,8 +198,6 @@ class DbfilenameShelf(MutableMapping):
             schema = dataset.schema
         else:
             dataset = oamap.schema.Dataset(schema, prefix=key)
-            if partitionlimit is not None:
-                dataset.partitioning = oamap.schema.ExternalPartitioning(key)
 
         if dataset.prefix is None:
             prefix = key
@@ -221,58 +218,52 @@ class DbfilenameShelf(MutableMapping):
 
         generator = schema.generator(prefix=prefix, delimiter=delimiter, extension=extension)
 
-        if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
-            partitioning = oamap.schema.PrefixPartitioning([0])
-            if dataset.delimiter is not None:
-                partitioning.delimiter = dataset.delimiter
-        else:
-            partitioning = dataset.partitioning
-
         if partitionlimit is None:
             arrays = oamap.fill.fromdata(value, generator=generator, pointer_fromequal=pointer_fromequal)
 
             if key in self:
                 del self[key]
 
-            if partitioning is None:
+            if dataset.partitioning is None:
                 for n, x in arrays.items():
                     self.dbm[_asbytes(self.ARRAY + n)] = x
             else:
+                partitionlookup = dataset.partitioning.empty_partitionlookup(delimiter)
+                partitionlookup.append(arrays[generator.stops][0] - arrays[generator.starts][0], arrays.keys())
+
                 for n, x in arrays.items():
-                    self.dbm[_asbytes(self.ARRAY + partitioning.arrayid(n, 0))] = x
+                    self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, 0))] = x
+                self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup)
 
-            if isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
-                self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
-
-            self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
+            self.setdataset(key, dataset)
 
         else:
-            if not isinstance(dataset.partitioning, oamap.schema.ExternalPartitioning):
-                raise TypeError("if partitionlimit is not None, data will be partitioning continuously; this requires an external partitioning")
+            dataset = dataset.copy(partitioning=dataset._get_partitioning(prefix, delimiter))
 
-            partitioning = oamap.schema.PrefixPartitioning([0])
+            partitionlookup = dataset.partitioning.empty_partitionlookup(delimiter)
 
             values = iter(value)
             if key in self:
                 del self[key]
-            self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
-            self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
+
+            self.setdataset(key, dataset)
+            self.dbm[_asbytes(self.ARRAY + key)] = numpy.array(partitionlookup)
 
             entry = 0
             for partitionid, (numentries, arrays) in enumerate(oamap.fill.fromiterdata(values, generator=generator, limit=partitionlimit, pointer_fromequal=pointer_fromequal)):
                 entry += numentries
-                partitioning._offsets.append(entry)
+                partitionlookup.append(numentries, arrays.keys())
 
                 for n, x in arrays.items():
-                    self.dbm[_asbytes(self.ARRAY + partitioning.arrayid(n, partitionid))] = x
-
-                self.dbm[_asbytes(self.PARTITIONING + key)] = partitioning.tojsonstring()
+                    self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, partitionid))] = x
+                self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup)
 
     def __setitem__(self, key, value):
         self.put(key, value)
         
     def __delitem__(self, key):
-        dataset = oamap.schema.Dataset.fromjsonstring(codecs.utf_8_decode(self.dbm.pop(self.DATASET + key))[0])
+        dataset = self.dataset(key)
+        del self.dbm[_asbytes(self.DATASET + key)]
 
         if dataset.prefix is None:
             prefix = key
@@ -284,20 +275,20 @@ class DbfilenameShelf(MutableMapping):
         else:
             delimiter = dataset.delimiter
 
-        partitioning = dataset.partitioning
-        if isinstance(partitioning, oamap.schema.ExternalPartitioning):
-            partitioning = oamap.schema.Partitioning.fromjsonstring(codecs.utf_8_decode(self.dbm.pop(self.PARTITIONING + key))[0])
-
         generator = dataset.schema.generator(prefix=prefix, delimiter=delimiter)
         names = generator.names()
 
-        if partitioning is None:
+        if dataset.partitioning is None:
             for name in names:
                 del self.dbm[_asbytes(self.ARRAY + name)]
+
         else:
-            for i in range(partitioning.numpartitions):
-                del self.dbm[_asbytes(self.ARRAY + partitioning.arrayid(name, i))]
+            partitionlookup = dataset.partitioning.partitionlookup(self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)], delimiter)
+            del self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)]
+
+            for i in range(partitionlookup.numpartitions):
+                del self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(name, i))]
 
     def clear(self):
-        for key in [x for x in self.dbm.keys() if x.startswith(self.DATASET) or x.startswith(self.PARTITIONING) or x.startswith(self.ARRAY)]:
+        for key in [x for x in self.dbm.keys() if x.startswith(self.DATASET) or x.startswith(self.ARRAY)]:
             del self.dbm[_asbytes(key)]

@@ -36,7 +36,7 @@ import math
 import numpy
 
 import oamap.schema
-from oamap.schema import OrderedDict
+from oamap.util import OrderedDict
 
 if sys.version_info[0] > 2:
     basestring = str
