@@ -33,18 +33,24 @@ import shutil
 import tempfile
 import unittest
 
-import oamap.source.shelve
+import oamap.source.hdf5
 from oamap.proxy import tojson
 from oamap.schema import *
 
-class TestShelve(unittest.TestCase):
+class TestHDF5(unittest.TestCase):
     def runTest(self):
         pass
 
     def test_simple(self):
         try:
+            import h5py
+        except ImportError:
+            return
+
+        try:
             tmpdir = tempfile.mkdtemp()
-            d = oamap.source.shelve.open(os.path.join(tmpdir, "database"))
+            f = h5py.File(os.path.join(tmpdir, "database"), "a")
+            d = f.oamap
 
             d["one"] = 1
             self.assertEqual(d.schema("one"), Primitive("uint8"))
@@ -67,18 +73,24 @@ class TestShelve(unittest.TestCase):
             self.assertEqual(d["five"], [u"one", u"two", u"three"])
 
         finally:
-            d.close()
+            f.close()
             shutil.rmtree(tmpdir)
 
     def test_partitioned(self):
         try:
+            import h5py
+        except ImportError:
+            return
+
+        try:
             tmpdir = tempfile.mkdtemp()
-            d = oamap.source.shelve.open(os.path.join(tmpdir, "database"))
+            f = h5py.File(os.path.join(tmpdir, "database"), "a")
+            d = f.oamap
 
             d.fromdata("test", range(100), schema=List(Primitive("u1")), partitionlimit=lambda entries, arrayitems, arraybytes: entries <= 30)
 
             self.assertEqual(list(d["test"]), list(range(100)))
 
         finally:
-            d.close()
+            f.close()
             shutil.rmtree(tmpdir)

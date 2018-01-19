@@ -54,6 +54,20 @@ except ImportError:
         def __repr__(self):
             return "OrderedDict([{0}])".format(", ".join("({0}, {1})".format(repr(k), repr(v)) for k, v in self.items()))
 
+try:
+    from UserDict import DictMixin as MutableMapping
+except ImportError:
+    from collections import MutableMapping
+
+try:
+    from importlib import import_module
+except ImportError:
+    def import_module(modulename):
+        module = __import__(modulename)
+        for name in modulename.split(".")[1:]:
+            module = module.__dict__[name]
+        return module
+
 def slice2sss(index, length):
     step = 1 if index.step is None else index.step
 

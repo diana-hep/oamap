@@ -34,18 +34,6 @@ try:
     import anydbm as dbm
 except ImportError:
     import dbm
-try:
-    from UserDict import DictMixin as MutableMapping
-except ImportError:
-    from collections import MutableMapping
-try:
-    from importlib import import_module
-except ImportError:
-    def import_module(modulename):
-        module = __import__(modulename)
-        for name in modulename.split(".")[1:]:
-            module = module.__dict__[name]
-        return module
 
 import numpy
 
@@ -54,6 +42,8 @@ import oamap.generator
 import oamap.proxy
 import oamap.fill
 import oamap.inference
+from oamap.util import MutableMapping
+from oamap.util import import_module
 
 def _asbytes(string):
     if isinstance(string, bytes):
@@ -75,9 +65,6 @@ class DbfilenameShelf(MutableMapping):
 
         def __getitem__(self, key):
             return self.dbmfile.dbm[_asbytes(self.dbmfile.ARRAY + self.keytrans(key))]
-
-        def __setitem__(self, key, value):
-            self.dbmfile.dbm[_asbytes(self.dbmfile.ARRAY + self.keytrans(key))] = value
             
     def __init__(self, filename, flag="c", module=dbm):
         self.dbm = module.open(filename, flag)
@@ -137,10 +124,7 @@ class DbfilenameShelf(MutableMapping):
 
     def dataset(self, key):
         return oamap.schema.Dataset.fromjsonstring(codecs.utf_8_decode(self.dbm[_asbytes(self.DATASET + key)])[0])
-
-    def setdataset(self, key, value):
-        self.dbm[_asbytes(self.DATASET + key)] = value.tojsonstring()
-            
+   
     def __contains__(self, key):
         return self.DATASET + key in self.dbm
 
@@ -184,7 +168,7 @@ class DbfilenameShelf(MutableMapping):
 
             return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitionlookup.offsets)
 
-    def put(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
+    def fromdata(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
         if schema is None:
             schema = oamap.inference.fromdata(value, limit=inferencelimit)
         if partitionlimit is not None:
@@ -227,6 +211,7 @@ class DbfilenameShelf(MutableMapping):
             if dataset.partitioning is None:
                 for n, x in arrays.items():
                     self.dbm[_asbytes(self.ARRAY + n)] = x
+
             else:
                 partitionlookup = dataset.partitioning.empty_partitionlookup(delimiter)
                 partitionlookup.append(arrays[generator.stops][0] - arrays[generator.starts][0], arrays.keys())
@@ -235,7 +220,7 @@ class DbfilenameShelf(MutableMapping):
                     self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, 0))] = x
                 self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup)
 
-            self.setdataset(key, dataset)
+            self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
 
         else:
             dataset = dataset.copy(partitioning=dataset._get_partitioning(prefix, delimiter))
@@ -246,12 +231,10 @@ class DbfilenameShelf(MutableMapping):
             if key in self:
                 del self[key]
 
-            self.setdataset(key, dataset)
             self.dbm[_asbytes(self.ARRAY + key)] = numpy.array(partitionlookup)
+            self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
 
-            entry = 0
             for partitionid, (numentries, arrays) in enumerate(oamap.fill.fromiterdata(values, generator=generator, limit=partitionlimit, pointer_fromequal=pointer_fromequal)):
-                entry += numentries
                 partitionlookup.append(numentries, arrays.keys())
 
                 for n, x in arrays.items():
@@ -259,7 +242,7 @@ class DbfilenameShelf(MutableMapping):
                 self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup)
 
     def __setitem__(self, key, value):
-        self.put(key, value)
+        self.fromdata(key, value)
         
     def __delitem__(self, key):
         dataset = self.dataset(key)
@@ -286,8 +269,9 @@ class DbfilenameShelf(MutableMapping):
             partitionlookup = dataset.partitioning.partitionlookup(self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)], delimiter)
             del self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)]
 
-            for i in range(partitionlookup.numpartitions):
-                del self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(name, i))]
+            for name in names:
+                for i in range(partitionlookup.numpartitions):
+                    del self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(name, i))]
 
     def clear(self):
         for key in [x for x in self.dbm.keys() if x.startswith(self.DATASET) or x.startswith(self.ARRAY)]:
