@@ -164,7 +164,7 @@ else:
         def __iter__(self):
             for partitionid in range(len(self._offsets) - 1):
                 for x in self.partition(partitionid):
-                    return x
+                    yield x
 
         def __getitem__(self, index):
             if isinstance(index, slice):
