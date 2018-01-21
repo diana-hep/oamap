@@ -260,6 +260,12 @@ def _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, count
 # else:
 #     _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
 
+def open(filename, mode="r", prefix="object", delimiter="-"):
+    if mode == "r":
+        return ParquetFile(__builtins__["open"](filename, "rb"), prefix=prefix, delimiter=delimiter)
+    else:
+        raise NotImplementedError("Parquet files can only be opened for reading, for now")
+
 class ParquetFile(object):
     def __init__(self, file, prefix="object", delimiter="-"):
         # raise ImportError late, when the user actually tries to read a ParquetFile
