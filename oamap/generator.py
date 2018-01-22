@@ -59,11 +59,11 @@ class PositionsRole(Role): pass
 
 # array cache, so that arrays are only loaded once (might be an expensive network operation)
 class Cache(object):
-    def __init__(self, cachelen):
-        self.arraylist = [None] * cachelen
-        self.ptr       = numpy.zeros(cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
-        self.len       = numpy.zeros(cachelen, dtype=numpy.intp)
-        self.lock      = threading.Lock()
+    def __init__(self, generator):
+        self.arraylist = [None] * generator._cachelen
+        self.ptr       = numpy.zeros(generator._cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
+        self.len       = numpy.zeros(generator._cachelen, dtype=numpy.intp)
+        self.lock = threading.Lock()
 
     def _entercompiled(self):
         for i, x in enumerate(self.arraylist):
@@ -120,7 +120,7 @@ class Generator(object):
         self.schema = schema
 
     def __call__(self, arrays):
-        return self._generate(arrays, 0, Cache(self._cachelen))
+        return self._generate(arrays, 0, Cache(self))
 
 # mix-in for all generators of nullable types
 class Masked(object):

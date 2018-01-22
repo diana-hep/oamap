@@ -159,7 +159,7 @@ class DbfilenameShelf(MutableMapping):
             partitionlookup = dataset.partitioning.partitionlookup(self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)], delimiter)
             def makeproxy(i, size):
                 arrays = self.ArrayDict(self, lambda key: partitionlookup.id2name(key, i))
-                cache = oamap.generator.Cache(generator._cachelen)
+                cache = oamap.generator.Cache(generator)
                 return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
 
             listproxies = []

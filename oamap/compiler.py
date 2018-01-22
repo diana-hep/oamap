@@ -52,8 +52,7 @@ else:
     @numba.extending.register_model(CacheType)
     class CacheModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("cache", numba.types.intp),
-                       ("ptr", numba.types.intp),
+            members = [("ptr", numba.types.intp),
                        ("len", numba.types.intp)]
             super(CacheModel, self).__init__(dmm, fe_type, members)
 
@@ -66,20 +65,15 @@ else:
         len_val = c.pyapi.number_as_ssize_t(len_obj)
 
         cache = numba.cgutils.create_struct_proxy(cachetype)(c.context, c.builder)
-        cache.cache = c.builder.ptrtoint(cache_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         cache.ptr = c.builder.ptrtoint(ptr_val, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         cache.len = c.builder.ptrtoint(len_val, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
 
-        c.pyapi.decref(cache_obj)
         c.pyapi.decref(pair_obj)
         c.pyapi.decref(ptr_obj)
         c.pyapi.decref(len_obj)
+        c.pyapi.decref(cache_obj)
         
         return cache._getvalue()
-
-    def box_cache(context, builder, pyapi, cache_val):
-        cache = numba.cgutils.create_struct_proxy(cachetype)(context, builder, value=cache_val)
-        return builder.inttoptr(cache.cache, pyapi.pyobj)
 
     ################################################################ general routines for all types
 
@@ -175,7 +169,6 @@ else:
     def box_listproxy(typ, val, c):
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
         arrays_obj = c.builder.inttoptr(listproxy.arrays, c.pyapi.pyobj)
-        cache_obj = box_cache(c.context, c.builder, c.pyapi, listproxy.cache)
         whence_obj = c.pyapi.long_from_longlong(listproxy.whence)
         stride_obj = c.pyapi.long_from_longlong(listproxy.stride)
         length_obj = c.pyapi.long_from_longlong(listproxy.length)
@@ -183,15 +176,19 @@ else:
         listproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.ListProxy))
         generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
 
+        cache_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.generator.Cache))
+        cache_obj = c.pyapi.call_function_objargs(cache_cls, (generator_obj,))
+
         out = c.pyapi.call_function_objargs(listproxy_cls, (generator_obj, arrays_obj, cache_obj, whence_obj, stride_obj, length_obj))
 
         # c.pyapi.decref(arrays_obj)      # this reference is exported
-        # c.pyapi.decref(cache_obj)
         c.pyapi.decref(whence_obj)
         c.pyapi.decref(stride_obj)
         c.pyapi.decref(length_obj)
         c.pyapi.decref(listproxy_cls)
         # c.pyapi.decref(generator_obj)   # this reference is exported
+        c.pyapi.decref(cache_cls)
+        c.pyapi.decref(cache_obj)
         return out
 
     ################################################################ RecordProxy
@@ -247,17 +244,20 @@ else:
     def box_recordproxy(typ, val, c):
         recordproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
         arrays_obj = c.builder.inttoptr(recordproxy.arrays, c.pyapi.pyobj)
-        cache_obj = box_cache(c.context, c.builder, c.pyapi, recordproxy.cache)
         index_obj = c.pyapi.long_from_longlong(recordproxy.index)
 
         recordproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.RecordProxy))
         generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
 
+        cache_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.generator.Cache))
+        cache_obj = c.pyapi.call_function_objargs(cache_cls, (generator_obj,))
+
         out = c.pyapi.call_function_objargs(recordproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
 
         # c.pyapi.decref(arrays_obj)      # this reference is exported
-        # c.pyapi.decref(cache_obj)
         c.pyapi.decref(index_obj)
         c.pyapi.decref(recordproxy_cls)
         # c.pyapi.decref(generator_obj)   # this reference is exported
+        c.pyapi.decref(cache_cls)
+        c.pyapi.decref(cache_obj)
         return out

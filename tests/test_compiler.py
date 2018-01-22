@@ -49,12 +49,14 @@ class TestCompiler(unittest.TestCase):
             def boxing(x):
                 return x
 
-            # value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
-            value = List(Primitive(float)).fromdata([1.1, 2.2, 3.3, 4.4, 5.5])
+            value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
+            # value = List(Primitive(float)).fromdata([1.1, 2.2, 3.3, 4.4, 5.5])
+
+            print value.one, value.two
 
             for j in range(10):
                 for i in range(10):
                     value2 = boxing(value)
-                    # self.assertEqual(value.one, value2.one)
-                    # self.assertEqual(value.two, value2.two)
-                    print sys.getrefcount(value._cache), sys.getrefcount(value2._cache), value._cache, value2._cache
+                    self.assertEqual(value.one, value2.one)
+                    self.assertEqual(value.two, value2.two)
+                    print sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value2._cache), value._cache, value2._cache
