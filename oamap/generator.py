@@ -29,7 +29,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import sys
-import threading
 
 import numpy
 
@@ -61,21 +60,20 @@ class PositionsRole(Role): pass
 class Cache(object):
     def __init__(self, generator):
         self.arraylist = [None] * generator._cachelen
-        self.ptr       = numpy.zeros(generator._cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
-        self.len       = numpy.zeros(generator._cachelen, dtype=numpy.intp)
-        self.lock = threading.Lock()
 
-    def _entercompiled(self):
-        for i, x in enumerate(self.arraylist):
-            if x is None:
-                self.ptr[i] = 0
-                self.len[i] = 0
-            else:
-                if not isinstance(x, numpy.ndarray):
-                    raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
-                self.ptr[i] = x.ctypes.data
-                self.len[i] = x.shape[0]
-        return self.ptr.ctypes.data, self.len.ctypes.data
+    # def _entercompiled(self):
+    #     self.ptr       = numpy.zeros(generator._cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
+    #     self.len       = numpy.zeros(generator._cachelen, dtype=numpy.intp)
+    #     for i, x in enumerate(self.arraylist):
+    #         if x is None:
+    #             self.ptr[i] = 0
+    #             self.len[i] = 0
+    #         else:
+    #             if not isinstance(x, numpy.ndarray):
+    #                 raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
+    #             self.ptr[i] = x.ctypes.data
+    #             self.len[i] = x.shape[0]
+    #     return self.ptr.ctypes.data, self.len.ctypes.data
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
@@ -88,7 +86,6 @@ class Generator(object):
         else:
             out = dict((name, arrays[str(name)]) for name in name2idx)
 
-        out2 = {}
         for name, array in out.items():
             if isinstance(array, bytes):
                 array = numpy.frombuffer(array, dtypes[name]).reshape((-1,) + dims[name])
@@ -103,22 +100,14 @@ class Generator(object):
             if getattr(array, "shape", (-1,) + dims[name])[1:] != dims[name]:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(str(name)), array.shape[1:], dims[name]))
 
-            out2[name2idx[name]] = (array, dtypes[name])
-
-        with cache.lock:
-            if all(cache.arraylist[idx] is None and cache.ptr[idx] == 0 and cache.len[idx] == 0 for idx in out2):
-                for idx, (array, dtype) in out2.items():
-                    cache.arraylist[idx] = array
-                    if require_arrays:
-                        cache.ptr[idx] = array.ctypes.data
-                        cache.len[idx] = array.shape[0]
+            cache.arraylist[name2idx[name]] = array
 
     def __init__(self, packing, name, derivedname, schema):
         self.packing = packing
         self.name = name
         self.derivedname = derivedname
         self.schema = schema
-        self._require_array = False
+        self._required = False
 
     def __call__(self, arrays):
         return self._generate(arrays, 0, Cache(self))
