@@ -118,6 +118,7 @@ class Generator(object):
         self.name = name
         self.derivedname = derivedname
         self.schema = schema
+        self._require_array = False
 
     def __call__(self, arrays):
         return self._generate(arrays, 0, Cache(self))
