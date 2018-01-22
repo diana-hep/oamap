@@ -31,7 +31,6 @@
 import numpy
 
 import oamap.schema
-import oamap.generator
 import oamap.proxy
 import oamap.inference
 import oamap.fill
@@ -132,7 +131,7 @@ else:
                 partitionlookup = dataset.partitioning.partitionlookup(super(OAMapGroup, self).__getitem__(dataset.partitioning.key), delimiter)
                 def makeproxy(i, size):
                     arrays = self._ArrayDict(super(OAMapGroup, self), lambda key: partitionlookup.id2name(key, i))
-                    cache = oamap.generator.Cache(generator)
+                    cache = [None] * generator._cachelen
                     return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
 
                 listproxies = []

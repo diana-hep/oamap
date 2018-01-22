@@ -312,7 +312,6 @@ class Schema(object):
         for generator in allgenerators:
             generator._cachelen = cacheidx[0]
 
-        oamap.generator._uniquestr(out, set())
         return out
 
 ################################################################ Primitives can be any Numpy type

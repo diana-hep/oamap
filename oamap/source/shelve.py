@@ -38,7 +38,6 @@ except ImportError:
 import numpy
 
 import oamap.schema
-import oamap.generator
 import oamap.proxy
 import oamap.fill
 import oamap.inference
@@ -159,7 +158,7 @@ class DbfilenameShelf(MutableMapping):
             partitionlookup = dataset.partitioning.partitionlookup(self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)], delimiter)
             def makeproxy(i, size):
                 arrays = self.ArrayDict(self, lambda key: partitionlookup.id2name(key, i))
-                cache = oamap.generator.Cache(generator)
+                cache = [None] * generator._cachelen
                 return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
 
             listproxies = []

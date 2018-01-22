@@ -96,7 +96,7 @@ else:
     class RecordProxyNumbaType(numba.types.Type):
         def __init__(self, generator):
             self.generator = generator
-            super(RecordProxyNumbaType, self).__init__(name=self.generator._uniquestr)
+            super(RecordProxyNumbaType, self).__init__(name="RecordProxy-" + str(self.generator.id))
 
     @numba.extending.register_model(RecordProxyNumbaType)
     class RecordProxyModel(numba.datamodel.models.StructModel):

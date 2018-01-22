@@ -47,11 +47,14 @@ class TestCompiler(unittest.TestCase):
         if numba is not None:
             @numba.njit
             def boxing(x):
-                return x
+                return x, x
 
             value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
 
             for j in range(10):
                 for i in range(10):
-                    value2 = boxing(value)
-                    print sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value2._arrays), sys.getrefcount(value2._cache), value._arrays is value2._arrays, value._cache is value2._cache, sys.getrefcount(value._generator), sys.getrefcount(value.__class__)
+                    value2, value3 = boxing(value)
+                    self.assertTrue(value._arrays is value2._arrays)
+                    self.assertTrue(value._arrays is value3._arrays)
+                    self.assertTrue(value._cache is value2._cache)
+                    self.assertTrue(value._cache is value3._cache)

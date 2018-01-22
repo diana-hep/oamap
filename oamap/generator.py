@@ -55,16 +55,11 @@ class StopsRole(Role): pass
 class TagsRole(Role): pass
 class OffsetsRole(Role): pass
 class PositionsRole(Role): pass
-
-# array cache, so that arrays are only loaded once (might be an expensive network operation)
-class Cache(object):
-    def __init__(self, generator):
-        self.arraylist = [None] * generator._cachelen
-
+    
     # def _entercompiled(self):
     #     self.ptr       = numpy.zeros(generator._cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
     #     self.len       = numpy.zeros(generator._cachelen, dtype=numpy.intp)
-    #     for i, x in enumerate(self.arraylist):
+    #     for i, x in enumerate(self):
     #         if x is None:
     #             self.ptr[i] = 0
     #             self.len[i] = 0
@@ -77,6 +72,14 @@ class Cache(object):
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
+    _nextid = 0
+
+    @staticmethod
+    def nextid():
+        out = Generator._nextid
+        Generator._nextid += 1
+        return out
+
     def _getarrays(self, arrays, cache, name2idx, dtypes, dims, require_arrays=False):
         if self.packing is not None:
             arrays = self.packing.anchor(arrays)
@@ -100,17 +103,19 @@ class Generator(object):
             if getattr(array, "shape", (-1,) + dims[name])[1:] != dims[name]:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(str(name)), array.shape[1:], dims[name]))
 
-            cache.arraylist[name2idx[name]] = array
+            cache[name2idx[name]] = array
 
     def __init__(self, packing, name, derivedname, schema):
         self.packing = packing
         self.name = name
         self.derivedname = derivedname
         self.schema = schema
+
+        self.id = self.nextid()
         self._required = False
 
     def __call__(self, arrays):
-        return self._generate(arrays, 0, Cache(self))
+        return self._generate(arrays, 0, [None] * self._cachelen)
 
 # mix-in for all generators of nullable types
 class Masked(object):
@@ -121,15 +126,18 @@ class Masked(object):
         self.mask = mask
         self.maskidx = maskidx
 
+    def _get(self, arrays, cache):
+        self._getarrays(arrays,
+                        cache,
+                        {MaskRole(self.mask): self.maskidx},
+                        {MaskRole(self.mask): self.maskdtype},
+                        {MaskRole(self.mask): ()})
+
     def _generate(self, arrays, index, cache):
-        mask = cache.arraylist[self.maskidx]
+        mask = cache[self.maskidx]
         if mask is None:
-            self._getarrays(arrays,
-                            cache,
-                            {MaskRole(self.mask): self.maskidx},
-                            {MaskRole(self.mask): self.maskdtype},
-                            {MaskRole(self.mask): ()})
-            mask = cache.arraylist[self.maskidx]
+            self._get(arrays, cache)
+            mask = cache[self.maskidx]
 
         value = mask[index]
         if value == self.maskedvalue:
@@ -138,6 +146,14 @@ class Masked(object):
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
 
+    def _ensure(self, arrays, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if self._required and cache[self.maskidx] is None:
+            self._get(arrays, cache)
+        self.__class__.__bases__[1]._ensure(arrays, cache, memo)
+        return self._pointers(cache)
+
     def names(self):
         return list(self.iternames())
 
@@ -145,7 +161,7 @@ class Masked(object):
         yield self.mask
         for x in self.__class__.__bases__[1].iternames():
             yield x
-
+            
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
@@ -157,14 +173,14 @@ class PrimitiveGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        data = cache.arraylist[self.dataidx]
+        data = cache[self.dataidx]
         if data is None:
             self._getarrays(arrays,
                             cache,
                             {DataRole(self.data): self.dataidx},
                             {DataRole(self.data): self.dtype},
                             {DataRole(self.data): self.dims})
-            data = cache.arraylist[self.dataidx]
+            data = cache[self.dataidx]
         
         return data[index]
 
@@ -190,16 +206,16 @@ class ListGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        starts = cache.arraylist[self.startsidx]
-        stops = cache.arraylist[self.stopsidx]
+        starts = cache[self.startsidx]
+        stops = cache[self.stopsidx]
         if starts is None or stops is None:
             self._getarrays(arrays,
                             cache,
                             {StartsRole(self.starts): self.startsidx, StopsRole(self.stops): self.stopsidx},
                             {StartsRole(self.starts): self.posdtype, StopsRole(self.stops): self.posdtype},
                             {StartsRole(self.starts): (), StopsRole(self.stops): ()})
-            starts = cache.arraylist[self.startsidx]
-            stops = cache.arraylist[self.stopsidx]
+            starts = cache[self.startsidx]
+            stops = cache[self.stopsidx]
 
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
@@ -229,16 +245,16 @@ class UnionGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        tags = cache.arraylist[self.tagsidx]
-        offsets = cache.arraylist[self.offsetsidx]
+        tags = cache[self.tagsidx]
+        offsets = cache[self.offsetsidx]
         if tags is None or offsets is None:
             self._getarrays(arrays,
                             cache,
                             {TagsRole(self.tags): self.tagsidx, OffsetsRole(self.offsets): self.offsetsidx},
                             {TagsRole(self.tags): self.tagdtype, OffsetsRole(self.offsets): self.offsetdtype},
                             {TagsRole(self.tags): (), OffsetsRole(self.offsets): ()})
-            tags = cache.arraylist[self.tagsidx]
-            offsets = cache.arraylist[self.offsetsidx]
+            tags = cache[self.tagsidx]
+            offsets = cache[self.offsetsidx]
 
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
@@ -306,14 +322,14 @@ class PointerGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _generate(self, arrays, index, cache):
-        positions = cache.arraylist[self.positionsidx]
+        positions = cache[self.positionsidx]
         if positions is None:
             self._getarrays(arrays,
                             cache,
                             {PositionsRole(self.positions): self.positionsidx},
                             {PositionsRole(self.positions): self.posdtype},
                             {PositionsRole(self.positions): ()})
-            positions = cache.arraylist[self.positionsidx]
+            positions = cache[self.positionsidx]
 
         return self.target._generate(arrays, positions[index], cache)
 
@@ -420,99 +436,3 @@ class ExtendedGenerator(Generator):
                     assert pattern["type"] in ("primitive", "list", "union", "record", "tuple", "pointer")
 
         return recurse(cls.pattern, schema.tojson(explicit=True))
-        
-################################################################ for assigning unique strings to types (used to distinguish Numba types)
-
-def _firstindex(generator):
-    if isinstance(generator, Masked):
-        return generator.maskidx
-    elif isinstance(generator, PrimitiveGenerator):
-        return generator.dataidx
-    elif isinstance(generator, ListGenerator):
-        return generator.startsidx
-    elif isinstance(generator, UnionGenerator):
-        return generator.tagsidx
-    elif isinstance(generator, RecordGenerator):
-        for g in generator.fields.values():
-            return _firstindex(g)
-        return -1
-    elif isinstance(generator, TupleGenerator):
-        for g in generator.types:
-            return _firstindex(g)
-        return -1
-    elif isinstance(generator, PointerGenerator):
-        return generator.positionsidx
-    else:
-        raise AssertionError("unrecognized generator type: {0}".format(generator))
-
-def _uniquestr(generator, memo):
-    if id(generator) not in memo:
-        memo.add(id(generator))
-        givenname = "nil" if generator.name is None else repr(generator.name)
-
-        if isinstance(generator, PrimitiveGenerator):
-            generator._uniquestr = "(P {0} {1} ({2}) {3} {4})".format(givenname, repr(str(generator.dtype)), " ".join(map(repr, generator.dims)), generator.dataidx, repr(generator.data))
-
-        elif isinstance(generator, MaskedPrimitiveGenerator):
-            generator._uniquestr = "(P {0} {1} ({2}) {3} {4} {5} {6})".format(givenname, repr(str(generator.dtype)), " ".join(map(repr, generator.dims)), generator.maskidx, repr(generator.mask), generator.dataidx, repr(generator.data))
-
-        elif isinstance(generator, ListGenerator):
-            _uniquestr(generator.content, memo)
-            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5})".format(givenname, generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), generator.content._uniquestr)
-
-        elif isinstance(generator, MaskedListGenerator):
-            _uniquestr(generator.content, memo)
-            generator._uniquestr = "(L {0} {1} {2} {3} {4} {5})".format(givenname, generator.maskidx, repr(generator.mask), generator.startsidx, repr(generator.starts), generator.stopsidx, repr(generator.stops), generator.content._uniquestr)
-
-        elif isinstance(generator, UnionGenerator):
-            for t in generator.possibilities:
-                _uniquestr(t, memo)
-            generator._uniquestr = "(U {0} {1} {2} {3} {4} ({5}))".format(givenname, generator.tagsidx, repr(generator.tags), generator.offsetsidx, repr(generator.offsets), " ".join(x._uniquestr for x in generator.possibilities))
-
-        elif isinstance(generator, MaskedUnionGenerator):
-            for t in generator.possibilities:
-                _uniquestr(t, memo)
-            generator._uniquestr = "(U {0} {1} {2} {3} {4} {5} {6} ({7}))".format(givenname, generator.maskidx, repr(generator.mask), generator.tagsidx, repr(generator.tags), generator.offsetsidx, repr(generator.offsets), " ".join(x._uniquestr for x in generator.possibilities))
-
-        elif isinstance(generator, RecordGenerator):
-            for t in generator.fields.values():
-                _uniquestr(t, memo)
-            generator._uniquestr = "(R {0} ({1}))".format(givenname, " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in generator.fields.items()))
-
-        elif isinstance(generator, MaskedRecordGenerator):
-            for t in generator.fields.values():
-                _uniquestr(t, memo)
-            generator._uniquestr = "(R {0} {1} {2} ({3}))".format(givenname, generator.maskidx, repr(generator.mask), " ".join("({0} . {1})".format(repr(n), t._uniquestr) for n, t in generator.fields.items()))
-
-        elif isinstance(generator, TupleGenerator):
-            for t in generator.types:
-                _uniquestr(t, memo)
-            generator._uniquestr = "(T {0} ({1}))".format(givenname, " ".join(t._uniquestr for t in generator.types))
-
-        elif isinstance(generator, MaskedTupleGenerator):
-            for t in generator.types:
-                _uniquestr(t, memo)
-            generator._uniquestr = "(T {0} {1} {2} ({3}))".format(givenname, generator.maskidx, repr(generator.mask), " ".join(t._uniquestr for t in generator.types))
-
-        elif isinstance(generator, PointerGenerator):
-            _uniquestr(generator.target, memo)
-            if generator._internal:
-                target = _firstindex(generator.target)
-            else:
-                target = generator.target._uniquestr
-            generator._uniquestr = "(X {0} {1} {2} {3})".format(givenname, generator.positionsidx, repr(generator.positions), target)
-
-        elif isinstance(generator, MaskedPointerGenerator):
-            _uniquestr(generator.target, memo)
-            if generator._internal:
-                target = _firstindex(generator.target)
-            else:
-                target = generator.target._uniquestr
-            generator._uniquestr = "(X {0} {1} {2} {3} {4} {5})".format(givenname, generator.maskidx, repr(generator.mask), generator.positionsidx, repr(generator.positions), target)
-
-        elif isinstance(generator, ExtendedGenerator):
-            _uniquestr(generator.generic, memo)
-            generator._uniquestr = "({0} {1})".format(generator.__class__.__name__, generator.generic._uniquestr)
-
-        else:
-            raise AssertionError("unrecognized generator type: {0}".format(generator))

@@ -40,14 +40,14 @@ class _GenerateBytes(object):
 
     def _generatebytes(self, arrays, index, cache):
         if self.schema.nullable:
-            mask = cache.arraylist[self.generic.maskidx]
+            mask = cache[self.generic.maskidx]
             if mask is None:
                 self._getarrays(arrays,
                                 cache,
                                 {self.generic.mask: self.generic.maskidx},
                                 {self.generic.mask: self.generic.maskdtype},
                                 {self.generic.mask: ()})
-                mask = cache.arraylist[self.generic.maskidx]
+                mask = cache[self.generic.maskidx]
 
             value = mask[index]
             if value == self.generic.maskedvalue:
@@ -58,18 +58,18 @@ class _GenerateBytes(object):
         listgen = self.generic
         primgen = self.generic.content
 
-        starts = cache.arraylist[listgen.startsidx]
-        stops  = cache.arraylist[listgen.stopsidx]
-        data   = cache.arraylist[primgen.dataidx]
+        starts = cache[listgen.startsidx]
+        stops  = cache[listgen.stopsidx]
+        data   = cache[primgen.dataidx]
         if starts is None or stops is None or data is None:
             self._getarrays(arrays,
                             cache,
                             {listgen.starts: listgen.startsidx,      listgen.stops: listgen.stopsidx,      primgen.data: primgen.dataidx},
                             {listgen.starts: listgen.posdtype,       listgen.stops: listgen.posdtype,      primgen.data: primgen.dtype},
                             {listgen.starts: (),                     listgen.stops: (),                    primgen.data: ()})
-            starts = cache.arraylist[listgen.startsidx]
-            stops  = cache.arraylist[listgen.stopsidx]
-            data   = cache.arraylist[primgen.dataidx]
+            starts = cache[listgen.startsidx]
+            stops  = cache[listgen.stopsidx]
+            data   = cache[primgen.dataidx]
 
         array  = data[starts[index]:stops[index]]
 
