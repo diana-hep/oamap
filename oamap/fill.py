@@ -263,12 +263,16 @@ def _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, poi
         fillable.update()
 
 def fromdata(value, generator=None, pointer_fromequal=False):
+    if generator is None:
+        generator = oamap.inference.fromdata(value).generator()
+    if not isinstance(generator, oamap.generator.Generator):
+        generator = generator.generator()
+
     return toarrays(fromdatamore(value, oamap.fillable.arrays(generator), generator=generator, pointer_fromequal=pointer_fromequal))
 
 def fromdatamore(value, fillables, generator=None, pointer_fromequal=False):
     if generator is None:
         generator = oamap.inference.fromdata(value).generator()
-
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
 

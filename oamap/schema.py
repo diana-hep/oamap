@@ -41,6 +41,7 @@ import numpy
 
 import oamap.generator
 import oamap.inference
+import oamap.fill
 import oamap.source.packing
 import oamap.extension.common
 from oamap.util import OrderedDict
@@ -245,6 +246,9 @@ class Schema(object):
                 elif recurse:
                     out.extend(self._normalize_extension(x))
             return out
+
+    def fromdata(self, value, pointer_fromequal=False):
+        return self(oamap.fill.fromdata(value, generator=self, pointer_fromequal=pointer_fromequal))
 
     def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
         return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
