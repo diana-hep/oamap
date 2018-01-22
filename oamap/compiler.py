@@ -70,7 +70,7 @@ else:
         cache.ptr = c.builder.ptrtoint(ptr_val, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         cache.len = c.builder.ptrtoint(len_val, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
 
-        # c.pyapi.decref(cache_obj)       # not this one: this one is decrefed by the calling function
+        c.pyapi.decref(cache_obj)
         c.pyapi.decref(pair_obj)
         c.pyapi.decref(ptr_obj)
         c.pyapi.decref(len_obj)
@@ -155,13 +155,6 @@ else:
         stride_obj = c.pyapi.object_getattr_string(obj, "_stride")
         length_obj = c.pyapi.object_getattr_string(obj, "_length")
 
-        generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
-        entercompiled_fcn = c.pyapi.object_getattr_string(generator_obj, "_entercompiled")
-        none_obj = c.pyapi.call_function_objargs(entercompiled_fcn, (cache_obj,))
-        c.pyapi.decref(none_obj)
-        c.pyapi.decref(entercompiled_fcn)
-        c.pyapi.decref(generator_obj)
-
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
         listproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
         listproxy.cache = unbox_cache(cache_obj, c)
@@ -193,7 +186,7 @@ else:
         out = c.pyapi.call_function_objargs(listproxy_cls, (generator_obj, arrays_obj, cache_obj, whence_obj, stride_obj, length_obj))
 
         # c.pyapi.decref(arrays_obj)      # this reference is exported
-        # c.pyapi.decref(cache_obj)       # this reference is exported
+        # c.pyapi.decref(cache_obj)
         c.pyapi.decref(whence_obj)
         c.pyapi.decref(stride_obj)
         c.pyapi.decref(length_obj)
@@ -216,34 +209,27 @@ else:
                        ("index", numba.types.int64)]
             super(RecordProxyModel, self).__init__(dmm, fe_type, members)
 
-    # @numba.extending.infer_getattr
-    # class StructAttribute(numba.typing.templates.AttributeTemplate):
-    #     key = RecordProxyNumbaType
-    #     def generic_resolve(self, typ, attr):
-    #         fieldgenerator = typ.generator.fields.get(attr, None)
-    #         if fieldgenerator is not None:
-    #             return typeof_generator(fieldgenerator)
-    #         else:
-    #             raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if typ.generator.name is None else typ.generator.name), repr(attr)))
+    @numba.extending.infer_getattr
+    class StructAttribute(numba.typing.templates.AttributeTemplate):
+        key = RecordProxyNumbaType
+        def generic_resolve(self, typ, attr):
+            fieldgenerator = typ.generator.fields.get(attr, None)
+            if fieldgenerator is not None:
+                return typeof_generator(fieldgenerator)
+            else:
+                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if typ.generator.name is None else typ.generator.name), repr(attr)))
 
-    # @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
-    # def recordproxy_getattr(context, builder, typ, val, attr):
-    #     pyapi = context.get_python_api(builder)
-    #     recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
-    #     return generate(context, builder, pyapi, recordproxy.arrays, recordproxy.cache, typ.generator.fields[attr], recordproxy.index)
+    @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
+    def recordproxy_getattr(context, builder, typ, val, attr):
+        pyapi = context.get_python_api(builder)
+        recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
+        return generate(context, builder, pyapi, recordproxy.arrays, recordproxy.cache, typ.generator.fields[attr], recordproxy.index)
 
     @numba.extending.unbox(RecordProxyNumbaType)
     def unbox_recordproxy(typ, obj, c):
         arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         index_obj = c.pyapi.object_getattr_string(obj, "_index")
-
-        generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
-        entercompiled_fcn = c.pyapi.object_getattr_string(generator_obj, "_entercompiled")
-        none_obj = c.pyapi.call_function_objargs(entercompiled_fcn, (cache_obj,))
-        c.pyapi.decref(none_obj)
-        c.pyapi.decref(entercompiled_fcn)
-        c.pyapi.decref(generator_obj)
 
         recordproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
         recordproxy.arrays = c.builder.ptrtoint(arrays_obj, llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth))
@@ -270,7 +256,7 @@ else:
         out = c.pyapi.call_function_objargs(recordproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
 
         # c.pyapi.decref(arrays_obj)      # this reference is exported
-        c.pyapi.decref(cache_obj)
+        # c.pyapi.decref(cache_obj)
         c.pyapi.decref(index_obj)
         c.pyapi.decref(recordproxy_cls)
         # c.pyapi.decref(generator_obj)   # this reference is exported

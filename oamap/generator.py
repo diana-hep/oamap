@@ -61,9 +61,9 @@ class PositionsRole(Role): pass
 class Cache(object):
     def __init__(self, cachelen):
         self.arraylist = [None] * cachelen
-        self.ptr = numpy.zeros(cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
-        self.len = numpy.zeros(cachelen, dtype=numpy.intp)
-        self.lock = threading.Lock()
+        self.ptr       = numpy.zeros(cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
+        self.len       = numpy.zeros(cachelen, dtype=numpy.intp)
+        self.lock      = threading.Lock()
 
     def _entercompiled(self):
         for i, x in enumerate(self.arraylist):
@@ -103,11 +103,11 @@ class Generator(object):
             if getattr(array, "shape", (-1,) + dims[name])[1:] != dims[name]:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(str(name)), array.shape[1:], dims[name]))
 
-            out2[name2idx[name]] = array
+            out2[name2idx[name]] = (array, dtypes[name])
 
         with cache.lock:
             if all(cache.arraylist[idx] is None and cache.ptr[idx] == 0 and cache.len[idx] == 0 for idx in out2):
-                for idx, array in out2.items():
+                for idx, (array, dtype) in out2.items():
                     cache.arraylist[idx] = array
                     if require_arrays:
                         cache.ptr[idx] = array.ctypes.data
@@ -156,15 +156,6 @@ class Masked(object):
         for x in self.__class__.__bases__[1].iternames():
             yield x
 
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            if cache.arraylist[self.maskidx] is not None and not isinstance(cache.arraylist[self.maskidx], numpy.ndarray):
-                cache.arraylist[self.maskidx] = numpy.array(cache.arraylist[self.maskidx], dtype=self.maskdtype)
-            self.__class__.__bases__[1]._entercompiled(self, cache, memo)
-
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
@@ -189,14 +180,6 @@ class PrimitiveGenerator(Generator):
 
     def iternames(self):
         yield self.data
-
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            if cache.arraylist[self.dataidx] is not None and not isinstance(cache.arraylist[self.dataidx], numpy.ndarray):
-                cache.arraylist[self.dataidx] = numpy.array(cache.arraylist[self.dataidx], dtype=self.maskdtype)
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
     def __init__(self, mask, maskidx, data, dataidx, dtype, dims, packing, name, derivedname, schema):
@@ -235,17 +218,6 @@ class ListGenerator(Generator):
         yield self.stops
         for x in self.content.iternames():
             yield x
-
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            if cache.arraylist[self.startsidx] is not None and not isinstance(cache.arraylist[self.startsidx], numpy.ndarray):
-                cache.arraylist[self.startsidx] = numpy.array(cache.arraylist[self.startsidx], dtype=self.maskdtype)
-            if cache.arraylist[self.stopsidx] is not None and not isinstance(cache.arraylist[self.stopsidx], numpy.ndarray):
-                cache.arraylist[self.stopsidx] = numpy.array(cache.arraylist[self.stopsidx], dtype=self.maskdtype)
-            self.content._entercompiled(cache, memo)
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
@@ -287,18 +259,6 @@ class UnionGenerator(Generator):
             for y in x.iternames():
                 yield y
 
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            if cache.arraylist[self.tagsidx] is not None and not isinstance(cache.arraylist[self.tagsidx], numpy.ndarray):
-                cache.arraylist[self.tagsidx] = numpy.array(cache.arraylist[self.tagsidx], dtype=self.maskdtype)
-            if cache.arraylist[self.offsetsidx] is not None and not isinstance(cache.arraylist[self.offsetsidx], numpy.ndarray):
-                cache.arraylist[self.offsetsidx] = numpy.array(cache.arraylist[self.offsetsidx], dtype=self.maskdtype)
-            for x in self.possibilities:
-                x._entercompiled(cache, memo)
-
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -319,14 +279,6 @@ class RecordGenerator(Generator):
             for y in x.iternames():
                 yield y
 
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            for x in self.fields.values():
-                x._entercompiled(cache, memo)
-
 class MaskedRecordGenerator(Masked, RecordGenerator):
     def __init__(self, mask, maskidx, fields, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -346,14 +298,6 @@ class TupleGenerator(Generator):
         for x in self.types:
             for y in x.iternames():
                 yield y
-
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            for x in self.types:
-                x._entercompiled(cache, memo)
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
     def __init__(self, mask, maskidx, types, packing, name, derivedname, schema):
@@ -388,15 +332,6 @@ class PointerGenerator(Generator):
         if not self._internal:
             for x in self.target.iternames():
                 yield x
-
-    def _entercompiled(self, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if id(self) not in memo:
-            memo.add(id(self))
-            if cache.arraylist[self.positionsidx] is not None and not isinstance(cache.arraylist[self.positionsidx], numpy.ndarray):
-                cache.arraylist[self.positionsidx] = numpy.array(cache.arraylist[self.positionsidx], dtype=self.maskdtype)
-            self.target._entercompiled(cache, memo)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
     def __init__(self, mask, maskidx, positions, positionsidx, target, packing, name, derivedname, schema):
