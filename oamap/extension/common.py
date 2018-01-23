@@ -39,41 +39,37 @@ class _GenerateBytes(object):
     py3 = sys.version_info[0] >= 3
 
     def _generatebytes(self, arrays, index, cache):
-        if self.schema.nullable:
-            mask = cache[self.generic.maskidx]
+        listgen = self.generic
+        primgen = self.generic.content
+
+        if isinstance(listgen, oamap.generator.MaskedListGenerator):
+            mask = cache[listgen.maskidx]
             if mask is None:
-                self._getarrays(arrays,
-                                cache,
-                                {self.generic.mask: self.generic.maskidx},
-                                {self.generic.mask: self.generic.maskdtype},
-                                {self.generic.mask: ()})
-                mask = cache[self.generic.maskidx]
+                self._getarrays(arrays, cache, listgen._toget(arrays, cache))
+                mask = cache[listgen.maskidx]
 
             value = mask[index]
-            if value == self.generic.maskedvalue:
+            if value == listgen.maskedvalue:
                 return None
             else:
                 index = value
-
-        listgen = self.generic
-        primgen = self.generic.content
 
         starts = cache[listgen.startsidx]
         stops  = cache[listgen.stopsidx]
         data   = cache[primgen.dataidx]
         if starts is None or stops is None or data is None:
-            self._getarrays(arrays,
-                            cache,
-                            {listgen.starts: listgen.startsidx,      listgen.stops: listgen.stopsidx,      primgen.data: primgen.dataidx},
-                            {listgen.starts: listgen.posdtype,       listgen.stops: listgen.posdtype,      primgen.data: primgen.dtype},
-                            {listgen.starts: (),                     listgen.stops: (),                    primgen.data: ()})
+            toget = listgen._toget(arrays, cache)
+            toget.update(primgen._toget(arrays, cache))
+            self._getarrays(arrays, cache, toget)
             starts = cache[listgen.startsidx]
             stops  = cache[listgen.stopsidx]
             data   = cache[primgen.dataidx]
 
-        array  = data[starts[index]:stops[index]]
+        array = data[starts[index]:stops[index]]
 
-        if isinstance(array, numpy.ndarray):
+        if isinstance(array, bytes):
+            return array
+        elif isinstance(array, numpy.ndarray):
             return array.tostring()
         elif self.py3:
             return bytes(array)

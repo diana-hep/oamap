@@ -38,9 +38,13 @@ if sys.version_info[0] > 2:
     basestring = str
 
 # for sources that perform specialized actions on particular kinds of arrays
-class Role(str):
+class Role(object):
+    def __init__(self, name):
+        self.name = name
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, repr(str(self)))
+    def __str__(self):
+        return self.name
     def __hash__(self):
         return hash((Role, str(self)))
     def __eq__(self, other):
@@ -48,12 +52,33 @@ class Role(str):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-class MaskRole(Role): pass
+class MaskRole(Role):
+    def __init__(self, name, others):
+        super(MaskRole, self).__init__(name)
+        self.others = others
+
 class DataRole(Role): pass
-class StartsRole(Role): pass
-class StopsRole(Role): pass
-class TagsRole(Role): pass
-class OffsetsRole(Role): pass
+
+class StartsRole(Role):
+    def __init__(self, name, stops):
+        super(StartsRole, self).__init__(name)
+        self.stops = stops
+
+class StopsRole(Role):
+    def __init__(self, name, starts):
+        super(StopsRole, self).__init__(name)
+        self.starts = starts
+
+class TagsRole(Role):
+    def __init__(self, name, offsets):
+        super(TagsRole, self).__init__(name)
+        self.offsets = offsets
+
+class OffsetsRole(Role):
+    def __init__(self, name, tags):
+        super(OffsetsRole, self).__init__(name)
+        self.tags = tags
+
 class PositionsRole(Role): pass
     
     # def _entercompiled(self):
@@ -80,30 +105,28 @@ class Generator(object):
         Generator._nextid += 1
         return out
 
-    def _getarrays(self, arrays, cache, name2idx, dtypes, dims, require_arrays=False):
+    def _getarrays(self, arrays, cache, roles, require_arrays=False):
         if self.packing is not None:
             arrays = self.packing.anchor(arrays)
 
         if hasattr(arrays, "getall"):
-            out = arrays.getall(list(name2idx))
+            out = arrays.getall(list(roles))                           # pass on the roles to a source that knows about getall
         else:
-            out = dict((name, arrays[str(name)]) for name in name2idx)
+            out = dict((name, arrays[str(name)]) for name in roles)    # drop the roles; it's a plain-dict interface
 
         for name, array in out.items():
+            idx, dtype, dims = roles[name]
+
             if isinstance(array, bytes):
-                array = numpy.frombuffer(array, dtypes[name]).reshape((-1,) + dims[name])
+                array = numpy.frombuffer(array, dtype).reshape((-1,) + dims)
 
-            if getattr(array, "dtype", dtypes[name]) != dtypes[name]:
-                array = numpy.array(array, dtype=dtypes[name])
+            if (require_arrays and not isinstance(array, numpy.ndarray)) or getattr(array, "dtype", dtype) != dtype:
+                array = numpy.array(array, dtype=dtype)
 
-            if require_arrays:
-                if not isinstance(array, numpy.ndarray):
-                    array = numpy.array(array, dtype=dtypes[name])
-
-            if getattr(array, "shape", (-1,) + dims[name])[1:] != dims[name]:
+            if getattr(array, "shape", (-1,) + dims)[1:] != dims:
                 raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(str(name)), array.shape[1:], dims[name]))
 
-            cache[name2idx[name]] = array
+            cache[idx] = array
 
     def __init__(self, packing, name, derivedname, schema):
         self.packing = packing
@@ -126,17 +149,16 @@ class Masked(object):
         self.mask = mask
         self.maskidx = maskidx
 
-    def _get(self, arrays, cache):
-        self._getarrays(arrays,
-                        cache,
-                        {MaskRole(self.mask): self.maskidx},
-                        {MaskRole(self.mask): self.maskdtype},
-                        {MaskRole(self.mask): ()})
+    def _toget(self, arrays, cache):
+        others = self.__class__.__bases__[1]._toget(self, arrays, cache)
+        out = {MaskRole(self.mask, others): (self.maskidx, self.maskdtype, ())}
+        out.update(others)
+        return out
 
     def _generate(self, arrays, index, cache):
         mask = cache[self.maskidx]
         if mask is None:
-            self._get(arrays, cache)
+            self._getarrays(arrays, cache, self._toget(arrays, cache))
             mask = cache[self.maskidx]
 
         value = mask[index]
@@ -146,13 +168,13 @@ class Masked(object):
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
 
-    def _ensure(self, arrays, cache, memo=None):
-        if memo is None:
-            memo = set()
-        if self._required and cache[self.maskidx] is None:
-            self._get(arrays, cache)
-        self.__class__.__bases__[1]._ensure(arrays, cache, memo)
-        return self._pointers(cache)
+    # def _ensure(self, arrays, cache, memo=None):
+    #     if memo is None:
+    #         memo = set()
+    #     if self._required and cache[self.maskidx] is None:
+    #         self._get(arrays, cache)
+    #     self.__class__.__bases__[1]._ensure(arrays, cache, memo)
+    #     return self._pointers(cache)
 
     def names(self):
         return list(self.iternames())
@@ -172,14 +194,13 @@ class PrimitiveGenerator(Generator):
         self.dims = dims
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _toget(self, arrays, cache):
+        return {DataRole(self.data): (self.dataidx, self.dtype, self.dims)}
+
     def _generate(self, arrays, index, cache):
         data = cache[self.dataidx]
         if data is None:
-            self._getarrays(arrays,
-                            cache,
-                            {DataRole(self.data): self.dataidx},
-                            {DataRole(self.data): self.dtype},
-                            {DataRole(self.data): self.dims})
+            self._getarrays(arrays, cache, self._toget(arrays, cache))
             data = cache[self.dataidx]
         
         return data[index]
@@ -205,15 +226,18 @@ class ListGenerator(Generator):
         self.content = content
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _toget(self, arrays, cache):
+        starts = StartsRole(self.starts, None)
+        stops = StopsRole(self.stops, None)
+        starts.stops = stops
+        stops.starts = starts
+        return {starts: (self.startsidx, self.posdtype, ()), stops: (self.stopsidx, self.posdtype, ())}
+
     def _generate(self, arrays, index, cache):
         starts = cache[self.startsidx]
         stops = cache[self.stopsidx]
         if starts is None or stops is None:
-            self._getarrays(arrays,
-                            cache,
-                            {StartsRole(self.starts): self.startsidx, StopsRole(self.stops): self.stopsidx},
-                            {StartsRole(self.starts): self.posdtype, StopsRole(self.stops): self.posdtype},
-                            {StartsRole(self.starts): (), StopsRole(self.stops): ()})
+            self._getarrays(arrays, cache, self._toget(arrays, cache))
             starts = cache[self.startsidx]
             stops = cache[self.stopsidx]
 
@@ -244,15 +268,18 @@ class UnionGenerator(Generator):
         self.possibilities = possibilities
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _toget(self, arrays, cache):
+        tags = TagsRole(self.tags, None)
+        offsets = OffsetsRole(self.offsets, None)
+        tags.offsets = offsets
+        offsets.tags = tags
+        return {tags: (self.tagsidx, self.tagdtype, ()), offsets: (self.offsetsidx, self.offsetdtype, ())}
+
     def _generate(self, arrays, index, cache):
         tags = cache[self.tagsidx]
         offsets = cache[self.offsetsidx]
         if tags is None or offsets is None:
-            self._getarrays(arrays,
-                            cache,
-                            {TagsRole(self.tags): self.tagsidx, OffsetsRole(self.offsets): self.offsetsidx},
-                            {TagsRole(self.tags): self.tagdtype, OffsetsRole(self.offsets): self.offsetdtype},
-                            {TagsRole(self.tags): (), OffsetsRole(self.offsets): ()})
+            self._getarrays(arrays, cache, self._toget(arrays, cache))
             tags = cache[self.tagsidx]
             offsets = cache[self.offsetsidx]
 
@@ -277,6 +304,9 @@ class RecordGenerator(Generator):
         self.fields = fields
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _toget(self, arrays, cache):
+        return {}
+
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
@@ -296,6 +326,9 @@ class TupleGenerator(Generator):
     def __init__(self, types, packing, name, derivedname, schema):
         self.types = types
         Generator.__init__(self, packing, name, derivedname, schema)
+
+    def _toget(self, arrays, cache):
+        return {}
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
@@ -321,14 +354,13 @@ class PointerGenerator(Generator):
         self.target = target
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _toget(self, arrays, cache):
+        return {PositionsRole(self.positions): (self.positionsidx, self.posdtype, ())}
+
     def _generate(self, arrays, index, cache):
         positions = cache[self.positionsidx]
         if positions is None:
-            self._getarrays(arrays,
-                            cache,
-                            {PositionsRole(self.positions): self.positionsidx},
-                            {PositionsRole(self.positions): self.posdtype},
-                            {PositionsRole(self.positions): ()})
+            self._getarrays(arrays, cache, self._toget(arrays, cache))
             positions = cache[self.positionsidx]
 
         return self.target._generate(arrays, positions[index], cache)
@@ -361,6 +393,9 @@ class ExtendedGenerator(Generator):
 
     def __init__(self, genericclass, *args):
         self.generic = genericclass(*args)
+
+    def _toget(self, arrays, cache):
+        return self.generic._toget(arrays, cache)
 
     @property
     def packing(self):
