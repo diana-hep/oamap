@@ -97,48 +97,39 @@ else:
     def typeof_proxy(val, c):
         return typeof_generator(val._generator)
 
-    def typeof_generator(generator):
-        if isinstance(generator, oamap.generator.MaskedPrimitiveGenerator):
-            raise NotImplementedError
+    def typeof_generator(generator, checkmasked=True):
+        if checkmasked and isinstance(generator, oamap.generator.Masked):
+            return numba.types.optional(typeof_generator(generator, checkmasked=False))
 
-        elif isinstance(generator, oamap.generator.PrimitiveGenerator):
+        if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
                 return numba.from_dtype(generator.dtype)
             else:
                 raise NotImplementedError
 
-        elif isinstance(generator, oamap.generator.MaskedListGenerator):
-            return numba.types.optional(ListProxyNumbaType(generator))
-
         elif isinstance(generator, oamap.generator.ListGenerator):
             return ListProxyNumbaType(generator)
-
-        elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
-            raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
             raise NotImplementedError
 
-        elif isinstance(generator, oamap.generator.MaskedRecordGenerator):
-            return numba.types.optional(RecordProxyNumbaType(generator))
-
         elif isinstance(generator, oamap.generator.RecordGenerator):
             return RecordProxyNumbaType(generator)
-
-        elif isinstance(generator, oamap.generator.MaskedTupleGenerator):
-            return numba.types.optional(TupleProxyNumbaType(generator))
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
             return TupleProxyNumbaType(generator)
 
-        elif isinstance(generator, oamap.generator.MaskedPointerGenerator):
-            raise NotImplementedError
-
         elif isinstance(generator, oamap.generator.PointerGenerator):
             raise NotImplementedError
 
+        elif isinstance(generator, oamap.generator.ExtendedGenerator):
+            return typeof_generator(generator.generic)
+
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
+
+    def literal_int(value, itemsize):
+        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(itemsize * 8), value)
 
     def literal_int64(value):
         return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), value)
@@ -175,13 +166,52 @@ else:
             builder.store(exc, excptr)
             builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
-    def generate(context, builder, pyapi, generator, ptrs, lens, at):
-        generator._required = True
+    def generate_empty(context, builder, pyapi, generator):
+        if isinstance(generator, oamap.generator.PrimitiveGenerator):
+            if generator.dims == ():
+                return llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.from_dtype(generator.dtype)))
+            else:
+                raise NotImplementedError
 
-        if isinstance(generator, oamap.generator.MaskedPrimitiveGenerator):
+        elif isinstance(generator, oamap.generator.ListGenerator):
             raise NotImplementedError
 
-        elif isinstance(generator, oamap.generator.PrimitiveGenerator):
+        elif isinstance(generator, oamap.generator.UnionGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.RecordGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.TupleGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.PointerGenerator):
+            raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.ExtendedGenerator):
+            return generate(context, builder, pyapi, generator.generic, ptrs, lens, at)
+
+        else:
+            raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
+
+    def generate(context, builder, pyapi, generator, ptrs, lens, at, checkmasked=True):
+        generator._required = True
+
+        if checkmasked and isinstance(generator, oamap.generator.Masked):
+            maskidx = literal_int64(generator.maskidx)
+            maskvalue = arrayitem(context, builder, pyapi, maskidx, ptrs, lens, at, generator.maskdtype)
+
+            outoptval = context.make_helper(builder, typeof_generator(generator))
+            with builder.if_else(builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))) as (is_not_valid, is_valid):
+                with is_valid:
+                    outoptval.valid = numba.cgutils.true_bit
+                    outoptval.data = generate(context, builder, pyapi, generator, ptrs, lens, at, checkmasked=False)
+                with is_not_valid:
+                    outoptval.valid = numba.cgutils.false_bit
+                    outoptval.data = generate_empty(context, builder, pyapi, generator)
+            return outoptval._getvalue()
+            
+        if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
                 dataidx = literal_int64(generator.dataidx)
                 return arrayitem(context, builder, pyapi, dataidx, ptrs, lens, at, generator.dtype)
@@ -189,35 +219,23 @@ else:
             else:
                 raise NotImplementedError
 
-        elif isinstance(generator, oamap.generator.MaskedListGenerator):
-            raise NotImplementedError
-
         elif isinstance(generator, oamap.generator.ListGenerator):
-            raise NotImplementedError
-
-        elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
             raise NotImplementedError
 
-        elif isinstance(generator, oamap.generator.MaskedRecordGenerator):
-            raise NotImplementedError
-
         elif isinstance(generator, oamap.generator.RecordGenerator):
-            raise NotImplementedError
-
-        elif isinstance(generator, oamap.generator.MaskedTupleGenerator):
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
             raise NotImplementedError
 
-        elif isinstance(generator, oamap.generator.MaskedPointerGenerator):
-            raise NotImplementedError
-
         elif isinstance(generator, oamap.generator.PointerGenerator):
             raise NotImplementedError
+
+        elif isinstance(generator, oamap.generator.ExtendedGenerator):
+            return generate(context, builder, pyapi, generator.generic, ptrs, lens, at)
 
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))

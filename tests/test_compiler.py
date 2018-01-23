@@ -39,6 +39,7 @@ except ImportError:
     numba = None
 
 import oamap.compiler
+import oamap.fill
 from oamap.schema import *
 from oamap.util import OrderedDict
 
@@ -153,3 +154,40 @@ class TestCompiler(unittest.TestCase):
 
             self.assertTrue(value._cache[0] is value._arrays["object-Fone-Di8"])
             self.assertTrue(value._cache[1] is value._arrays["object-Ftwo-Df8"])
+
+    def test_record_attr_masked(self):
+        if numba is not None:
+            @numba.njit
+            def one(x):
+                return x.one
+
+            @numba.njit
+            def two(x):
+                return x.two
+
+            schema = Record(OrderedDict([("one", Primitive(int, nullable=True)), ("two", Primitive(float, nullable=True))]))
+            generator = schema.generator()
+
+            value = generator(oamap.fill.fromdata({"one": 999, "two": 3.14}, generator))
+
+            self.assertEqual(value._cache, [None, None, None, None])
+
+            self.assertEqual(one(value), 999)
+            self.assertTrue(value._cache[0] is value._arrays["object-Fone-M"])
+            self.assertTrue(value._cache[1] is value._arrays["object-Fone-Di8"])
+
+            self.assertEqual(two(value), 3.14)
+            self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-M"])
+            self.assertTrue(value._cache[3] is value._arrays["object-Ftwo-Df8"])
+
+            value = generator(oamap.fill.fromdata({"one": None, "two": None}, generator))
+
+            self.assertEqual(value._cache, [None, None, None, None])
+
+            self.assertEqual(one(value), None)
+            self.assertTrue(value._cache[0] is value._arrays["object-Fone-M"])
+            self.assertTrue(value._cache[1] is value._arrays["object-Fone-Di8"])
+
+            self.assertEqual(two(value), None)
+            self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-M"])
+            self.assertTrue(value._cache[3] is value._arrays["object-Ftwo-Df8"])
