@@ -85,20 +85,6 @@ class OffsetsRole(Role):
         self.tags = tags
 
 class PositionsRole(Role): pass
-    
-    # def _entercompiled(self):
-    #     self.ptr       = numpy.zeros(generator._cachelen, dtype=numpy.intp)   # these arrays are only set and used in compiled code
-    #     self.len       = numpy.zeros(generator._cachelen, dtype=numpy.intp)
-    #     for i, x in enumerate(self):
-    #         if x is None:
-    #             self.ptr[i] = 0
-    #             self.len[i] = 0
-    #         else:
-    #             if not isinstance(x, numpy.ndarray):
-    #                 raise TypeError("all arrays must have numpy.ndarray type for use in compiled code")
-    #             self.ptr[i] = x.ctypes.data
-    #             self.len[i] = x.shape[0]
-    #     return self.ptr.ctypes.data, self.len.ctypes.data
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
@@ -111,6 +97,18 @@ class Generator(object):
         out = "{0}-pid{1}-{2}".format(Generator._starttime, Generator._startpid, Generator._nextid)
         Generator._nextid += 1
         return out
+
+    def __init__(self, packing, name, derivedname, schema):
+        self.packing = packing
+        self.name = name
+        self.derivedname = derivedname
+        self.schema = schema
+
+        self.id = self.nextid()
+        self._required = False
+
+    def __call__(self, arrays):
+        return self._generate(arrays, 0, [None] * self._cachelen)
 
     def _getarrays(self, arrays, cache, roles, require_arrays=False):
         if self.packing is not None:
@@ -135,17 +133,24 @@ class Generator(object):
 
             cache[idx] = array
 
-    def __init__(self, packing, name, derivedname, schema):
-        self.packing = packing
-        self.name = name
-        self.derivedname = derivedname
-        self.schema = schema
+    def _entercompiled(self, arrays, cache, bottomup=True):
+        roles = self._togetall(arrays, cache, bottomup, set())
+        self._getarrays(arrays, cache, roles, require_arrays=True)
 
-        self.id = self.nextid()
-        self._required = False
+        ptr = numpy.zeros(self._cachelen, dtype=numpy.intp)
+        len = numpy.zeros(self._cachelen, dtype=numpy.intp)
+        for i, x in enumerate(cache):
+            if x is not None:
+                ptr[i] = x.ctypes.data
+                len[i] = x.shape[0]
 
-    def __call__(self, arrays):
-        return self._generate(arrays, 0, [None] * self._cachelen)
+        Generator.lastptr = ptr
+        Generator.lastlen = len
+
+        return self, arrays, cache, ptr, len, ptr.ctypes.data, len.ctypes.data
+
+    lastptr = None
+    lastlen = None
 
 # mix-in for all generators of nullable types
 class Masked(object):
@@ -363,7 +368,10 @@ class RecordGenerator(Generator):
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
             memo.add(id(self))
-            return OrderedDict([x._togetall(arrays, cache, bottomup, memo) for x in self.fields.values()])
+            out = OrderedDict()
+            for x in self.fields.values():
+                out.update(x._togetall(arrays, cache, bottomup, memo))
+            return out
         else:
             return OrderedDict()
 
@@ -393,7 +401,10 @@ class TupleGenerator(Generator):
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
             memo.add(id(self))
-            return OrderedDict([x._togetall(arrays, cache, bottomup, memo) for x in self.types])
+            out = OrderedDict()
+            for x in self.types:
+                out.update(x._togetall(arrays, cache, bottomup, memo))
+            return out
         else:
             return OrderedDict()
 

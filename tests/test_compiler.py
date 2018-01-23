@@ -43,18 +43,31 @@ class TestCompiler(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_record(self):
+    def test_boxing(self):
         if numba is not None:
             @numba.njit
-            def boxing(x):
+            def boxing1(x):
+                return 3.14
+
+            @numba.njit
+            def boxing2(x):
+                return x
+
+            @numba.njit
+            def boxing3(x):
                 return x, x
 
             value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
 
             for j in range(10):
                 for i in range(10):
-                    value2, value3 = boxing(value)
-                    self.assertTrue(value._arrays is value2._arrays)
-                    self.assertTrue(value._arrays is value3._arrays)
-                    self.assertTrue(value._cache is value2._cache)
-                    self.assertTrue(value._cache is value3._cache)
+                    boxing1(value)
+                    value2 = boxing2(value)
+                    value3, value4 = boxing3(value)
+
+                    for v in value2, value3, value4:
+                        self.assertTrue(value._generator is v._generator)
+                        self.assertTrue(value._arrays is v._arrays)
+                        self.assertTrue(value._cache is v._cache)
+
+                    print sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator.lastptr), sys.getrefcount(value._generator.lastlen), sys.getrefcount(value._generator._entercompiled)
