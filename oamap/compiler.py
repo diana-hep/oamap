@@ -278,6 +278,39 @@ else:
                        ("length", numba.types.int64)]
             super(ListProxyModel, self).__init__(dmm, fe_type, members)
 
+    @numba.typing.templates.infer
+    class ListProxyGetItem(numba.typing.templates.AbstractTemplate):
+        key = "getitem"
+        def generic(self, args, kwds):
+            tpe, idx = args
+            if isinstance(tpe, ListProxyNumbaType):
+                if isinstance(idx, numba.types.Integer):
+                    return typeof_generator(tpe.generator.content)(tpe, idx)
+
+    @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
+    def listproxy_getitem(context, builder, sig, args):
+        listtpe, indextpe = sig.args
+        listval, indexval = args
+
+        pyapi = context.get_python_api(builder)
+        listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
+
+        normindex_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(64))
+        builder.store(indexval, normindex_ptr)
+        with builder.if_then(bulder.icmp_signed("<", indexval, literal_int64(0))):
+            builder.store(builder.add(indexval, listproxy.length), normindex_ptr)
+        normindex = builder.load(normindex_ptr)
+        
+        raise_exception(context,
+                        builder,
+                        pyapi,
+                        builder.or_(builder.icmp_signed("<", normindex, literal_int64(0)),
+                                    builder.icmp_signed(">=", normindex, listproxy.length)),
+                        IndexError("index out of bounds"))
+
+        at = builder.add(listproxy.whence, builder.mul(listproxy.stride, normindex))
+        return generate(context, builder, pyapi, listtpe.generator.content, baggage, listproxy.ptrs, listproxy.lens, at)
+
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
         generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
