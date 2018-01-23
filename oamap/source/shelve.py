@@ -165,7 +165,7 @@ class DbfilenameShelf(MutableMapping):
             for i in range(partitionlookup.numpartitions):
                 listproxies.append(makeproxy(i, partitionlookup.id2size(i)))
 
-            return oamap.proxy.PartitionedListProxy(listproxies, offsets=partitionlookup.offsets)
+            return oamap.proxy.IndexedPartitionedListProxy(listproxies, offsets=partitionlookup.offsets)
 
     def fromdata(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
         if schema is None:

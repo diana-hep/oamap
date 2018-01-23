@@ -55,7 +55,7 @@ class TestProxy(unittest.TestCase):
 
     def test_PartitionedListProxy_slicing(self):
         range100 = list(range(100))
-        proxy100 = oamap.proxy.PartitionedListProxy([list(range(0, 10)), list(range(10, 20)), list(range(20, 25)), list(range(25, 50)), list(range(50, 100))])
+        proxy100 = oamap.proxy.IndexedPartitionedListProxy([list(range(0, 10)), list(range(10, 20)), list(range(20, 25)), list(range(25, 50)), list(range(50, 100))])
 
         self.assertEqual(range100, proxy100)
         for start1 in [None, 0, 5, 95, 110, -1, -5, -95, -110]:

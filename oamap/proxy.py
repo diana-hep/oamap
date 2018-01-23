@@ -195,8 +195,31 @@ class ListProxy(Proxy):
         return False
 
 class PartitionedListProxy(ListProxy):
-    def __init__(self, partitions, offsets=None):
+    def __init__(self, partitions):
         self._partitions = partitions
+
+    def __repr__(self):
+        out = []
+        for x in self:
+            if len(out) == 5:
+                return "[{0}, ...]".format(", ".join(repr(y) for y in out))
+            out.append(x)
+        return "[{0}]".format(", ".join(repr(y) for y in out))
+
+    def __iter__(self):
+        for partition in self._partitions:
+            for x in partition:
+                yield x
+
+    def __len__(self):
+        raise TypeError("PartitionedListProxy does not have a known len")
+
+    def __getitem__(self, index):
+        raise TypeError("PartitionedListProxy cannot be indexed or sliced")
+
+class IndexedPartitionedListProxy(PartitionedListProxy):
+    def __init__(self, partitions, offsets=None):
+        super(IndexedPartitionedListProxy, self).__init__(partitions)
 
         if offsets is None:
             self._offsets = []
@@ -226,12 +249,12 @@ class PartitionedListProxy(ListProxy):
             if start == self._offsets[-1]:
                 assert step > 0
                 assert stop == self._offsets[-1]
-                return PartitionedListProxy([])
+                return IndexedPartitionedListProxy([])
 
             elif start == -1:
                 assert step < 0
                 assert stop == -1
-                return PartitionedListProxy([])
+                return IndexedPartitionedListProxy([])
 
             else:
                 partitions = []
@@ -281,7 +304,7 @@ class PartitionedListProxy(ListProxy):
                             else:
                                 partitions.append(partition[localstart::step])
 
-                return PartitionedListProxy(partitions)
+                return IndexedPartitionedListProxy(partitions)
 
         else:
             normalindex = index if index >= 0 else index + self._offsets[-1]
@@ -293,11 +316,6 @@ class PartitionedListProxy(ListProxy):
 
             localindex = normalindex - self._offsets[partitionid]
             return self._partitions[partitionid][localindex]
-
-    def __iter__(self):
-        for partition in self._partitions:
-            for x in partition:
-                yield x
 
 ################################################################ Records
 

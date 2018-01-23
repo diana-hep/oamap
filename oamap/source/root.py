@@ -173,12 +173,12 @@ else:
                 if start == self._offsets[-1]:
                     assert step > 0
                     assert stop == self._offsets[-1]
-                    return oamap.proxy.PartitionedListProxy([])
+                    return oamap.proxy.IndexedPartitionedListProxy([])
 
                 elif start == -1:
                     assert step < 0
                     assert stop == -1
-                    return oamap.proxy.PartitionedListProxy([])
+                    return oamap.proxy.IndexedPartitionedListProxy([])
 
                 else:
                     if step > 0:
@@ -197,7 +197,7 @@ else:
                         offsets.append(self._offsets[partitionid])
                     offsets.append(self._offsets[lastid])
 
-                    return oamap.proxy.PartitionedListProxy(partitions, offsets)[start:stop:step]
+                    return oamap.proxy.IndexedPartitionedListProxy(partitions, offsets)[start:stop:step]
 
             else:
                 normalindex = index if index >= 0 else index + self._offsets[-1]
