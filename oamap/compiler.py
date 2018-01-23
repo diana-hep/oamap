@@ -41,7 +41,55 @@ try:
 except ImportError:
     pass
 else:
-    ################################################################ Cache
+    ################################################################ Baggage (tracing reference counts to reconstitute Python objects)
+
+    class BaggageType(numba.types.Type):
+        def __init__(self):
+            super(BaggageType, self).__init__(name="OAMap-Baggage")
+
+    baggagetype = BaggageType()
+
+    @numba.extending.register_model(BaggageType)
+    class BaggageModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("generator", numba.types.pyobject),
+                       ("arrays", numba.types.pyobject),
+                       ("cache", numba.types.pyobject),
+                       ("ptr", numba.types.pyobject),
+                       ("len", numba.types.pyobject)]
+            super(BaggageModel, self).__init__(dmm, fe_type, members)
+
+    def unbox_baggage(context, builder, pyapi, generator_obj, arrays_obj, cache_obj):
+        entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
+        results_obj = pyapi.call_function_objargs(entercompiled_fcn, (arrays_obj, cache_obj))
+        with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
+            builder.ret(llvmlite.llvmpy.core.Constant.null(pyapi.pyobj))
+
+        baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
+        baggage.generator = generator_obj
+        baggage.arrays = arrays_obj
+        baggage.cache = cache_obj
+        baggage.ptr = pyapi.tuple_getitem(results_obj, 0)
+        baggage.len = pyapi.tuple_getitem(results_obj, 1)
+
+        ptr_obj = pyapi.tuple_getitem(results_obj, 2)
+        len_obj = pyapi.tuple_getitem(results_obj, 3)
+        ptr = pyapi.long_as_voidptr(ptr_obj)
+        len = pyapi.long_as_voidptr(len_obj)
+
+        pyapi.decref(generator_obj)
+        pyapi.decref(results_obj)
+
+        return baggage._getvalue(), ptr, len
+
+    def box_baggage(context, builder, pyapi, baggage_val):
+        baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=baggage_val)
+
+        pyapi.decref(baggage.generator)
+        pyapi.decref(baggage.arrays)
+        pyapi.decref(baggage.cache)
+
+        return baggage.generator, baggage.arrays, baggage.cache
 
     ################################################################ general routines for all types
 
@@ -96,16 +144,12 @@ else:
     class RecordProxyNumbaType(numba.types.Type):
         def __init__(self, generator):
             self.generator = generator
-            super(RecordProxyNumbaType, self).__init__(name="RecordProxy-" + str(self.generator.id))
+            super(RecordProxyNumbaType, self).__init__(name="OAMap-Record-" + str(self.generator.id))
 
     @numba.extending.register_model(RecordProxyNumbaType)
     class RecordProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("generator", numba.types.pyobject),
-                       ("arrays", numba.types.pyobject),
-                       ("cache", numba.types.pyobject),
-                       ("ptrarray", numba.types.pyobject),
-                       ("lenarray", numba.types.pyobject),
+            members = [("baggage", baggagetype),
                        ("ptr", numba.types.voidptr),
                        ("len", numba.types.voidptr),
                        ("index", numba.types.int64)]
@@ -118,26 +162,9 @@ else:
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         index_obj = c.pyapi.object_getattr_string(obj, "_index")
 
-        entercompiled_fcn = c.pyapi.object_getattr_string(generator_obj, "_entercompiled")
-        results_obj = c.pyapi.call_function_objargs(entercompiled_fcn, (arrays_obj, cache_obj))
-        with c.builder.if_then(numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred()), likely=False):
-            c.builder.ret(llvmlite.llvmpy.core.Constant.null(c.pyapi.pyobj))
-
         recordproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        recordproxy.generator = c.pyapi.tuple_getitem(results_obj, 0)
-        recordproxy.arrays = c.pyapi.tuple_getitem(results_obj, 1)
-        recordproxy.cache = c.pyapi.tuple_getitem(results_obj, 2)
-        recordproxy.ptrarray = c.pyapi.tuple_getitem(results_obj, 3)
-        recordproxy.lenarray = c.pyapi.tuple_getitem(results_obj, 4)
-
-        ptr_obj = c.pyapi.tuple_getitem(results_obj, 5)
-        len_obj = c.pyapi.tuple_getitem(results_obj, 6)
-        recordproxy.ptr = c.pyapi.long_as_voidptr(ptr_obj)
-        recordproxy.len = c.pyapi.long_as_voidptr(len_obj)
+        recordproxy.baggage, recordproxy.ptr, recordproxy.len = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
         recordproxy.index = c.pyapi.long_as_longlong(index_obj)
-
-        c.pyapi.decref(generator_obj)
-        c.pyapi.decref(results_obj)
 
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
         return numba.extending.NativeValue(recordproxy._getvalue(), is_error=is_error)
@@ -145,21 +172,12 @@ else:
     @numba.extending.box(RecordProxyNumbaType)
     def box_recordproxy(typ, val, c):
         recordproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
-        generator_obj = recordproxy.generator
-        arrays_obj = recordproxy.arrays
-        cache_obj = recordproxy.cache
-        ptrarray_obj = recordproxy.ptrarray
-        lenarray_obj = recordproxy.lenarray
-
         index_obj = c.pyapi.long_from_longlong(recordproxy.index)
 
         recordproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.RecordProxy))
-
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, recordproxy.baggage)
         out = c.pyapi.call_function_objargs(recordproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
 
-        c.pyapi.decref(generator_obj)
-        c.pyapi.decref(arrays_obj)
-        c.pyapi.decref(cache_obj)
-
         c.pyapi.decref(recordproxy_cls)
+
         return out

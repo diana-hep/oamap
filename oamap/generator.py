@@ -144,13 +144,7 @@ class Generator(object):
                 ptr[i] = x.ctypes.data
                 len[i] = x.shape[0]
 
-        Generator.lastptr = ptr
-        Generator.lastlen = len
-
-        return self, arrays, cache, ptr, len, ptr.ctypes.data, len.ctypes.data
-
-    lastptr = None
-    lastlen = None
+        return ptr, len, ptr.ctypes.data, len.ctypes.data
 
 # mix-in for all generators of nullable types
 class Masked(object):

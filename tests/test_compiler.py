@@ -70,4 +70,6 @@ class TestCompiler(unittest.TestCase):
                         self.assertTrue(value._arrays is v._arrays)
                         self.assertTrue(value._cache is v._cache)
 
-                    print sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator.lastptr), sys.getrefcount(value._generator.lastlen), sys.getrefcount(value._generator._entercompiled)
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled))
+
+
