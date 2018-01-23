@@ -166,7 +166,7 @@ else:
             builder.store(exc, excptr)
             builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
-    def generate_empty(context, builder, pyapi, generator):
+    def generate_empty(context, builder, pyapi, generator, baggage):
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
                 return llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.from_dtype(generator.dtype)))
@@ -189,12 +189,12 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
-            return generate(context, builder, pyapi, generator.generic, ptrs, lens, at)
+            return generate(context, builder, pyapi, generator.generic, baggage, ptrs, lens, at)
 
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
 
-    def generate(context, builder, pyapi, generator, ptrs, lens, at, checkmasked=True):
+    def generate(context, builder, pyapi, generator, baggage, ptrs, lens, at, checkmasked=True):
         generator._required = True
 
         if checkmasked and isinstance(generator, oamap.generator.Masked):
@@ -205,10 +205,10 @@ else:
             with builder.if_else(builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))) as (is_not_valid, is_valid):
                 with is_valid:
                     outoptval.valid = numba.cgutils.true_bit
-                    outoptval.data = generate(context, builder, pyapi, generator, ptrs, lens, at, checkmasked=False)
+                    outoptval.data = generate(context, builder, pyapi, generator, baggage, ptrs, lens, at, checkmasked=False)
                 with is_not_valid:
                     outoptval.valid = numba.cgutils.false_bit
-                    outoptval.data = generate_empty(context, builder, pyapi, generator)
+                    outoptval.data = generate_empty(context, builder, pyapi, generator, baggage)
             return outoptval._getvalue()
             
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
@@ -226,7 +226,12 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
-            raise NotImplementedError
+            recordproxy = numba.cgutils.create_struct_proxy(typeof_generator(generator))(context, builder)
+            recordproxy.baggage = baggage
+            recordproxy.ptrs = ptrs
+            recordproxy.lens = lens
+            recordproxy.index = at
+            return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
             raise NotImplementedError
@@ -235,7 +240,7 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
-            return generate(context, builder, pyapi, generator.generic, ptrs, lens, at)
+            return generate(context, builder, pyapi, generator.generic, baggage, ptrs, lens, at)
 
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
@@ -329,7 +334,7 @@ else:
     def recordproxy_getattr(context, builder, typ, val, attr):
         pyapi = context.get_python_api(builder)
         recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
-        return generate(context, builder, pyapi, typ.generator.fields[attr], recordproxy.ptrs, recordproxy.lens, recordproxy.index)
+        return generate(context, builder, pyapi, typ.generator.fields[attr], recordproxy.baggage, recordproxy.ptrs, recordproxy.lens, recordproxy.index)
 
     @numba.extending.unbox(RecordProxyNumbaType)
     def unbox_recordproxy(typ, obj, c):

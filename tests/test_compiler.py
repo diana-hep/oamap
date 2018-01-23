@@ -191,3 +191,19 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(two(value), None)
             self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-M"])
             self.assertTrue(value._cache[3] is value._arrays["object-Ftwo-Df8"])
+
+    def test_record_attr_attr(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                return x.one.uno, x.one.dos, x.two.tres
+
+            value = Record(OrderedDict([("one", Record(OrderedDict([("uno", Primitive(int)), ("dos", Primitive(float))]))), ("two", Record(OrderedDict([("tres", Primitive(bool))])))])).fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
+
+            self.assertEqual(value._cache, [None, None, None])
+
+            self.assertEqual(doit(value), (1, 2.2, True))
+
+            self.assertTrue(value._cache[0] is value._arrays["object-Fone-Fdos-Df8"])
+            self.assertTrue(value._cache[1] is value._arrays["object-Fone-Funo-Di8"])
+            self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-Ftres-Db1"])
