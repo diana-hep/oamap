@@ -40,6 +40,7 @@ except ImportError:
 
 import oamap.compiler
 from oamap.schema import *
+from oamap.util import OrderedDict
 
 class TestCompiler(unittest.TestCase):
     def runTest(self):
@@ -59,12 +60,12 @@ class TestCompiler(unittest.TestCase):
             def boxing3(x):
                 return x, x
 
-            value = List(Primitive(int)).fromdata([1, 2, 3, 4, 5])
-            # value._whence = 314
-            # value._stride = 315
-            # value._length = 316
+            for j in range(3):
+                value = List(Primitive(int)).fromdata([1, 2, 3, 4, 5])
+                # value._whence = 314
+                # value._stride = 315
+                # value._length = 316
 
-            for j in range(10):
                 for i in range(10):
                     boxing1(value)
                     value2 = boxing2(value)
@@ -91,10 +92,10 @@ class TestCompiler(unittest.TestCase):
             def boxing3(x):
                 return x, x
 
-            value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
-            value._index = 314
+            for j in range(3):
+                value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
+                # value._index = 314
 
-            for j in range(10):
                 for i in range(10):
                     boxing1(value)
                     value2 = boxing2(value)
@@ -121,10 +122,10 @@ class TestCompiler(unittest.TestCase):
             def boxing3(x):
                 return x, x
 
-            value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
-            value._index = 314
+            for j in range(3):
+                value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
+                # value._index = 314
 
-            for j in range(10):
                 for i in range(10):
                     boxing1(value)
                     value2 = boxing2(value)
@@ -136,3 +137,19 @@ class TestCompiler(unittest.TestCase):
                         self.assertTrue(value._cache is v._cache)
 
                     # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
+
+    def test_record_attr(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                return x.one, x.two
+
+            value = Record(OrderedDict([("one", Primitive(int)), ("two", Primitive(float))])).fromdata({"one": 999, "two": 3.14})
+
+            self.assertTrue(value._cache[0] is None)
+            self.assertTrue(value._cache[1] is None)
+
+            self.assertEqual(doit(value), (999, 3.14))
+
+            self.assertTrue(value._cache[0] is value._arrays["object-Fone-Di8"])
+            self.assertTrue(value._cache[1] is value._arrays["object-Ftwo-Df8"])

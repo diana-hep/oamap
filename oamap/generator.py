@@ -137,14 +137,14 @@ class Generator(object):
         roles = self._togetall(arrays, cache, bottomup, set())
         self._getarrays(arrays, cache, roles, require_arrays=True)
 
-        ptr = numpy.zeros(self._cachelen, dtype=numpy.intp)
-        len = numpy.zeros(self._cachelen, dtype=numpy.intp)
+        ptrs = numpy.zeros(self._cachelen, dtype=numpy.intp)
+        lens = numpy.zeros(self._cachelen, dtype=numpy.intp)
         for i, x in enumerate(cache):
             if x is not None:
-                ptr[i] = x.ctypes.data
-                len[i] = x.shape[0]
+                ptrs[i] = x.ctypes.data
+                lens[i] = x.shape[0]
 
-        return ptr, len, ptr.ctypes.data, len.ctypes.data
+        return ptrs, lens, ptrs.ctypes.data, lens.ctypes.data
 
 # mix-in for all generators of nullable types
 class Masked(object):
