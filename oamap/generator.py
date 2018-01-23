@@ -29,10 +29,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import sys
+import datetime
+import os
 
 import numpy
 
 import oamap.proxy
+from oamap.util import OrderedDict
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -99,11 +102,13 @@ class PositionsRole(Role): pass
 
 # base class of all runtime-object generators (one for each type)
 class Generator(object):
+    _starttime = datetime.datetime.now().isoformat()
+    _startpid = os.getpid()
     _nextid = 0
 
     @staticmethod
     def nextid():
-        out = Generator._nextid
+        out = "{0}-pid{1}-{2}".format(Generator._starttime, Generator._startpid, Generator._nextid)
         Generator._nextid += 1
         return out
 
@@ -153,9 +158,24 @@ class Masked(object):
 
     def _toget(self, arrays, cache):
         others = self.__class__.__bases__[1]._toget(self, arrays, cache)
-        out = {MaskRole(self.mask, others): (self.maskidx, self.maskdtype, ())}
+        out = OrderedDict([(MaskRole(self.mask, others), (self.maskidx, self.maskdtype, ()))])
         out.update(others)
         return out
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            out = self.__class__.__bases__[1]._togetall(self, arrays, cache, bottomup, memo)
+            if self._required and cache[self.maskidx] is None:
+                if bottomup:
+                    out.update(self._toget(arrays, cache))
+                else:
+                    out2 = self._toget(arrays, cache)
+                    out2.update(out)
+                    out = out2
+            return out
+        else:
+            return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         mask = cache[self.maskidx]
@@ -169,14 +189,6 @@ class Masked(object):
         else:
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
-
-    # def _ensure(self, arrays, cache, memo=None):
-    #     if memo is None:
-    #         memo = set()
-    #     if self._required and cache[self.maskidx] is None:
-    #         self._get(arrays, cache)
-    #     self.__class__.__bases__[1]._ensure(arrays, cache, memo)
-    #     return self._pointers(cache)
 
     def names(self):
         return list(self.iternames())
@@ -197,7 +209,14 @@ class PrimitiveGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return {DataRole(self.data): (self.dataidx, self.dtype, self.dims)}
+        return OrderedDict([(DataRole(self.data), (self.dataidx, self.dtype, self.dims))])
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            if self._required and cache[self.dataidx] is None:
+                return self._toget(arrays, cache)
+        return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         data = cache[self.dataidx]
@@ -233,7 +252,22 @@ class ListGenerator(Generator):
         stops = StopsRole(self.stops, None)
         starts.stops = stops
         stops.starts = starts
-        return {starts: (self.startsidx, self.posdtype, ()), stops: (self.stopsidx, self.posdtype, ())}
+        return OrderedDict([(starts, (self.startsidx, self.posdtype, ())), (stops, (self.stopsidx, self.posdtype, ()))])
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            out = self.content._togetall(arrays, cache, bottomup, memo)
+            if self._required and cache[self.startsidx] is None or cache[self.stopsidx] is None:
+                if bottomup:
+                    out.update(self._toget(arrays, cache))
+                else:
+                    out2 = self._toget(arrays, cache)
+                    out2.update(out)
+                    out = out2
+            return out
+        else:
+            return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         starts = cache[self.startsidx]
@@ -275,7 +309,24 @@ class UnionGenerator(Generator):
         offsets = OffsetsRole(self.offsets, None)
         tags.offsets = offsets
         offsets.tags = tags
-        return {tags: (self.tagsidx, self.tagdtype, ()), offsets: (self.offsetsidx, self.offsetdtype, ())}
+        return OrderedDict([(tags, (self.tagsidx, self.tagdtype, ())), (offsets, (self.offsetsidx, self.offsetdtype, ()))])
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            out = OrderedDict()
+            for x in self.possibilities:
+                out.update(x._togetall(arrays, cache, bottomup, memo))
+            if self._required and cache[self.tagsidx] is None or cache[self.offsetsidx] is None:
+                if bottomup:
+                    out.update(self._toget(arrays, cache))
+                else:
+                    out2 = self._toget(arrays, cache)
+                    out2.update(out)
+                    out = out2
+            return out
+        else:
+            return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         tags = cache[self.tagsidx]
@@ -307,7 +358,14 @@ class RecordGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return {}
+        return OrderedDict()
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            return OrderedDict([x._togetall(arrays, cache, bottomup, memo) for x in self.fields.values()])
+        else:
+            return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
@@ -330,7 +388,14 @@ class TupleGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return {}
+        return OrderedDict()
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            return OrderedDict([x._togetall(arrays, cache, bottomup, memo) for x in self.types])
+        else:
+            return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
@@ -357,7 +422,22 @@ class PointerGenerator(Generator):
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return {PositionsRole(self.positions): (self.positionsidx, self.posdtype, ())}
+        return OrderedDict([(PositionsRole(self.positions), (self.positionsidx, self.posdtype, ()))])
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            out = self.target._togetall(arrays, cache, bottomup, memo)
+            if self._required and cache[self.positionsidx] is None:
+                if bottomup:
+                    out.update(self._toget(arrays, cache))
+                else:
+                    out2 = self._toget(arrays, cache)
+                    out2.update(out)
+                    out = out2
+            return out
+        else:
+            return OrderedDict()
 
     def _generate(self, arrays, index, cache):
         positions = cache[self.positionsidx]
@@ -398,6 +478,9 @@ class ExtendedGenerator(Generator):
 
     def _toget(self, arrays, cache):
         return self.generic._toget(arrays, cache)
+
+    def _togetall(self, arrays, cache, bottomup, memo):
+        return self.generic._togetall(arrays, cache, bottomup, memo)
 
     @property
     def packing(self):
