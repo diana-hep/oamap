@@ -104,7 +104,7 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ListGenerator):
-            raise NotImplementedError
+            return ListProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.MaskedUnionGenerator):
             raise NotImplementedError
@@ -122,7 +122,7 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
-            raise NotImplementedError
+            return TupleProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.MaskedPointerGenerator):
             raise NotImplementedError
@@ -139,12 +139,69 @@ else:
 
     ################################################################ ListProxy
 
+    class ListProxyNumbaType(numba.types.Type):
+        def __init__(self, generator):
+            self.generator = generator
+            super(ListProxyNumbaType, self).__init__(name="OAMap-ListProxy-" + self.generator.id)
+
+    @numba.extending.register_model(ListProxyNumbaType)
+    class ListProxyModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("baggage", baggagetype),
+                       ("ptr", numba.types.voidptr),
+                       ("len", numba.types.voidptr),
+                       ("whence", numba.types.int64),
+                       ("stride", numba.types.int64),
+                       ("length", numba.types.int64)]
+            super(ListProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.unbox(ListProxyNumbaType)
+    def unbox_listproxy(typ, obj, c):
+        generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
+        arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
+        cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
+        whence_obj = c.pyapi.object_getattr_string(obj, "_whence")
+        stride_obj = c.pyapi.object_getattr_string(obj, "_stride")
+        length_obj = c.pyapi.object_getattr_string(obj, "_length")
+
+        listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        listproxy.baggage, listproxy.ptr, listproxy.len = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
+        listproxy.whence = c.pyapi.long_as_longlong(whence_obj)
+        listproxy.stride = c.pyapi.long_as_longlong(stride_obj)
+        listproxy.length = c.pyapi.long_as_longlong(length_obj)
+
+        c.pyapi.decref(whence_obj)
+        c.pyapi.decref(stride_obj)
+        c.pyapi.decref(length_obj)
+
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(listproxy._getvalue(), is_error=is_error)
+
+    @numba.extending.box(ListProxyNumbaType)
+    def box_listproxy(typ, val, c):
+        listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        whence_obj = c.pyapi.long_from_longlong(listproxy.whence)
+        stride_obj = c.pyapi.long_from_longlong(listproxy.stride)
+        length_obj = c.pyapi.long_from_longlong(listproxy.length)
+
+        listproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.ListProxy))
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, listproxy.baggage)
+        out = c.pyapi.call_function_objargs(listproxy_cls, (generator_obj, arrays_obj, cache_obj, whence_obj, stride_obj, length_obj))
+
+        c.pyapi.decref(listproxy_cls)
+
+        return out
+        
+    ################################################################ PartitionedListProxy
+
+    ################################################################ IndexedPartitionedListProxy
+
     ################################################################ RecordProxy
 
     class RecordProxyNumbaType(numba.types.Type):
         def __init__(self, generator):
             self.generator = generator
-            super(RecordProxyNumbaType, self).__init__(name="OAMap-Record-" + str(self.generator.id))
+            super(RecordProxyNumbaType, self).__init__(name="OAMap-RecordProxy-" + self.generator.id)
 
     @numba.extending.register_model(RecordProxyNumbaType)
     class RecordProxyModel(numba.datamodel.models.StructModel):
@@ -166,6 +223,8 @@ else:
         recordproxy.baggage, recordproxy.ptr, recordproxy.len = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
         recordproxy.index = c.pyapi.long_as_longlong(index_obj)
 
+        c.pyapi.decref(index_obj)
+
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
         return numba.extending.NativeValue(recordproxy._getvalue(), is_error=is_error)
 
@@ -179,5 +238,50 @@ else:
         out = c.pyapi.call_function_objargs(recordproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
 
         c.pyapi.decref(recordproxy_cls)
+
+        return out
+
+    ################################################################ TupleProxy
+
+    class TupleProxyNumbaType(numba.types.Type):
+        def __init__(self, generator):
+            self.generator = generator
+            super(TupleProxyNumbaType, self).__init__(name="OAMap-TupleProxy-" + self.generator.id)
+
+    @numba.extending.register_model(TupleProxyNumbaType)
+    class TupleProxyModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("baggage", baggagetype),
+                       ("ptr", numba.types.voidptr),
+                       ("len", numba.types.voidptr),
+                       ("index", numba.types.int64)]
+            super(TupleProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.unbox(TupleProxyNumbaType)
+    def unbox_tupleproxy(typ, obj, c):
+        generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
+        arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
+        cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
+        index_obj = c.pyapi.object_getattr_string(obj, "_index")
+
+        tupleproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        tupleproxy.baggage, tupleproxy.ptr, tupleproxy.len = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
+        tupleproxy.index = c.pyapi.long_as_longlong(index_obj)
+
+        c.pyapi.decref(index_obj)
+
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(tupleproxy._getvalue(), is_error=is_error)
+
+    @numba.extending.box(TupleProxyNumbaType)
+    def box_tupleproxy(typ, val, c):
+        tupleproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        index_obj = c.pyapi.long_from_longlong(tupleproxy.index)
+
+        tupleproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.TupleProxy))
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, tupleproxy.baggage)
+        out = c.pyapi.call_function_objargs(tupleproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
+
+        c.pyapi.decref(tupleproxy_cls)
 
         return out

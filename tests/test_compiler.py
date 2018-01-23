@@ -31,6 +31,8 @@
 import unittest
 import sys
 
+import numpy
+
 try:
     import numba
 except ImportError:
@@ -43,7 +45,39 @@ class TestCompiler(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_boxing(self):
+    def test_boxing_list(self):
+        if numba is not None:
+            @numba.njit
+            def boxing1(x):
+                return 3.14
+
+            @numba.njit
+            def boxing2(x):
+                return x
+
+            @numba.njit
+            def boxing3(x):
+                return x, x
+
+            value = List(Primitive(int)).fromdata([1, 2, 3, 4, 5])
+            # value._whence = 314
+            # value._stride = 315
+            # value._length = 316
+
+            for j in range(10):
+                for i in range(10):
+                    boxing1(value)
+                    value2 = boxing2(value)
+                    value3, value4 = boxing3(value)
+
+                    for v in value2, value3, value4:
+                        self.assertTrue(value._generator is v._generator)
+                        self.assertTrue(value._arrays is v._arrays)
+                        self.assertTrue(value._cache is v._cache)
+
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._whence), sys.getrefcount(value._stride), sys.getrefcount(value._length))
+
+    def test_boxing_record(self):
         if numba is not None:
             @numba.njit
             def boxing1(x):
@@ -58,6 +92,7 @@ class TestCompiler(unittest.TestCase):
                 return x, x
 
             value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
+            value._index = 314
 
             for j in range(10):
                 for i in range(10):
@@ -70,6 +105,34 @@ class TestCompiler(unittest.TestCase):
                         self.assertTrue(value._arrays is v._arrays)
                         self.assertTrue(value._cache is v._cache)
 
-                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled))
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
 
+    def test_boxing_tuple(self):
+        if numba is not None:
+            @numba.njit
+            def boxing1(x):
+                return 3.14
 
+            @numba.njit
+            def boxing2(x):
+                return x
+
+            @numba.njit
+            def boxing3(x):
+                return x, x
+
+            value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
+            value._index = 314
+
+            for j in range(10):
+                for i in range(10):
+                    boxing1(value)
+                    value2 = boxing2(value)
+                    value3, value4 = boxing3(value)
+
+                    for v in value2, value3, value4:
+                        self.assertTrue(value._generator is v._generator)
+                        self.assertTrue(value._arrays is v._arrays)
+                        self.assertTrue(value._cache is v._cache)
+
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))

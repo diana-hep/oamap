@@ -210,6 +210,9 @@ class PartitionedListProxy(ListProxy):
         for partition in self._partitions:
             for x in partition:
                 yield x
+            if hasattr(partition, "_cache"):
+                for i in range(len(partition._cache)):
+                    partition._cache[i] = None
 
     def __len__(self):
         raise TypeError("PartitionedListProxy does not have a known len")
