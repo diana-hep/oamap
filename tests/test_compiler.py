@@ -41,7 +41,6 @@ except ImportError:
 import oamap.compiler
 import oamap.fill
 from oamap.schema import *
-from oamap.util import OrderedDict
 
 class TestCompiler(unittest.TestCase):
     def runTest(self):
@@ -145,7 +144,7 @@ class TestCompiler(unittest.TestCase):
             def doit(x):
                 return x.one, x.two
 
-            value = Record(OrderedDict([("one", Primitive(int)), ("two", Primitive(float))])).fromdata({"one": 999, "two": 3.14})
+            value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 999, "two": 3.14})
 
             self.assertTrue(value._cache[0] is None)
             self.assertTrue(value._cache[1] is None)
@@ -165,7 +164,7 @@ class TestCompiler(unittest.TestCase):
             def two(x):
                 return x.two
 
-            schema = Record(OrderedDict([("one", Primitive(int, nullable=True)), ("two", Primitive(float, nullable=True))]))
+            schema = Record({"one": Primitive(int, nullable=True), "two": Primitive(float, nullable=True)})
             generator = schema.generator()
 
             value = generator(oamap.fill.fromdata({"one": 999, "two": 3.14}, generator))
@@ -198,7 +197,7 @@ class TestCompiler(unittest.TestCase):
             def doit(x):
                 return x.one.uno, x.one.dos, x.two.tres
 
-            value = Record(OrderedDict([("one", Record(OrderedDict([("uno", Primitive(int)), ("dos", Primitive(float))]))), ("two", Record(OrderedDict([("tres", Primitive(bool))])))])).fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
+            value = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}), "two": Record({"tres": Primitive(bool)})}).fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
 
             self.assertEqual(value._cache, [None, None, None])
 
