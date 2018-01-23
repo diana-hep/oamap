@@ -297,7 +297,7 @@ else:
 
         normindex_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(64))
         builder.store(indexval, normindex_ptr)
-        with builder.if_then(bulder.icmp_signed("<", indexval, literal_int64(0))):
+        with builder.if_then(builder.icmp_signed("<", indexval, literal_int64(0))):
             builder.store(builder.add(indexval, listproxy.length), normindex_ptr)
         normindex = builder.load(normindex_ptr)
         
@@ -309,7 +309,7 @@ else:
                         IndexError("index out of bounds"))
 
         at = builder.add(listproxy.whence, builder.mul(listproxy.stride, normindex))
-        return generate(context, builder, pyapi, listtpe.generator.content, baggage, listproxy.ptrs, listproxy.lens, at)
+        return generate(context, builder, pyapi, listtpe.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, at)
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):

@@ -231,3 +231,17 @@ class TestCompiler(unittest.TestCase):
 
             self.assertTrue(doit1(value) is None)
             self.assertTrue(doit2(value) is None)
+
+    def test_list_getitem(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x, i):
+                return x[i]
+
+            value = List(Primitive(float)).fromdata([0.0, 1.1, 2.2, 3.3, 4.4])
+
+            print doit(value, 0)
+            print doit(value, 1)
+            print doit(value, 2)
+            print doit(value, 3)
+            print doit(value, 4)
