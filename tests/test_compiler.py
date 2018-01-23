@@ -219,8 +219,15 @@ class TestCompiler(unittest.TestCase):
             def doit2(x):
                 return x.one
 
-            value = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}, nullable=True), "two": Record({"tres": Primitive(bool, nullable=True)})}).fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
+            schema = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}, nullable=True), "two": Record({"tres": Primitive(bool, nullable=True)})})
+            generator = schema.generator()
 
-            print doit1(value)
+            value = generator(oamap.fill.fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}}, generator))
 
-            print doit2(value)._fields
+            self.assertTrue(doit1(value) is True)
+            self.assertEqual(doit2(value).dos, 2.2)
+
+            value = generator(oamap.fill.fromdata({"one": None, "two": {"tres": None}}, generator))
+
+            self.assertTrue(doit1(value) is None)
+            self.assertTrue(doit2(value) is None)
