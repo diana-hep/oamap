@@ -52,6 +52,8 @@ class Role(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+class NoRole(Role): pass
+
 class MaskRole(Role):
     def __init__(self, name, others):
         super(MaskRole, self).__init__(name)

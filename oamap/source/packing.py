@@ -138,21 +138,22 @@ class MaskBitPack(PackedSource):
             return [self.suffix]
 
     def getall(self, names):
-        notmasks = [n for n in names if not isinstance(n, oamap.generator.MaskRole)]
-        masks    = [n for n in names if isinstance(n, oamap.generator.MaskRole)]
-
-        out = super(MaskBitPack, self).getall(notmasks)
-        for n in masks:
-            out[n] = self.unpack(super(MaskBitPack, self).getall([str(n) + self.suffix]))
+        others  = [n for n in names if not isinstance(n, oamap.generator.MaskRole)]
+        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix), n) for n in names if isinstance(n, oamap.generator.MaskRole))
+        out = super(MaskBitPack, self).getall(others + list(renamed))
+        for suffixedname, name in renamed.items():
+            out[name] = self.unpack(out[suffixedname])
+            del out[suffixedname]
         return out
 
     def putall(self, names2arrays, roles):
-        notmasks = dict((n, x) for n, x in names2arrays.items() if not isinstance(n, oamap.generator.MaskRole))
-        masks    = dict((n, x) for n, x in names2arrays.items() if isinstance(n, oamap.generator.MaskRole))
-
-        for n, x in masks.items():
-            super(MaskBitPack, self).putall({str(n) + self.suffix: pack(x)})
-        super(MaskBitPack, self).putall(notmasks, roles)
+        out = {}
+        for n, x in names2arrays.items():
+            if isinstance(n, oamap.generator.MaskRole):
+                out[oamap.generator.NoRole(str(n) + self.suffix)] = self.pack(x)
+            else:
+                out[n] = x
+        super(MaskBitPack, self).putall(out)
 
     @staticmethod
     def unpack(array):
@@ -187,35 +188,24 @@ class ListCounts(PackedSource):
             return [self.suffix]
 
     def getall(self, names):
-        others = [n for n in names if not isinstance(n, (oamap.generator.StartsRole, oamap.generator.StopsRole))]
-        starts = [n for n in names if isinstance(n, oamap.generator.StartsRole)]
-        stops  = [n for n in names if isinstance(n, oamap.generator.StopsRole)]
-
-        out = super(ListCounts, self).getall(others)
-        if len(starts) == len(stops) == 0:
-            pass
-        elif len(starts) == len(stops) == 1:
-            startsname, = starts
-            stopsname,  = stops
-            out[startsname], out[stopsname] = self.fromcounts(super(ListCounts, self).getall([str(startsname) + self.suffix]))
-        else:
-            raise RuntimeError("cannot determine which starts ({0}) corresponds to which stops ({1})".format(", ".join(repr(n) for n in starts), ", ".join(repr(n) for n in stops)))
+        others  = [n for n in names if not isinstance(n, (oamap.generator.StartsRole, oamap.generator.StopsRole))]
+        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix), n) for n in names if isinstance(n, oamap.generator.StartsRole))
+        out = super(ListCounts, self).getall(others + list(renamed))
+        for suffixedname, name in renamed.items():
+            out[name], out[name.stops] = self.fromcounts(out[suffixedname])
+            del out[suffixedname]
         return out
 
     def putall(self, names2arrays):
-        others = [n for n in names if not isinstance(n, (oamap.generator.StartsRole, oamap.generator.StopsRole))]
-        starts = [n for n in names if isinstance(n, oamap.generator.StartsRole)]
-        stops  = [n for n in names if isinstance(n, oamap.generator.StopsRole)]
-
-        if len(starts) == len(stops) == 0:
-            pass
-        elif len(starts) == len(stops) == 1:
-            (startsname, startsarray), = starts.items()
-            (stopsname,  stopsarray),  = stops.items()
-            super(ListCounts, self).putall({str(startsname) + self.suffix: self.tocounts(startsarray, stopsarray)})
-        else:
-            raise RuntimeError("cannot determine which starts ({0}) corresponds to which stops ({1})".format(", ".join(repr(n) for n in starts), ", ".join(repr(n) for n in stops)))
-        super(ListCounts, self).putall(others)
+        out = {}
+        for n, x in names2arrays.items():
+            if isinstance(n, oamap.generator.StartsRole):
+                out[oamap.generator.NoRole(str(n) + self.suffix)] = self.tocounts(x, names2arrays[n.stops])
+            elif isinstance(n, oamap.generator.StopsRole):
+                pass
+            else:
+                out[n] = x
+        super(ListCounts, self).putall(out)
 
     @staticmethod
     def fromcounts(array):
@@ -244,22 +234,15 @@ class UnionDropOffsets(PackedSource):
         return []
 
     def getall(self, names):
-        tags    = [n for n in names if isinstance(n, TagsRole)]
-        offsets = [n for n in names if isinstance(n, OffsetsRole)]
-
-        out = super(UnionDropOffsets, self).getall([n for n in names if n not in offsets])
-        if len(tags) == len(offsets) == 0:
-            pass
-        elif len(tags) == len(offsets) == 1:
-            tagsname,    = tags
-            offsetsname, = offsets
-            out[offsetsname] = self.tags2offsets(out[tagsname])
-        else:
-            raise RuntimeError("cannot determine which tags ({0}) corresponds to which offsets ({1})".format(", ".join(repr(n) for n in tags), ", ".join(repr(n) for n in offsets)))
+        nooffsets = [n for n in names if not isinstance(n, oamap.generator.OffsetsRole)]
+        out = super(UnionDropOffsets, self).getall(nooffsets)
+        for n in names:
+            if isinstance(n, oamap.generator.TagsRole):
+                out[n.offsets] = self.tags2offsets(out[n])
         return out
 
-    def putall(self, names2arrays, roles):
-        super(UnionDropOffsets, self).putall(dict((n, x) for n, x in names2arrays.items() if not isinstance(n, oamap.generator.RoleOffsets)))
+    def putall(self, names2arrays):
+        super(UnionDropOffsets, self).putall(dict((n, x) for n, x in names2arrays.items() if not isinstance(n, oamap.generator.OffsetsRole)))
 
     @staticmethod
     def tags2offsets(tags):
