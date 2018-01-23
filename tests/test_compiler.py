@@ -72,11 +72,11 @@ class TestCompiler(unittest.TestCase):
                     value3, value4 = boxing3(value)
 
                     for v in value2, value3, value4:
-                        self.assertTrue(value._generator is v._generator)
+                        self.assertNotEqual(value._generator.id, v._generator.id)
                         self.assertTrue(value._arrays is v._arrays)
                         self.assertTrue(value._cache is v._cache)
 
-                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._whence), sys.getrefcount(value._stride), sys.getrefcount(value._length))
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._whence), sys.getrefcount(value._stride), sys.getrefcount(value._length))
 
     def test_boxing_record(self):
         if numba is not None:
@@ -102,11 +102,11 @@ class TestCompiler(unittest.TestCase):
                     value3, value4 = boxing3(value)
 
                     for v in value2, value3, value4:
-                        self.assertTrue(value._generator is v._generator)
+                        self.assertNotEqual(value._generator.id, v._generator.id)
                         self.assertTrue(value._arrays is v._arrays)
                         self.assertTrue(value._cache is v._cache)
 
-                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
 
     def test_boxing_tuple(self):
         if numba is not None:
@@ -132,11 +132,13 @@ class TestCompiler(unittest.TestCase):
                     value3, value4 = boxing3(value)
 
                     for v in value2, value3, value4:
-                        self.assertTrue(value._generator is v._generator)
+                        self.assertNotEqual(value._generator.id, v._generator.id)
                         self.assertTrue(value._arrays is v._arrays)
                         self.assertTrue(value._cache is v._cache)
 
-                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
+                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
+
+                value = value2
 
     def test_record_attr(self):
         if numba is not None:
@@ -206,3 +208,19 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(value._cache[0] is value._arrays["object-Fone-Fdos-Df8"])
             self.assertTrue(value._cache[1] is value._arrays["object-Fone-Funo-Di8"])
             self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-Ftres-Db1"])
+
+    def test_record_attr_attr_masked(self):
+        if numba is not None:
+            @numba.njit
+            def doit1(x):
+                return x.two.tres
+
+            @numba.njit
+            def doit2(x):
+                return x.one
+
+            value = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}, nullable=True), "two": Record({"tres": Primitive(bool, nullable=True)})}).fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
+
+            print doit1(value)
+
+            print doit2(value)._fields

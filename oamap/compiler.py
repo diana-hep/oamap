@@ -52,8 +52,7 @@ else:
     @numba.extending.register_model(BaggageType)
     class BaggageModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("generator", numba.types.pyobject),
-                       ("arrays", numba.types.pyobject),
+            members = [("arrays", numba.types.pyobject),
                        ("cache", numba.types.pyobject),
                        ("ptrs", numba.types.pyobject),
                        ("lens", numba.types.pyobject)]
@@ -66,7 +65,6 @@ else:
             builder.ret(llvmlite.llvmpy.core.Constant.null(pyapi.pyobj))
 
         baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
-        baggage.generator = generator_obj
         baggage.arrays = arrays_obj
         baggage.cache = cache_obj
         baggage.ptrs = pyapi.tuple_getitem(results_obj, 0)
@@ -78,18 +76,26 @@ else:
         lens = pyapi.long_as_voidptr(lens_obj)
 
         pyapi.decref(generator_obj)
+        pyapi.decref(generator_obj)
         pyapi.decref(results_obj)
 
         return baggage._getvalue(), ptrs, lens
 
-    def box_baggage(context, builder, pyapi, baggage_val):
+    def box_baggage(context, builder, pyapi, generator, baggage_val):
+        generator_obj = pyapi.unserialize(pyapi.serialize_object(generator))
+        new_fcn = pyapi.object_getattr_string(generator_obj, "_new")
+        results_obj = pyapi.call_function_objargs(new_fcn, ())
+        with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
+            builder.ret(llvmlite.llvmpy.core.Constant.null(pyapi.pyobj))
+
+        pyapi.decref(results_obj)
+
         baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=baggage_val)
 
-        pyapi.decref(baggage.generator)
         pyapi.decref(baggage.arrays)
         pyapi.decref(baggage.cache)
 
-        return baggage.generator, baggage.arrays, baggage.cache
+        return generator_obj, baggage.arrays, baggage.cache
 
     ################################################################ general routines for all types
 
@@ -167,6 +173,8 @@ else:
             builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
     def generate_empty(context, builder, pyapi, generator, baggage):
+        typ = typeof_generator(generator, checkmasked=False)
+
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
                 return llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.from_dtype(generator.dtype)))
@@ -180,7 +188,12 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
-            raise NotImplementedError
+            recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            recordproxy.baggage = baggage
+            recordproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            recordproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            recordproxy.index = literal_int64(0)
+            return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
             raise NotImplementedError
@@ -210,7 +223,9 @@ else:
                     outoptval.valid = numba.cgutils.false_bit
                     outoptval.data = generate_empty(context, builder, pyapi, generator, baggage)
             return outoptval._getvalue()
-            
+
+        typ = typeof_generator(generator, checkmasked=False)
+
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
                 dataidx = literal_int64(generator.dataidx)
@@ -226,7 +241,7 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
-            recordproxy = numba.cgutils.create_struct_proxy(typeof_generator(generator))(context, builder)
+            recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
             recordproxy.baggage = baggage
             recordproxy.ptrs = ptrs
             recordproxy.lens = lens
@@ -293,7 +308,7 @@ else:
         length_obj = c.pyapi.long_from_longlong(listproxy.length)
 
         listproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.ListProxy))
-        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, listproxy.baggage)
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, typ.generator, listproxy.baggage)
         out = c.pyapi.call_function_objargs(listproxy_cls, (generator_obj, arrays_obj, cache_obj, whence_obj, stride_obj, length_obj))
 
         c.pyapi.decref(listproxy_cls)
@@ -358,7 +373,7 @@ else:
         index_obj = c.pyapi.long_from_longlong(recordproxy.index)
 
         recordproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.RecordProxy))
-        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, recordproxy.baggage)
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, typ.generator, recordproxy.baggage)
         out = c.pyapi.call_function_objargs(recordproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
 
         c.pyapi.decref(recordproxy_cls)
@@ -403,7 +418,7 @@ else:
         index_obj = c.pyapi.long_from_longlong(tupleproxy.index)
 
         tupleproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.TupleProxy))
-        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, tupleproxy.baggage)
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, typ.generator, tupleproxy.baggage)
         out = c.pyapi.call_function_objargs(tupleproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
 
         c.pyapi.decref(tupleproxy_cls)

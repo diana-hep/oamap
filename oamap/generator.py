@@ -107,6 +107,10 @@ class Generator(object):
         self.id = self.nextid()
         self._required = False
 
+    def _new(self, memo=None):
+        self.id = self.nextid()
+        self._required = False
+        
     def __call__(self, arrays):
         return self._generate(arrays, 0, [None] * self._cachelen)
 
@@ -246,6 +250,14 @@ class ListGenerator(Generator):
         self.content = content
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _new(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            super(ListGenerator, self)._new(memo)
+            self.content._new(memo)
+
     def _toget(self, arrays, cache):
         starts = StartsRole(self.starts, None)
         stops = StopsRole(self.stops, None)
@@ -303,6 +315,15 @@ class UnionGenerator(Generator):
         self.possibilities = possibilities
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _new(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            super(UnionGenerator, self)._new(memo)
+            for x in self.possibilities:
+                x._new(memo)
+
     def _toget(self, arrays, cache):
         tags = TagsRole(self.tags, None)
         offsets = OffsetsRole(self.offsets, None)
@@ -356,6 +377,15 @@ class RecordGenerator(Generator):
         self.fields = fields
         Generator.__init__(self, packing, name, derivedname, schema)
 
+    def _new(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            super(RecordGenerator, self)._new(memo)
+            for x in self.fields.values():
+                x._new(memo)
+
     def _toget(self, arrays, cache):
         return OrderedDict()
 
@@ -388,6 +418,15 @@ class TupleGenerator(Generator):
     def __init__(self, types, packing, name, derivedname, schema):
         self.types = types
         Generator.__init__(self, packing, name, derivedname, schema)
+
+    def _new(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            super(TupleGenerator, self)._new(memo)
+            for x in self.types:
+                x._new(memo)
 
     def _toget(self, arrays, cache):
         return OrderedDict()
@@ -425,6 +464,14 @@ class PointerGenerator(Generator):
         self.positionsidx = positionsidx
         self.target = target
         Generator.__init__(self, packing, name, derivedname, schema)
+
+    def _new(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            super(PointerGenerator, self)._new(memo)
+            self.target._new(memo)
 
     def _toget(self, arrays, cache):
         return OrderedDict([(PositionsRole(self.positions), (self.positionsidx, self.posdtype, ()))])
@@ -480,6 +527,14 @@ class ExtendedGenerator(Generator):
 
     def __init__(self, genericclass, *args):
         self.generic = genericclass(*args)
+
+    def _new(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            super(ExtendedGenerator, self)._new(memo)
+            self.generic._new(memo)
 
     def _toget(self, arrays, cache):
         return self.generic._toget(arrays, cache)
