@@ -113,7 +113,11 @@ else:
 
     def typeof_generator(generator, checkmasked=True):
         if checkmasked and isinstance(generator, oamap.generator.Masked):
-            return numba.types.optional(typeof_generator(generator, checkmasked=False))
+            tpe = typeof_generator(generator, checkmasked=False)
+            if isinstance(tpe, numba.types.Optional):
+                return tpe
+            else:
+                return numba.types.optional(tpe)
 
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
@@ -134,7 +138,7 @@ else:
             return TupleProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
-            raise NotImplementedError
+            return typeof_generator(generator.target)
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
             return typeof_generator(generator.generic)
@@ -245,7 +249,7 @@ else:
             return tupleproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
-            raise NotImplementedError
+            return generate_empty(context, builder, generator.target, baggage)
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
             return generate(context, builder, generator.generic, baggage, ptrs, lens, at)
@@ -263,11 +267,17 @@ else:
             outoptval = context.make_helper(builder, typeof_generator(generator))
             with builder.if_else(builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))) as (is_not_valid, is_valid):
                 with is_valid:
-                    outoptval.valid = numba.cgutils.true_bit
-                    outoptval.data = generate(context, builder, generator, baggage, ptrs, lens, at, checkmasked=False)
+                    obj = generate(context, builder, generator, baggage, ptrs, lens, at, checkmasked=False)
+                    if isinstance(generator, oamap.generator.PointerGenerator) and isinstance(generator.target, oamap.generator.Masked):
+                        return obj
+                    else:
+                        outoptval.valid = numba.cgutils.true_bit
+                        outoptval.data = obj
+
                 with is_not_valid:
                     outoptval.valid = numba.cgutils.false_bit
                     outoptval.data = generate_empty(context, builder, generator, baggage)
+
             return outoptval._getvalue()
 
         typ = typeof_generator(generator, checkmasked=False)
@@ -315,7 +325,9 @@ else:
             return tupleproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
-            raise NotImplementedError
+            positionsidx = literal_int64(generator.positionsidx)
+            index = cast_int64(builder, arrayitem(context, builder, positionsidx, ptrs, lens, at, generator.posdtype))
+            return generate(context, builder, generator.target, baggage, ptrs, lens, index)
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
             return generate(context, builder, generator.generic, baggage, ptrs, lens, at)

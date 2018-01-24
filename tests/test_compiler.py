@@ -404,3 +404,52 @@ class TestCompiler(unittest.TestCase):
 
             value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
             self.assertRaises(numba.errors.TypingError, lambda: doit2(value))
+
+    def test_pointer(self):
+        if numba is not None:
+            linkedlist = Record({"label": Primitive(int)})
+            linkedlist["next"] = Pointer(linkedlist)
+
+            value = linkedlist({"object-Flabel-Di8": numpy.array([0, 1, 2], dtype=int), "object-Fnext-P-object": numpy.array([1, 2, 0], dtype=oamap.generator.PointerGenerator.posdtype)})
+
+            @numba.njit
+            def closed1(x):
+                return x.next.label
+
+            @numba.njit
+            def closed2(x):
+                return x.next.next.label
+
+            @numba.njit
+            def closed3(x):
+                return x.next.next.next.label
+
+            @numba.njit
+            def closed4(x):
+                return x.next.next.next.next.label
+
+            self.assertEqual(closed1(value), 1)
+            self.assertEqual(closed2(value), 2)
+            self.assertEqual(closed3(value), 0)
+            self.assertEqual(closed4(value), 1)
+
+            @numba.njit
+            def open1(x):
+                return x.next
+
+            @numba.njit
+            def open2(x):
+                return x.next.next
+
+            @numba.njit
+            def open3(x):
+                return x.next.next.next
+
+            @numba.njit
+            def open4(x):
+                return x.next.next.next.next
+
+            self.assertEqual(open1(value).label, 1)
+            self.assertEqual(open2(value).label, 2)
+            self.assertEqual(open3(value).label, 0)
+            self.assertEqual(open4(value).label, 1)

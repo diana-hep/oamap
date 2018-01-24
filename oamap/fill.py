@@ -106,7 +106,7 @@ def _fromdata_initialize(gen, generator, fillables, pointers, pointerobjs_keys, 
 
     return forefront
 
-def _fromdata_forefront(gen, fillables, secondary=False):
+def _fromdata_forefront(gen, fillables, pointerobjs, secondary=False):
     if not secondary and isinstance(gen, oamap.generator.Masked):
         # mask forefront overrides any other arrays
         return fillables[gen.mask].forefront()
@@ -122,17 +122,17 @@ def _fromdata_forefront(gen, fillables, secondary=False):
 
     elif isinstance(gen, oamap.generator.RecordGenerator):
         for x in gen.fields.values():
-            return _fromdata_forefront(x, fillables)
+            return _fromdata_forefront(x, fillables, pointerobjs)
 
     elif isinstance(gen, oamap.generator.TupleGenerator):
         for x in gen.types:
-            return _fromdata_forefront(x, fillables)
+            return _fromdata_forefront(x, fillables, pointerobjs)
 
     elif isinstance(gen, oamap.generator.PointerGenerator):
         return len(pointerobjs[id(gen)])
 
     elif isinstance(gen, oamap.generator.ExtendedGenerator):
-        return _fromdata_forefront(gen.generic, fillables)
+        return _fromdata_forefront(gen.generic, fillables, pointerobjs)
 
 def _fromdata_unionnullable(union):
     for possibility in union.possibilities:
@@ -144,7 +144,7 @@ def _fromdata_unionnullable(union):
 
 def _fromdata_fill(obj, gen, fillables, targetids, pointerobjs, at, pointerat):
     if id(gen) in targetids:
-        targetids[id(gen)][id(obj)] = (_fromdata_forefront(gen, fillables), obj)
+        targetids[id(gen)][id(obj)] = (_fromdata_forefront(gen, fillables, pointerobjs), obj)
 
     if obj is None:
         if isinstance(gen, oamap.generator.Masked):
@@ -160,13 +160,13 @@ def _fromdata_fill(obj, gen, fillables, targetids, pointerobjs, at, pointerat):
 
     # obj is not None (except for the Union case)
     if isinstance(gen, oamap.generator.Masked):
-        fillables[gen.mask].append(_fromdata_forefront(gen, fillables, secondary=True))
+        fillables[gen.mask].append(_fromdata_forefront(gen, fillables, pointerobjs, secondary=True))
 
     if isinstance(gen, oamap.generator.PrimitiveGenerator):
         fillables[gen.data].append(obj)
 
     elif isinstance(gen, oamap.generator.ListGenerator):
-        start = stop = _fromdata_forefront(gen.content, fillables)
+        start = stop = _fromdata_forefront(gen.content, fillables, pointerobjs)
         try:
             if isinstance(obj, dict) or (isinstance(obj, tuple) and hasattr(obj, "_fields")):
                 raise TypeError
@@ -190,7 +190,7 @@ def _fromdata_fill(obj, gen, fillables, targetids, pointerobjs, at, pointerat):
         if tag is None:
             raise TypeError("cannot fill {0} where expecting type {1} at {2}".format(repr(obj), gen.schema, at))
 
-        offset = _fromdata_forefront(possibility, fillables)
+        offset = _fromdata_forefront(possibility, fillables, pointerobjs)
         _fromdata_fill(obj, possibility, fillables, targetids, pointerobjs, at + ("tag" + repr(tag),), pointerat)
 
         fillables[gen.tags].append(tag)
@@ -284,12 +284,12 @@ def fromdatamore(value, fillables, generator=None, pointer_fromequal=False):
     
     _fromdata_initialize(generator, generator, fillables, pointers, pointerobjs_keys, targetids_keys, fillables_leaf_to_root, positions_to_pointerobjs)
 
-    if _fromdata_forefront(generator, fillables) != 0 and not isinstance(generator, oamap.generator.ListGenerator):
-        raise TypeError("non-Lists can only be filled from data once")
-
     pointerat = {}
     targetids = dict((x, {}) for x in targetids_keys)
     pointerobjs = dict((x, []) for x in pointerobjs_keys)
+
+    if _fromdata_forefront(generator, fillables, pointerobjs) != 0 and not isinstance(generator, oamap.generator.ListGenerator):
+        raise TypeError("non-Lists can only be filled from data once")
 
     _fromdata_fill(value, generator, fillables, targetids, pointerobjs, (), pointerat)
     _fromdata_finish(fillables, pointers, pointerobjs, targetids, pointerat, pointer_fromequal, fillables_leaf_to_root)
@@ -320,7 +320,7 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
     targetids = dict((x, {}) for x in targetids_keys)
     pointerobjs = dict((x, []) for x in pointerobjs_keys)
 
-    start = stop = _fromdata_forefront(generator.content, fillables)
+    start = stop = _fromdata_forefront(generator.content, fillables, pointerobjs)
 
     for value in values:
         # prospectively fill a value
@@ -359,7 +359,7 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
             targetids = dict((x, {}) for x in targetids_keys)
             pointerobjs = dict((x, []) for x in pointerobjs_keys)
 
-            start = stop = _fromdata_forefront(generator.content, fillables)
+            start = stop = _fromdata_forefront(generator.content, fillables, pointerobjs)
 
             # really fill it in this new partition
             _fromdata_fill(value, generator.content, fillables, targetids, pointerobjs, (), pointerat)
