@@ -523,9 +523,21 @@ else:
             nextindex = numba.cgutils.increment_index(builder, index)
             builder.store(nextindex, iterproxy.index)
 
-    ################################################################ PartitionedListProxy
+    ################################################################ UnionProxy
 
-    ################################################################ IndexedPartitionedListProxy
+    # class UnionProxyNumbaType(numba.types.Type):
+    #     def __init__(self, generator):
+    #         super(RecordProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
+
+    # @numba.extending.register_model(UnionProxyNumbaType)
+    # class UnionProxyModel(numba.datamodel.models.StructModel):
+    #     def __init__(self, dmm, fe_type):
+    #         members = [("baggage", baggagetype),
+    #                    ("ptrs", numba.types.voidptr),
+    #                    ("lens", numba.types.voidptr),
+    #                    ("index", 
+
+
 
     ################################################################ RecordProxy
 
@@ -669,3 +681,8 @@ else:
         c.pyapi.decref(tupleproxy_cls)
 
         return out
+
+    ################################################################ PartitionedListProxy
+
+    ################################################################ IndexedPartitionedListProxy
+

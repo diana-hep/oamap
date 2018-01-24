@@ -246,9 +246,33 @@ class Schema(object):
                     out.extend(self._normalize_extension(x))
             return out
 
-    def fromdata(self, value, pointer_fromequal=False):
+    def data(self, value, pointer_fromequal=False):
         import oamap.fill
         return self(oamap.fill.fromdata(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def iterdata(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromiterdata(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
+
+    def json(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromjson(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def jsonfile(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromjsonfile(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def jsonstring(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromjsonstring(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def iterjson(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromiterjson(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
+
+    def iterjsonfile(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromiterjsonfile(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
 
     def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
         return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
@@ -1120,6 +1144,9 @@ class Union(Schema):
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
+
+    def case(self, possibility):
+        HERE
 
 ################################################################ Records contain fields of known types
 

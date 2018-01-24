@@ -61,7 +61,7 @@ class TestCompiler(unittest.TestCase):
                 return x, x
 
             for j in range(3):
-                value = List(Primitive(int)).fromdata([1, 2, 3, 4, 5])
+                value = List(Primitive(int)).data([1, 2, 3, 4, 5])
                 # value._whence = 314
                 # value._stride = 315
                 # value._length = 316
@@ -93,7 +93,7 @@ class TestCompiler(unittest.TestCase):
                 return x, x
 
             for j in range(3):
-                value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 1, "two": 2.2})
+                value = Record({"one": Primitive(int), "two": Primitive(float)}).data({"one": 1, "two": 2.2})
                 # value._index = 314
 
                 for i in range(10):
@@ -123,7 +123,7 @@ class TestCompiler(unittest.TestCase):
                 return x, x
 
             for j in range(3):
-                value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
+                value = Tuple([Primitive(int), Primitive(float)]).data((1, 2.2))
                 # value._index = 314
 
                 for i in range(10):
@@ -146,7 +146,7 @@ class TestCompiler(unittest.TestCase):
             def doit(x):
                 return x.one, x.two
 
-            value = Record({"one": Primitive(int), "two": Primitive(float)}).fromdata({"one": 999, "two": 3.14})
+            value = Record({"one": Primitive(int), "two": Primitive(float)}).data({"one": 999, "two": 3.14})
 
             self.assertTrue(value._cache[0] is None)
             self.assertTrue(value._cache[1] is None)
@@ -169,7 +169,7 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": Primitive(int, nullable=True), "two": Primitive(float, nullable=True)})
             generator = schema.generator()
 
-            value = generator.fromdata({"one": 999, "two": 3.14})
+            value = generator.data({"one": 999, "two": 3.14})
 
             self.assertEqual(value._cache, [None, None, None, None])
 
@@ -181,7 +181,7 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-M"])
             self.assertTrue(value._cache[3] is value._arrays["object-Ftwo-Df8"])
 
-            value = generator.fromdata({"one": None, "two": None})
+            value = generator.data({"one": None, "two": None})
 
             self.assertEqual(value._cache, [None, None, None, None])
 
@@ -199,7 +199,7 @@ class TestCompiler(unittest.TestCase):
             def doit(x):
                 return x.one.uno, x.one.dos, x.two.tres
 
-            value = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}), "two": Record({"tres": Primitive(bool)})}).fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
+            value = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}), "two": Record({"tres": Primitive(bool)})}).data({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
 
             self.assertEqual(value._cache, [None, None, None])
 
@@ -222,12 +222,12 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}, nullable=True), "two": Record({"tres": Primitive(bool, nullable=True)})})
             generator = schema.generator()
 
-            value = generator.fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
+            value = generator.data({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
 
             self.assertTrue(doit1(value) is True)
             self.assertEqual(doit2(value).dos, 2.2)
 
-            value = generator.fromdata({"one": None, "two": {"tres": None}})
+            value = generator.data({"one": None, "two": {"tres": None}})
 
             self.assertTrue(doit1(value) is None)
             self.assertTrue(doit2(value) is None)
@@ -238,7 +238,7 @@ class TestCompiler(unittest.TestCase):
             def doit(x, i):
                 return x[i]
 
-            value = List(Primitive(float)).fromdata([0.0, 1.1, 2.2, 3.3, 4.4])
+            value = List(Primitive(float)).data([0.0, 1.1, 2.2, 3.3, 4.4])
 
             self.assertEquals(doit(value, 0), 0.0)
             self.assertEquals(doit(value, 1), 1.1)
@@ -274,7 +274,7 @@ class TestCompiler(unittest.TestCase):
                 return x[9:1:i]
 
             data = [0.0, 1.1, 2.2, 3.3, 4.4]
-            value = List(Primitive(float)).fromdata(data)
+            value = List(Primitive(float)).data(data)
 
             self.assertEqual(low(value, 2), data[2:])
             self.assertEqual(low(value, -2), data[-2:])
@@ -287,7 +287,7 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(high(value, -10), data[:-10])
 
             data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
-            value = List(Primitive(float)).fromdata(data)
+            value = List(Primitive(float)).data(data)
 
             self.assertEqual(posstep(value, 2), data[1:9:2])
             self.assertEqual(posstep(value, -2), data[1:9:-2])
@@ -308,13 +308,13 @@ class TestCompiler(unittest.TestCase):
             schema = List(Primitive(float))
             generator = schema.generator()
 
-            value = generator.fromdata([])
+            value = generator.data([])
             self.assertEqual(doit(value), 0)
 
-            value = generator.fromdata([3.14])
+            value = generator.data([3.14])
             self.assertEqual(doit(value), 1)
 
-            value = generator.fromdata([1, 2, 3, 4, 5])
+            value = generator.data([1, 2, 3, 4, 5])
             self.assertEqual(doit(value), 5)
 
     def test_list_iter(self):
@@ -329,10 +329,10 @@ class TestCompiler(unittest.TestCase):
             schema = List(Primitive(float))
             generator = schema.generator()
 
-            value = generator.fromdata([])
+            value = generator.data([])
             self.assertEqual(doit(value), 0.0)
 
-            value = generator.fromdata([1.1, 2.2, 3.3])
+            value = generator.data([1.1, 2.2, 3.3])
             self.assertEqual(doit(value), 6.6)
 
             @numba.njit
@@ -349,16 +349,16 @@ class TestCompiler(unittest.TestCase):
             schema = List(List(Primitive(float)))
             generator = schema.generator()
 
-            value = generator.fromdata([])
+            value = generator.data([])
             self.assertEqual(doit2(value), 0.0)
 
-            value = generator.fromdata([[], [], []])
+            value = generator.data([[], [], []])
             self.assertEqual(doit2(value), 0.0)
 
-            value = generator.fromdata([[], [-1.1, -2.2], []])
+            value = generator.data([[], [-1.1, -2.2], []])
             self.assertEqual(doit2(value), 0.0)
 
-            value = generator.fromdata([[], [-1.1, -2.2], [2.2, 2.2]])
+            value = generator.data([[], [-1.1, -2.2], [2.2, 2.2]])
             self.assertEqual(doit2(value), 4.4)
 
     def test_tuple_len(self):
@@ -367,10 +367,10 @@ class TestCompiler(unittest.TestCase):
             def doit(x):
                 return len(x)
 
-            value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).fromdata((1, 2.2, True))
+            value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).data((1, 2.2, True))
             self.assertEqual(doit(value), 3)
 
-            value = Tuple([Primitive(int)]).fromdata((1,))
+            value = Tuple([Primitive(int)]).data((1,))
             self.assertEqual(doit(value), 1)
 
     def test_tuple_getitem(self):
@@ -387,22 +387,22 @@ class TestCompiler(unittest.TestCase):
             def doit2(x):
                 return x[2]
 
-            value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).fromdata((1, 2.2, True))
+            value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).data((1, 2.2, True))
             self.assertEqual(doit0(value), 1)
             self.assertEqual(doit1(value), 2.2)
             self.assertEqual(doit2(value), True)
 
-            value = Tuple([Primitive(int, nullable=True), Primitive(float, nullable=True), Primitive(bool, nullable=True)]).fromdata((1, 2.2, True))
+            value = Tuple([Primitive(int, nullable=True), Primitive(float, nullable=True), Primitive(bool, nullable=True)]).data((1, 2.2, True))
             self.assertEqual(doit0(value), 1)
             self.assertEqual(doit1(value), 2.2)
             self.assertEqual(doit2(value), True)
 
-            value = Tuple([Primitive(int, nullable=True), Primitive(float, nullable=True), Primitive(bool, nullable=True)]).fromdata((None, None, None))
+            value = Tuple([Primitive(int, nullable=True), Primitive(float, nullable=True), Primitive(bool, nullable=True)]).data((None, None, None))
             self.assertTrue(doit0(value) is None)
             self.assertTrue(doit1(value) is None)
             self.assertTrue(doit2(value) is None)
 
-            value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
+            value = Tuple([Primitive(int), Primitive(float)]).data((1, 2.2))
             self.assertRaises(numba.errors.TypingError, lambda: doit2(value))
 
     def test_pointer(self):
@@ -461,7 +461,7 @@ class TestCompiler(unittest.TestCase):
                 return x[i]
 
             data = [3.3, 2.2, 3.3, None, 1.1, None, 4.4, 1.1, 3.3, None]
-            value = List(Pointer(Primitive(float), nullable=True)).fromdata(data, pointer_fromequal=True)
+            value = List(Pointer(Primitive(float), nullable=True)).data(data, pointer_fromequal=True)
 
             for i in range(10):
                 self.assertEqual(doit(value, i), data[i])

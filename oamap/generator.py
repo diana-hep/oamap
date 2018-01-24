@@ -111,10 +111,34 @@ class Generator(object):
         self.id = self.nextid()
         self._required = False
 
-    def fromdata(self, value, pointer_fromequal=False):
+    def data(self, value, pointer_fromequal=False):
         import oamap.fill
         return self(oamap.fill.fromdata(value, generator=self, pointer_fromequal=pointer_fromequal))
-        
+
+    def iterdata(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromiterdata(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
+
+    def json(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromjson(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def jsonfile(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromjsonfile(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def jsonstring(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromjsonstring(value, generator=self, pointer_fromequal=pointer_fromequal))
+
+    def iterjson(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromiterjson(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
+
+    def iterjsonfile(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromiterjsonfile(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
+
     def __call__(self, arrays):
         return self._generate(arrays, 0, [None] * self._cachelen)
 
