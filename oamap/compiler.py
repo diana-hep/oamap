@@ -569,6 +569,32 @@ else:
         listtpe, = sig.args
         return literal_int64(len(listtpe.generator.types))
 
+    @numba.typing.templates.infer
+    class TupleProxyGetItem(numba.typing.templates.AbstractTemplate):
+        key = "static_getitem"
+        def generic(self, args, kwds):
+            tpe, idx = args
+            if isinstance(tpe, TupleProxyNumbaType):
+                if isinstance(idx, int):
+                    if idx < 0:
+                        normindex = idx + len(tpe.generator.types)
+                    else:
+                        normindex = idx
+                    if 0 <= normindex < len(tpe.generator.types):
+                        return typeof_generator(tpe.generator.types[normindex])
+
+    @numba.extending.lower_builtin("static_getitem", TupleProxyNumbaType, numba.types.Const)
+    def tupleproxy_static_getitem(context, builder, sig, args):
+        tupletpe, _ = sig.args
+        tupleval, idx = args
+        if isinstance(idx, int):
+            if idx < 0:
+                normindex = idx + len(tupletpe.generator.types)
+            else:
+                normindex = idx
+            tupleproxy = numba.cgutils.create_struct_proxy(tupletpe)(context, builder, value=tupleval)
+            return generate(context, builder, tupletpe.generator.types[normindex], tupleproxy.baggage, tupleproxy.ptrs, tupleproxy.lens, tupleproxy.index)
+            
     @numba.extending.unbox(TupleProxyNumbaType)
     def unbox_tupleproxy(typ, obj, c):
         generator_obj = c.pyapi.object_getattr_string(obj, "_generator")

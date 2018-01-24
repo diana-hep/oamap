@@ -328,3 +328,35 @@ class TestCompiler(unittest.TestCase):
 
             value = Tuple([Primitive(int)]).fromdata((1,))
             self.assertEqual(doit(value), 1)
+
+    def test_tuple_getitem(self):
+        if numba is not None:
+            @numba.njit
+            def doit0(x):
+                return x[0]
+
+            @numba.njit
+            def doit1(x):
+                return x[1]
+
+            @numba.njit
+            def doit2(x):
+                return x[2]
+
+            value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).fromdata((1, 2.2, True))
+            self.assertEqual(doit0(value), 1)
+            self.assertEqual(doit1(value), 2.2)
+            self.assertEqual(doit2(value), True)
+
+            value = Tuple([Primitive(int, nullable=True), Primitive(float, nullable=True), Primitive(bool, nullable=True)]).fromdata((1, 2.2, True))
+            self.assertEqual(doit0(value), 1)
+            self.assertEqual(doit1(value), 2.2)
+            self.assertEqual(doit2(value), True)
+
+            value = Tuple([Primitive(int, nullable=True), Primitive(float, nullable=True), Primitive(bool, nullable=True)]).fromdata((None, None, None))
+            self.assertTrue(doit0(value) is None)
+            self.assertTrue(doit1(value) is None)
+            self.assertTrue(doit2(value) is None)
+
+            value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
+            self.assertRaises(numba.errors.TypingError, lambda: doit2(value))
