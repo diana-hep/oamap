@@ -272,3 +272,47 @@ class TestCompiler(unittest.TestCase):
 
             value = generator(oamap.fill.fromdata([1, 2, 3, 4, 5], generator))
             self.assertEqual(doit(value), 5)
+
+    def test_list_iter(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                out = 0.0
+                for xi in x:
+                    out += xi
+                return out
+
+            schema = List(Primitive(float))
+            generator = schema.generator()
+
+            value = generator(oamap.fill.fromdata([], generator))
+            self.assertEqual(doit(value), 0.0)
+
+            value = generator(oamap.fill.fromdata([1.1, 2.2, 3.3], generator))
+            self.assertEqual(doit(value), 6.6)
+
+            @numba.njit
+            def doit2(outer):
+                out = 0.0
+                for inner in outer:
+                    tmp = 0.0
+                    for x in inner:
+                        tmp += x
+                    if tmp > out:
+                        out = tmp
+                return out
+
+            schema = List(List(Primitive(float)))
+            generator = schema.generator()
+
+            value = generator(oamap.fill.fromdata([], generator))
+            self.assertEqual(doit2(value), 0.0)
+
+            value = generator(oamap.fill.fromdata([[], [], []], generator))
+            self.assertEqual(doit2(value), 0.0)
+
+            value = generator(oamap.fill.fromdata([[], [-1.1, -2.2], []], generator))
+            self.assertEqual(doit2(value), 0.0)
+
+            value = generator(oamap.fill.fromdata([[], [-1.1, -2.2], [2.2, 2.2]], generator))
+            self.assertEqual(doit2(value), 4.4)

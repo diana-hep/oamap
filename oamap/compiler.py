@@ -138,12 +138,27 @@ else:
         return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(itemsize * 8), value)
 
     def literal_int64(value):
-        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(64), value)
+        return literal_int(value, 8)
 
     def literal_intp(value):
-        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(numba.types.intp.bitwidth), value)
+        return literal_int(value, numba.types.intp.bitwidth // 8)
 
-    def arrayitem(context, builder, pyapi, idx, ptrs, lens, at, dtype):
+    def cast_int(builder, value, itemsize):
+        bitwidth = itemsize * 8
+        if value.type.width < bitwidth:
+            return builder.zext(value, llvmlite.llvmpy.core.Type.int(bitwidth))
+        elif value.type.width > bitwidth:
+            return builder.trunc(value, llvmlite.llvmpy.core.Type.int(bitwidth))
+        else:
+            return builder.bitcast(value, llvmlite.llvmpy.core.Type.int(bitwidth))
+
+    def cast_int64(builder, value):
+        return cast_int(builder, value, 8)
+
+    def cast_intp(builder, value):
+        return cast_int(builder, value, numba.types.intp.bitwidth // 8)
+
+    def arrayitem(context, builder, idx, ptrs, lens, at, dtype):
         offset = builder.mul(idx, literal_int64(numba.types.intp.bitwidth // 8))
 
         ptrposition = builder.inttoptr(
@@ -157,7 +172,7 @@ else:
         ptr = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], ptrposition)
         len = numba.targets.arrayobj.load_item(context, builder, numba.types.intp[:], lenposition)
 
-        raise_exception(context, builder, pyapi, builder.icmp_unsigned(">=", at, len), RuntimeError("array index out of range"))
+        raise_exception(context, builder, builder.icmp_unsigned(">=", at, len), RuntimeError("array index out of range"))
 
         finalptr = builder.inttoptr(
             builder.add(ptr, builder.mul(at, literal_int64(dtype.itemsize))),
@@ -165,14 +180,14 @@ else:
 
         return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(dtype)[:], finalptr)
 
-    def raise_exception(context, builder, pyapi, case, exception):
+    def raise_exception(context, builder, case, exception):
         with builder.if_then(case, likely=False):
-            exc = pyapi.serialize_object(exception)
+            exc = context.get_python_api(builder).serialize_object(exception)
             excptr = context.call_conv._get_excinfo_argument(builder.function)
             builder.store(exc, excptr)
             builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
-    def generate_empty(context, builder, pyapi, generator, baggage):
+    def generate_empty(context, builder, generator, baggage):
         typ = typeof_generator(generator, checkmasked=False)
 
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
@@ -202,26 +217,26 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
-            return generate(context, builder, pyapi, generator.generic, baggage, ptrs, lens, at)
+            return generate(context, builder, generator.generic, baggage, ptrs, lens, at)
 
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
 
-    def generate(context, builder, pyapi, generator, baggage, ptrs, lens, at, checkmasked=True):
+    def generate(context, builder, generator, baggage, ptrs, lens, at, checkmasked=True):
         generator._required = True
 
         if checkmasked and isinstance(generator, oamap.generator.Masked):
             maskidx = literal_int64(generator.maskidx)
-            maskvalue = arrayitem(context, builder, pyapi, maskidx, ptrs, lens, at, generator.maskdtype)
+            maskvalue = arrayitem(context, builder, maskidx, ptrs, lens, at, generator.maskdtype)
 
             outoptval = context.make_helper(builder, typeof_generator(generator))
             with builder.if_else(builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))) as (is_not_valid, is_valid):
                 with is_valid:
                     outoptval.valid = numba.cgutils.true_bit
-                    outoptval.data = generate(context, builder, pyapi, generator, baggage, ptrs, lens, at, checkmasked=False)
+                    outoptval.data = generate(context, builder, generator, baggage, ptrs, lens, at, checkmasked=False)
                 with is_not_valid:
                     outoptval.valid = numba.cgutils.false_bit
-                    outoptval.data = generate_empty(context, builder, pyapi, generator, baggage)
+                    outoptval.data = generate_empty(context, builder, generator, baggage)
             return outoptval._getvalue()
 
         typ = typeof_generator(generator, checkmasked=False)
@@ -229,13 +244,25 @@ else:
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
             if generator.dims == ():
                 dataidx = literal_int64(generator.dataidx)
-                return arrayitem(context, builder, pyapi, dataidx, ptrs, lens, at, generator.dtype)
+                return arrayitem(context, builder, dataidx, ptrs, lens, at, generator.dtype)
 
             else:
                 raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ListGenerator):
-            raise NotImplementedError
+            startsidx = literal_int64(generator.startsidx)
+            stopsidx  = literal_int64(generator.stopsidx)
+            start = cast_int64(builder, arrayitem(context, builder, startsidx, ptrs, lens, at, generator.posdtype))
+            stop  = cast_int64(builder, arrayitem(context, builder, stopsidx,  ptrs, lens, at, generator.posdtype))
+
+            listproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            listproxy.baggage = baggage
+            listproxy.ptrs = ptrs
+            listproxy.lens = lens
+            listproxy.whence = start
+            listproxy.stride = literal_int64(1)
+            listproxy.length = builder.sub(stop, start)
+            return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
             raise NotImplementedError
@@ -255,7 +282,7 @@ else:
             raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ExtendedGenerator):
-            return generate(context, builder, pyapi, generator.generic, baggage, ptrs, lens, at)
+            return generate(context, builder, generator.generic, baggage, ptrs, lens, at)
 
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
@@ -306,7 +333,6 @@ else:
         listtpe, indextpe = sig.args
         listval, indexval = args
 
-        pyapi = context.get_python_api(builder)
         listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
 
         normindex_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(64))
@@ -317,13 +343,12 @@ else:
         
         raise_exception(context,
                         builder,
-                        pyapi,
                         builder.or_(builder.icmp_signed("<", normindex, literal_int64(0)),
                                     builder.icmp_signed(">=", normindex, listproxy.length)),
                         IndexError("index out of bounds"))
 
         at = builder.add(listproxy.whence, builder.mul(listproxy.stride, normindex))
-        return generate(context, builder, pyapi, listtpe.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, at)
+        return generate(context, builder, listtpe.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, at)
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
@@ -361,7 +386,61 @@ else:
         c.pyapi.decref(listproxy_cls)
 
         return out
-        
+
+    ################################################################ ListProxyIterator
+
+    class ListProxyIteratorType(numba.types.common.SimpleIteratorType):
+        def __init__(self, listproxytype):
+            self.listproxy = listproxytype
+            super(ListProxyIteratorType, self).__init__("iter({0})".format(listproxytype.name), typeof_generator(listproxytype.generator.content))
+
+    @numba.datamodel.registry.register_default(ListProxyIteratorType)
+    class ListProxyIteratorModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("index", numba.types.EphemeralPointer(numba.types.int64)),
+                       ("listproxy", fe_type.listproxy)]
+            super(ListProxyIteratorModel, self).__init__(dmm, fe_type, members)
+
+    @numba.typing.templates.infer
+    class ListProxy_getiter(numba.typing.templates.AbstractTemplate):
+        key = "getiter"
+        def generic(self, args, kwds):
+            objtyp, = args
+            if isinstance(objtyp, ListProxyNumbaType):
+                return numba.typing.templates.signature(ListProxyIteratorType(objtyp), objtyp)
+
+    @numba.extending.lower_builtin("getiter", ListProxyNumbaType)
+    def listproxy_getiter(context, builder, sig, args):
+        listtpe, = sig.args
+        listval, = args
+
+        iterobj = context.make_helper(builder, sig.return_type)
+        iterobj.index = numba.cgutils.alloca_once_value(builder, literal_int64(0))
+        iterobj.listproxy = listval
+
+        if context.enable_nrt:
+            context.nrt.incref(builder, listtpe, listval)
+
+        return numba.targets.imputils.impl_ret_new_ref(context, builder, sig.return_type, iterobj._getvalue())
+
+    @numba.extending.lower_builtin("iternext", ListProxyIteratorType)
+    @numba.targets.imputils.iternext_impl
+    def listproxy_iternext(context, builder, sig, args, result):
+        itertpe, = sig.args
+        iterval, = args
+        iterproxy = context.make_helper(builder, itertpe, value=iterval)
+        listproxy = numba.cgutils.create_struct_proxy(itertpe.listproxy)(context, builder, value=iterproxy.listproxy)
+
+        index = builder.load(iterproxy.index)
+        is_valid = builder.icmp_signed("<", index, listproxy.length)
+        result.set_valid(is_valid)
+
+        with builder.if_then(is_valid, likely=True):
+            at = builder.add(listproxy.whence, builder.mul(listproxy.stride, index))
+            result.yield_(generate(context, builder, itertpe.listproxy.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, at))
+            nextindex = numba.cgutils.increment_index(builder, index)
+            builder.store(nextindex, iterproxy.index)
+
     ################################################################ PartitionedListProxy
 
     ################################################################ IndexedPartitionedListProxy
@@ -394,9 +473,8 @@ else:
 
     @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
     def recordproxy_getattr(context, builder, typ, val, attr):
-        pyapi = context.get_python_api(builder)
         recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
-        return generate(context, builder, pyapi, typ.generator.fields[attr], recordproxy.baggage, recordproxy.ptrs, recordproxy.lens, recordproxy.index)
+        return generate(context, builder, typ.generator.fields[attr], recordproxy.baggage, recordproxy.ptrs, recordproxy.lens, recordproxy.index)
 
     @numba.extending.unbox(RecordProxyNumbaType)
     def unbox_recordproxy(typ, obj, c):
