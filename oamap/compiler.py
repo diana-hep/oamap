@@ -109,10 +109,7 @@ else:
 
     @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
     def typeof_proxy(val, c):
-        if isinstance(val._generator, oamap.generator.TupleGenerator):
-            return TupleProxyNumbaType(val._generator)
-        else:
-            return typeof_generator(val._generator)
+        return typeof_generator(val._generator)
 
     def typeof_generator(generator, checkmasked=True):
         if checkmasked and isinstance(generator, oamap.generator.Masked):
@@ -134,7 +131,7 @@ else:
             return RecordProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
-            return numba.types.Tuple([typeof_generator(x) for x in generator.types])
+            return TupleProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
             raise NotImplementedError
@@ -240,7 +237,12 @@ else:
             return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
-            raise NotImplementedError
+            tupleproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            tupleproxy.baggage = baggage
+            tupleproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            tupleproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            tupleproxy.index = literal_int64(0)
+            return tupleproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
             raise NotImplementedError
@@ -305,9 +307,12 @@ else:
             return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
-            # incref_baggage(context, builder, baggage)
-            res = context.make_tuple(builder, typ, [generate(context, builder, x, baggage, ptrs, lens, at) for x in generator.types])
-            return numba.targets.imputils.impl_ret_borrowed(context, builder, typ, res)
+            tupleproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            tupleproxy.builder = baggage
+            tupleproxy.ptrs = ptrs
+            tupleproxy.lens = lens
+            tupleproxy.index = at
+            return tupleproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
             raise NotImplementedError
@@ -536,22 +541,33 @@ else:
 
         return out
 
-    ################################################################ TupleProxy (defers to Numba's tuple)
+    ################################################################ TupleProxy
 
-    class TupleProxyNumbaType(numba.types.containers.Tuple):
-        def __new__(cls, generator):
-            out = numba.types.containers.Tuple([typeof_generator(x) for x in generator.types])
-            out.generator = generator
-            return out
-
+    class TupleProxyNumbaType(numba.types.Type):
         def __init__(self, generator):
-            numba.types.containers.Tuple.__init__([typeof_generator(x) for x in generator.types])
             self.generator = generator
+            super(TupleProxyNumbaType, self).__init__(name="OAMap-TupleProxy-" + self.generator.id)
 
     @numba.extending.register_model(TupleProxyNumbaType)
-    class TupleProxyModel(numba.datamodel.models.TupleModel):
+    class TupleProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            super(TupleProxyModel, self).__init__(dmm, typeof_generator(fe_type.generator, checkmasked=False))
+            members = [("baggage", baggagetype),
+                       ("ptrs", numba.types.voidptr),
+                       ("lens", numba.types.voidptr),
+                       ("index", numba.types.int64)]
+            super(TupleProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.type_callable(len)
+    def tupleproxy_len_type(context):
+        def typer(tupleproxy):
+            if isinstance(tupleproxy, TupleProxyNumbaType):
+                return numba.types.int64   # verified len type
+        return typer
+
+    @numba.extending.lower_builtin(len, TupleProxyNumbaType)
+    def tupleproxy_len(context, builder, sig, args):
+        listtpe, = sig.args
+        return literal_int64(len(listtpe.generator.types))
 
     @numba.extending.unbox(TupleProxyNumbaType)
     def unbox_tupleproxy(typ, obj, c):
@@ -560,11 +576,24 @@ else:
         cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
         index_obj = c.pyapi.object_getattr_string(obj, "_index")
 
-        baggage, ptrs, lens = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
-        at = c.pyapi.long_as_longlong(index_obj)
+        tupleproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        tupleproxy.baggage, tupleproxy.ptrs, tupleproxy.lens = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
+        tupleproxy.index = c.pyapi.long_as_longlong(index_obj)
 
         c.pyapi.decref(index_obj)
 
-        out = generate(c.context, c.builder, typ.generator, baggage, ptrs, lens, at)
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
-        return numba.extending.NativeValue(out, is_error=is_error)
+        return numba.extending.NativeValue(tupleproxy._getvalue(), is_error=is_error)
+
+    @numba.extending.box(TupleProxyNumbaType)
+    def box_tupleproxy(typ, val, c):
+        tupleproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        index_obj = c.pyapi.long_from_longlong(tupleproxy.index)
+
+        tupleproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.TupleProxy))
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, typ.generator, tupleproxy.baggage)
+        out = c.pyapi.call_function_objargs(tupleproxy_cls, (generator_obj, arrays_obj, cache_obj, index_obj))
+
+        c.pyapi.decref(tupleproxy_cls)
+
+        return out
