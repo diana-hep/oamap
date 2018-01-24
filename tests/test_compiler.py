@@ -460,11 +460,25 @@ class TestCompiler(unittest.TestCase):
             def doit(x, i):
                 return x[i]
 
-            schema = List(Pointer(Primitive(float), nullable=True))
-            generator = schema.generator()
+            # data = [3.3, 2.2, 3.3, None, 1.1, None, 4.4, 1.1, 3.3, None]
+            # value = List(Pointer(Primitive(float), nullable=True)).fromdata(data, pointer_fromequal=True)
 
-            data = [3.3, 2.2, 3.3, None, 1.1, None, 4.4, 1.1, 3.3, None]
-            value = generator.fromdata(data, pointer_fromequal=True)
+            # for i in range(10):
+            #     self.assertEqual(doit(value, i), data[i])
 
+            # for i in range(10):
+            #     self.assertEqual(doit(value, i), value[i])
+
+            schema = List(Pointer(Primitive(float, nullable=True), nullable=True))
+            value = schema({
+                "object-B":       numpy.array([0]),
+                "object-L-X-Df8": numpy.array([3.3, 2.2, 4.4]),
+                "object-L-X-M":   numpy.array([0, 1, -1, 2]),
+                "object-L-P":     numpy.array([0, 1, 0, 2, 3, 2, 0]),
+                "object-E":       numpy.array([10]),
+                "object-L-M":     numpy.array([ 0, 1, 2, -1, 3, -1, 4, 5, 6, -1])
+                })
+
+            data = [3.3, 2.2, 3.3, None, None, None, 4.4, None, 3.3, None]
             for i in range(10):
                 self.assertEqual(doit(value, i), data[i])

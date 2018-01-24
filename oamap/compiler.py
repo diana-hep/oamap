@@ -269,16 +269,18 @@ else:
                 with is_valid:
                     obj = generate(context, builder, generator, baggage, ptrs, lens, cast_int64(builder, maskvalue), checkmasked=False)
                     if isinstance(generator, oamap.generator.PointerGenerator) and isinstance(generator.target, oamap.generator.Masked):
-                        return obj
+                        out = obj
                     else:
                         outoptval.valid = numba.cgutils.true_bit
                         outoptval.data = obj
+                        out = outoptval._getvalue()
 
                 with is_not_valid:
                     outoptval.valid = numba.cgutils.false_bit
                     outoptval.data = generate_empty(context, builder, generator, baggage)
+                    out = outoptval._getvalue()
 
-            return outoptval._getvalue()
+            return out
 
         typ = typeof_generator(generator, checkmasked=False)
 
