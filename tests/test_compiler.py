@@ -169,7 +169,7 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": Primitive(int, nullable=True), "two": Primitive(float, nullable=True)})
             generator = schema.generator()
 
-            value = generator(oamap.fill.fromdata({"one": 999, "two": 3.14}, generator))
+            value = generator.fromdata({"one": 999, "two": 3.14})
 
             self.assertEqual(value._cache, [None, None, None, None])
 
@@ -181,7 +181,7 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-M"])
             self.assertTrue(value._cache[3] is value._arrays["object-Ftwo-Df8"])
 
-            value = generator(oamap.fill.fromdata({"one": None, "two": None}, generator))
+            value = generator.fromdata({"one": None, "two": None})
 
             self.assertEqual(value._cache, [None, None, None, None])
 
@@ -222,12 +222,12 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": Record({"uno": Primitive(int), "dos": Primitive(float)}, nullable=True), "two": Record({"tres": Primitive(bool, nullable=True)})})
             generator = schema.generator()
 
-            value = generator(oamap.fill.fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}}, generator))
+            value = generator.fromdata({"one": {"uno": 1, "dos": 2.2}, "two": {"tres": True}})
 
             self.assertTrue(doit1(value) is True)
             self.assertEqual(doit2(value).dos, 2.2)
 
-            value = generator(oamap.fill.fromdata({"one": None, "two": {"tres": None}}, generator))
+            value = generator.fromdata({"one": None, "two": {"tres": None}})
 
             self.assertTrue(doit1(value) is None)
             self.assertTrue(doit2(value) is None)
@@ -255,6 +255,50 @@ class TestCompiler(unittest.TestCase):
             self.assertRaises(IndexError, lambda: doit(value, 5))
             self.assertRaises(IndexError, lambda: doit(value, -6))
 
+    def test_list_getitem_slice(self):
+        if numba is not None:
+            @numba.njit
+            def low(x, i):
+                return x[i:]
+
+            @numba.njit
+            def high(x, i):
+                return x[:i]
+
+            @numba.njit
+            def posstep(x, i):
+                return x[1:9:i]
+
+            @numba.njit
+            def negstep(x, i):
+                return x[9:1:i]
+
+            data = [0.0, 1.1, 2.2, 3.3, 4.4]
+            value = List(Primitive(float)).fromdata(data)
+
+            self.assertEqual(low(value, 2), data[2:])
+            self.assertEqual(low(value, -2), data[-2:])
+            self.assertEqual(low(value, 10), data[10:])
+            self.assertEqual(low(value, -10), data[-10:])
+
+            self.assertEqual(high(value, 2), data[:2])
+            self.assertEqual(high(value, -2), data[:-2])
+            self.assertEqual(high(value, 10), data[:10])
+            self.assertEqual(high(value, -10), data[:-10])
+
+            data = [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9]
+            value = List(Primitive(float)).fromdata(data)
+
+            self.assertEqual(posstep(value, 2), data[1:9:2])
+            self.assertEqual(posstep(value, -2), data[1:9:-2])
+            self.assertEqual(posstep(value, 3), data[1:9:3])
+            self.assertEqual(posstep(value, -3), data[1:9:-3])
+
+            self.assertEqual(negstep(value, 2), data[9:1:2])
+            self.assertEqual(negstep(value, -2), data[9:1:-2])
+            self.assertEqual(negstep(value, 3), data[9:1:3])
+            self.assertEqual(negstep(value, -3), data[9:1:-3])
+
     def test_list_len(self):
         if numba is not None:
             @numba.njit
@@ -264,13 +308,13 @@ class TestCompiler(unittest.TestCase):
             schema = List(Primitive(float))
             generator = schema.generator()
 
-            value = generator(oamap.fill.fromdata([], generator))
+            value = generator.fromdata([])
             self.assertEqual(doit(value), 0)
 
-            value = generator(oamap.fill.fromdata([3.14], generator))
+            value = generator.fromdata([3.14])
             self.assertEqual(doit(value), 1)
 
-            value = generator(oamap.fill.fromdata([1, 2, 3, 4, 5], generator))
+            value = generator.fromdata([1, 2, 3, 4, 5])
             self.assertEqual(doit(value), 5)
 
     def test_list_iter(self):
@@ -285,10 +329,10 @@ class TestCompiler(unittest.TestCase):
             schema = List(Primitive(float))
             generator = schema.generator()
 
-            value = generator(oamap.fill.fromdata([], generator))
+            value = generator.fromdata([])
             self.assertEqual(doit(value), 0.0)
 
-            value = generator(oamap.fill.fromdata([1.1, 2.2, 3.3], generator))
+            value = generator.fromdata([1.1, 2.2, 3.3])
             self.assertEqual(doit(value), 6.6)
 
             @numba.njit
@@ -305,16 +349,16 @@ class TestCompiler(unittest.TestCase):
             schema = List(List(Primitive(float)))
             generator = schema.generator()
 
-            value = generator(oamap.fill.fromdata([], generator))
+            value = generator.fromdata([])
             self.assertEqual(doit2(value), 0.0)
 
-            value = generator(oamap.fill.fromdata([[], [], []], generator))
+            value = generator.fromdata([[], [], []])
             self.assertEqual(doit2(value), 0.0)
 
-            value = generator(oamap.fill.fromdata([[], [-1.1, -2.2], []], generator))
+            value = generator.fromdata([[], [-1.1, -2.2], []])
             self.assertEqual(doit2(value), 0.0)
 
-            value = generator(oamap.fill.fromdata([[], [-1.1, -2.2], [2.2, 2.2]], generator))
+            value = generator.fromdata([[], [-1.1, -2.2], [2.2, 2.2]])
             self.assertEqual(doit2(value), 4.4)
 
     def test_tuple_len(self):

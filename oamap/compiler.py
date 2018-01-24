@@ -363,6 +363,8 @@ else:
             if isinstance(tpe, ListProxyNumbaType):
                 if isinstance(idx, numba.types.Integer):
                     return typeof_generator(tpe.generator.content)(tpe, idx)
+                elif isinstance(idx, numba.types.SliceType):
+                    return typeof_generator(tpe.generator)(tpe, idx)
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
@@ -376,7 +378,7 @@ else:
         with builder.if_then(builder.icmp_signed("<", indexval, literal_int64(0))):
             builder.store(builder.add(indexval, listproxy.length), normindex_ptr)
         normindex = builder.load(normindex_ptr)
-        
+
         raise_exception(context,
                         builder,
                         builder.or_(builder.icmp_signed("<", normindex, literal_int64(0)),
@@ -385,6 +387,27 @@ else:
 
         at = builder.add(listproxy.whence, builder.mul(listproxy.stride, normindex))
         return generate(context, builder, listtpe.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, at)
+
+    @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.SliceType)
+    def listproxy_getitem_slice(context, builder, sig, args):
+        listtpe, indextpe = sig.args
+        listval, indexval = args
+
+        sliceproxy = context.make_helper(builder, indextpe, indexval)
+        listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
+        slicedlistproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder)
+
+        numba.targets.slicing.guard_invalid_slice(context, builder, indextpe, sliceproxy)
+        numba.targets.slicing.fix_slice(builder, sliceproxy, listproxy.length)
+
+        slicedlistproxy.baggage = listproxy.baggage
+        slicedlistproxy.ptrs = listproxy.ptrs
+        slicedlistproxy.lens = listproxy.lens
+        slicedlistproxy.whence = sliceproxy.start
+        slicedlistproxy.stride = sliceproxy.step
+        slicedlistproxy.length = numba.targets.slicing.get_slice_length(builder, sliceproxy)
+
+        return slicedlistproxy._getvalue()
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):

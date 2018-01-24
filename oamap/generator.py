@@ -110,6 +110,10 @@ class Generator(object):
     def _new(self, memo=None):
         self.id = self.nextid()
         self._required = False
+
+    def fromdata(self, value, pointer_fromequal=False):
+        import oamap.fill
+        return self(oamap.fill.fromdata(value, generator=self, pointer_fromequal=pointer_fromequal))
         
     def __call__(self, arrays):
         return self._generate(arrays, 0, [None] * self._cachelen)
