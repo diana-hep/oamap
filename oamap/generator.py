@@ -394,6 +394,12 @@ class UnionGenerator(Generator):
             for y in x.iternames():
                 yield y
 
+    def case(self, possibility):
+        return self.schema.case(possibility)
+
+    def cast(self, possibility):
+        return self.schema.cast(possibility)
+
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)

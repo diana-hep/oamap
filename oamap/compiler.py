@@ -129,7 +129,7 @@ else:
             return ListProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
-            raise NotImplementedError
+            return UnionProxyNumbaType(generator)
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
             return RecordProxyNumbaType(generator)
@@ -230,7 +230,13 @@ else:
             return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
-            raise NotImplementedError
+            unionproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            unionproxy.baggage = baggage
+            unionproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            unionproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            unionproxy.tag = literal_int64(0)
+            unionproxy.offset = literal_int64(0)
+            return unionproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
             recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
@@ -317,7 +323,24 @@ else:
             return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
-            raise NotImplementedError
+            tagsidx    = literal_int64(generator.tagsidx)
+            offsetsidx = literal_int64(generator.offsetsidx)
+            tag    = cast_int64(builder, arrayitem(context, builder, tagsidx,    ptrs, lens, at, generator.tagdtype))
+            offset = cast_int64(builder, arrayitem(context, builder, offsetsidx, ptrs, lens, at, generator.offsetdtype))
+
+            raise_exception(context,
+                            builder,
+                            builder.or_(builder.icmp_signed("<", tag, literal_int64(0)),
+                                        builder.icmp_signed(">=", tag, literal_int64(len(generator.possibilities)))),
+                            RuntimeError("tag out of bounds for union"))
+
+            unionproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            unionproxy.baggage = baggage
+            unionproxy.ptrs = ptrs
+            unionproxy.lens = lens
+            unionproxy.tag = tag
+            unionproxy.offset = offset
+            return unionproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
             recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
@@ -525,20 +548,24 @@ else:
 
     ################################################################ UnionProxy
 
-    # class UnionProxyNumbaType(numba.types.Type):
-    #     def __init__(self, generator):
-    #         super(RecordProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
+    class UnionProxyNumbaType(numba.types.Type):
+        def __init__(self, generator):
+            super(RecordProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
 
-    # @numba.extending.register_model(UnionProxyNumbaType)
-    # class UnionProxyModel(numba.datamodel.models.StructModel):
-    #     def __init__(self, dmm, fe_type):
-    #         members = [("baggage", baggagetype),
-    #                    ("ptrs", numba.types.voidptr),
-    #                    ("lens", numba.types.voidptr),
-    #                    ("index", 
+    @numba.extending.register_model(UnionProxyNumbaType)
+    class UnionProxyModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("baggage", baggagetype),
+                       ("ptrs", numba.types.voidptr),
+                       ("lens", numba.types.voidptr),
+                       ("tag", numba.types.int64),
+                       ("offset", numba.types.int64)]
+            super(UnionProxyModel, self).__init__(dmm, fe_type, members)
+
+    
 
 
-
+            
     ################################################################ RecordProxy
 
     class RecordProxyNumbaType(numba.types.Type):

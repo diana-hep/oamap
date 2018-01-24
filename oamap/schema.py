@@ -43,6 +43,7 @@ import oamap.generator
 import oamap.inference
 import oamap.source.packing
 import oamap.extension.common
+import oamap.proxy
 from oamap.util import OrderedDict
 
 if sys.version_info[0] > 2:
@@ -1146,7 +1147,46 @@ class Union(Schema):
         return memo[id(self)]
 
     def case(self, possibility):
-        HERE
+        return Case(self, possibility)
+
+    def cast(self, possibility):
+        return Cast(self, possibility)
+
+class Case(object):
+    def __init__(self, union, possibility):
+        if not isinstance(union, Union):
+            raise TypeError("first argument of {0} constructor must be a Union".format(self.__class__.__name__))
+
+        if isinstance(possibility, Schema):
+            for i, x in enumerate(union.possibilities):
+                if possibility == x:
+                    possibility = i
+
+        if not isinstance(possibility, numbers.Integral) or not 0 <= possibility < len(union.possibilities):
+            raise TypeError("second argument of {0} constructor must be one of the Union's possibilities or its integer index".format(self.__class__.__name__))
+
+        self.union = union
+        self.tag = tag
+
+    @property
+    def possibility(self):
+        return self.union.possibilities[self.tag]
+
+    def __repr__(self):
+        return "<case {0} as {1}>".format(self.union, self.possibility)
+
+    def __call__(self, obj):
+        return obj in self.possibility
+
+class Cast(Case):
+    def __repr__(self):
+        return "<cast {0} as {1}>".format(self.union, self.possibility)
+
+    def __call__(self, obj):
+        if obj in self.possibility:
+            return obj
+        else:
+            raise TypeError("object is not a {0}".format(self.possibility))
 
 ################################################################ Records contain fields of known types
 
