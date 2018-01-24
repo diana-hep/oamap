@@ -289,7 +289,7 @@ class TestCompiler(unittest.TestCase):
         if numba is not None:
             @numba.njit
             def cast(x):
-                return 3.14
+                return x
 
             value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).fromdata((1, 2.2, True))
 

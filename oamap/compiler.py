@@ -538,10 +538,15 @@ else:
 
     ################################################################ TupleProxy (defers to Numba's tuple)
 
-    class TupleProxyNumbaType(numba.types.Type):
+    class TupleProxyNumbaType(numba.types.containers.Tuple):
+        def __new__(cls, generator):
+            out = numba.types.containers.Tuple([typeof_generator(x) for x in generator.types])
+            out.generator = generator
+            return out
+
         def __init__(self, generator):
+            numba.types.containers.Tuple.__init__([typeof_generator(x) for x in generator.types])
             self.generator = generator
-            super(TupleProxyNumbaType, self).__init__(name="OAMap-TupleProxy-" + self.generator.id)
 
     @numba.extending.register_model(TupleProxyNumbaType)
     class TupleProxyModel(numba.datamodel.models.TupleModel):
