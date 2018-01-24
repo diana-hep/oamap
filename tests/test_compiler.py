@@ -316,3 +316,15 @@ class TestCompiler(unittest.TestCase):
 
             value = generator(oamap.fill.fromdata([[], [-1.1, -2.2], [2.2, 2.2]], generator))
             self.assertEqual(doit2(value), 4.4)
+
+    def test_tuple_len(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                return len(x)
+
+            value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).fromdata((1, 2.2, True))
+            self.assertEqual(doit(value), 3)
+
+            value = Tuple([Primitive(int)]).fromdata((1,))
+            self.assertEqual(doit(value), 1)

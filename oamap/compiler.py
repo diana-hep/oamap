@@ -197,7 +197,14 @@ else:
                 raise NotImplementedError
 
         elif isinstance(generator, oamap.generator.ListGenerator):
-            raise NotImplementedError
+            listproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
+            listproxy.baggage = baggage
+            listproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            listproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
+            listproxy.whence = literal_int64(0)
+            listproxy.stride = literal_int64(0)
+            listproxy.length = literal_int64(0)
+            return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
             raise NotImplementedError
@@ -520,6 +527,18 @@ else:
                        ("lens", numba.types.voidptr),
                        ("index", numba.types.int64)]
             super(TupleProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.type_callable(len)
+    def tupleproxy_len_type(context):
+        def typer(tupleproxy):
+            if isinstance(tupleproxy, TupleProxyNumbaType):
+                return numba.types.int64   # verified len type
+        return typer
+
+    @numba.extending.lower_builtin(len, TupleProxyNumbaType)
+    def tupleproxy_len(context, builder, sig, args):
+        listtpe, = sig.args
+        return literal_int64(len(listtpe.generator.types))
 
     @numba.extending.unbox(TupleProxyNumbaType)
     def unbox_tupleproxy(typ, obj, c):
