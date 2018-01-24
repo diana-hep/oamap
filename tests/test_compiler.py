@@ -460,14 +460,14 @@ class TestCompiler(unittest.TestCase):
             def doit(x, i):
                 return x[i]
 
-            # data = [3.3, 2.2, 3.3, None, 1.1, None, 4.4, 1.1, 3.3, None]
-            # value = List(Pointer(Primitive(float), nullable=True)).fromdata(data, pointer_fromequal=True)
+            data = [3.3, 2.2, 3.3, None, 1.1, None, 4.4, 1.1, 3.3, None]
+            value = List(Pointer(Primitive(float), nullable=True)).fromdata(data, pointer_fromequal=True)
 
-            # for i in range(10):
-            #     self.assertEqual(doit(value, i), data[i])
+            for i in range(10):
+                self.assertEqual(doit(value, i), data[i])
 
-            # for i in range(10):
-            #     self.assertEqual(doit(value, i), value[i])
+            for i in range(10):
+                self.assertEqual(doit(value, i), value[i])
 
             schema = List(Pointer(Primitive(float, nullable=True), nullable=True))
             value = schema({

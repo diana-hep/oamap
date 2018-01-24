@@ -264,23 +264,33 @@ else:
             maskidx = literal_int64(generator.maskidx)
             maskvalue = arrayitem(context, builder, maskidx, ptrs, lens, at, generator.maskdtype)
 
+            comparison = builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))
+
             outoptval = context.make_helper(builder, typeof_generator(generator))
-            with builder.if_else(builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))) as (is_not_valid, is_valid):
-                with is_valid:
-                    obj = generate(context, builder, generator, baggage, ptrs, lens, cast_int64(builder, maskvalue), checkmasked=False)
-                    if isinstance(generator, oamap.generator.PointerGenerator) and isinstance(generator.target, oamap.generator.Masked):
-                        out = obj
-                    else:
+
+            if isinstance(generator, oamap.generator.PointerGenerator) and isinstance(generator.target, oamap.generator.Masked):
+                with builder.if_else(comparison) as (is_not_valid, is_valid):
+                    with is_valid:
+                        nested = generate(context, builder, generator, baggage, ptrs, lens, cast_int64(builder, maskvalue), checkmasked=False)
+                        wrapped = context.make_helper(builder, typeof_generator(generator), value=nested)
+                        outoptval.valid = wrapped.valid
+                        outoptval.data  = wrapped.data
+
+                    with is_not_valid:
+                        outoptval.valid = numba.cgutils.false_bit
+                        outoptval.data = generate_empty(context, builder, generator, baggage)
+
+            else:
+                with builder.if_else(comparison) as (is_not_valid, is_valid):
+                    with is_valid:
                         outoptval.valid = numba.cgutils.true_bit
-                        outoptval.data = obj
-                        out = outoptval._getvalue()
+                        outoptval.data = generate(context, builder, generator, baggage, ptrs, lens, cast_int64(builder, maskvalue), checkmasked=False)
 
-                with is_not_valid:
-                    outoptval.valid = numba.cgutils.false_bit
-                    outoptval.data = generate_empty(context, builder, generator, baggage)
-                    out = outoptval._getvalue()
+                    with is_not_valid:
+                        outoptval.valid = numba.cgutils.false_bit
+                        outoptval.data = generate_empty(context, builder, generator, baggage)
 
-            return out
+            return outoptval._getvalue()
 
         typ = typeof_generator(generator, checkmasked=False)
 
