@@ -278,6 +278,20 @@ else:
                        ("length", numba.types.int64)]
             super(ListProxyModel, self).__init__(dmm, fe_type, members)
 
+    @numba.extending.type_callable(len)
+    def listproxy_len_type(context):
+        def typer(listproxy):
+            if isinstance(listproxy, ListProxyNumbaType):
+                return numba.types.int64   # verified len type
+        return typer
+
+    @numba.extending.lower_builtin(len, ListProxyNumbaType)
+    def listproxy_len(context, builder, sig, args):
+        listtpe, = sig.args
+        listval, = args
+        listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
+        return listproxy.length
+
     @numba.typing.templates.infer
     class ListProxyGetItem(numba.typing.templates.AbstractTemplate):
         key = "getitem"

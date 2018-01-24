@@ -254,3 +254,21 @@ class TestCompiler(unittest.TestCase):
 
             self.assertRaises(IndexError, lambda: doit(value, 5))
             self.assertRaises(IndexError, lambda: doit(value, -6))
+
+    def test_list_len(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                return len(x)
+
+            schema = List(Primitive(float))
+            generator = schema.generator()
+
+            value = generator(oamap.fill.fromdata([], generator))
+            self.assertEqual(doit(value), 0)
+
+            value = generator(oamap.fill.fromdata([3.14], generator))
+            self.assertEqual(doit(value), 1)
+
+            value = generator(oamap.fill.fromdata([1, 2, 3, 4, 5], generator))
+            self.assertEqual(doit(value), 5)
