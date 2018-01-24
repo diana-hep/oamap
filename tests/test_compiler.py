@@ -108,38 +108,6 @@ class TestCompiler(unittest.TestCase):
 
                     # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
 
-    def test_boxing_tuple(self):
-        if numba is not None:
-            @numba.njit
-            def boxing1(x):
-                return 3.14
-
-            @numba.njit
-            def boxing2(x):
-                return x
-
-            @numba.njit
-            def boxing3(x):
-                return x, x
-
-            for j in range(3):
-                value = Tuple([Primitive(int), Primitive(float)]).fromdata((1, 2.2))
-                # value._index = 314
-
-                for i in range(10):
-                    boxing1(value)
-                    value2 = boxing2(value)
-                    value3, value4 = boxing3(value)
-
-                    for v in value2, value3, value4:
-                        self.assertNotEqual(value._generator.id, v._generator.id)
-                        self.assertTrue(value._arrays is v._arrays)
-                        self.assertTrue(value._cache is v._cache)
-
-                    # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
-
-                value = value2
-
     def test_record_attr(self):
         if numba is not None:
             @numba.njit
@@ -317,14 +285,11 @@ class TestCompiler(unittest.TestCase):
             value = generator(oamap.fill.fromdata([[], [-1.1, -2.2], [2.2, 2.2]], generator))
             self.assertEqual(doit2(value), 4.4)
 
-    def test_tuple_len(self):
+    def test_tuple(self):
         if numba is not None:
             @numba.njit
-            def doit(x):
-                return len(x)
+            def cast(x):
+                return x
 
             value = Tuple([Primitive(int), Primitive(float), Primitive(bool)]).fromdata((1, 2.2, True))
-            self.assertEqual(doit(value), 3)
-
-            value = Tuple([Primitive(int)]).fromdata((1,))
-            self.assertEqual(doit(value), 1)
+            print cast(value)

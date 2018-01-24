@@ -108,6 +108,9 @@ class ListProxy(Proxy):
     def __str__(self):
         return repr(self)
 
+    def indexed(self):
+        return self
+
     def __len__(self):
         return self._length
 
@@ -195,8 +198,8 @@ class ListProxy(Proxy):
         return False
 
 class PartitionedListProxy(ListProxy):
-    def __init__(self, partitions):
-        self._partitions = partitions
+    def __init__(self, makepartitions):
+        self._makepartitions = makepartitions
 
     def __repr__(self):
         out = []
@@ -206,23 +209,26 @@ class PartitionedListProxy(ListProxy):
             out.append(x)
         return "[{0}]".format(", ".join(repr(y) for y in out))
 
+    def indexed(self):
+        return IndexedPartitionedListProxy([x() for x in self._makepartitions])
+
     def __iter__(self):
-        for partition in self._partitions:
+        for makepartition in self._makepartitions:
+            partition = makepartition()
             for x in partition:
                 yield x
-            if hasattr(partition, "_cache"):
-                for i in range(len(partition._cache)):
-                    partition._cache[i] = None
 
     def __len__(self):
-        raise TypeError("PartitionedListProxy does not have a known len")
+        # could be slow because it has to load all of those partitions
+        return len(self.indexed())
 
     def __getitem__(self, index):
-        raise TypeError("PartitionedListProxy cannot be indexed or sliced")
+        # could be slow because it has to load all of those partitions
+        return self.indexed()[index]
 
 class IndexedPartitionedListProxy(PartitionedListProxy):
     def __init__(self, partitions, offsets=None):
-        super(IndexedPartitionedListProxy, self).__init__(partitions)
+        self._partitions = partitions
 
         if offsets is None:
             self._offsets = []
@@ -241,6 +247,16 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
             return "[{0}, ..., {1}]".format(", ".join(repr(x) for x in self[:5]), ", ".join(repr(x) for x in self[-5:]))
         else:
             return "[{0}]".format(", ".join(repr(x) for x in self))
+
+    def indexed(self):
+        return self
+
+    def __iter__(self):
+        for partition in self._partitions:
+            # copy the partition's cache so that arrays loaded during iteration don't persist (but any already-loaded arrays do)
+            copy = ListProxy(partition._generator, partition._arrays, list(partition._cache), partition._whence, partition._stride, partition._length)
+            for x in copy:
+                yield x
 
     def __len__(self):
         return self._offsets[-1]
