@@ -57,6 +57,14 @@ else:
                        ("ptrs", numba.types.pyobject),
                        ("lens", numba.types.pyobject)]
             super(BaggageModel, self).__init__(dmm, fe_type, members)
+            
+    # def incref_baggage(context, builder, baggage_val):
+    #     pyapi = context.get_python_api(builder)
+    #     baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=baggage_val)
+    #     pyapi.incref(baggage.arrays)
+    #     pyapi.incref(baggage.cache)
+    #     pyapi.incref(baggage.ptrs)
+    #     pyapi.incref(baggage.lens)
 
     def unbox_baggage(context, builder, pyapi, generator_obj, arrays_obj, cache_obj):
         entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
@@ -101,7 +109,10 @@ else:
 
     @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
     def typeof_proxy(val, c):
-        return typeof_generator(val._generator)
+        if isinstance(val._generator, oamap.generator.TupleGenerator):
+            return TupleProxyNumbaType(val._generator)
+        else:
+            return typeof_generator(val._generator)
 
     def typeof_generator(generator, checkmasked=True):
         if checkmasked and isinstance(generator, oamap.generator.Masked):
@@ -182,10 +193,21 @@ else:
 
     def raise_exception(context, builder, case, exception):
         with builder.if_then(case, likely=False):
-            exc = context.get_python_api(builder).serialize_object(exception)
+            pyapi = context.get_python_api(builder)
             excptr = context.call_conv._get_excinfo_argument(builder.function)
-            builder.store(exc, excptr)
-            builder.ret(numba.targets.callconv.RETCODE_USEREXC)
+
+            if excptr.name == "excinfo" and excptr.type == llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.struct([llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.int(8)), llvmlite.llvmpy.core.Type.int(32)]))):
+                exc = pyapi.serialize_object(exception)
+                builder.store(exc, excptr)
+                builder.ret(numba.targets.callconv.RETCODE_USEREXC)
+
+            elif excptr.name == "py_args" and excptr.type == llvmlite.llvmpy.core.Type.pointer(llvmlite.llvmpy.core.Type.int(8)):
+                exc = pyapi.unserialize(pyapi.serialize_object(exception))
+                pyapi.raise_object(exc)
+                builder.ret(llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.pyobject)))
+
+            else:
+                raise AssertionError("unrecognized exception calling convention: {0}".format(excptr))
 
     def generate_empty(context, builder, generator, baggage):
         typ = typeof_generator(generator, checkmasked=False)
@@ -283,6 +305,7 @@ else:
             return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
+            # incref_baggage(context, builder, baggage)
             res = context.make_tuple(builder, typ, [generate(context, builder, x, baggage, ptrs, lens, at) for x in generator.types])
             return numba.targets.imputils.impl_ret_borrowed(context, builder, typ, res)
 
@@ -512,3 +535,31 @@ else:
         c.pyapi.decref(recordproxy_cls)
 
         return out
+
+    ################################################################ TupleProxy (defers to Numba's tuple)
+
+    class TupleProxyNumbaType(numba.types.Type):
+        def __init__(self, generator):
+            self.generator = generator
+            super(TupleProxyNumbaType, self).__init__(name="OAMap-TupleProxy-" + self.generator.id)
+
+    @numba.extending.register_model(TupleProxyNumbaType)
+    class TupleProxyModel(numba.datamodel.models.TupleModel):
+        def __init__(self, dmm, fe_type):
+            super(TupleProxyModel, self).__init__(dmm, typeof_generator(fe_type.generator, checkmasked=False))
+
+    @numba.extending.unbox(TupleProxyNumbaType)
+    def unbox_tupleproxy(typ, obj, c):
+        generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
+        arrays_obj = c.pyapi.object_getattr_string(obj, "_arrays")
+        cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
+        index_obj = c.pyapi.object_getattr_string(obj, "_index")
+
+        baggage, ptrs, lens = unbox_baggage(c.context, c.builder, c.pyapi, generator_obj, arrays_obj, cache_obj)
+        at = c.pyapi.long_as_longlong(index_obj)
+
+        c.pyapi.decref(index_obj)
+
+        out = generate(c.context, c.builder, typ.generator, baggage, ptrs, lens, at)
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(out, is_error=is_error)
