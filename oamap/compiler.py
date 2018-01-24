@@ -267,7 +267,7 @@ else:
             outoptval = context.make_helper(builder, typeof_generator(generator))
             with builder.if_else(builder.icmp_unsigned("==", maskvalue, literal_int(generator.maskedvalue, generator.maskdtype.itemsize))) as (is_not_valid, is_valid):
                 with is_valid:
-                    obj = generate(context, builder, generator, baggage, ptrs, lens, at, checkmasked=False)
+                    obj = generate(context, builder, generator, baggage, ptrs, lens, cast_int64(builder, maskvalue), checkmasked=False)
                     if isinstance(generator, oamap.generator.PointerGenerator) and isinstance(generator.target, oamap.generator.Masked):
                         return obj
                     else:
@@ -286,7 +286,6 @@ else:
             if generator.dims == ():
                 dataidx = literal_int64(generator.dataidx)
                 return arrayitem(context, builder, dataidx, ptrs, lens, at, generator.dtype)
-
             else:
                 raise NotImplementedError
 

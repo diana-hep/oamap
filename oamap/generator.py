@@ -170,8 +170,9 @@ class Masked(object):
         return out
 
     def _togetall(self, arrays, cache, bottomup, memo):
-        if id(self) not in memo:
-            memo.add(id(self))
+        key = (id(self),)
+        if key not in memo:
+            memo.add(key)
             out = self.__class__.__bases__[1]._togetall(self, arrays, cache, bottomup, memo)
             if self._required and cache[self.maskidx] is None:
                 if bottomup:

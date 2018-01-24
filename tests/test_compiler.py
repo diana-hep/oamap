@@ -453,3 +453,18 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(open2(value).label, 2)
             self.assertEqual(open3(value).label, 0)
             self.assertEqual(open4(value).label, 1)
+
+    def test_pointer_masked(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x, i):
+                return x[i]
+
+            schema = List(Pointer(Primitive(float), nullable=True))
+            generator = schema.generator()
+
+            data = [3.3, 2.2, 3.3, None, 1.1, None, 4.4, 1.1, 3.3, None]
+            value = generator.fromdata(data, pointer_fromequal=True)
+
+            for i in range(10):
+                self.assertEqual(doit(value, i), data[i])
