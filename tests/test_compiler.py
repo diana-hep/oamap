@@ -569,10 +569,50 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(types_0(Tuple(["int", "float"])), Primitive("int"))
             self.assertEqual(target(Pointer("int")), Primitive("int"))
 
-    def test_schema_casecast(self):
+    def test_schema_case(self):
         if numba is not None:
             @numba.njit
-            def case(x):
-                return x.case(3)
+            def case(x, y):
+                return x.case(y)
 
-            print(case(Primitive("int")))
+            @numba.njit
+            def case_i(x, y, i):
+                return x.case(y[i])
+
+            justint = Primitive("int")
+            justfloat = Primitive("float")
+
+            self.assertTrue(case(justint, 999) is True)
+            self.assertTrue(case(justint, 3.14) is False)
+            self.assertTrue(case(justfloat, 999) is False)
+            self.assertTrue(case(justfloat, 3.14) is True)
+
+            listint = List("int")
+            listfloat = List("float")
+
+            self.assertTrue(case(listint, listint.data([1, 2, 3])) is True)
+            self.assertTrue(case(listfloat, listint.data([1, 2, 3])) is False)
+
+            values = List(Union([justint, justfloat])).data([1, 2, 3.3, 4.4, 5, 6.6, 7.7, 8.8, 9, 10])
+
+            self.assertTrue(case_i(justint, values, 0) is True)
+            self.assertTrue(case_i(justint, values, 1) is True)
+            self.assertTrue(case_i(justint, values, 2) is False)
+            self.assertTrue(case_i(justint, values, 3) is False)
+            self.assertTrue(case_i(justint, values, 4) is True)
+            self.assertTrue(case_i(justint, values, 5) is False)
+            self.assertTrue(case_i(justint, values, 6) is False)
+            self.assertTrue(case_i(justint, values, 7) is False)
+            self.assertTrue(case_i(justint, values, 8) is True)
+            self.assertTrue(case_i(justint, values, 9) is True)
+
+            self.assertTrue(case_i(justfloat, values, 0) is False)
+            self.assertTrue(case_i(justfloat, values, 1) is False)
+            self.assertTrue(case_i(justfloat, values, 2) is True)
+            self.assertTrue(case_i(justfloat, values, 3) is True)
+            self.assertTrue(case_i(justfloat, values, 4) is False)
+            self.assertTrue(case_i(justfloat, values, 5) is True)
+            self.assertTrue(case_i(justfloat, values, 6) is True)
+            self.assertTrue(case_i(justfloat, values, 7) is True)
+            self.assertTrue(case_i(justfloat, values, 8) is False)
+            self.assertTrue(case_i(justfloat, values, 9) is False)

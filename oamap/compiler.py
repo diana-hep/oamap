@@ -46,6 +46,8 @@ try:
 except ImportError:
     pass
 else:
+    class ProxyNumbaType(numba.types.Type): pass
+
     ################################################################ Schema objects in compiled code
 
     class SchemaType(numba.types.Type):
@@ -66,6 +68,9 @@ else:
         def __init__(self, dmm, fe_type):
             # don't carry any information about the Schema at runtime: it's a purely compile-time constant
             super(SchemaModel, self).__init__(dmm, fe_type, [])
+
+    primtypes = (numba.types.Boolean, numba.types.Integer, numba.types.Float, numba.types.Complex, numba.types.npytypes.CharSeq)
+    primproxytypes = primtypes + (ProxyNumbaType,)
 
     @numba.extending.infer_getattr
     class SchemaAttribute(numba.typing.templates.AttributeTemplate):
@@ -93,17 +98,15 @@ else:
                 elif isinstance(typ.schema, oamap.schema.Pointer) and attr == "target":
                     return SchemaType(typ.schema._target)
 
+                else:
+                    raise AssertionError("unrecognized schema type: {0} ({1})".format(schema.__class__, repr(schema)))
+
         @numba.typing.templates.bound_function("schema.case")
         def resolve_case(self, schema, args, kwds):
-
-
-
-
-
-
-
-
-            return numba.types.boolean(numba.types.int64)
+            if len(args) == 1:
+                arg, = args
+                if isinstance(arg, primproxytypes) or (isinstance(arg, numba.types.Optional) and isinstance(arg.type, primproxytypes)):
+                    return numba.types.boolean(args[0])
 
     @numba.extending.lower_getattr_generic(SchemaType)
     def schema_getattr(context, builder, typ, val, attr):
@@ -116,9 +119,44 @@ else:
         else:
             return numba.cgutils.create_struct_proxy(typ)(context, builder)._getvalue()
 
-    @numba.extending.lower_builtin("schema.case", SchemaType, numba.types.int64)
+    @numba.extending.lower_builtin("schema.case", SchemaType, numba.types.Type)
     def schema_case(context, builder, sig, args):
-        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), False)
+        schematype, argtype = sig.args
+        _, argval = args
+
+        def ret(x):
+            return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), x)
+
+        if isinstance(argtype, UnionProxyNumbaType):
+            # do a runtime check
+            for datatag, datatype in enumerate(argtype.generator.schema.possibilities):
+                if schematype.schema == datatype:
+                    unionproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder, value=argval)
+                    out_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(1))
+                    with builder.if_else(builder.icmp_unsigned("==", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize))) as (success, failure):
+                        with success:
+                            builder.store(ret(True), out_ptr)
+                        with failure:
+                            builder.store(ret(False), out_ptr)
+                    out = builder.load(out_ptr)
+                    return out
+
+            # none of the data possibilities will ever match, compile-time rejection
+            return ret(False)
+
+        elif isinstance(argtype, primtypes):
+            # do a compile-time check
+            if isinstance(schematype.schema, oamap.schema.Primitive):
+                return ret(numba.from_dtype(schematype.schema.dtype) == argtype)
+            else:
+                return ret(False)
+
+        elif isinstance(argtype, ProxyNumbaType):
+            # do a compile-time check
+            return ret(schematype.schema == argtype.generator.schema)
+
+        else:
+            raise AssertionError
 
     @numba.typing.templates.infer
     class SchemaGetItem(numba.typing.templates.AbstractTemplate):
@@ -498,7 +536,7 @@ else:
 
     ################################################################ ListProxy
 
-    class ListProxyNumbaType(numba.types.Type):
+    class ListProxyNumbaType(ProxyNumbaType):
         def __init__(self, generator):
             self.generator = generator
             super(ListProxyNumbaType, self).__init__(name="OAMap-ListProxy-" + self.generator.id)
@@ -677,10 +715,10 @@ else:
 
     ################################################################ UnionProxy
 
-    class UnionProxyNumbaType(numba.types.Type):
+    class UnionProxyNumbaType(ProxyNumbaType):
         def __init__(self, generator):
             self.generator = generator
-            super(RecordProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
+            super(UnionProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
 
     @numba.extending.register_model(UnionProxyNumbaType)
     class UnionProxyModel(numba.datamodel.models.StructModel):
@@ -694,7 +732,7 @@ else:
 
     ################################################################ RecordProxy
 
-    class RecordProxyNumbaType(numba.types.Type):
+    class RecordProxyNumbaType(ProxyNumbaType):
         def __init__(self, generator):
             self.generator = generator
             super(RecordProxyNumbaType, self).__init__(name="OAMap-RecordProxy-" + self.generator.id)
@@ -754,7 +792,7 @@ else:
 
     ################################################################ TupleProxy
 
-    class TupleProxyNumbaType(numba.types.Type):
+    class TupleProxyNumbaType(ProxyNumbaType):
         def __init__(self, generator):
             self.generator = generator
             super(TupleProxyNumbaType, self).__init__(name="OAMap-TupleProxy-" + self.generator.id)
@@ -786,16 +824,15 @@ else:
         def generic(self, args, kwds):
             if len(args) == 2:
                 tpe, idx = args
-                if isinstance(tpe, TupleProxyNumbaType):
-                    if isinstance(idx, int):
-                        if idx < 0:
-                            normindex = idx + len(tpe.generator.types)
-                        else:
-                            normindex = idx
-                        if 0 <= normindex < len(tpe.generator.types):
-                            return typeof_generator(tpe.generator.types[normindex])
-                        else:
-                            raise IndexError("item {0} out of range for type {1}".format(idx, tpe.generator.schema))
+                if isinstance(tpe, TupleProxyNumbaType) and isinstance(idx, int):
+                    if idx < 0:
+                        normindex = idx + len(tpe.generator.types)
+                    else:
+                        normindex = idx
+                    if 0 <= normindex < len(tpe.generator.types):
+                        return typeof_generator(tpe.generator.types[normindex])
+                    else:
+                        raise IndexError("item {0} out of range for type {1}".format(idx, tpe.generator.schema))
 
     @numba.extending.lower_builtin("static_getitem", TupleProxyNumbaType, numba.types.Const)
     def tupleproxy_static_getitem(context, builder, sig, args):
