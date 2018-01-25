@@ -355,9 +355,8 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, dims=(), nullable=False, data=None, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, dtype, nullable=False, data=None, mask=None, packing=None, name=None, doc=None, metadata=None):
         self.dtype = dtype
-        self.dims = dims
         self.nullable = nullable
         self.data = data
         self.mask = mask
@@ -374,27 +373,55 @@ class Primitive(Schema):
     def dtype(self, value):
         if not isinstance(value, numpy.dtype):
             value = numpy.dtype(value)
+        if value.hasobject:
+            raise TypeError("dtypes containing objects are not allowed")
+        if value.names is not None:
+            for n in value.names:
+                if self._identifier.match(n) is None:
+                    raise TypeError("dtype names must be identifier strings; the name {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern))
+            raise NotImplementedError("record-array dtypes are not supported yet")
+        if value.ndim > 0:
+            raise NotImplementedError("multidimensional dtypes are not supported yet")
         self._dtype = value
 
     _byteorder_transform = {"!": True, ">": True, "<": False, "|": False, "=": numpy.dtype(">f8").isnative}
 
-    @property
-    def strdtype(self):
-        return "{0}{1}".format(self._dtype.kind.upper() if self._byteorder_transform[self._dtype.byteorder] else self._dtype.kind, self._dtype.itemsize)
+    @staticmethod
+    def _dtype2str(dtype, delimiter):
+        if dtype.names is not None:
+            return delimiter.join(Primitive._dtype2str(dtype[n], delimiter) + delimiter + n for n in dtype.names)
+        if dtype.ndim > 0:
+            subdtype, dims = dtype.subdtype
+        else:
+            subdtype, dims = dtype, ()
+        return "D" + "".join(repr(x) + delimiter for x in dims) + (subdtype.kind.upper() if Primitive._byteorder_transform[subdtype.byteorder] else subdtype.kind) + repr(subdtype.itemsize)
 
-    @property
-    def dims(self):
-        return self._dims
-
-    @dims.setter
-    def dims(self, value):
-        try:
-            value = tuple(value)
-        except TypeError:
-            pass
-        if not isinstance(value, tuple) or not all(isinstance(x, numbers.Integral) and x >= 0 for x in value):
-            raise TypeError("dims must be a tuple of non-negative integers, not {0}".format(repr(value)))
-        self._dims = value
+    @staticmethod
+    def _str2dtype(string, delimiter):
+        out = []
+        for _, dims, _, kind, itemsize, name in re.findall("(D(([1-9][0-9]*{0})*)([a-zA-Z])([1-9][0-9]*)({0}[a-zA-Z][a-zA-Z_0-9]*)?)".format(delimiter), string):
+            if dims == "":
+                dims = ()
+            else:
+                dims = tuple(int(x) for x in dims[:-len(delimiter)].split(delimiter))
+            itemsize = itemsize
+            name = name[len(delimiter):]
+            if ord("A") <= ord(kind) <= ord("Z"):
+                byteorder = ">"
+            else:
+                byteorder = "<"
+            if kind == "S":
+                descr = (kind + itemsize, dims)
+            else:
+                descr = (byteorder + kind.lower() + itemsize, dims)
+            if name == "":
+                out.append(descr)
+            else:
+                out.append((name,) + descr)
+        if len(out) == 1:
+            return numpy.dtype(out[0])
+        else:
+            return numpy.dtype(out)
 
     @property
     def data(self):
@@ -418,8 +445,6 @@ class Primitive(Schema):
             shown.add(id(self))
 
             args = [repr(self._dtype)]
-            if self._dims != ():
-                args.append("dims" + eq + repr(self._dims))
             if self._nullable is not False:
                 args.append("nullable" + eq + repr(self._nullable))
             if self._data is not None:
@@ -454,12 +479,10 @@ class Primitive(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if not explicit and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
+            if not explicit and self._nullable is False and self._data is None and self._mask is None and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
                 return str(self._dtype)
             else:
-                out = OrderedDict([("type", "primitive"), ("dtype", str(self._dtype))])
-                if explicit or self._dims != ():
-                    out["dims"] = None if self._dims is None else list(self._dims)
+                out = OrderedDict([("type", "primitive"), ("dtype", self._dtype2str(self._dtype, "-"))])
                 if explicit or self._nullable is not False:
                     out["nullable"] = self._nullable
                 if explicit or self._data is not None:
@@ -487,7 +510,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(numpy.dtype(data["dtype"]), dims=data.get("dims", []), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=data.get("metadata", None))
+            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=data.get("metadata", None))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -498,8 +521,6 @@ class Primitive(Schema):
     def copy(self, **replacements):
         if "dtype" not in replacements:
             replacements["dtype"] = self._dtype
-        if "dims" not in replacements:
-            replacements["dims"] = self._dims
         if "nullable" not in replacements:
             replacements["nullable"] = self._nullable
         if "data" not in replacements:
@@ -517,10 +538,10 @@ class Primitive(Schema):
         return Primitive(**replacements)
 
     def replace(self, fcn, *args, **kwds):
-        return fcn(Primitive(self._dtype, dims=self._dims, nullable=self._nullable, data=self._data, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+        return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def __eq__(self, other, memo=None):
-        return isinstance(other, Primitive) and self.dtype == other.dtype and self.dims == other.dims and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata
+        return isinstance(other, Primitive) and self.dtype == other.dtype and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata
 
     def __contains__(self, value, memo=None):
         if value is None:
@@ -553,11 +574,15 @@ class Primitive(Schema):
                 else:
                     return len(value) == dims[0] and all(recurse(x, dims[1:]) for x in value)
 
-        return recurse(value, self.dims)
+        if self._dtype.ndim == 0:
+            return recurse(value, ())
+        else:
+            subdtype, dims = self._dtype.subdtype
+            return recurse(value, dims)
 
     def _get_data(self, prefix, delimiter):
         if self._data is None:
-            return self._get_name(prefix, delimiter) + delimiter + "D" + self.strdtype + "".join(delimiter + repr(x) for x in self.dims)
+            return self._get_name(prefix, delimiter) + delimiter + self._dtype2str(self._dtype, delimiter)
         else:
             return self._data
 
@@ -585,7 +610,6 @@ class Primitive(Schema):
         args.append(cacheidx[0]); cacheidx[0] += 1
 
         args.append(self._dtype)
-        args.append(self._dims)
         args.append(self._packingcopy())
         args.append(self._name)
         args.append(prefix)

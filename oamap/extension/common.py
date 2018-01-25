@@ -93,13 +93,13 @@ class _GenerateBytes(object):
                 return map(ord, codecs.utf_8_encode(obj)[0])
 
 class ByteStringGenerator(_GenerateBytes, oamap.generator.ExtendedGenerator):
-    pattern = {"name": "ByteString", "type": "list", "content": {"type": "primitive", "dtype": "uint8", "dims": [], "nullable": False}}
+    pattern = {"name": "ByteString", "type": "list", "content": {"type": "primitive", "dtype": "uint8", "nullable": False}}
 
     def _generate(self, arrays, index, cache):
         return self._generatebytes(arrays, index, cache)
             
 class UTF8StringGenerator(_GenerateBytes, oamap.generator.ExtendedGenerator):
-    pattern = {"name": "UTF8String", "type": "list", "content": {"type": "primitive", "dtype": "uint8", "dims": [], "nullable": False}}
+    pattern = {"name": "UTF8String", "type": "list", "content": {"type": "primitive", "dtype": "uint8", "nullable": False}}
 
     def _generate(self, arrays, index, cache):
         out = self._generatebytes(arrays, index, cache)

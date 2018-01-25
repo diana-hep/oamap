@@ -152,16 +152,13 @@ class Generator(object):
             out = dict((name, arrays[str(name)]) for name in roles)    # drop the roles; it's a plain-dict interface
 
         for name, array in out.items():
-            idx, dtype, dims = roles[name]
+            idx, dtype = roles[name]
 
             if isinstance(array, bytes):
-                array = numpy.frombuffer(array, dtype).reshape((-1,) + dims)
+                array = numpy.frombuffer(array, dtype)
 
             if (require_arrays and not isinstance(array, numpy.ndarray)) or getattr(array, "dtype", dtype) != dtype:
                 array = numpy.array(array, dtype=dtype)
-
-            if getattr(array, "shape", (-1,) + dims)[1:] != dims:
-                raise TypeError("arrays[{0}].shape[1:] is {1} but expected {2}".format(repr(str(name)), array.shape[1:], dims[name]))
 
             cache[idx] = array
 
@@ -195,7 +192,7 @@ class Masked(object):
 
     def _toget(self, arrays, cache):
         others = self.__class__.__bases__[1]._toget(self, arrays, cache)
-        out = OrderedDict([(MaskRole(self.mask, others), (self.maskidx, self.maskdtype, ()))])
+        out = OrderedDict([(MaskRole(self.mask, others), (self.maskidx, self.maskdtype))])
         out.update(others)
         return out
 
@@ -239,15 +236,14 @@ class Masked(object):
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
-    def __init__(self, data, dataidx, dtype, dims, packing, name, derivedname, schema):
+    def __init__(self, data, dataidx, dtype, packing, name, derivedname, schema):
         self.data = data
         self.dataidx = dataidx
         self.dtype = dtype
-        self.dims = dims
         Generator.__init__(self, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return OrderedDict([(DataRole(self.data), (self.dataidx, self.dtype, self.dims))])
+        return OrderedDict([(DataRole(self.data), (self.dataidx, self.dtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -268,9 +264,9 @@ class PrimitiveGenerator(Generator):
         yield self.data
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
-    def __init__(self, mask, maskidx, data, dataidx, dtype, dims, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, data, dataidx, dtype, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PrimitiveGenerator.__init__(self, data, dataidx, dtype, dims, packing, name, derivedname, schema)
+        PrimitiveGenerator.__init__(self, data, dataidx, dtype, packing, name, derivedname, schema)
 
 ################################################################ Lists
 
@@ -298,7 +294,7 @@ class ListGenerator(Generator):
         stops = StopsRole(self.stops, None)
         starts.stops = stops
         stops.starts = starts
-        return OrderedDict([(starts, (self.startsidx, self.posdtype, ())), (stops, (self.stopsidx, self.posdtype, ()))])
+        return OrderedDict([(starts, (self.startsidx, self.posdtype)), (stops, (self.stopsidx, self.posdtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -364,7 +360,7 @@ class UnionGenerator(Generator):
         offsets = OffsetsRole(self.offsets, None)
         tags.offsets = offsets
         offsets.tags = tags
-        return OrderedDict([(tags, (self.tagsidx, self.tagdtype, ())), (offsets, (self.offsetsidx, self.offsetdtype, ()))])
+        return OrderedDict([(tags, (self.tagsidx, self.tagdtype)), (offsets, (self.offsetsidx, self.offsetdtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -509,7 +505,7 @@ class PointerGenerator(Generator):
             self.target._new(memo)
 
     def _toget(self, arrays, cache):
-        return OrderedDict([(PositionsRole(self.positions), (self.positionsidx, self.posdtype, ()))])
+        return OrderedDict([(PositionsRole(self.positions), (self.positionsidx, self.posdtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -613,9 +609,7 @@ class ExtendedGenerator(Generator):
                     return False
 
                 if pattern["type"] == "primitive":
-                    if "dtype" in pattern and pattern["dtype"] != schema["dtype"]:
-                        return False
-                    if "dims" in pattern and pattern["dims"] != schema["dims"]:
+                    if "dtype" in pattern and oamap.schema.Primitive._dtype2str(numpy.dtype(pattern["dtype"]), "-") != schema["dtype"]:
                         return False
                     return True
 

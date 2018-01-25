@@ -62,7 +62,7 @@ class TestFill(unittest.TestCase):
         self.check("inf")
         self.check("-inf")
         self.check("nan")
-        self.check([[1, 2], [3, 4]], Primitive("i8", (2, 2)))
+        # self.check([[1, 2], [3, 4]], Primitive("i8", (2, 2)))
 
     def test_List(self):
         self.check([], schema=List(Primitive("i8")))

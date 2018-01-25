@@ -306,7 +306,7 @@ def fromiterdata(values, generator=None, limit=lambda entries, arrayitems, array
 
     # starting set of fillables
     fillables = oamap.fillable.arrays(generator)
-    factor = dict((n, reduce(lambda a, b: a*b, x.dims, x.dtype.itemsize)) for n, x in fillables.items())
+    factor = dict((n, x.dtype.itemsize) for n, x in fillables.items())
     
     pointers = []
     pointerobjs_keys = []

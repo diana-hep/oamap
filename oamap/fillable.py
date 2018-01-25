@@ -41,7 +41,7 @@ if sys.version_info[0] > 2:
     xrange = range
 
 class Fillable(object):
-    def __init__(self, dtype, dims):
+    def __init__(self, dtype):
         raise NotImplementedError
 
     def __len__(self):
@@ -83,23 +83,21 @@ class Fillable(object):
 
 def _makefillables(generator, fillables, makefillable):
     if isinstance(generator, oamap.generator.Masked):
-        fillables[generator.mask] = makefillable(generator.mask, generator.maskdtype, ())
+        fillables[generator.mask] = makefillable(generator.mask, generator.maskdtype)
 
     if isinstance(generator, oamap.generator.PrimitiveGenerator):
         if generator.dtype is None:
             raise ValueError("dtype is unknown (None) for Primitive generator at {0}".format(repr(generator.data)))
-        if generator.dims is None:
-            raise ValueError("dims is unknown (None) for Primitive generator at {0}".format(repr(generator.data)))
-        fillables[generator.data] = makefillable(generator.data, generator.dtype, generator.dims)
+        fillables[generator.data] = makefillable(generator.data, generator.dtype)
 
     elif isinstance(generator, oamap.generator.ListGenerator):
-        fillables[generator.starts] = makefillable(generator.starts, generator.posdtype, ())
-        fillables[generator.stops]  = makefillable(generator.stops,  generator.posdtype, ())
+        fillables[generator.starts] = makefillable(generator.starts, generator.posdtype)
+        fillables[generator.stops]  = makefillable(generator.stops,  generator.posdtype)
         _makefillables(generator.content, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.UnionGenerator):
-        fillables[generator.tags]    = makefillable(generator.tags,    generator.tagdtype,    ())
-        fillables[generator.offsets] = makefillable(generator.offsets, generator.offsetdtype, ())
+        fillables[generator.tags]    = makefillable(generator.tags,    generator.tagdtype)
+        fillables[generator.offsets] = makefillable(generator.offsets, generator.offsetdtype)
         for possibility in generator.possibilities:
             _makefillables(possibility, fillables, makefillable)
 
@@ -112,7 +110,7 @@ def _makefillables(generator, fillables, makefillable):
             _makefillables(field, fillables, makefillable)
 
     elif isinstance(generator, oamap.generator.PointerGenerator):
-        fillables[generator.positions] = makefillable(generator.positions, generator.posdtype, ())
+        fillables[generator.positions] = makefillable(generator.positions, generator.posdtype)
         if not generator._internal:
             _makefillables(generator.target, fillables, makefillable)
 
@@ -126,7 +124,7 @@ def arrays(generator, chunksize=8192):
     if not isinstance(generator, oamap.generator.Generator):
         generator = generator.generator()
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableArray(dtype, dims=dims, chunksize=chunksize))
+    _makefillables(generator, fillables, lambda name, dtype: FillableArray(dtype, chunksize=chunksize))
     return fillables
 
 def files(generator, directory, chunksize=8192, lendigits=16):
@@ -135,7 +133,7 @@ def files(generator, directory, chunksize=8192, lendigits=16):
     if not os.path.exists(directory):
         os.mkdir(directory)
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableFile(os.path.join(directory, name), dtype, dims=dims, chunksize=chunksize, lendigits=lendigits))
+    _makefillables(generator, fillables, lambda name, dtype: FillableFile(os.path.join(directory, name), dtype, chunksize=chunksize, lendigits=lendigits))
     return fillables
 
 def numpyfiles(generator, directory, chunksize=8192, lendigits=16):
@@ -144,7 +142,7 @@ def numpyfiles(generator, directory, chunksize=8192, lendigits=16):
     if not os.path.exists(directory):
         os.mkdir(directory)
     fillables = {}
-    _makefillables(generator, fillables, lambda name, dtype, dims: FillableNumpyFile(os.path.join(directory, name), dtype, dims=dims, chunksize=chunksize, lendigits=lendigits))
+    _makefillables(generator, fillables, lambda name, dtype: FillableNumpyFile(os.path.join(directory, name), dtype, chunksize=chunksize, lendigits=lendigits))
     return fillables
 
 ################################################################ FillableArray
@@ -152,10 +150,10 @@ def numpyfiles(generator, directory, chunksize=8192, lendigits=16):
 class FillableArray(Fillable):
     # Numpy arrays and list items have 96+8 byte (80+8 byte) overhead in Python 2 (Python 3)
     # compared to 8192 1-byte values (8-byte values), this is 1% overhead (0.1% overhead)
-    def __init__(self, dtype, dims=(), chunksize=8192):
+    def __init__(self, dtype, chunksize=8192):
         if not isinstance(dtype, numpy.dtype):
             dtype = numpy.dtype(dtype)
-        self._data = [numpy.empty((chunksize,) + dims, dtype=dtype)]
+        self._data = [numpy.empty(chunksize, dtype=dtype)]
         self._len = 0
         self._indexinchunk = 0
         self._chunkindex = 0
@@ -165,17 +163,13 @@ class FillableArray(Fillable):
         return self._data[0].dtype
 
     @property
-    def dims(self):
-        return self._data[0].shape[1:]
-
-    @property
     def chunksize(self):
         return self._data[0].shape[0]
 
     def append(self, value):
         if self._indexinchunk >= len(self._data[self._chunkindex]):
             while len(self._data) <= self._chunkindex + 1:
-                self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
+                self._data.append(numpy.empty(self.chunksize, dtype=self.dtype))
             self._indexinchunk = 0
             self._chunkindex += 1
 
@@ -189,7 +183,7 @@ class FillableArray(Fillable):
         while len(values) > 0:
             if indexinchunk >= len(self._data[chunkindex]):
                 while len(self._data) <= chunkindex + 1:
-                    self._data.append(numpy.empty((self.chunksize,) + self.dims, dtype=self.dtype))
+                    self._data.append(numpy.empty(self.chunksize, dtype=self.dtype))
                 indexinchunk = 0
                 chunkindex += 1
 
@@ -269,7 +263,7 @@ class FillableArray(Fillable):
                     else:
                         length += int(math.ceil(-float(begin - end) / step))
 
-                out = numpy.empty((length,) + self.dims, dtype=self.dtype)
+                out = numpy.empty(length, dtype=self.dtype)
                 outi = 0
 
                 for chunkindex, begin, end in beginend():
@@ -294,10 +288,10 @@ class FillableArray(Fillable):
 ################################################################ FillableFile
 
 class FillableFile(Fillable):
-    def __init__(self, filename, dtype, dims=(), chunksize=8192, lendigits=16):
+    def __init__(self, filename, dtype, chunksize=8192, lendigits=16):
         if not isinstance(dtype, numpy.dtype):
             dtype = numpy.dtype(dtype)
-        self._data = numpy.zeros((chunksize,) + dims, dtype=dtype)  # 'zeros', not 'empty' for security
+        self._data = numpy.zeros(chunksize, dtype=dtype)  # 'zeros', not 'empty' for security
         self._len = 0
         self._indexinchunk = 0
         self._chunkindex = 0
@@ -317,10 +311,6 @@ class FillableFile(Fillable):
     @property
     def dtype(self):
         return self._data.dtype
-
-    @property
-    def dims(self):
-        return self._data.shape[1:]
 
     @property
     def chunksize(self):
@@ -388,9 +378,9 @@ class FillableFile(Fillable):
         if isinstance(value, slice):
             lenself = len(self)
             if lenself == 0:
-                array = numpy.empty((lenself,) + self.dims, dtype=self.dtype)
+                array = numpy.empty(lenself, dtype=self.dtype)
             else:
-                array = numpy.memmap(self.filename, self.dtype, "r", self._datapos, (lenself,) + self.dims, "C")
+                array = numpy.memmap(self.filename, self.dtype, "r", self._datapos, lenself, "C")
             if value.start is None and value.stop is None and value.step is None:
                 return array
             else:
@@ -422,7 +412,7 @@ class FillableNumpyFile(FillableFile):
     def _openfile(self, filename, lendigits):
         magic = b"\x93NUMPY\x01\x00"
         header1 = "{{'descr': {0}, 'fortran_order': False, 'shape': (".format(repr(str(self.dtype))).encode("ascii")
-        header2 = "{0}, }}".format(repr((10**lendigits - 1,) + self.dims)).encode("ascii")[1:]
+        header2 = "{0}, }}".format(repr((10**lendigits - 1,))).encode("ascii")[1:]
 
         unpaddedlen = len(magic) + 2 + len(header1) + len(header2)
         paddedlen = int(math.ceil(float(unpaddedlen) / self.dtype.itemsize)) * self.dtype.itemsize

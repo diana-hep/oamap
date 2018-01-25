@@ -444,18 +444,11 @@ def fromnames(arraynames, prefix="object", delimiter="-"):
                 internalpointers.append((byname[prefix], matches[0]))
 
         elif any(x.startswith(primitive) for x in arraynames):
-            matches = [x[len(primitive):] for x in arraynames if x.startswith(primitive)]
+            matches = [x[len(primitive) - 1:] for x in arraynames if x.startswith(primitive)]
             if len(matches) != 1:
                 raise KeyError("ambiguous set of array names: more than one Primitive at {0}".format(repr(prefix)))
-            info = matches[0].split(delimiter)
-            if info[0].startswith("S"):
-                dtype = numpy.dtype(info[0])
-            elif info[0].isupper():
-                dtype = numpy.dtype(">" + info[0].lower())
-            else:
-                dtype = numpy.dtype("<" + info[0])
-            dims = tuple(int(x) for x in info[1:])
-            byname[prefix] = oamap.schema.Primitive(dtype, dims=dims, nullable=nullable, data=None, mask=None, name=name, doc=None)
+            dtype = oamap.schema.Primitive._str2dtype(matches[0], delimiter)
+            byname[prefix] = oamap.schema.Primitive(dtype, nullable=nullable, data=None, mask=None, name=name, doc=None)
 
         else:
             raise KeyError("missing array names: nothing found as {0} contents".format(repr(prefix)))

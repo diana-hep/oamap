@@ -73,13 +73,10 @@ else:
         def generic_resolve(self, typ, attr):
             if typ.matchable:
                 if attr == "nullable":
-                    raise NotImplementedError
+                    return numba.types.boolean
 
                 elif isinstance(typ.schema, oamap.schema.Primitive) and attr == "dtype":
-                    raise NotImplementedError
-
-                elif isinstance(typ.schema, oamap.schema.Primitive) and attr == "dims":
-                    raise NotImplementedError
+                    return numba.types.DType(numba.from_dtype(typ.schema.dtype))
 
                 elif isinstance(typ.schema, oamap.schema.List) and attr == "content":
                     return SchemaType(typ.schema._content)
@@ -99,13 +96,10 @@ else:
     @numba.extending.lower_getattr_generic(SchemaType)
     def schema_getattr(context, builder, typ, val, attr):
         if attr == "nullable":
-            raise NotImplementedError
+            return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), 1 if typ.schema.nullable else 0)
 
         elif attr == "dtype":
-            raise NotImplementedError
-
-        elif attr == "dims":
-            raise NotImplementedError
+            raise Exception
 
         else:
             return numba.cgutils.create_struct_proxy(typ)(context, builder)._getvalue()
@@ -246,10 +240,7 @@ else:
                 return numba.types.optional(tpe)
 
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
-            if generator.dims == ():
-                return numba.from_dtype(generator.dtype)
-            else:
-                raise NotImplementedError
+            return numba.from_dtype(generator.dtype)
 
         elif isinstance(generator, oamap.generator.ListGenerator):
             return ListProxyNumbaType(generator)
@@ -340,10 +331,7 @@ else:
         typ = typeof_generator(generator, checkmasked=False)
 
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
-            if generator.dims == ():
-                return llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.from_dtype(generator.dtype)))
-            else:
-                raise NotImplementedError
+            return llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.from_dtype(generator.dtype)))
 
         elif isinstance(generator, oamap.generator.ListGenerator):
             listproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
@@ -427,11 +415,8 @@ else:
         typ = typeof_generator(generator, checkmasked=False)
 
         if isinstance(generator, oamap.generator.PrimitiveGenerator):
-            if generator.dims == ():
-                dataidx = literal_int64(generator.dataidx)
-                return arrayitem(context, builder, dataidx, ptrs, lens, at, generator.dtype)
-            else:
-                raise NotImplementedError
+            dataidx = literal_int64(generator.dataidx)
+            return arrayitem(context, builder, dataidx, ptrs, lens, at, generator.dtype)
 
         elif isinstance(generator, oamap.generator.ListGenerator):
             startsidx = literal_int64(generator.startsidx)
