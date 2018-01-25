@@ -553,19 +553,18 @@ class TestCompiler(unittest.TestCase):
             def target(x):
                 return x.target
             
-            # self.assertTrue(nullable(Primitive("int")) is False)
-            # self.assertTrue(nullable(Primitive("int", nullable=True)) is True)
-            # self.assertTrue(notnullable(Primitive("int")) is True)
-            # self.assertTrue(notnullable(Primitive("int", nullable=True)) is False)
+            self.assertTrue(nullable(Primitive("int")) is False)
+            self.assertTrue(nullable(Primitive("int", nullable=True)) is True)
+            self.assertTrue(notnullable(Primitive("int")) is True)
+            self.assertTrue(notnullable(Primitive("int", nullable=True)) is False)
 
-            # print dtype(Primitive("float"))
+            self.assertEqual(dtype(Primitive("float")), numpy.dtype("float"))
 
-
-            # self.assertEqual(content(List("int")), Primitive("int"))
-            # self.assertEqual(possibilities(Union(["int", "float"])), (Primitive("int"), Primitive("float")))
-            # self.assertEqual(possibilities_0(Union(["int", "float"])), Primitive("int"))
-            # self.assertEqual(fields(Record({"one": "int", "two": "float"})), {"one": Primitive("int"), "two": Primitive("float")})
-            # self.assertEqual(fields_one(Record({"one": "int", "two": "float"})), Primitive("int"))
-            # self.assertEqual(types(Tuple(["int", "float"])), (Primitive("int"), Primitive("float")))
-            # self.assertEqual(types_0(Tuple(["int", "float"])), Primitive("int"))
-            # self.assertEqual(target(Pointer("int")), Primitive("int"))
+            self.assertEqual(content(List("int")), Primitive("int"))
+            self.assertEqual(possibilities(Union(["int", "float"])), (Primitive("int"), Primitive("float")))
+            self.assertEqual(possibilities_0(Union(["int", "float"])), Primitive("int"))
+            self.assertEqual(fields(Record({"one": "int", "two": "float"})), {"one": Primitive("int"), "two": Primitive("float")})
+            self.assertEqual(fields_one(Record({"one": "int", "two": "float"})), Primitive("int"))
+            self.assertEqual(types(Tuple(["int", "float"])), (Primitive("int"), Primitive("float")))
+            self.assertEqual(types_0(Tuple(["int", "float"])), Primitive("int"))
+            self.assertEqual(target(Pointer("int")), Primitive("int"))

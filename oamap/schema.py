@@ -380,7 +380,7 @@ class Primitive(Schema):
                 if self._identifier.match(n) is None:
                     raise TypeError("dtype names must be identifier strings; the name {0} is not an identifier (/{1}/)".format(repr(n), self._identifier.pattern))
             raise NotImplementedError("record-array dtypes are not supported yet")
-        if value.ndim > 0:
+        if value.subdtype is not None:
             raise NotImplementedError("multidimensional dtypes are not supported yet")
         self._dtype = value
 
@@ -390,7 +390,7 @@ class Primitive(Schema):
     def _dtype2str(dtype, delimiter):
         if dtype.names is not None:
             return delimiter.join(Primitive._dtype2str(dtype[n], delimiter) + delimiter + n for n in dtype.names)
-        if dtype.ndim > 0:
+        if dtype.subdtype is not None:
             subdtype, dims = dtype.subdtype
         else:
             subdtype, dims = dtype, ()
@@ -574,7 +574,7 @@ class Primitive(Schema):
                 else:
                     return len(value) == dims[0] and all(recurse(x, dims[1:]) for x in value)
 
-        if self._dtype.ndim == 0:
+        if self._dtype.subdtype is None:
             return recurse(value, ())
         else:
             subdtype, dims = self._dtype.subdtype

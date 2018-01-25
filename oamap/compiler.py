@@ -99,7 +99,7 @@ else:
             return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), 1 if typ.schema.nullable else 0)
 
         elif attr == "dtype":
-            raise Exception
+            return numba.targets.imputils.impl_ret_untracked(context, builder, numba.types.DType(numba.from_dtype(typ.schema.dtype)), context.get_dummy_value())
 
         else:
             return numba.cgutils.create_struct_proxy(typ)(context, builder)._getvalue()
