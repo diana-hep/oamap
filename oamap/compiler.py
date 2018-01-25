@@ -122,12 +122,17 @@ else:
     @numba.extending.lower_builtin("schema.case", SchemaType, numba.types.Type)
     def schema_case(context, builder, sig, args):
         schematype, argtype = sig.args
-        _, argval = args
+        dummy, argval = args
 
         def ret(x):
             return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), x)
 
-        if isinstance(argtype, UnionProxyNumbaType):
+        if isinstance(argtype, numba.types.Optional):
+            # unwrap the optval and apply the check to the contents
+            optval = context.make_helper(builder, argtype, value=argval)
+            return schema_case(context, builder, (schematype, argtype.type), (dummy, optval.data))
+
+        elif isinstance(argtype, UnionProxyNumbaType):
             # do a runtime check
             for datatag, datatype in enumerate(argtype.generator.schema.possibilities):
                 if schematype.schema == datatype:
@@ -402,7 +407,7 @@ else:
             unionproxy.baggage = baggage
             unionproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
             unionproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
-            unionproxy.tag = literal_int64(0)
+            unionproxy.tag = literal_int64(-1)
             unionproxy.offset = literal_int64(0)
             return unionproxy._getvalue()
 
