@@ -50,6 +50,10 @@ if sys.version_info[0] > 2:
     basestring = str
     unicode = str
 
+# Common extensions
+from oamap.extension.common import ByteString
+from oamap.extension.common import UTF8String
+
 # The "PLURTP" type system: Primitives, Lists, Unions, Records, Tuples, and Pointers
 
 class Schema(object):
@@ -1868,97 +1872,97 @@ class Pointer(Schema):
 
 ################################################################ Partitionings are descriptions of of to map partition numbers and column names to array names
 
-class PartitionLookup(object):
-    dtype = numpy.dtype(numpy.int32)
-
-    def __init__(self, array, delimiter, prefix):
-        if isinstance(array, bytes):
-            array = numpy.frombuffer(array, dtype=self.dtype)
-        elif isinstance(array, basestring):
-            array = codecs.utf_8_encode(numpy.frombuffer(array, dtype=self.dtype))[0]
-
-        self.offsets = [int(x) for x in array]
-        self.delimiter = delimiter
-        self.prefix = prefix
-
-    def __array__(self):
-        return numpy.array(self.offsets, dtype=PartitionLookup.dtype)
-
-    @property
-    def numentries(self):
-        return self.offsets[-1]
-
-    @property
-    def numpartitions(self):
-        return len(self.offsets) - 1
-
-    def id2size(self, id):
-        if 0 <= id < self.numpartitions:
-            return self.offsets[id + 1] - self.offsets[id]
-        else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-    def index2id(self, index):
-        normalindex = index if index >= 0 else index + self.numentries
-        if not 0 <= normalindex < self.numentries:
-            raise IndexError("index {0} is out of bounds for size {1}".format(index, self.numentries))
-        return bisect.bisect_right(self.offsets, normalindex) - 1
-
-    def id2name(self, column, id):
-        if 0 <= id < self.numpartitions:
-            if self.prefix:
-                return "{0}{1}{2}".format(id, self.delimiter, column)
-            else:
-                return "{0}{1}part{2}".format(column, self.delimiter, id)
-        else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-    def index2name(self, column, index):
-        return self.id2name(column, self.index2id(index))
-
-    def append(self, numentries, columns):
-        self.offsets.append(self.offsets[-1] + numentries)
-
-class ExplicitPartitionLookup(PartitionLookup):
-    dtype = numpy.dtype(numpy.uint8)
-
-    def __init__(self, array):
-        assert getattr(array, "dtype", self.dtype) == self.dtype
-        assert getattr(array, "shape", (-1,))[1:] == ()
-        if isinstance(array, unicode):
-            data = json.loads(array)
-        else:
-            data = json.loads(codecs.utf_8_decode(array)[0])
-            
-        if "offsets" not in data:
-            raise ValueError("ExplicitPartitionLookup array is missing its 'offsets' field")
-        if not isinstance(data["offsets"], list) or not all(isinstance(x, int) for x in data["offsets"]):
-            raise ValueError("ExplicitPartitionLookup array 'offsets' must be a list of integers")
-        self.offsets = data["offsets"]
-
-        if "names" not in data:
-            raise ValueError("ExplicitPartitionLookup array is missing its 'names' field")
-        if not isinstance(data["names"], list) or not all(isinstance(x, dict) and all(isinstance(y, basestring) and isinstance(z, basestring) for y, z in x.items()) for x in data["names"]):
-            raise ValueError("ExplicitPartitionLookup array 'names' must be a list of string-to-string mappings")
-        self.names = data["names"]
-
-        if len(self.names) + 1 != len(self.offsets):
-            raise ValueError("ExplicitPartitionLookup array 'names' length must be one less than 'offsets'")
-
-    def __array__(self):
-        return numpy.frombuffer(codecs.utf_8_encode(json.dumps({"offsets": self.offsets, "names": self.names}))[0], dtype=self.dtype)
-
-    def id2name(self, column, id):
-        if 0 <= id < self.numpartitions:
-            return self.names[id][column]
-        else:
-            raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-    def append(self, numentries, columns):
-        self.offsets.append(self.offsets[-1] + numentries)
-        self.names.append(dict((n, "{0}-{1}".format(len(self.names), n)) for n in columns))
-
 class Partitioning(object):
+    class Lookup(object):
+        dtype = numpy.dtype(numpy.int32)
+
+        def __init__(self, array, delimiter, prefix):
+            if isinstance(array, bytes):
+                array = numpy.frombuffer(array, dtype=self.dtype)
+            elif isinstance(array, basestring):
+                array = codecs.utf_8_encode(numpy.frombuffer(array, dtype=self.dtype))[0]
+
+            self.offsets = [int(x) for x in array]
+            self.delimiter = delimiter
+            self.prefix = prefix
+
+        def __array__(self):
+            return numpy.array(self.offsets, dtype=Partitioning.Lookup.dtype)
+
+        @property
+        def numentries(self):
+            return self.offsets[-1]
+
+        @property
+        def numpartitions(self):
+            return len(self.offsets) - 1
+
+        def id2size(self, id):
+            if 0 <= id < self.numpartitions:
+                return self.offsets[id + 1] - self.offsets[id]
+            else:
+                raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+        def index2id(self, index):
+            normalindex = index if index >= 0 else index + self.numentries
+            if not 0 <= normalindex < self.numentries:
+                raise IndexError("index {0} is out of bounds for size {1}".format(index, self.numentries))
+            return bisect.bisect_right(self.offsets, normalindex) - 1
+
+        def id2name(self, column, id):
+            if 0 <= id < self.numpartitions:
+                if self.prefix:
+                    return "{0}{1}{2}".format(id, self.delimiter, column)
+                else:
+                    return "{0}{1}part{2}".format(column, self.delimiter, id)
+            else:
+                raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+        def index2name(self, column, index):
+            return self.id2name(column, self.index2id(index))
+
+        def append(self, numentries, columns):
+            self.offsets.append(self.offsets[-1] + numentries)
+
+    class ExplicitLookup(Lookup):
+        dtype = numpy.dtype(numpy.uint8)
+
+        def __init__(self, array):
+            assert getattr(array, "dtype", self.dtype) == self.dtype
+            assert getattr(array, "shape", (-1,))[1:] == ()
+            if isinstance(array, unicode):
+                data = json.loads(array)
+            else:
+                data = json.loads(codecs.utf_8_decode(array)[0])
+
+            if "offsets" not in data:
+                raise ValueError("Partitioning.ExplicitLookup array is missing its 'offsets' field")
+            if not isinstance(data["offsets"], list) or not all(isinstance(x, int) for x in data["offsets"]):
+                raise ValueError("Partitioning.ExplicitLookup array 'offsets' must be a list of integers")
+            self.offsets = data["offsets"]
+
+            if "names" not in data:
+                raise ValueError("Partitioning.ExplicitLookup array is missing its 'names' field")
+            if not isinstance(data["names"], list) or not all(isinstance(x, dict) and all(isinstance(y, basestring) and isinstance(z, basestring) for y, z in x.items()) for x in data["names"]):
+                raise ValueError("Partitioning.ExplicitLookup array 'names' must be a list of string-to-string mappings")
+            self.names = data["names"]
+
+            if len(self.names) + 1 != len(self.offsets):
+                raise ValueError("Partitioning.ExplicitLookup array 'names' length must be one less than 'offsets'")
+
+        def __array__(self):
+            return numpy.frombuffer(codecs.utf_8_encode(json.dumps({"offsets": self.offsets, "names": self.names}))[0], dtype=self.dtype)
+
+        def id2name(self, column, id):
+            if 0 <= id < self.numpartitions:
+                return self.names[id][column]
+            else:
+                raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
+
+        def append(self, numentries, columns):
+            self.offsets.append(self.offsets[-1] + numentries)
+            self.names.append(dict((n, "{0}-{1}".format(len(self.names), n)) for n in columns))
+
     def __init__(self, key):
         self.key = key
 
@@ -1976,10 +1980,10 @@ class Partitioning(object):
         return "{0}({1})".format(self.__class__.__name__, repr(self.key))
 
     def empty_partitionlookup(self, delimiter):
-        return PartitionLookup([0], delimiter, True)
+        return Partitioning.Lookup([0], delimiter, True)
 
     def partitionlookup(self, array, delimiter):
-        return PartitionLookup(array, delimiter, True)
+        return Partitioning.Lookup(array, delimiter, True)
 
     def tojson(self):
         return OrderedDict([(self.__class__.__name__, [self.key])])
@@ -1999,17 +2003,17 @@ class Partitioning(object):
 
 class SuffixPartitioning(Partitioning):
     def empty_partitionlookup(self, delimiter):
-        return PartitionLookup([0], delimiter, False)
+        return Partitioning.Lookup([0], delimiter, False)
 
     def partitionlookup(self, array, delimiter):
-        return PartitionLookup(array, delimiter, False)
+        return Partitioning.Lookup(array, delimiter, False)
     
 class ExplicitPartitioning(Partitioning):
     def empty_partitionlookup(self, delimiter):
-        return ExplicitPartitionLookup(codecs.utf_8_encode(json.dumps({"offsets": [0], "names": []}))[0])
+        return Partitioning.ExplicitLookup(codecs.utf_8_encode(json.dumps({"offsets": [0], "names": []}))[0])
 
     def partitionlookup(self, array, delimiter):
-        return ExplicitPartitionLookup(array)
+        return Partitioning.ExplicitLookup(array)
 
 ################################################################ Datasets are Schemas with optional Partitionings and Packings
 

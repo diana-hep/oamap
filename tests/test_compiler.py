@@ -482,3 +482,19 @@ class TestCompiler(unittest.TestCase):
             data = [3.3, 2.2, 3.3, None, None, None, 4.4, None, 3.3, None]
             for i in range(10):
                 self.assertEqual(doit(value, i), data[i])
+
+    # def test_boxing_schema(self):
+    #     if numba is not None:
+    #         @numba.njit
+    #         def boxing1(x):
+    #             return 3.14
+
+    #         @numba.njit
+    #         def boxing2(x):
+    #             return x
+
+    #         @numba.njit
+    #         def boxing3(x):
+    #             return x, x
+
+    #         schema = List(Record({"one": Primitive(int), "two": 

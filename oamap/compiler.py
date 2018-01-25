@@ -52,8 +52,24 @@ else:
     def typeof_proxy(val, c):
         return SchemaType(val)
 
-    
+    @numba.extending.register_model(SchemaType)
+    class SchemaModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            # don't carry any information about the Schema at runtime: it's a purely compile-time constant
+            super(SchemaModel, self).__init__(dmm, fe_type, [])
+            
+    @numba.extending.unbox(SchemaType)
+    def unbox_schema(typ, obj, c):
+        # no information is carried over at runtime
+        schemaproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(schemaproxy._getvalue(), is_error=is_error)
 
+    @numba.extending.box(SchemaType)
+    def box_schema(typ, val, c):
+        # generate schema from the compile-time constant
+        return c.pyapi.unserialize(c.pyapi.serialize_object(typ.schema))
+    
 
 
 

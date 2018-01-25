@@ -107,3 +107,11 @@ class UTF8StringGenerator(_GenerateBytes, oamap.generator.ExtendedGenerator):
             return out
         else:
             return codecs.utf_8_decode(out)[0]
+
+def ByteString(nullable=False, starts=None, stops=None, data=None, mask=None, packing=None, doc=None, metadata=None):
+    import oamap.schema
+    return oamap.schema.List(oamap.schema.Primitive(numpy.uint8, data=data), nullable=nullable, starts=starts, stops=stops, mask=mask, packing=packing, name="ByteString", doc=doc, metadata=metadata)
+
+def UTF8String(nullable=False, starts=None, stops=None, data=None, mask=None, packing=None, doc=None, metadata=None):
+    import oamap.schema
+    return oamap.schema.List(oamap.schema.Primitive(numpy.uint8, data=data), nullable=nullable, starts=starts, stops=stops, mask=mask, packing=packing, name="UTF8String", doc=doc, metadata=metadata)
