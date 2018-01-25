@@ -575,4 +575,4 @@ class TestCompiler(unittest.TestCase):
             def case(x):
                 return x.case(3)
 
-            print case(Primitive("int"))
+            print(case(Primitive("int")))

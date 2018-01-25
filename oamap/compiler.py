@@ -95,6 +95,14 @@ else:
 
         @numba.typing.templates.bound_function("schema.case")
         def resolve_case(self, schema, args, kwds):
+
+
+
+
+
+
+
+
             return numba.types.boolean(numba.types.int64)
 
     @numba.extending.lower_getattr_generic(SchemaType)
