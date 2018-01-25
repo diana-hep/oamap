@@ -32,6 +32,7 @@ import pickle
 
 import numpy
 
+import oamap.schema
 import oamap.generator
 import oamap.proxy
 
@@ -69,7 +70,8 @@ else:
     def box_schema(typ, val, c):
         # generate schema from the compile-time constant
         return c.pyapi.unserialize(c.pyapi.serialize_object(typ.schema))
-    
+
+
 
 
 

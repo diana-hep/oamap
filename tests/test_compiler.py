@@ -483,18 +483,26 @@ class TestCompiler(unittest.TestCase):
             for i in range(10):
                 self.assertEqual(doit(value, i), data[i])
 
-    # def test_boxing_schema(self):
-    #     if numba is not None:
-    #         @numba.njit
-    #         def boxing1(x):
-    #             return 3.14
+    def test_boxing_schema(self):
+        if numba is not None:
+            @numba.njit
+            def boxing1(x):
+                return 3.14
 
-    #         @numba.njit
-    #         def boxing2(x):
-    #             return x
+            @numba.njit
+            def boxing2(x):
+                return x
 
-    #         @numba.njit
-    #         def boxing3(x):
-    #             return x, x
+            @numba.njit
+            def boxing3(x):
+                return x, x
 
-    #         schema = List(Record({"one": Primitive(int), "two": 
+            schema = List(Record({"one": Primitive(int), "two": ByteString()}))
+
+            boxing1(schema)
+            schema2 = boxing2(schema)
+            schema3, schema4 = boxing3(schema)
+
+            self.assertEqual(schema, schema2)
+            self.assertEqual(schema, schema3)
+            self.assertEqual(schema, schema4)
