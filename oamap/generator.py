@@ -178,6 +178,12 @@ class Generator(object):
 
         return ptrs, lens, ptrs.ctypes.data, lens.ctypes.data
 
+    def case(self, obj):
+        return self.schema.case(obj)
+
+    def cast(self, obj):
+        return self.schema.cast(obj)
+
 # mix-in for all generators of nullable types
 class Masked(object):
     maskdtype = numpy.dtype(numpy.int32)
@@ -393,12 +399,6 @@ class UnionGenerator(Generator):
         for x in self.possibilities:
             for y in x.iternames():
                 yield y
-
-    def case(self, possibility):
-        return self.schema.case(possibility)
-
-    def cast(self, possibility):
-        return self.schema.cast(possibility)
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):

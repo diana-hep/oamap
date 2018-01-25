@@ -41,6 +41,24 @@ try:
 except ImportError:
     pass
 else:
+    ################################################################ Schema objects in compiled code
+
+    class SchemaType(numba.types.Type):
+        def __init__(self, schema):
+            self.schema = schema
+            super(SchemaType, self).__init__(name="OAMap-Schema {0}".format(self.schema.tojsonstring()))
+            
+    @numba.extending.typeof_impl.register(oamap.schema.Schema)
+    def typeof_proxy(val, c):
+        return SchemaType(val)
+
+    
+
+
+
+
+
+    
     ################################################################ Baggage (tracing reference counts to reconstitute Python objects)
 
     class BaggageType(numba.types.Type):
@@ -57,14 +75,6 @@ else:
                        ("ptrs", numba.types.pyobject),
                        ("lens", numba.types.pyobject)]
             super(BaggageModel, self).__init__(dmm, fe_type, members)
-            
-    # def incref_baggage(context, builder, baggage_val):
-    #     pyapi = context.get_python_api(builder)
-    #     baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=baggage_val)
-    #     pyapi.incref(baggage.arrays)
-    #     pyapi.incref(baggage.cache)
-    #     pyapi.incref(baggage.ptrs)
-    #     pyapi.incref(baggage.lens)
 
     def unbox_baggage(context, builder, pyapi, generator_obj, arrays_obj, cache_obj):
         entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
@@ -105,7 +115,7 @@ else:
 
         return generator_obj, baggage.arrays, baggage.cache
 
-    ################################################################ general routines for all types
+    ################################################################ general routines for all proxies
 
     @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
     def typeof_proxy(val, c):
@@ -550,6 +560,7 @@ else:
 
     class UnionProxyNumbaType(numba.types.Type):
         def __init__(self, generator):
+            self.generator = generator
             super(RecordProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
 
     @numba.extending.register_model(UnionProxyNumbaType)
@@ -562,10 +573,6 @@ else:
                        ("offset", numba.types.int64)]
             super(UnionProxyModel, self).__init__(dmm, fe_type, members)
 
-    
-
-
-            
     ################################################################ RecordProxy
 
     class RecordProxyNumbaType(numba.types.Type):

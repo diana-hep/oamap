@@ -339,6 +339,15 @@ class Schema(object):
 
         return out
 
+    def case(self, obj):
+        return obj in self
+
+    def cast(self, obj):
+        if obj in self:
+            return obj
+        else:
+            raise TypeError("object is not a member of {0}".format(self))
+
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
@@ -444,7 +453,7 @@ class Primitive(Schema):
             if not explicit and self._dims == () and self._nullable is False and self._data is None and self._mask is None and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
                 return str(self._dtype)
             else:
-                out = {"type": "primitive", "dtype": str(self._dtype)}
+                out = OrderedDict([("type", "primitive"), ("dtype", str(self._dtype))])
                 if explicit or self._dims != ():
                     out["dims"] = None if self._dims is None else list(self._dims)
                 if explicit or self._nullable is not False:
@@ -684,7 +693,7 @@ class List(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "list", "content": self._content._tojson(explicit, labels, shown)}
+            out = OrderedDict([("type", "list"), ("content", self._content._tojson(explicit, labels, shown))])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._starts is not None:
@@ -985,7 +994,7 @@ class Union(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "union", "possibilities": [x._tojson(explicit, labels, shown) for x in self._possibilities]}
+            out = OrderedDict([("type", "union"), ("possibilities", [x._tojson(explicit, labels, shown) for x in self._possibilities])])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._tags is not None:
@@ -1146,48 +1155,6 @@ class Union(Schema):
         memo[id(self)] = cls(*args)
         return memo[id(self)]
 
-    def case(self, possibility):
-        return Case(self, possibility)
-
-    def cast(self, possibility):
-        return Cast(self, possibility)
-
-class Case(object):
-    def __init__(self, union, possibility):
-        if not isinstance(union, Union):
-            raise TypeError("first argument of {0} constructor must be a Union".format(self.__class__.__name__))
-
-        if isinstance(possibility, Schema):
-            for i, x in enumerate(union.possibilities):
-                if possibility == x:
-                    possibility = i
-
-        if not isinstance(possibility, numbers.Integral) or not 0 <= possibility < len(union.possibilities):
-            raise TypeError("second argument of {0} constructor must be one of the Union's possibilities or its integer index".format(self.__class__.__name__))
-
-        self.union = union
-        self.tag = tag
-
-    @property
-    def possibility(self):
-        return self.union.possibilities[self.tag]
-
-    def __repr__(self):
-        return "<case {0} as {1}>".format(self.union, self.possibility)
-
-    def __call__(self, obj):
-        return obj in self.possibility
-
-class Cast(Case):
-    def __repr__(self):
-        return "<cast {0} as {1}>".format(self.union, self.possibility)
-
-    def __call__(self, obj):
-        if obj in self.possibility:
-            return obj
-        else:
-            raise TypeError("object is not a {0}".format(self.possibility))
-
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
@@ -1284,7 +1251,7 @@ class Record(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "record", "fields": [[n, x._tojson(explicit, labels, shown)] for n, x in self._fields.items()]}
+            out = OrderedDict([("type", "record"), ("fields", [[n, x._tojson(explicit, labels, shown)] for n, x in self._fields.items()])])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
@@ -1536,7 +1503,7 @@ class Tuple(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "tuple", "types": [x._tojson(explicit, labels, shown) for x in self._types]}
+            out = OrderedDict([("type", "tuple"), ("types", [x._tojson(explicit, labels, shown) for x in self._types])])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
@@ -1758,7 +1725,7 @@ class Pointer(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = {"type": "pointer", "target": self._target._tojson(explicit, labels, shown)}
+            out = OrderedDict([("type", "pointer"), ("target", self._target._tojson(explicit, labels, shown))])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._positions is not None:
@@ -2015,7 +1982,7 @@ class Partitioning(object):
         return PartitionLookup(array, delimiter, True)
 
     def tojson(self):
-        return {self.__class__.__name__: [self.key]}
+        return OrderedDict([(self.__class__.__name__, [self.key])])
 
     @staticmethod
     def fromjson(data):
@@ -2286,7 +2253,7 @@ class Dataset(object):
         return json.dumps(self.tojson(), *args, **kwds)
 
     def tojson(self, explicit=False):
-        out = {"schema": self._schema.tojson(explicit=explicit)}
+        out = OrderedDict([("schema", self._schema.tojson(explicit=explicit))])
         if explicit or self._prefix is not None:
             out["prefix"] = self._prefix
         if explicit or self._delimiter is not None:
