@@ -29,12 +29,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import pickle
+import sys
 
 import numpy
 
 import oamap.schema
 import oamap.generator
 import oamap.proxy
+
+if sys.version_info[0] > 2:
+    basestring = str
 
 try:
     import numba
@@ -45,10 +49,14 @@ else:
     ################################################################ Schema objects in compiled code
 
     class SchemaType(numba.types.Type):
-        def __init__(self, schema):
+        def __init__(self, schema, matchable=True):
             self.schema = schema
-            super(SchemaType, self).__init__(name="OAMap-Schema {0}".format(self.schema.tojsonstring()))
-            
+            self.matchable = matchable
+            super(SchemaType, self).__init__(name="OAMap-Schema{0} {1}".format("" if self.matchable else " (unmatchable)", self.schema.tojsonstring()))
+
+        def unmatchable(self):
+            return SchemaType(self.schema, False)
+
     @numba.extending.typeof_impl.register(oamap.schema.Schema)
     def typeof_proxy(val, c):
         return SchemaType(val)
@@ -58,7 +66,87 @@ else:
         def __init__(self, dmm, fe_type):
             # don't carry any information about the Schema at runtime: it's a purely compile-time constant
             super(SchemaModel, self).__init__(dmm, fe_type, [])
+
+    @numba.extending.infer_getattr
+    class SchemaAttribute(numba.typing.templates.AttributeTemplate):
+        key = SchemaType
+        def generic_resolve(self, typ, attr):
+            if typ.matchable:
+                if attr == "nullable":
+                    raise NotImplementedError
+
+                elif isinstance(typ.schema, oamap.schema.Primitive) and attr == "dtype":
+                    raise NotImplementedError
+
+                elif isinstance(typ.schema, oamap.schema.Primitive) and attr == "dims":
+                    raise NotImplementedError
+
+                elif isinstance(typ.schema, oamap.schema.List) and attr == "content":
+                    return SchemaType(typ.schema._content)
+
+                elif isinstance(typ.schema, oamap.schema.Union) and attr == "possibilities":
+                    return typ.unmatchable()
+
+                elif isinstance(typ.schema, oamap.schema.Record) and attr == "fields":
+                    return typ.unmatchable()
+
+                elif isinstance(typ.schema, oamap.schema.Tuple) and attr == "types":
+                    return typ.unmatchable()
+
+                elif isinstance(typ.schema, oamap.schema.Pointer) and attr == "target":
+                    return SchemaType(typ.schema._target)
+
+    @numba.extending.lower_getattr_generic(SchemaType)
+    def schema_getattr(context, builder, typ, val, attr):
+        if attr == "nullable":
+            raise NotImplementedError
+
+        elif attr == "dtype":
+            raise NotImplementedError
+
+        elif attr == "dims":
+            raise NotImplementedError
+
+        else:
+            return numba.cgutils.create_struct_proxy(typ)(context, builder)._getvalue()
             
+    @numba.typing.templates.infer
+    class SchemaGetItem(numba.typing.templates.AbstractTemplate):
+        key = "static_getitem"
+        def generic(self, args, kwds):
+            if len(args) == 2:
+                tpe, idx = args
+                if isinstance(tpe, SchemaType) and isinstance(tpe.schema, oamap.schema.Union) and isinstance(idx, int):
+                    if idx < 0:
+                        normindex = idx + len(tpe.schema._possibilities)
+                    else:
+                        normindex = idx
+                    if 0 <= normindex < len(tpe.schema._possibilities):
+                        return SchemaType(tpe.schema._possibilities[normindex])
+                    else:
+                        raise IndexError("possibility {0} out of range for type {1}".format(idx, tpe.schema))
+                    
+                elif isinstance(tpe, SchemaType) and isinstance(tpe.schema, (oamap.schema.Record)) and isinstance(idx, basestring):
+                    if idx in tpe.schema._fields:
+                        return SchemaType(tpe.schema._fields[idx])
+                    else:
+                        raise KeyError("no field named {0} in type {1}".format(repr(idx), tpe.schema))
+
+                elif isinstance(tpe, SchemaType) and isinstance(tpe.schema, oamap.schema.Tuple) and isinstance(idx, int):
+                    if idx < 0:
+                        normindex = idx + len(tpe.schema._types)
+                    else:
+                        normindex = idx
+                    if 0 <= normindex < len(tpe.schema._types):
+                        return SchemaType(tpe.schema._types[normindex])
+                    else:
+                        raise IndexError("item {0} out of range for type {1}".format(idx, tpe.schema))
+
+    @numba.extending.lower_builtin("static_getitem", SchemaType, numba.types.Const)
+    def schema_static_getitem(context, builder, sig, args):
+        typ, _ = sig.args
+        return numba.cgutils.create_struct_proxy(typ)(context, builder)._getvalue()
+
     @numba.extending.unbox(SchemaType)
     def unbox_schema(typ, obj, c):
         # no information is carried over at runtime
@@ -69,14 +157,24 @@ else:
     @numba.extending.box(SchemaType)
     def box_schema(typ, val, c):
         # generate schema from the compile-time constant
-        return c.pyapi.unserialize(c.pyapi.serialize_object(typ.schema))
+        if typ.matchable:
+            return c.pyapi.unserialize(c.pyapi.serialize_object(typ.schema))
 
+        elif isinstance(typ.schema, oamap.schema.Union):
+            return c.pyapi.unserialize(c.pyapi.serialize_object(typ.schema.possibilities))
 
+        elif isinstance(typ.schema, oamap.schema.Record):
+            out = c.pyapi.dict_new(len(typ.schema._fields))
+            for n, x in typ.schema._fields.items():
+                c.pyapi.dict_setitem_string(out, n, c.pyapi.unserialize(c.pyapi.serialize_object(x)))
+            return out
 
+        elif isinstance(typ.schema, oamap.schema.Tuple):
+            return c.pyapi.unserialize(c.pyapi.serialize_object(typ.schema.types))
 
+        else:
+            raise AssertionError
 
-
-    
     ################################################################ Baggage (tracing reference counts to reconstitute Python objects)
 
     class BaggageType(numba.types.Type):
@@ -433,12 +531,13 @@ else:
     class ListProxyGetItem(numba.typing.templates.AbstractTemplate):
         key = "getitem"
         def generic(self, args, kwds):
-            tpe, idx = args
-            if isinstance(tpe, ListProxyNumbaType):
-                if isinstance(idx, numba.types.Integer):
-                    return typeof_generator(tpe.generator.content)(tpe, idx)
-                elif isinstance(idx, numba.types.SliceType):
-                    return typeof_generator(tpe.generator)(tpe, idx)
+            if len(args) == 2:
+                tpe, idx = args
+                if isinstance(tpe, ListProxyNumbaType):
+                    if isinstance(idx, numba.types.Integer):
+                        return typeof_generator(tpe.generator.content)(tpe, idx)
+                    elif isinstance(idx, numba.types.SliceType):
+                        return typeof_generator(tpe.generator)(tpe, idx)
 
     @numba.extending.lower_builtin("getitem", ListProxyNumbaType, numba.types.Integer)
     def listproxy_getitem(context, builder, sig, args):
@@ -538,9 +637,10 @@ else:
     class ListProxy_getiter(numba.typing.templates.AbstractTemplate):
         key = "getiter"
         def generic(self, args, kwds):
-            objtyp, = args
-            if isinstance(objtyp, ListProxyNumbaType):
-                return numba.typing.templates.signature(ListProxyIteratorType(objtyp), objtyp)
+            if len(args) == 1:
+                objtyp, = args
+                if isinstance(objtyp, ListProxyNumbaType):
+                    return numba.typing.templates.signature(ListProxyIteratorType(objtyp), objtyp)
 
     @numba.extending.lower_builtin("getiter", ListProxyNumbaType)
     def listproxy_getiter(context, builder, sig, args):
@@ -608,7 +708,7 @@ else:
             super(RecordProxyModel, self).__init__(dmm, fe_type, members)
 
     @numba.extending.infer_getattr
-    class StructAttribute(numba.typing.templates.AttributeTemplate):
+    class RecordProxyAttribute(numba.typing.templates.AttributeTemplate):
         key = RecordProxyNumbaType
         def generic_resolve(self, typ, attr):
             fieldgenerator = typ.generator.fields.get(attr, None)
@@ -683,15 +783,18 @@ else:
     class TupleProxyGetItem(numba.typing.templates.AbstractTemplate):
         key = "static_getitem"
         def generic(self, args, kwds):
-            tpe, idx = args
-            if isinstance(tpe, TupleProxyNumbaType):
-                if isinstance(idx, int):
-                    if idx < 0:
-                        normindex = idx + len(tpe.generator.types)
-                    else:
-                        normindex = idx
-                    if 0 <= normindex < len(tpe.generator.types):
-                        return typeof_generator(tpe.generator.types[normindex])
+            if len(args) == 2:
+                tpe, idx = args
+                if isinstance(tpe, TupleProxyNumbaType):
+                    if isinstance(idx, int):
+                        if idx < 0:
+                            normindex = idx + len(tpe.generator.types)
+                        else:
+                            normindex = idx
+                        if 0 <= normindex < len(tpe.generator.types):
+                            return typeof_generator(tpe.generator.types[normindex])
+                        else:
+                            raise IndexError("item {0} out of range for type {1}".format(idx, tpe.generator.schema))
 
     @numba.extending.lower_builtin("static_getitem", TupleProxyNumbaType, numba.types.Const)
     def tupleproxy_static_getitem(context, builder, sig, args):

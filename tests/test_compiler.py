@@ -506,3 +506,46 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(schema, schema2)
             self.assertEqual(schema, schema3)
             self.assertEqual(schema, schema4)
+
+    def test_deriving_schema(self):
+        if numba is not None:
+            @numba.njit
+            def content(x):
+                return x.content
+
+            @numba.njit
+            def possibilities(x):
+                return x.possibilities
+
+            @numba.njit
+            def possibilities_0(x):
+                return x.possibilities[0]
+
+            @numba.njit
+            def fields(x):
+                return x.fields
+
+            @numba.njit
+            def fields_one(x):
+                return x.fields["one"]
+
+            @numba.njit
+            def types(x):
+                return x.types
+
+            @numba.njit
+            def types_0(x):
+                return x.types[0]
+
+            @numba.njit
+            def target(x):
+                return x.target
+            
+            self.assertEqual(content(List("int")), Primitive("int"))
+            self.assertEqual(possibilities(Union(["int", "float"])), (Primitive("int"), Primitive("float")))
+            self.assertEqual(possibilities_0(Union(["int", "float"])), Primitive("int"))
+            self.assertEqual(fields(Record({"one": "int", "two": "float"})), {"one": Primitive("int"), "two": Primitive("float")})
+            self.assertEqual(fields_one(Record({"one": "int", "two": "float"})), Primitive("int"))
+            self.assertEqual(types(Tuple(["int", "float"])), (Primitive("int"), Primitive("float")))
+            self.assertEqual(types_0(Tuple(["int", "float"])), Primitive("int"))
+            self.assertEqual(target(Pointer("int")), Primitive("int"))
