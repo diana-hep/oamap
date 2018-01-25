@@ -93,6 +93,10 @@ else:
                 elif isinstance(typ.schema, oamap.schema.Pointer) and attr == "target":
                     return SchemaType(typ.schema._target)
 
+        @numba.typing.templates.bound_function("schema.case")
+        def resolve_case(self, schema, args, kwds):
+            return numba.types.boolean(numba.types.int64)
+
     @numba.extending.lower_getattr_generic(SchemaType)
     def schema_getattr(context, builder, typ, val, attr):
         if attr == "nullable":
@@ -103,7 +107,11 @@ else:
 
         else:
             return numba.cgutils.create_struct_proxy(typ)(context, builder)._getvalue()
-            
+
+    @numba.extending.lower_builtin("schema.case", SchemaType, numba.types.int64)
+    def schema_case(context, builder, sig, args):
+        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), False)
+
     @numba.typing.templates.infer
     class SchemaGetItem(numba.typing.templates.AbstractTemplate):
         key = "static_getitem"

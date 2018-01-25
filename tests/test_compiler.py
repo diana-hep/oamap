@@ -568,3 +568,11 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(types(Tuple(["int", "float"])), (Primitive("int"), Primitive("float")))
             self.assertEqual(types_0(Tuple(["int", "float"])), Primitive("int"))
             self.assertEqual(target(Pointer("int")), Primitive("int"))
+
+    def test_schema_casecast(self):
+        if numba is not None:
+            @numba.njit
+            def case(x):
+                return x.case(3)
+
+            print case(Primitive("int"))
