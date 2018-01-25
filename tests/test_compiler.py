@@ -643,3 +643,23 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(case_i(nullablefloat, values, 7) is False)
             self.assertTrue(case_i(nullablefloat, values, 8) is False)
             self.assertTrue(case_i(nullablefloat, values, 9) is False)
+
+    def test_schema_cast(self):
+        if numba is not None:
+            @numba.njit
+            def cast(x, y):
+                return x.cast(y)
+
+            @numba.njit
+            def cast_i(x, y, i):
+                return x.cast(y[i])
+
+            justint = Primitive("int")
+            justfloat = Primitive("float")
+
+            self.assertEqual(cast(justint, 999), 999)
+            self.assertEqual(cast(justint, 3.14), 3)
+            self.assertEqual(cast(justfloat, 999), 999.0)
+            self.assertEqual(cast(justfloat, 3.14), 3.14)
+
+

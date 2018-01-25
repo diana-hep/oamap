@@ -102,11 +102,40 @@ else:
                     raise AssertionError("unrecognized schema type: {0} ({1})".format(schema.__class__, repr(schema)))
 
         @numba.typing.templates.bound_function("schema.case")
-        def resolve_case(self, schema, args, kwds):
+        def resolve_case(self, schematype, args, kwds):
             if len(args) == 1:
                 arg, = args
                 if isinstance(arg, primproxytypes) or (isinstance(arg, numba.types.Optional) and isinstance(arg.type, primproxytypes)):
-                    return numba.types.boolean(args[0])
+                    return numba.types.boolean(arg)
+
+        @numba.typing.templates.bound_function("schema.cast")
+        def resolve_cast(self, schematype, args, kwds):
+            if len(args) == 1:
+                arg, = args
+                if isinstance(schematype.schema, oamap.schema.Primitive):
+                    if schematype.schema.nullable:
+                        return numba.types.optional(numba.from_dtype(schematype.schema.dtype))(arg)
+                    else:
+                        return numba.from_dtype(schematype.schema.dtype)(arg)
+
+                elif isinstance(schematype.schema, (oamap.schema.List, oamap.schema.Union, oamap.schema.Record, oamap.schema.Tuple)):
+                    if isinstance(arg, UnionProxyNumbaType):
+                        for datatag, datatype in enumerate(arg.generator.schema.possibilities):
+                            if schematype.schema == datatype:
+                                return typeof_generator(arg.generator.possibilities[datatag])(arg)
+
+                    if isinstance(arg, numba.types.Optional) and isinstance(arg.type, UnionProxyNumbaType):
+                        for datatag, datatype in enumerate(arg.type.generator.schema.possibilities):
+                            if schematype.schema == datatype:
+                                return typeof_generator(arg.type.generator.possibilities[datatag])(arg)
+
+                    return typeof_generator(schematype.schema.generator())(arg)
+
+                elif isinstance(schematype.schema, oamap.schema.Pointer):
+                    raise TypeError("cannot cast data as a Pointer")
+
+                else:
+                    raise AssertionError("unrecognized schema type: {0} ({1})".format(schematype.schema.__class__, repr(schematype.schema)))
 
     @numba.extending.lower_getattr_generic(SchemaType)
     def schema_getattr(context, builder, typ, val, attr):
@@ -146,7 +175,7 @@ else:
                     out = builder.load(out_ptr)
                     return out
 
-            # none of the data possibilities will ever match, compile-time rejection
+            # none of the data possibilities will ever match
             return ret(False)
 
         elif isinstance(argtype, primtypes):
@@ -162,6 +191,78 @@ else:
 
         else:
             raise AssertionError
+
+    @numba.extending.lower_builtin("schema.cast", SchemaType, numba.types.Type)
+    def schema_case(context, builder, sig, args):
+        outtype, (schematype, argtype) = sig.return_type, sig.args
+        dummy, argval = args
+
+        def error(case):
+            raise_exception(context, builder, case, TypeError("cannot cast {0} as {1}".format(argtype, outtype)))
+
+        if argtype == outtype:
+            return argval
+
+        if isinstance(argtype, numba.types.Optional):
+            # unwrap the optval and apply the check to the contents
+            raise NotImplementedError
+
+        elif isinstance(argtype, UnionProxyNumbaType):
+            # do a runtime check
+            raise NotImplementedError
+
+            # none of the data possibilities will ever match
+            error(None)
+
+        elif isinstance(argtype, primtypes):
+            # do a conversion
+            return context.cast(builder, argval, argtype, outtype)
+
+        elif isinstance(argtype, ProxyNumbaType):
+            # always fail
+            error(None)
+
+        else:
+            raise AssertionError
+
+        # def ret(x):
+        #     return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), x)
+
+        # if isinstance(argtype, numba.types.Optional):
+        #     # unwrap the optval and apply the check to the contents
+        #     optval = context.make_helper(builder, argtype, value=argval)
+        #     return schema_case(context, builder, (schematype, argtype.type), (dummy, optval.data))
+
+        # elif isinstance(argtype, UnionProxyNumbaType):
+        #     # do a runtime check
+        #     for datatag, datatype in enumerate(argtype.generator.schema.possibilities):
+        #         if schematype.schema == datatype:
+        #             unionproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder, value=argval)
+        #             out_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(1))
+        #             with builder.if_else(builder.icmp_unsigned("==", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize))) as (success, failure):
+        #                 with success:
+        #                     builder.store(ret(True), out_ptr)
+        #                 with failure:
+        #                     builder.store(ret(False), out_ptr)
+        #             out = builder.load(out_ptr)
+        #             return out
+
+        #     # none of the data possibilities will ever match, compile-time rejection
+        #     return ret(False)
+
+        # elif isinstance(argtype, primtypes):
+        #     # do a compile-time check
+        #     if isinstance(schematype.schema, oamap.schema.Primitive):
+        #         return ret(numba.from_dtype(schematype.schema.dtype) == argtype)
+        #     else:
+        #         return ret(False)
+
+        # elif isinstance(argtype, ProxyNumbaType):
+        #     # do a compile-time check
+        #     return ret(schematype.schema == argtype.generator.schema)
+
+        # else:
+        #     raise AssertionError
 
     @numba.typing.templates.infer
     class SchemaGetItem(numba.typing.templates.AbstractTemplate):
@@ -369,7 +470,7 @@ else:
         return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(dtype)[:], finalptr)
 
     def raise_exception(context, builder, case, exception):
-        with builder.if_then(case, likely=False):
+        def content():
             pyapi = context.get_python_api(builder)
             excptr = context.call_conv._get_excinfo_argument(builder.function)
 
@@ -385,6 +486,12 @@ else:
 
             else:
                 raise AssertionError("unrecognized exception calling convention: {0}".format(excptr))
+
+        if case is None:
+            content()
+        else:
+            with builder.if_then(case, likely=False):
+                content()
 
     def generate_empty(context, builder, generator, baggage):
         typ = typeof_generator(generator, checkmasked=False)
