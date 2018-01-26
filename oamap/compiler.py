@@ -901,7 +901,6 @@ else:
                 context.call_conv.return_user_exc(builder, RuntimeError, ("tag out of bounds for union",))
 
             with builder.goto_block(bbend):
-                # phinode = builder.phi(context.get_value_type(unifiedtype))
                 pass
 
             for datatag, datagen in enumerate(typ.generator.possibilities):
@@ -914,10 +913,9 @@ else:
                     convertedval = context.cast(builder, attrval, typeof_generator(datagen.fields[attr]), unifiedtype)
                     builder.store(context.cast(builder, attrval, typeof_generator(datagen.fields[attr]), unifiedtype), out_ptr)
                     builder.branch(bbend)
-                    # phinode.add_incoming(convertedval, bbi)
 
             builder.position_at_end(bbend)
-            return numba.targets.imputils.impl_ret_borrowed(context, builder, unifiedtype, builder.load(out_ptr))  # phinode)
+            return numba.targets.imputils.impl_ret_borrowed(context, builder, unifiedtype, builder.load(out_ptr))
 
         else:
             raise AssertionError

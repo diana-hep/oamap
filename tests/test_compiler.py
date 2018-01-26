@@ -775,8 +775,8 @@ class TestCompiler(unittest.TestCase):
             
             value = List(Union([Record({"one": "int"}), Record({"one": "float"})])).data([{"one": 1}, {"one": 2}, {"one": 3.3}, {"one": 4.4}, {"one": 5}])
 
-            print one(value, 0)
-            print one(value, 1)
-            print one(value, 2)
-            print one(value, 3)
-            print one(value, 4)
+            self.assertEqual(one(value, 0), 1.0)
+            self.assertEqual(one(value, 1), 2.0)
+            self.assertEqual(one(value, 2), 3.3)
+            self.assertEqual(one(value, 3), 4.4)
+            self.assertEqual(one(value, 4), 5.0)
