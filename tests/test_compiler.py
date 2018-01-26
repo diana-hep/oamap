@@ -902,3 +902,14 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(eq(value1.one, value1.two) is True)
             self.assertTrue(eq(value1.one, value2) is True)
             self.assertTrue(eq(value1.one, value3) is False)
+
+            value1 = Record({"one": Record({"x": "int", "y": "float"}), "two": Record({"x": "int", "y": "float"}, nullable=True)}).data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+            value2 = Record({"x": "int", "y": "float"}, nullable=True).data({"x": 999, "y": 3.14})
+            value3 = Record({"x": "int", "y": "float"}, nullable=True).data({"x": 999, "y": -3.14})
+            value4 = Record({"x": "int", "y": "float"}, nullable=True).data(None)
+
+            print eq(value1.one, value1.two)
+            print eq(value1.one, value2)
+            print eq(value1.one, value3)
+            print eq(value1.one, value4)
+
