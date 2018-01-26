@@ -891,30 +891,33 @@ else:
                             TypeError("'NoneType' object has no attribute {0}".format(repr(attr))))
 
         if all(isinstance(x, oamap.generator.RecordGenerator) for x in typ.generator.possibilities):        
-            # out_ptr = numba.cgutils.alloca_once(builder, context.get_value_type(unifiedtype))
+            out_ptr = numba.cgutils.alloca_once(builder, context.get_value_type(unifiedtype))
 
             bbelse = builder.append_basic_block("switch.else")
             bbend = builder.append_basic_block("switch.end")
             switch = builder.switch(unionproxy.tag, bbelse)
 
             with builder.goto_block(bbelse):
-                raise_exception(context, builder, None, RuntimeError("tag out of bounds for union"))
+                context.call_conv.return_user_exc(builder, RuntimeError, ("tag out of bounds for union",))
 
             with builder.goto_block(bbend):
-                phinode = builder.phi(context.get_value_type(unifiedtype))
+                # phinode = builder.phi(context.get_value_type(unifiedtype))
+                pass
 
             for datatag, datagen in enumerate(typ.generator.possibilities):
+                ki = literal_int64(datatag)
                 bbi = builder.append_basic_block("switch.{0}".format(datatag))
-                switch.add_case(literal_int64(datatag), bbi)
+                switch.add_case(ki, bbi)
                 with builder.goto_block(bbi):
                     recordval = generate(context, builder, datagen, unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
-                    outval = recordproxy_getattr(context, builder, typeof_generator(datagen), recordval, attr)
-                    # builder.store(context.cast(builder, outval, typeof_generator(datagen.fields[attr]), unifiedtype), out_ptr)
+                    attrval = recordproxy_getattr(context, builder, typeof_generator(datagen), recordval, attr)
+                    convertedval = context.cast(builder, attrval, typeof_generator(datagen.fields[attr]), unifiedtype)
+                    builder.store(context.cast(builder, attrval, typeof_generator(datagen.fields[attr]), unifiedtype), out_ptr)
                     builder.branch(bbend)
-                    phinode.add_incoming(context.cast(builder, outval, typeof_generator(datagen.fields[attr]), unifiedtype), bbi)
+                    # phinode.add_incoming(convertedval, bbi)
 
             builder.position_at_end(bbend)
-            return numba.targets.imputils.impl_ret_borrowed(context, builder, unifiedtype, phinode)
+            return numba.targets.imputils.impl_ret_borrowed(context, builder, unifiedtype, builder.load(out_ptr))  # phinode)
 
         else:
             raise AssertionError
@@ -947,12 +950,6 @@ else:
 
     @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
     def recordproxy_getattr(context, builder, typ, val, attr):
-
-        print
-        print "typ", type(typ), typ
-        print "val", val
-        print "attr", repr(attr)
-
         recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
         if typ.generator.schema.nullable:
             raise_exception(context,
