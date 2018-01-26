@@ -46,8 +46,6 @@ try:
 except ImportError:
     pass
 else:
-    class ProxyNumbaType(numba.types.Type): pass
-
     ################################################################ Schema objects in compiled code
 
     class SchemaType(numba.types.Type):
@@ -89,7 +87,6 @@ else:
             super(SchemaModel, self).__init__(dmm, fe_type, [])
 
     primtypes = (numba.types.Boolean, numba.types.Integer, numba.types.Float, numba.types.Complex, numba.types.npytypes.CharSeq)
-    primproxytypes = primtypes + (ProxyNumbaType,)
 
     @numba.extending.infer_getattr
     class SchemaAttribute(numba.typing.templates.AttributeTemplate):
@@ -124,7 +121,7 @@ else:
         def resolve_case(self, schematype, args, kwds):
             if len(args) == 1:
                 arg, = args
-                if isinstance(arg, primproxytypes) or (isinstance(arg, numba.types.Optional) and isinstance(arg.type, primproxytypes)):
+                if isinstance(arg, primtypes + (ProxyNumbaType,)) or (isinstance(arg, numba.types.Optional) and isinstance(arg.type, primtypes + (ProxyNumbaType,))):
                     return numba.types.boolean(arg)
 
         @numba.typing.templates.bound_function("schema.cast")
@@ -270,34 +267,6 @@ else:
         else:
             raise AssertionError
 
-        # def ret(x):
-        #     return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), x)
-
-        # if isinstance(argtype, numba.types.Optional):
-        #     # unwrap the optval and apply the check to the contents
-        #     optval = context.make_helper(builder, argtype, value=argval)
-        #     return schema_case(context, builder, (schematype, argtype.type), (dummy, optval.data))
-
-        # elif isinstance(argtype, UnionProxyNumbaType):
-        #     # do a runtime check
-
-        #     # none of the data possibilities will ever match, compile-time rejection
-        #     return ret(False)
-
-        # elif isinstance(argtype, primtypes):
-        #     # do a compile-time check
-        #     if isinstance(schematype.schema, oamap.schema.Primitive):
-        #         return ret(numba.from_dtype(schematype.schema.dtype) == argtype)
-        #     else:
-        #         return ret(False)
-
-        # elif isinstance(argtype, ProxyNumbaType):
-        #     # do a compile-time check
-        #     return ret(schematype.schema == argtype.generator.schema)
-
-        # else:
-        #     raise AssertionError
-
     @numba.typing.templates.infer
     class SchemaGetItem(numba.typing.templates.AbstractTemplate):
         key = "static_getitem"
@@ -420,6 +389,11 @@ else:
         return generator_obj, baggage.arrays, baggage.cache
 
     ################################################################ general routines for all proxies
+
+    class ProxyNumbaType(numba.types.Type):
+        def unify(self, context, other):
+            if isinstance(other, ProxyNumbaType) and self.generator is other.generator:
+                return self
 
     @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
     def typeof_proxy(val, c):
