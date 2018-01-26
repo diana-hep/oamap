@@ -232,6 +232,9 @@ else:
         def error(case):
             raise_exception(context, builder, case, TypeError("cannot cast {0} as {1}".format(readable(argtype), readable(outtype))))
 
+        def error2(case):
+            raise_exception(context, builder, case, TypeError("cannot cast a member of {0} as {1}".format(readable(argtype), readable(outtype))))
+
         if argtype == outtype:
             return argval
 
@@ -245,13 +248,15 @@ else:
                 if schematype.schema == datatype:
                     unionproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder, value=argval)
                     if not schematype.schema.nullable:
-                        error(builder.icmp_unsigned("!=", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize)))
+                        error2(builder.icmp_unsigned("!=", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize)))
                         return generate(context, builder, argtype.generator.possibilities[datatag], unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
                     else:
                         raise NotImplementedError
 
             # none of the data possibilities will ever match
-            error(None)
+            error(builder.icmp_unsigned("==", literal_int64(0), literal_int64(0)))
+            argproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder)
+            return generate_empty(context, builder, outtype.generator, argproxy.baggage)
 
         elif isinstance(argtype, primtypes):
             # do a conversion
