@@ -766,3 +766,13 @@ class TestCompiler(unittest.TestCase):
             self.assertRaises(TypeError, lambda: cast_i(justfloat, values, 7))
             self.assertRaises(TypeError, lambda: cast_i(justfloat, values, 8))
             self.assertRaises(TypeError, lambda: cast_i(justfloat, values, 9))
+
+    def test_union_getattr(self):
+        if numba is not None:
+            @numba.njit
+            def one(x, i):
+                return x[i].one
+            
+            value = List(Union([Record({"one": "int"}), Record({"one": "float"})])).data([{"one": 1}, {"one": 2}, {"one": 3.3}, {"one": 4.4}, {"one": 5}])
+
+            print one(value, 0)

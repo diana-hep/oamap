@@ -216,21 +216,11 @@ else:
         outtype, (schematype, argtype) = sig.return_type, sig.args
         dummy, argval = args
 
-        def readable(tpe):
-            if isinstance(tpe, numba.types.Optional):
-                return numba.types.optional(readable(tpe.type))
-            elif isinstance(tpe, primtypes):
-                return tpe
-            elif isinstance(tpe, ProxyNumbaType):
-                return tpe.generator.schema
-            else:
-                raise AssertionError
-
         def error(case):
-            raise_exception(context, builder, case, TypeError("cannot cast {0} as {1}".format(readable(argtype), readable(outtype))))
+            raise_exception(context, builder, case, TypeError("cannot cast {0} as {1}".format(argtype, outtype)))
 
         def error2(case):
-            raise_exception(context, builder, case, TypeError("cannot cast a member of {0} as {1}".format(readable(argtype), readable(outtype))))
+            raise_exception(context, builder, case, TypeError("cannot cast a member of {0} as {1}".format(argtype, outtype)))
 
         if argtype == outtype:
             return argval
@@ -250,7 +240,7 @@ else:
                     return generate(context, builder, argtype.generator.possibilities[datatag], unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
 
             # none of the data possibilities will ever match
-            error(builder.icmp_unsigned("==", literal_int64(0), literal_int64(0)))
+            error(None)
             argproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder)
             return generate_empty(context, builder, outtype.generator, argproxy.baggage)
 
@@ -260,7 +250,7 @@ else:
 
         elif isinstance(argtype, ProxyNumbaType):
             # always fail
-            error(builder.icmp_unsigned("==", literal_int64(0), literal_int64(0)))
+            error(None)
             argproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder)
             return generate_empty(context, builder, outtype.generator, argproxy.baggage)
 
@@ -391,10 +381,13 @@ else:
     ################################################################ general routines for all proxies
 
     class ProxyNumbaType(numba.types.Type):
+        def __repr__(self):
+            return "\n    " + self.generator.schema.__repr__(indent="    ") + "\n"
+
         def unify(self, context, other):
             if isinstance(other, ProxyNumbaType) and self.generator is other.generator:
                 return self
-
+            
     @numba.extending.typeof_impl.register(oamap.proxy.Proxy)
     def typeof_proxy(val, c):
         return typeof_generator(val._generator)
@@ -478,6 +471,9 @@ else:
         return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(dtype)[:], finalptr)
 
     def raise_exception(context, builder, case, exception):
+        if case is None:
+            case = builder.icmp_unsigned("==", literal_int64(0), literal_int64(0))
+
         with builder.if_then(case, likely=False):
             pyapi = context.get_python_api(builder)
             excptr = context.call_conv._get_excinfo_argument(builder.function)
@@ -698,10 +694,11 @@ else:
         listval, indexval = args
 
         listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
-        raise_exception(context,
-                        builder,
-                        builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
-                        TypeError("'NoneType' object has no attribute '__getitem__'"))
+        if listtpe.generator.schema.nullable:
+            raise_exception(context,
+                            builder,
+                            builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                            TypeError("'NoneType' object has no attribute '__getitem__'"))
 
         normindex_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(64))
         builder.store(indexval, normindex_ptr)
@@ -726,10 +723,11 @@ else:
         sliceproxy = context.make_helper(builder, indextpe, indexval)
         listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
         slicedlistproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder)
-        raise_exception(context,
-                        builder,
-                        builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
-                        TypeError("'NoneType' object has no attribute '__getitem__'"))
+        if listtpe.generator.schema.nullable:
+            raise_exception(context,
+                            builder,
+                            builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                            TypeError("'NoneType' object has no attribute '__getitem__'"))
 
         numba.targets.slicing.guard_invalid_slice(context, builder, indextpe, sliceproxy)
         numba.targets.slicing.fix_slice(builder, sliceproxy, listproxy.length)
@@ -865,11 +863,61 @@ else:
     class UnionProxyAttribute(numba.typing.templates.AttributeTemplate):
         key = UnionProxyNumbaType
         def generic_resolve(self, typ, attr):
-            HERE
+            if all(isinstance(x, oamap.generator.RecordGenerator) for x in typ.generator.possibilities):
+                allout = None
+                recordproxyattribute = RecordProxyAttribute(self.context)
+                for x in typ.generator.possibilities:
+                    try:
+                        out = recordproxyattribute.generic_resolve(typeof_generator(x), attr)
+                    except AttributeError:
+                        raise AttributeError("not all Records of {0} have a {1} attribute".format(typ.generator.shema, repr(attr)))
+                    else:
+                        if allout is None:
+                            allout = out
+                        else:
+                            allout = allout.unify(self.context, out)
+                            if allout is None:
+                                raise AttributeError("not all Records of {0} yield equivalent types for the {1} attribute".format(typ.generator.shema, repr(attr)))
+                return allout
 
+    @numba.extending.lower_getattr_generic(UnionProxyNumbaType)
+    def unionproxy_getattr(context, builder, typ, val, attr):
+        unifiedtype = UnionProxyAttribute(context).generic_resolve(typ, attr)
+        unionproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
+        if typ.generator.schema.nullable:
+            raise_exception(context,
+                            builder,
+                            builder.icmp_signed("==", unionproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                            TypeError("'NoneType' object has no attribute {0}".format(repr(attr))))
 
+        if all(isinstance(x, oamap.generator.RecordGenerator) for x in typ.generator.possibilities):        
+            # out_ptr = numba.cgutils.alloca_once(builder, context.get_value_type(unifiedtype))
 
+            bbelse = builder.append_basic_block("switch.else")
+            bbend = builder.append_basic_block("switch.end")
+            switch = builder.switch(unionproxy.tag, bbelse)
 
+            with builder.goto_block(bbelse):
+                raise_exception(context, builder, None, RuntimeError("tag out of bounds for union"))
+
+            with builder.goto_block(bbend):
+                phinode = builder.phi(context.get_value_type(unifiedtype))
+
+            for datatag, datagen in enumerate(typ.generator.possibilities):
+                bbi = builder.append_basic_block("switch.{0}".format(datatag))
+                switch.add_case(literal_int64(datatag), bbi)
+                with builder.goto_block(bbi):
+                    recordval = generate(context, builder, datagen, unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
+                    outval = recordproxy_getattr(context, builder, typeof_generator(datagen), recordval, attr)
+                    # builder.store(context.cast(builder, outval, typeof_generator(datagen.fields[attr]), unifiedtype), out_ptr)
+                    builder.branch(bbend)
+                    phinode.add_incoming(context.cast(builder, outval, typeof_generator(datagen.fields[attr]), unifiedtype), bbi)
+
+            builder.position_at_end(bbend)
+            return numba.targets.imputils.impl_ret_borrowed(context, builder, unifiedtype, phinode)
+
+        else:
+            raise AssertionError
 
     ################################################################ RecordProxy
 
@@ -899,11 +947,18 @@ else:
 
     @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
     def recordproxy_getattr(context, builder, typ, val, attr):
+
+        print
+        print "typ", type(typ), typ
+        print "val", val
+        print "attr", repr(attr)
+
         recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
-        raise_exception(context,
-                        builder,
-                        builder.icmp_signed("==", recordproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
-                        TypeError("'NoneType' object has no attribute {0}".format(repr(attr))))
+        if typ.generator.schema.nullable:
+            raise_exception(context,
+                            builder,
+                            builder.icmp_signed("==", recordproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                            TypeError("'NoneType' object has no attribute {0}".format(repr(attr))))
         return generate(context, builder, typ.generator.fields[attr], recordproxy.baggage, recordproxy.ptrs, recordproxy.lens, recordproxy.index)
 
     @numba.extending.unbox(RecordProxyNumbaType)
@@ -989,10 +1044,11 @@ else:
             else:
                 normindex = idx
             tupleproxy = numba.cgutils.create_struct_proxy(tupletpe)(context, builder, value=tupleval)
-            raise_exception(context,
-                            builder,
-                            builder.icmp_signed("==", tupleproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
-                            TypeError("'NoneType' object has no attribute '__getitem__'"))
+            if tupletpe.generator.schema.nullable:
+                raise_exception(context,
+                                builder,
+                                builder.icmp_signed("==", tupleproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                                TypeError("'NoneType' object has no attribute '__getitem__'"))
             return generate(context, builder, tupletpe.generator.types[normindex], tupleproxy.baggage, tupleproxy.ptrs, tupleproxy.lens, tupleproxy.index)
             
     @numba.extending.unbox(TupleProxyNumbaType)
