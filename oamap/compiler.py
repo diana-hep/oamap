@@ -51,13 +51,32 @@ else:
     ################################################################ Schema objects in compiled code
 
     class SchemaType(numba.types.Type):
-        def __init__(self, schema, matchable=True):
+        def __init__(self, schema, generator=None, matchable=True):
             self.schema = schema
             self.matchable = matchable
+            if generator is None:
+                self.generator = self.schema.generator()
+            else:
+                self.generator = generator
             super(SchemaType, self).__init__(name="OAMap-Schema{0} {1}".format("" if self.matchable else " (unmatchable)", self.schema.tojsonstring()))
 
         def unmatchable(self):
-            return SchemaType(self.schema, False)
+            return SchemaType(self.schema, generator=self.generator, matchable=False)
+
+        def content(self):
+            return SchemaType(self.schema.content, generator=self.generator.content)
+
+        def possibilities(self, i):
+            return SchemaType(self.schema.possibilities[i], generator=self.generator.possibilities[i])
+
+        def fields(self, n):
+            return SchemaType(self.schema.fields[n], generator=self.generator.fields[n])
+
+        def types(self, i):
+            return SchemaType(self.schema.types[i], generator=self.generator.types[i])
+
+        def target(self):
+            return SchemaType(self.schema.target, generator=self.generator.target)
 
     @numba.extending.typeof_impl.register(oamap.schema.Schema)
     def typeof_proxy(val, c):
@@ -84,7 +103,7 @@ else:
                     return numba.types.DType(numba.from_dtype(typ.schema.dtype))
 
                 elif isinstance(typ.schema, oamap.schema.List) and attr == "content":
-                    return SchemaType(typ.schema._content)
+                    return typ.content()
 
                 elif isinstance(typ.schema, oamap.schema.Union) and attr == "possibilities":
                     return typ.unmatchable()
@@ -96,7 +115,7 @@ else:
                     return typ.unmatchable()
 
                 elif isinstance(typ.schema, oamap.schema.Pointer) and attr == "target":
-                    return SchemaType(typ.schema._target)
+                    return typ.target()
 
                 else:
                     raise AssertionError("unrecognized schema type: {0} ({1})".format(schema.__class__, repr(schema)))
@@ -129,7 +148,10 @@ else:
                             if schematype.schema == datatype:
                                 return typeof_generator(arg.type.generator.possibilities[datatag])(arg)
 
-                    return typeof_generator(schematype.schema.generator())(arg)
+                    if arg.generator.schema == schematype.schema:
+                        return typeof_generator(arg.generator)(arg)
+                    else:
+                        return typeof_generator(schematype.generator)(arg)
 
                 elif isinstance(schematype.schema, oamap.schema.Pointer):
                     raise TypeError("cannot cast data as a Pointer")
@@ -193,12 +215,22 @@ else:
             raise AssertionError
 
     @numba.extending.lower_builtin("schema.cast", SchemaType, numba.types.Type)
-    def schema_case(context, builder, sig, args):
+    def schema_cast(context, builder, sig, args):
         outtype, (schematype, argtype) = sig.return_type, sig.args
         dummy, argval = args
 
+        def readable(tpe):
+            if isinstance(tpe, numba.types.Optional):
+                return numba.types.optional(readable(tpe.type))
+            elif isinstance(tpe, primtypes):
+                return tpe
+            elif isinstance(tpe, ProxyNumbaType):
+                return tpe.generator.schema
+            else:
+                raise AssertionError
+
         def error(case):
-            raise_exception(context, builder, case, TypeError("cannot cast {0} as {1}".format(argtype, outtype)))
+            raise_exception(context, builder, case, TypeError("cannot cast {0} as {1}".format(readable(argtype), readable(outtype))))
 
         if argtype == outtype:
             return argval
@@ -209,7 +241,14 @@ else:
 
         elif isinstance(argtype, UnionProxyNumbaType):
             # do a runtime check
-            raise NotImplementedError
+            for datatag, datatype in enumerate(argtype.generator.schema.possibilities):
+                if schematype.schema == datatype:
+                    unionproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder, value=argval)
+                    if not schematype.schema.nullable:
+                        error(builder.icmp_unsigned("!=", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize)))
+                        return generate(context, builder, argtype.generator.possibilities[datatag], unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
+                    else:
+                        raise NotImplementedError
 
             # none of the data possibilities will ever match
             error(None)
@@ -220,7 +259,9 @@ else:
 
         elif isinstance(argtype, ProxyNumbaType):
             # always fail
-            error(None)
+            error(builder.icmp_unsigned("==", literal_int64(0), literal_int64(0)))
+            argproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder)
+            return generate_empty(context, builder, outtype.generator, argproxy.baggage)
 
         else:
             raise AssertionError
@@ -235,17 +276,6 @@ else:
 
         # elif isinstance(argtype, UnionProxyNumbaType):
         #     # do a runtime check
-        #     for datatag, datatype in enumerate(argtype.generator.schema.possibilities):
-        #         if schematype.schema == datatype:
-        #             unionproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder, value=argval)
-        #             out_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(1))
-        #             with builder.if_else(builder.icmp_unsigned("==", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize))) as (success, failure):
-        #                 with success:
-        #                     builder.store(ret(True), out_ptr)
-        #                 with failure:
-        #                     builder.store(ret(False), out_ptr)
-        #             out = builder.load(out_ptr)
-        #             return out
 
         #     # none of the data possibilities will ever match, compile-time rejection
         #     return ret(False)
@@ -276,13 +306,13 @@ else:
                     else:
                         normindex = idx
                     if 0 <= normindex < len(tpe.schema._possibilities):
-                        return SchemaType(tpe.schema._possibilities[normindex])
+                        return tpe.possibilities(normindex)
                     else:
                         raise IndexError("possibility {0} out of range for type {1}".format(idx, tpe.schema))
                     
                 elif isinstance(tpe, SchemaType) and isinstance(tpe.schema, (oamap.schema.Record)) and isinstance(idx, basestring):
                     if idx in tpe.schema._fields:
-                        return SchemaType(tpe.schema._fields[idx])
+                        return tpe.fields(idx)
                     else:
                         raise KeyError("no field named {0} in type {1}".format(repr(idx), tpe.schema))
 
@@ -292,7 +322,7 @@ else:
                     else:
                         normindex = idx
                     if 0 <= normindex < len(tpe.schema._types):
-                        return SchemaType(tpe.schema._types[normindex])
+                        return tpe.types(normindex)
                     else:
                         raise IndexError("item {0} out of range for type {1}".format(idx, tpe.schema))
 
@@ -470,7 +500,7 @@ else:
         return numba.targets.arrayobj.load_item(context, builder, numba.from_dtype(dtype)[:], finalptr)
 
     def raise_exception(context, builder, case, exception):
-        def content():
+        with builder.if_then(case, likely=False):
             pyapi = context.get_python_api(builder)
             excptr = context.call_conv._get_excinfo_argument(builder.function)
 
@@ -486,12 +516,6 @@ else:
 
             else:
                 raise AssertionError("unrecognized exception calling convention: {0}".format(excptr))
-
-        if case is None:
-            content()
-        else:
-            with builder.if_then(case, likely=False):
-                content()
 
     def generate_empty(context, builder, generator, baggage):
         typ = typeof_generator(generator, checkmasked=False)

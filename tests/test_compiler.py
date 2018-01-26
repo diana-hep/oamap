@@ -662,4 +662,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(cast(justfloat, 999), 999.0)
             self.assertEqual(cast(justfloat, 3.14), 3.14)
 
+            listint = List("int")
+            listfloat = List("float")
+
+            self.assertEqual(cast(listint, listint.data([1, 2, 3])), [1, 2, 3])
+            self.assertRaises(TypeError, lambda: cast(listfloat, listint.data([1, 2, 3])))
 
