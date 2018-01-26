@@ -181,7 +181,7 @@ else:
         if isinstance(argtype, numba.types.Optional):
             # unwrap the optval and apply the check to the contents
             optval = context.make_helper(builder, argtype, value=argval)
-            return schema_case(context, builder, (schematype, argtype.type), (dummy, optval.data))
+            return schema_case(context, builder, numba.types.boolean(schematype, argtype.type), (dummy, optval.data))
 
         elif isinstance(argtype, UnionProxyNumbaType):
             # do a runtime check
@@ -240,18 +240,17 @@ else:
 
         if isinstance(argtype, numba.types.Optional):
             # unwrap the optval and apply the check to the contents
-            raise NotImplementedError
+            # unwrap the optval and apply the check to the contents
+            optval = context.make_helper(builder, argtype, value=argval)
+            return schema_cast(context, builder, outtype(schematype, argtype.type), (dummy, optval.data))
 
         elif isinstance(argtype, UnionProxyNumbaType):
             # do a runtime check
             for datatag, datatype in enumerate(argtype.generator.schema.possibilities):
                 if schematype.schema == datatype:
                     unionproxy = numba.cgutils.create_struct_proxy(argtype)(context, builder, value=argval)
-                    if not schematype.schema.nullable:
-                        error2(builder.icmp_unsigned("!=", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize)))
-                        return generate(context, builder, argtype.generator.possibilities[datatag], unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
-                    else:
-                        raise NotImplementedError
+                    error2(builder.icmp_unsigned("!=", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize)))
+                    return generate(context, builder, argtype.generator.possibilities[datatag], unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
 
             # none of the data possibilities will ever match
             error(builder.icmp_unsigned("==", literal_int64(0), literal_int64(0)))
