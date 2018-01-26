@@ -787,6 +787,8 @@ class TestCompiler(unittest.TestCase):
             def eq(x, y):
                 return x is y
             
+            # lists
+
             schema = Record({"one": List("int"), "two": List("int")})
             value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
             value2 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
@@ -796,6 +798,87 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(eq(value1.one, value2.one) is False)
 
             schema = Record({"one": List("int", nullable=True), "two": List("int", nullable=True)})
+            value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+            value2 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            value1 = schema.data({"one": None, "two": None})
+            value2 = schema.data({"one": None, "two": None})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is True)
+            self.assertTrue(eq(value1.one, value2.one) is True)
+
+            # unions
+            schema = Record({"one": Union([List("int"), List("float")]), "two": Union([List("int"), List("float")])})
+            value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+            value2 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            schema = Record({"one": Union([List("int"), List("float")], nullable=True), "two": Union([List("int"), List("float")], nullable=True)})
+            value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+            value2 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            value1 = schema.data({"one": None, "two": None})
+            value2 = schema.data({"one": None, "two": None})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is True)
+            self.assertTrue(eq(value1.one, value2.one) is True)
+
+            # records
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}), "two": Record({"x": "int", "y": "float"})})
+            value1 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+            value2 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}, nullable=True), "two": Record({"x": "int", "y": "float"}, nullable=True)})
+            value1 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+            value2 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            value1 = schema.data({"one": None, "two": None})
+            value2 = schema.data({"one": None, "two": None})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is True)
+            self.assertTrue(eq(value1.one, value2.one) is True)
+
+            # tuple
+
+            schema = Record({"one": Tuple(["int", "float"]), "two": Tuple(["int", "float"])})
+            value1 = schema.data({"one": (999, 3.14), "two": (999, 3.14)})
+            value1 = schema.data({"one": (999, 3.14), "two": (999, 3.14)})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            schema = Record({"one": Tuple(["int", "float"], nullable=True), "two": Tuple(["int", "float"], nullable=True)})
+            value1 = schema.data({"one": (999, 3.14), "two": (999, 3.14)})
+            value1 = schema.data({"one": (999, 3.14), "two": (999, 3.14)})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
             value1 = schema.data({"one": None, "two": None})
             value2 = schema.data({"one": None, "two": None})
 
