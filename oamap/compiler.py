@@ -698,6 +698,10 @@ else:
         listval, indexval = args
 
         listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
+        raise_exception(context,
+                        builder,
+                        builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                        TypeError("'NoneType' object has no attribute '__getitem__'"))
 
         normindex_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(64))
         builder.store(indexval, normindex_ptr)
@@ -722,6 +726,10 @@ else:
         sliceproxy = context.make_helper(builder, indextpe, indexval)
         listproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder, value=listval)
         slicedlistproxy = numba.cgutils.create_struct_proxy(listtpe)(context, builder)
+        raise_exception(context,
+                        builder,
+                        builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                        TypeError("'NoneType' object has no attribute '__getitem__'"))
 
         numba.targets.slicing.guard_invalid_slice(context, builder, indextpe, sliceproxy)
         numba.targets.slicing.fix_slice(builder, sliceproxy, listproxy.length)
@@ -834,6 +842,15 @@ else:
             self.generator = generator
             super(UnionProxyNumbaType, self).__init__(name="OAMap-UnionProxy-" + self.generator.id)
 
+    class SyntheticUnion(UnionProxyNumbaType):
+        class SyntheticGenerator(object): pass
+        def __init__(self, generators):
+            generator = SyntheticUnion.SyntheticGenerator()
+            generator.id = " ".join(x.id for x in generators)
+            generator.possibilities = generators
+            generator.schema = oamap.schema.Union([x.schema for x in generators])
+            super(SyntheticUnion, self).__init__(generator)
+
     @numba.extending.register_model(UnionProxyNumbaType)
     class UnionProxyModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
@@ -843,6 +860,16 @@ else:
                        ("tag", numba.types.int64),
                        ("offset", numba.types.int64)]
             super(UnionProxyModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.infer_getattr
+    class UnionProxyAttribute(numba.typing.templates.AttributeTemplate):
+        key = UnionProxyNumbaType
+        def generic_resolve(self, typ, attr):
+            HERE
+
+
+
+
 
     ################################################################ RecordProxy
 
@@ -873,6 +900,10 @@ else:
     @numba.extending.lower_getattr_generic(RecordProxyNumbaType)
     def recordproxy_getattr(context, builder, typ, val, attr):
         recordproxy = numba.cgutils.create_struct_proxy(typ)(context, builder, value=val)
+        raise_exception(context,
+                        builder,
+                        builder.icmp_signed("==", recordproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                        TypeError("'NoneType' object has no attribute {0}".format(repr(attr))))
         return generate(context, builder, typ.generator.fields[attr], recordproxy.baggage, recordproxy.ptrs, recordproxy.lens, recordproxy.index)
 
     @numba.extending.unbox(RecordProxyNumbaType)
@@ -958,6 +989,10 @@ else:
             else:
                 normindex = idx
             tupleproxy = numba.cgutils.create_struct_proxy(tupletpe)(context, builder, value=tupleval)
+            raise_exception(context,
+                            builder,
+                            builder.icmp_signed("==", tupleproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                            TypeError("'NoneType' object has no attribute '__getitem__'"))
             return generate(context, builder, tupletpe.generator.types[normindex], tupleproxy.baggage, tupleproxy.ptrs, tupleproxy.lens, tupleproxy.index)
             
     @numba.extending.unbox(TupleProxyNumbaType)
