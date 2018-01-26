@@ -780,3 +780,25 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(one(value, 2), 3.3)
             self.assertEqual(one(value, 3), 4.4)
             self.assertEqual(one(value, 4), 5.0)
+
+    def test_reference_equality(self):
+        if numba is not None:
+            @numba.njit
+            def eq(x, y):
+                return x is y
+            
+            schema = Record({"one": List("int"), "two": List("int")})
+            value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+            value2 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is False)
+            self.assertTrue(eq(value1.one, value2.one) is False)
+
+            schema = Record({"one": List("int", nullable=True), "two": List("int", nullable=True)})
+            value1 = schema.data({"one": None, "two": None})
+            value2 = schema.data({"one": None, "two": None})
+
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is True)
+            self.assertTrue(eq(value1.one, value2.one) is True)

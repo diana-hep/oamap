@@ -159,7 +159,7 @@ else:
     @numba.extending.lower_getattr_generic(SchemaType)
     def schema_getattr(context, builder, typ, val, attr):
         if attr == "nullable":
-            return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), 1 if typ.schema.nullable else 0)
+            return literal_boolean(1 if typ.schema.nullable else 0)
 
         elif attr == "dtype":
             return numba.targets.imputils.impl_ret_untracked(context, builder, numba.types.DType(numba.from_dtype(typ.schema.dtype)), context.get_dummy_value())
@@ -171,9 +171,6 @@ else:
     def schema_case(context, builder, sig, args):
         schematype, argtype = sig.args
         dummy, argval = args
-
-        def ret(x):
-            return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), x)
 
         if isinstance(argtype, numba.types.Optional):
             # unwrap the optval and apply the check to the contents
@@ -188,25 +185,25 @@ else:
                     out_ptr = numba.cgutils.alloca_once(builder, llvmlite.llvmpy.core.Type.int(1))
                     with builder.if_else(builder.icmp_unsigned("==", unionproxy.tag, literal_int(datatag, argtype.generator.tagdtype.itemsize))) as (success, failure):
                         with success:
-                            builder.store(ret(True), out_ptr)
+                            builder.store(literal_boolean(True), out_ptr)
                         with failure:
-                            builder.store(ret(False), out_ptr)
+                            builder.store(literal_boolean(False), out_ptr)
                     out = builder.load(out_ptr)
                     return out
 
             # none of the data possibilities will ever match
-            return ret(False)
+            return literal_boolean(False)
 
         elif isinstance(argtype, primtypes):
             # do a compile-time check
             if isinstance(schematype.schema, oamap.schema.Primitive):
-                return ret(numba.from_dtype(schematype.schema.dtype) == argtype)
+                return literal_boolean(numba.from_dtype(schematype.schema.dtype) == argtype)
             else:
-                return ret(False)
+                return literal_boolean(False)
 
         elif isinstance(argtype, ProxyNumbaType):
             # do a compile-time check
-            return ret(schematype.schema == argtype.generator.schema)
+            return literal_boolean(schematype.schema == argtype.generator.schema)
 
         else:
             raise AssertionError
@@ -433,6 +430,9 @@ else:
     def literal_intp(value):
         return literal_int(value, numba.types.intp.bitwidth // 8)
 
+    def literal_boolean(value):
+        return llvmlite.llvmpy.core.Constant.int(llvmlite.llvmpy.core.Type.int(1), value)
+
     def cast_int(builder, value, itemsize):
         bitwidth = itemsize * 8
         if value.type.width < bitwidth:
@@ -502,9 +502,9 @@ else:
             listproxy.baggage = baggage
             listproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
             listproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
-            listproxy.whence = literal_int64(0)
-            listproxy.stride = literal_int64(0)
-            listproxy.length = literal_int64(0)
+            listproxy.whence = literal_int64(-1)
+            listproxy.stride = literal_int64(-1)
+            listproxy.length = literal_int64(-1)
             return listproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.UnionGenerator):
@@ -513,7 +513,7 @@ else:
             unionproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
             unionproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
             unionproxy.tag = literal_int64(-1)
-            unionproxy.offset = literal_int64(0)
+            unionproxy.offset = literal_int64(-1)
             return unionproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.RecordGenerator):
@@ -521,7 +521,7 @@ else:
             recordproxy.baggage = baggage
             recordproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
             recordproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
-            recordproxy.index = literal_int64(0)
+            recordproxy.index = literal_int64(-1)
             return recordproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.TupleGenerator):
@@ -529,7 +529,7 @@ else:
             tupleproxy.baggage = baggage
             tupleproxy.ptrs = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
             tupleproxy.lens = llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))
-            tupleproxy.index = literal_int64(0)
+            tupleproxy.index = literal_int64(-1)
             return tupleproxy._getvalue()
 
         elif isinstance(generator, oamap.generator.PointerGenerator):
@@ -741,6 +741,41 @@ else:
 
         return slicedlistproxy._getvalue()
 
+    class ListProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, ListProxyNumbaType) and isinstance(rhs, ListProxyNumbaType):
+                if lhs.generator.schema.content == rhs.generator.schema.content:
+                    return numba.types.boolean(lhs, rhs)
+
+    @numba.extending.lower_builtin("is", ListProxyNumbaType, ListProxyNumbaType)
+    def listproxy_is(context, builder, sig, args):
+        ltype, rtype = sig.args
+        larg, rarg = args
+        if ltype.generator.id == rtype.generator.id:
+            lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=larg)
+            rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rarg)
+            lproxybaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=lproxy.baggage)
+            rproxybaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=rproxy.baggage)
+            return builder.and_(builder.icmp_signed("==", lproxy.whence, rproxy.whence),
+                                builder.and_(builder.icmp_signed("==", lproxy.stride, rproxy.stride),
+                                             builder.and_(builder.icmp_signed("==", lproxy.length, rproxy.length),
+                                                          builder.icmp_signed("==", lproxybaggage.arrays, rproxybaggage.arrays))))
+        else:
+            return literal_boolean(False)
+
+    @numba.extending.lower_builtin("is", numba.types.optional(ListProxyNumbaType), numba.types.optional(ListProxyNumbaType))
+    def optlistproxy_is(context, builder, sig, args):
+        ltype, rtype = sig.args
+        larg, rarg = args
+        lopt = context.make_helper(builder, ltype)
+        ropt = context.make_helper(builder, rtype)
+        return listproxy_is(context, builder, sig.return_type(ltype.type, rtype.type), (lopt.data, ropt.data))
+
+    # @numba.typing.templates.infer
+    # class ListProxyEq(ListProxyCompare):
+    #     key = "=="
+
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
         generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
@@ -919,6 +954,13 @@ else:
 
         else:
             raise AssertionError
+
+    class UnionProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, UnionProxyNumbaType):
+                if lhs.generator.schema.content == rhs.generator.schema.content:
+                    return numba.types.boolean(lhs, rhs)
 
     ################################################################ RecordProxy
 
