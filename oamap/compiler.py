@@ -763,13 +763,6 @@ else:
 
         return slicedlistproxy._getvalue()
 
-    class ListProxyCompare(numba.typing.templates.AbstractTemplate):
-        def generic(self, args, kwds):
-            lhs, rhs = args
-            if isinstance(lhs, ListProxyNumbaType) and isinstance(rhs, ListProxyNumbaType):
-                if lhs.generator.schema.content == rhs.generator.schema.content:
-                    return numba.types.boolean(lhs, rhs)
-
     @numba.extending.lower_builtin("is", ListProxyNumbaType, ListProxyNumbaType)
     def listproxy_is(context, builder, sig, args):
         ltype, rtype = sig.args
@@ -786,9 +779,12 @@ else:
         else:
             return literal_boolean(False)
 
-    # @numba.typing.templates.infer
-    # class ListProxyEq(ListProxyCompare):
-    #     key = "=="
+    class ListProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, ListProxyNumbaType) and isinstance(rhs, ListProxyNumbaType):
+                if lhs.generator.schema.content == rhs.generator.schema.content:
+                    return numba.types.boolean(lhs, rhs)
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
@@ -969,13 +965,6 @@ else:
         else:
             raise AssertionError
 
-    class UnionProxyCompare(numba.typing.templates.AbstractTemplate):
-        def generic(self, args, kwds):
-            lhs, rhs = args
-            if isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, UnionProxyNumbaType):
-                if lhs.generator.schema.content == rhs.generator.schema.content:
-                    return numba.types.boolean(lhs, rhs)
-
     @numba.extending.lower_builtin("is", UnionProxyNumbaType, UnionProxyNumbaType)
     def unionproxy_is(context, builder, sig, args):
         ltype, rtype = sig.args
@@ -990,6 +979,13 @@ else:
                                              builder.icmp_signed("==", lproxybaggage.arrays, rproxybaggage.arrays)))
         else:
             return literal_boolean(False)
+
+    class UnionProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, UnionProxyNumbaType):
+                if lhs.generator.schema.possibilities == rhs.generator.schema.possibilities:
+                    return numba.types.boolean(lhs, rhs)
 
     ################################################################ RecordProxy
 
@@ -1027,13 +1023,6 @@ else:
                             TypeError("'NoneType' object has no attribute {0}".format(repr(attr))))
         return generate(context, builder, typ.generator.fields[attr], recordproxy.baggage, recordproxy.ptrs, recordproxy.lens, recordproxy.index)
 
-    class RecordProxyCompare(numba.typing.templates.AbstractTemplate):
-        def generic(self, args, kwds):
-            lhs, rhs = args
-            if isinstance(lhs, RecordProxyNumbaType) and isinstance(rhs, RecordProxyNumbaType):
-                if lhs.generator.schema.content == rhs.generator.schema.content:
-                    return numba.types.boolean(lhs, rhs)
-
     @numba.extending.lower_builtin("is", RecordProxyNumbaType, RecordProxyNumbaType)
     def recordproxy_is(context, builder, sig, args):
         ltype, rtype = sig.args
@@ -1045,6 +1034,45 @@ else:
             rproxybaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=rproxy.baggage)
             return builder.and_(builder.icmp_signed("==", lproxy.index, rproxy.index),
                                 builder.icmp_signed("==", lproxybaggage.arrays, rproxybaggage.arrays))
+        else:
+            return literal_boolean(False)
+
+    class RecordProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, RecordProxyNumbaType) and isinstance(rhs, RecordProxyNumbaType):
+                if lhs.generator.schema.fields == rhs.generator.schema.fields:
+                    return numba.types.boolean(lhs, rhs)
+
+    @numba.typing.templates.infer
+    class RecordProxyEq(RecordProxyCompare):
+        key = "=="
+
+    @numba.extending.lower_builtin("==", RecordProxyNumbaType, RecordProxyNumbaType)
+    def recordproxy_eq(context, builder, sig, args):
+        ltype, rtype = sig.args
+        larg, rarg = args
+        if ltype.generator.schema == rtype.generator.schema:
+            comparisons = []
+            lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=larg)
+            rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rarg)
+            for attr in ltype.generator.schema.fields:
+                lfieldgen = ltype.generator.fields[attr]
+                rfieldgen = rtype.generator.fields[attr]
+                lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
+                rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
+                comparisons.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
+
+            def nest(x):
+                if len(x) == 1:
+                    one, = x
+                    return one
+                else:
+                    one, others = x[0], x[1:]
+                    return builder.and_(one, nest(others))
+
+            return nest(comparisons)
+
         else:
             return literal_boolean(False)
 
@@ -1138,13 +1166,6 @@ else:
                                 TypeError("'NoneType' object has no attribute '__getitem__'"))
             return generate(context, builder, tupletpe.generator.types[normindex], tupleproxy.baggage, tupleproxy.ptrs, tupleproxy.lens, tupleproxy.index)
 
-    class TupleProxyCompare(numba.typing.templates.AbstractTemplate):
-        def generic(self, args, kwds):
-            lhs, rhs = args
-            if isinstance(lhs, TupleProxyNumbaType) and isinstance(rhs, TupleProxyNumbaType):
-                if lhs.generator.schema.content == rhs.generator.schema.content:
-                    return numba.types.boolean(lhs, rhs)
-
     @numba.extending.lower_builtin("is", TupleProxyNumbaType, TupleProxyNumbaType)
     def tupleproxy_is(context, builder, sig, args):
         ltype, rtype = sig.args
@@ -1158,6 +1179,13 @@ else:
                                 builder.icmp_signed("==", lproxybaggage.arrays, rproxybaggage.arrays))
         else:
             return literal_boolean(False)
+
+    class TupleProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, TupleProxyNumbaType) and isinstance(rhs, TupleProxyNumbaType):
+                if lhs.generator.schema.types == rhs.generator.schema.types:
+                    return numba.types.boolean(lhs, rhs)
             
     @numba.extending.unbox(TupleProxyNumbaType)
     def unbox_tupleproxy(typ, obj, c):

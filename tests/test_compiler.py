@@ -885,3 +885,20 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(eq(value1.one, value1.one) is True)
             self.assertTrue(eq(value1.one, value1.two) is True)
             self.assertTrue(eq(value1.one, value2.one) is True)
+
+    def test_value_equality(self):
+        if numba is not None:
+            @numba.njit
+            def eq(x, y):
+                return x == y
+
+            # records
+
+            value1 = Record({"one": Record({"x": "int", "y": "float"}), "two": Record({"x": "int", "y": "float"})}).data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+            value2 = Record({"x": "int", "y": "float"}).data({"x": 999, "y": 3.14})
+            value3 = Record({"x": "int", "y": "float"}).data({"x": 999, "y": -3.14})
+            
+            self.assertTrue(eq(value1.one, value1.one) is True)
+            self.assertTrue(eq(value1.one, value1.two) is True)
+            self.assertTrue(eq(value1.one, value2) is True)
+            self.assertTrue(eq(value1.one, value3) is False)
