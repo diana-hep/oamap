@@ -877,7 +877,7 @@ else:
                         else:
                             allout = allout.unify(self.context, out)
                             if allout is None:
-                                raise AttributeError("not all Records of {0} yield equivalent types for the {1} attribute".format(typ.generator.shema, repr(attr)))
+                                raise TypeError("not all Records of {0} yield equivalent types for the {1} attribute".format(typ.generator.schema, repr(attr)))
                 return allout
 
     @numba.extending.lower_getattr_generic(UnionProxyNumbaType)
@@ -919,6 +919,35 @@ else:
 
         else:
             raise AssertionError
+
+    @numba.typing.templates.infer
+    class UnionProxyGetItem(numba.typing.templates.AbstractTemplate):
+        key = "getitem"
+        def generic(self, args, kwds):
+            if len(args) == 2:
+                tpe, idx = args
+                if all(isinstance(x, oamap.generator.ListGenerator) for x in typ.generator.possibilities):
+                    allout = None
+                    listproxygetitem = ListProxyGetItem(self.context)
+                    for x in typ.generator.possibilities:
+                        out = listproxygetitem.generic((typeof_generator(x), idx), kwds)
+                        if out is None:
+                            return None
+                        else:
+                            if allout is None:
+                                allout = out
+                            else:
+                                allout = allout.unify(self.context, out)
+                                if allout is None:
+                                    raise TypeError("not all Lists of {0} have equivalent content types".format(typ.generator.schema))
+                    return allout
+
+    @numba.extending.lower_builtin("getitem", UnionProxyNumbaType, numba.types.Type)
+    def unionproxy_getitem(context, builder, sig, args):
+        unifiedtype, (uniontpe, indextpe) = sig.return_type, sig.args
+        unionval, indexval = args
+
+        raise NotImplementedError
 
     ################################################################ RecordProxy
 
