@@ -911,7 +911,7 @@ else:
                     recordval = generate(context, builder, datagen, unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset)
                     attrval = recordproxy_getattr(context, builder, typeof_generator(datagen), recordval, attr)
                     convertedval = context.cast(builder, attrval, typeof_generator(datagen.fields[attr]), unifiedtype)
-                    builder.store(context.cast(builder, attrval, typeof_generator(datagen.fields[attr]), unifiedtype), out_ptr)
+                    builder.store(convertedval, out_ptr)
                     builder.branch(bbend)
 
             builder.position_at_end(bbend)
@@ -919,35 +919,6 @@ else:
 
         else:
             raise AssertionError
-
-    @numba.typing.templates.infer
-    class UnionProxyGetItem(numba.typing.templates.AbstractTemplate):
-        key = "getitem"
-        def generic(self, args, kwds):
-            if len(args) == 2:
-                tpe, idx = args
-                if all(isinstance(x, oamap.generator.ListGenerator) for x in typ.generator.possibilities):
-                    allout = None
-                    listproxygetitem = ListProxyGetItem(self.context)
-                    for x in typ.generator.possibilities:
-                        out = listproxygetitem.generic((typeof_generator(x), idx), kwds)
-                        if out is None:
-                            return None
-                        else:
-                            if allout is None:
-                                allout = out
-                            else:
-                                allout = allout.unify(self.context, out)
-                                if allout is None:
-                                    raise TypeError("not all Lists of {0} have equivalent content types".format(typ.generator.schema))
-                    return allout
-
-    @numba.extending.lower_builtin("getitem", UnionProxyNumbaType, numba.types.Type)
-    def unionproxy_getitem(context, builder, sig, args):
-        unifiedtype, (uniontpe, indextpe) = sig.return_type, sig.args
-        unionval, indexval = args
-
-        raise NotImplementedError
 
     ################################################################ RecordProxy
 
