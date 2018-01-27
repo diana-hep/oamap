@@ -899,21 +899,6 @@ else:
                 loop.do_break()
         return builder.load(out_ptr)
 
-    @numba.extending.lower_cast(ListProxyNumbaType, ListProxyNumbaType)
-    def listproxy_to_listproxy(context, builder, fromty, toty, val):
-        if fromty.generator.schema.copy(nullable=False) == toty.generator.schema.copy(nullable=False):
-            fromproxy = numba.cgutils.create_struct_proxy(fromty)(context, builder, value=val)
-            toproxy = numba.cgutils.create_struct_proxy(toty)(context, builder)
-            toproxy.baggage = fromproxy.baggage
-            toproxy.ptrs = fromproxy.ptrs
-            toproxy.lens = fromproxy.lens
-            toproxy.whence = fromproxy.whence
-            toproxy.stride = fromproxy.stride
-            toproxy.index = fromproxy.index
-            return toproxy._getvalue()
-        else:
-            raise TypeError("cannot cast {0} to {1}".format(fromty, toty))
-        
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
         generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
@@ -1229,40 +1214,6 @@ else:
         # reverse the order and use the above
         return unionproxytype_eq_left_primitive(context, builder, rettype(rtype, ltype), (rval, lval))
 
-    @numba.extending.lower_cast(UnionProxyNumbaType, UnionProxyNumbaType)
-    def unionproxy_to_unionproxy(context, builder, fromty, toty, val):
-        if fromty.generator.schema.copy(nullable=False) == toty.generator.schema.copy(nullable=False):
-            fromproxy = numba.cgutils.create_struct_proxy(fromty)(context, builder, value=val)
-            toproxy = numba.cgutils.create_struct_proxy(toty)(context, builder)
-            toproxy.baggage = fromproxy.baggage
-            toproxy.ptrs = fromproxy.ptrs
-            toproxy.lens = fromproxy.lens
-            toproxy.tag = fromproxy.tag
-            toproxy.offset = fromproxy.offset
-            return toproxy._getvalue()
-        else:
-            raise TypeError("cannot cast {0} to {1}".format(fromty, toty))
-
-    # FIXME: untested
-    @numba.extending.lower_cast(UnionProxyNumbaType, ProxyNumbaType)
-    def unionproxy_to_proxy(context, builder, fromty, toty, val):
-        unionproxy = numba.cgutils.create_struct_proxy(fromty)(context, builder, value=val)
-        out_ptr = numba.cgutils.alloca_once_value(builder, generate_empty(context, builder, toty.generator, unionproxy.baggage))
-        
-        for tag, gen in enumerate(fromty.generator.possibilities):
-            if gen.schema.copy(nullable=False) == toty.generator.schema.copy(nullable=False):
-                with builder.if_then(builder.icmp_signed("==", unionproxy.tag, literal_int(tag, ltype.generator.tagdtype.itemsize))):
-                    builder.store(generate(context, builder, gen, unionproxy.baggage, unionproxy.ptrs, unionproxy.lens, unionproxy.offset), out_ptr)
-
-        toproxy = numba.cgutils.create_struct_proxy(toty)(context, builder, value=builder.load(out_ptr))
-
-        raise_exception(context,
-                        builder,
-                        builder.icmp_signed("==", toproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
-                        TypeError("cannot cast all members of {0} to {1}".format(fromty, toty)))
-
-        return toproxy._getvalue()
-
     # FIXME: untested
     @numba.extending.lower_cast(UnionProxyNumbaType, numba.types.Boolean)
     @numba.extending.lower_cast(UnionProxyNumbaType, numba.types.Integer)
@@ -1382,19 +1333,6 @@ else:
     @numba.extending.lower_builtin("!=", RecordProxyNumbaType, RecordProxyNumbaType)
     def recordproxy_ne(context, builder, sig, args):
         return builder.not_(recordproxy_eq(context, builder, sig, args))
-
-    @numba.extending.lower_cast(RecordProxyNumbaType, RecordProxyNumbaType)
-    def recordproxy_to_recordproxy(context, builder, fromty, toty, val):
-        if fromty.generator.schema.copy(nullable=False) == toty.generator.schema.copy(nullable=False):
-            fromproxy = numba.cgutils.create_struct_proxy(fromty)(context, builder, value=val)
-            toproxy = numba.cgutils.create_struct_proxy(toty)(context, builder)
-            toproxy.baggage = fromproxy.baggage
-            toproxy.ptrs = fromproxy.ptrs
-            toproxy.lens = fromproxy.lens
-            toproxy.index = fromproxy.index
-            return toproxy._getvalue()
-        else:
-            raise TypeError("cannot cast {0} to {1}".format(fromty, toty))
 
     @numba.extending.unbox(RecordProxyNumbaType)
     def unbox_recordproxy(typ, obj, c):
@@ -1566,19 +1504,6 @@ else:
         c.pyapi.decref(tupleproxy_cls)
 
         return out
-
-    @numba.extending.lower_cast(TupleProxyNumbaType, TupleProxyNumbaType)
-    def tupleproxy_to_tupleproxy(context, builder, fromty, toty, val):
-        if fromty.generator.schema.copy(nullable=False) == toty.generator.schema.copy(nullable=False):
-            fromproxy = numba.cgutils.create_struct_proxy(fromty)(context, builder, value=val)
-            toproxy = numba.cgutils.create_struct_proxy(toty)(context, builder)
-            toproxy.baggage = fromproxy.baggage
-            toproxy.ptrs = fromproxy.ptrs
-            toproxy.lens = fromproxy.lens
-            toproxy.index = fromproxy.index
-            return toproxy._getvalue()
-        else:
-            raise TypeError("cannot cast {0} to {1}".format(fromty, toty))
 
     ################################################################ PartitionedListProxy
 
