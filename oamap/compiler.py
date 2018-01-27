@@ -875,12 +875,16 @@ else:
         def generic(self, args, kwds):
             item, container = args
             if isinstance(container, ListProxyNumbaType):
-                return numba.types.boolean(typeof_generator(container.generator.content), container)
-                # if isinstance(item, ProxyNumbaType) and item.generator.schema.copy(nullable=False) == container.generator.schema.content.copy(nullable=False):
-                #     return numba.types.boolean(item, container)
-                # elif isinstance(item, primtypes) and isinstance(container.content, oamap.schema.Primitive) and item == numba.from_dtype(container.content.dtype):
-                #     return numba.types.boolean(item, container)
+                if isinstance(item, ProxyNumbaType) and item.generator.schema.copy(nullable=False) == container.generator.schema.content.copy(nullable=False):
+                    return numba.types.boolean(item, container)
+                elif isinstance(item, primtypes) and isinstance(container.generator.schema.content, oamap.schema.Primitive):
+                    return numba.types.boolean(typeof_generator(container.generator.content), container)
 
+    @numba.extending.lower_builtin("in", numba.types.Boolean, ListProxyNumbaType)
+    @numba.extending.lower_builtin("in", numba.types.Integer, ListProxyNumbaType)
+    @numba.extending.lower_builtin("in", numba.types.Float, ListProxyNumbaType)
+    @numba.extending.lower_builtin("in", numba.types.Complex, ListProxyNumbaType)
+    @numba.extending.lower_builtin("in", numba.types.npytypes.CharSeq, ListProxyNumbaType)
     @numba.extending.lower_builtin("in", ProxyNumbaType, ListProxyNumbaType)
     def listproxy_in(context, builder, sig, args):
         itemtpe, listtpe = sig.args
@@ -894,10 +898,6 @@ else:
                 builder.store(literal_boolean(True), out_ptr)
                 loop.do_break()
         return builder.load(out_ptr)
-
-
-
-
 
     @numba.extending.lower_cast(ListProxyNumbaType, ListProxyNumbaType)
     def listproxy_to_listproxy(context, builder, fromty, toty, val):

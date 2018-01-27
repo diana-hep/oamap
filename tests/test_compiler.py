@@ -1160,14 +1160,38 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": Record({"x": "int", "y": "float"}), "two": List(Record({"x": "int", "y": "float"}))})
 
             value = schema.data({"one": {"x": 3, "y": 3.3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
-            print contains(value)
+            self.assertTrue(contains(value) is True)
 
             value = schema.data({"one": {"x": 999, "y": 3.3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
-            print contains(value)
+            self.assertTrue(contains(value) is False)
 
             value = schema.data({"one": {"x": 3, "y": 3.14}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
-            print contains(value)
+            self.assertTrue(contains(value) is False)
 
-            # schema = Record({"one": Record({"x": "int"}), "two": List(Record({"x": "int", "y": "float"}))})
-            # value = schema.data({"one": {"x": 3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
-            # print contains(value)
+            schema = Record({"one": Record({"x": "int"}), "two": List(Record({"x": "int", "y": "float"}))})
+            value = schema.data({"one": {"x": 3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
+            self.assertRaises(numba.TypingError, lambda: contains(value))
+
+            schema = Record({"one": "int", "two": List("int")})
+
+            value = schema.data({"one": 3, "two": [1, 2, 3, 4, 5]})
+            self.assertTrue(contains(value) is True)
+
+            value = schema.data({"one": 999, "two": [1, 2, 3, 4, 5]})
+            self.assertTrue(contains(value) is False)
+
+            schema = Record({"one": "float", "two": List("int")})
+
+            value = schema.data({"one": 3.0, "two": [1, 2, 3, 4, 5]})
+            self.assertTrue(contains(value) is True)
+
+            value = schema.data({"one": 123.0, "two": [1, 2, 3, 4, 5]})
+            self.assertTrue(contains(value) is False)
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}), "two": List("int")})
+            value = schema.data({"one": {"x": 3, "y": 3.3}, "two": [1, 2, 3, 4, 5]})
+            self.assertRaises(numba.TypingError, lambda: contains(value))
+
+            schema = Record({"one": "int", "two": List(Record({"x": "int", "y": "float"}))})
+            value = schema.data({"one": 3, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
+            self.assertRaises(numba.TypingError, lambda: contains(value))
