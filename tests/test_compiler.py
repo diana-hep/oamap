@@ -781,6 +781,67 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(one(value, 3), 4.4)
             self.assertEqual(one(value, 4), 5.0)
 
+    def test_boxing_optional(self):
+        if numba is not None:
+            @numba.njit
+            def boxing(x):
+                return x.one
+
+            # primitive
+
+            schema = Record({"one": Primitive("int", nullable=True)})
+            value1 = schema.data({"one": 999})
+            value2 = schema.data({"one": None})
+
+            self.assertEqual(boxing(value1), 999)
+            self.assertEqual(boxing(value2), None)
+
+            # list
+
+            schema = Record({"one": List("int", nullable=True)})
+            value1 = schema.data({"one": [1, 2, 3]})
+            value2 = schema.data({"one": None})
+
+            self.assertEqual(boxing(value1), [1, 2, 3])
+            self.assertEqual(boxing(value2), None)
+
+            # union
+
+            schema = Record({"one": Union(["int", "float"], nullable=True)})
+            value1 = schema.data({"one": 999})
+            value2 = schema.data({"one": 3.14})
+            value3 = schema.data({"one": None})
+
+            self.assertEqual(boxing(value1), 999)
+            self.assertEqual(boxing(value2), 3.14)
+            self.assertEqual(boxing(value3), None)
+
+            # schema = Record({"one": Union(["int", "float"])})
+            # value1 = schema.data({"one": 999})
+            # value2 = schema.data({"one": 3.14})
+            # for i in range(20):
+            #     boxing(value2)
+            #     print(sys.getrefcount(value1._generator.fields["one"]), sys.getrefcount(value1._arrays), sys.getrefcount(value1._cache), sys.getrefcount(value1._generator.fields["one"].possibilities), [sys.getrefcount(x) for x in value1._generator.fields["one"].possibilities], [sys.getrefcount(x._generate) for x in value1._generator.fields["one"].possibilities])
+
+            # record
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}, nullable=True)})
+            value1 = schema.data({"one": {"x": 999, "y": 3.14}})
+            value2 = schema.data({"one": None})
+
+            self.assertEqual(boxing(value1).x, 999)
+            self.assertEqual(boxing(value1).y, 3.14)
+            self.assertEqual(boxing(value2), None)
+
+            # tuple
+
+            schema = Record({"one": Tuple(["int", "float"], nullable=True)})
+            value1 = schema.data({"one": (999, 3.14)})
+            value2 = schema.data({"one": None})
+
+            self.assertEqual(boxing(value1), (999, 3.14))
+            self.assertEqual(boxing(value2), None)
+
     def test_reference_equality(self):
         if numba is not None:
             @numba.njit
@@ -870,12 +931,6 @@ class TestCompiler(unittest.TestCase):
             # self.assertTrue(oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
             self.assertTrue(onenone(value1) is False)
             self.assertTrue(onenone(value2) is True)
-
-
-
-
-
-
 
     # def test_value_equality(self):
     #     if numba is not None:

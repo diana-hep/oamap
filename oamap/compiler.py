@@ -224,7 +224,6 @@ else:
 
         if isinstance(argtype, numba.types.Optional):
             # unwrap the optval and apply the check to the contents
-            # unwrap the optval and apply the check to the contents
             optval = context.make_helper(builder, argtype, value=argval)
             return schema_cast(context, builder, outtype(schematype, argtype.type), (dummy, optval.data))
 
@@ -1005,6 +1004,7 @@ else:
         else:
             return literal_boolean(False)
 
+    # NOTE: untested until we have SyntheticUnions
     @numba.extending.lower_builtin("is", UnionProxyNumbaType, ProxyNumbaType)
     def unionproxytype_is_left(context, builder, sig, args):
         ltype, rtype = sig.args
@@ -1034,6 +1034,18 @@ else:
         lval, rval = args
         # reverse the order and use the above
         return unionproxytype_is_left(context, builder, rettype(rtype, ltype), (rval, lval))
+
+    @numba.extending.box(UnionProxyNumbaType)
+    def box_unionproxy(typ, val, c):
+        unionproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        offset_obj = c.pyapi.long_from_longlong(unionproxy.offset)
+
+        generator_obj, arrays_obj, cache_obj = box_baggage(c.context, c.builder, c.pyapi, typ.generator, unionproxy.baggage)
+        possibilities_obj = c.pyapi.object_getattr_string(generator_obj, "possibilities")
+        possibility_obj = c.pyapi.list_getitem(possibilities_obj, c.context.cast(c.builder, unionproxy.tag, numba.types.int64, numba.types.intp))
+        generate_fcn = c.pyapi.object_getattr_string(possibility_obj, "_generate")
+
+        return c.pyapi.call_function_objargs(generate_fcn, (arrays_obj, offset_obj, cache_obj))
 
     ################################################################ RecordProxy
 
@@ -1094,28 +1106,18 @@ else:
     # @numba.extending.lower_builtin("==", RecordProxyNumbaType, RecordProxyNumbaType)
     # def recordproxy_eq(context, builder, sig, args):
     #     ltype, rtype = sig.args
-    #     larg, rarg = args
+    #     lval, rval = args
     #     if ltype.generator.schema.copy(nullable=False) == rtype.generator.schema.copy(nullable=False):
-    #         comparisons = []
-    #         lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=larg)
-    #         rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rarg)
+    #         predicates = []
+    #         lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+    #         rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
     #         for attr in ltype.generator.schema.fields:
     #             lfieldgen = ltype.generator.fields[attr]
     #             rfieldgen = rtype.generator.fields[attr]
     #             lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
     #             rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
-    #             comparisons.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
-
-    #         def nest(x):
-    #             if len(x) == 1:
-    #                 one, = x
-    #                 return one
-    #             else:
-    #                 one, others = x[0], x[1:]
-    #                 return builder.and_(one, nest(others))
-
-    #         return nest(comparisons)
-
+    #             predicates.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
+    #         return all_(builder, predicates)
     #     else:
     #         return literal_boolean(False)
 
