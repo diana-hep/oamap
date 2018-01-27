@@ -856,6 +856,18 @@ class TestCompiler(unittest.TestCase):
             def onenone(x):
                 return x.one is None
 
+            @numba.njit
+            def not_oneone(x, y):
+                return x.one is not y.one
+
+            @numba.njit
+            def not_onetwo(x, y):
+                return x.one is not y.two
+
+            @numba.njit
+            def not_onenone(x):
+                return x.one is not None
+
             # list
 
             schema = Record({"one": List("int"), "two": List("int")})
@@ -866,6 +878,10 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(onetwo(value1, value1) is False)
             self.assertTrue(oneone(value1, value2) is False)
             self.assertTrue(onenone(value1) is False)
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is False)
+            self.assertFalse(not_oneone(value1, value2) is False)
+            self.assertFalse(not_onenone(value1) is False)
 
             schema = Record({"one": List("int", nullable=True)})
             value1 = schema.data({"one": [1, 2, 3]})
@@ -874,6 +890,8 @@ class TestCompiler(unittest.TestCase):
             # self.assertTrue(oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
             self.assertTrue(onenone(value1) is False)
             self.assertTrue(onenone(value2) is True)
+            self.assertFalse(not_onenone(value1) is False)
+            self.assertFalse(not_onenone(value2) is True)
 
             # union
 
@@ -885,6 +903,10 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(onetwo(value1, value1) is False)
             self.assertTrue(oneone(value1, value2) is False)
             self.assertTrue(onenone(value1) is False)
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is False)
+            self.assertFalse(not_oneone(value1, value2) is False)
+            self.assertFalse(not_onenone(value1) is False)
 
             schema = Record({"one": Union(["int", "float"], nullable=True)})
             value1 = schema.data({"one": 999})
@@ -893,6 +915,9 @@ class TestCompiler(unittest.TestCase):
             # self.assertTrue(oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
             self.assertTrue(onenone(value1) is False)
             self.assertTrue(onenone(value2) is True)
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
+            self.assertFalse(not_onenone(value1) is False)
+            self.assertFalse(not_onenone(value2) is True)
 
             # record
 
@@ -904,6 +929,10 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(onetwo(value1, value1) is False)
             self.assertTrue(oneone(value1, value2) is False)
             self.assertTrue(onenone(value1) is False)
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is False)
+            self.assertFalse(not_oneone(value1, value2) is False)
+            self.assertFalse(not_onenone(value1) is False)
 
             schema = Record({"one": Record({"x": "int", "y": "float"}, nullable=True)})
             value1 = schema.data({"one": {"x": 999, "y": 3.14}})
@@ -912,6 +941,9 @@ class TestCompiler(unittest.TestCase):
             # self.assertTrue(oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
             self.assertTrue(onenone(value1) is False)
             self.assertTrue(onenone(value2) is True)
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
+            self.assertFalse(not_onenone(value1) is False)
+            self.assertFalse(not_onenone(value2) is True)
 
             # tuple
 
@@ -923,6 +955,10 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(onetwo(value1, value1) is False)
             self.assertTrue(oneone(value1, value2) is False)
             self.assertTrue(onenone(value1) is False)
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is False)
+            self.assertFalse(not_oneone(value1, value2) is False)
+            self.assertFalse(not_onenone(value1) is False)
 
             schema = Record({"one": Tuple(["int", "float"], nullable=True)})
             value1 = schema.data({"one": [999, 3.14]})
@@ -931,23 +967,66 @@ class TestCompiler(unittest.TestCase):
             # self.assertTrue(oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
             self.assertTrue(onenone(value1) is False)
             self.assertTrue(onenone(value2) is True)
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME: a bug in Numba!
+            self.assertFalse(not_onenone(value1) is False)
+            self.assertFalse(not_onenone(value2) is True)
 
-    # def test_value_equality(self):
-    #     if numba is not None:
-    #         @numba.njit
-    #         def oneone(x, y):
-    #             return x.one == y.one
+    def test_value_equality(self):
+        if numba is not None:
+            @numba.njit
+            def oneone(x, y):
+                return x.one == y.one
 
-    #         @numba.njit
-    #         def onetwo(x, y):
-    #             return x.one == y.two
+            @numba.njit
+            def onetwo(x, y):
+                return x.one == y.two
 
-    #         # records
+            @numba.njit
+            def onenone(x):
+                return x.one == None
 
-    #         schema = Record({"one": Record({"x": "int", "y": "float"}), "two": Record({"x": "int", "y": "float"})})
-    #         value1 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
-    #         value2 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": -3.14}})
+            @numba.njit
+            def not_oneone(x, y):
+                return x.one != y.one
 
-    #         print oneone(value1, value1)
-    #         print onetwo(value1, value1)
-    #         print onetwo(value2, value2)
+            @numba.njit
+            def not_onetwo(x, y):
+                return x.one != y.two
+
+            @numba.njit
+            def not_onenone(x):
+                return x.one != None
+
+            # records
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}), "two": Record({"x": "int", "y": "float"})})
+            value1 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+            value2 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": -3.14}})
+
+            self.assertTrue(oneone(value1, value1) is True)
+            self.assertTrue(onetwo(value1, value1) is True)
+            self.assertTrue(oneone(value1, value2) is True)
+            self.assertTrue(onetwo(value2, value2) is False)
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is True)
+            self.assertFalse(not_oneone(value1, value2) is True)
+            self.assertFalse(not_onetwo(value2, value2) is False)
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}, nullable=True), "two": Record({"x": "int", "y": "float"})})
+            value1 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
+            value2 = schema.data({"one": None, "two": {"x": 999, "y": 3.14}})
+
+            # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
+            # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
+            # self.assertTrue(oneone(value1, value2) is False)    # REPORTME
+            # self.assertTrue(onetwo(value2, value2) is False)    # REPORTME
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            # self.assertTrue(onenone(value2) is False)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_onetwo(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value2) is False)    # REPORTME
+            # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value2) is False)    # REPORTME

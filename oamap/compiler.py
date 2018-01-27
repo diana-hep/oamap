@@ -663,35 +663,35 @@ else:
         else:
             raise AssertionError("unrecognized generator type: {0} ({1})".format(generator.__class__, repr(generator)))
 
-    # class ProxyCompare(numba.typing.templates.AbstractTemplate):
-    #     def generic(self, args, kwds):
-    #         lhs, rhs = args
-    #         if isinstance(lhs, numba.types.Optional):
-    #             lhs = lhs.type
-    #         if isinstance(rhs, numba.types.Optional):
-    #             rhs = rhs.type
+    class ProxyCompare(numba.typing.templates.AbstractTemplate):
+        def generic(self, args, kwds):
+            lhs, rhs = args
+            if isinstance(lhs, numba.types.Optional):
+                lhs = lhs.type
+            if isinstance(rhs, numba.types.Optional):
+                rhs = rhs.type
 
-    #         if isinstance(lhs, ListProxyNumbaType) and isinstance(rhs, ListProxyNumbaType):
-    #             if lhs.generator.schema.content == rhs.generator.schema.content:
-    #                 return numba.types.boolean(*args)
+            if isinstance(lhs, ListProxyNumbaType) and isinstance(rhs, ListProxyNumbaType):
+                if lhs.generator.schema.content == rhs.generator.schema.content:
+                    return numba.types.boolean(*args)
 
-    #         elif isinstance(lhs, RecordProxyNumbaType) and isinstance(rhs, RecordProxyNumbaType):
-    #             if lhs.generator.schema.fields == rhs.generator.schema.fields:
-    #                 return numba.types.boolean(*args)
+            elif isinstance(lhs, RecordProxyNumbaType) and isinstance(rhs, RecordProxyNumbaType):
+                if lhs.generator.schema.fields == rhs.generator.schema.fields:
+                    return numba.types.boolean(*args)
 
-    #         elif isinstance(lhs, TupleProxyNumbaType) and isinstance(rhs, TupleProxyNumbaType):
-    #             if lhs.generator.schema.fields == rhs.generator.schema.fields:
-    #                 return numba.types.boolean(*args)
+            elif isinstance(lhs, TupleProxyNumbaType) and isinstance(rhs, TupleProxyNumbaType):
+                if lhs.generator.schema.fields == rhs.generator.schema.fields:
+                    return numba.types.boolean(*args)
 
-    #         elif isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, ProxyNumbaType):
-    #             for x in lhs.generator.schema.possibilities:
-    #                 if x.copy(nullable=False) == rhs.generator.schema.copy(nullable=False):
-    #                     return numba.types.boolean(*args)
+            elif isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, ProxyNumbaType):
+                for x in lhs.generator.schema.possibilities:
+                    if x.copy(nullable=False) == rhs.generator.schema.copy(nullable=False):
+                        return numba.types.boolean(*args)
 
-    #         elif isinstance(rhs, UnionProxyNumbaType) and isinstance(lhs, ProxyNumbaType):
-    #             for x in rhs.generator.schema.possibilities:
-    #                 if x.copy(nullable=False) == lhs.generator.schema.copy(nullable=False):
-    #                     return numba.types.boolean(*args)
+            elif isinstance(rhs, UnionProxyNumbaType) and isinstance(lhs, ProxyNumbaType):
+                for x in rhs.generator.schema.possibilities:
+                    if x.copy(nullable=False) == lhs.generator.schema.copy(nullable=False):
+                        return numba.types.boolean(*args)
 
     ################################################################ ListProxy
 
@@ -1099,27 +1099,35 @@ else:
         else:
             return literal_boolean(False)
 
-    # @numba.typing.templates.infer
-    # class RecordProxyEq(ProxyCompare):
-    #     key = "=="
+    @numba.typing.templates.infer
+    class RecordProxyEq(ProxyCompare):
+        key = "=="
 
-    # @numba.extending.lower_builtin("==", RecordProxyNumbaType, RecordProxyNumbaType)
-    # def recordproxy_eq(context, builder, sig, args):
-    #     ltype, rtype = sig.args
-    #     lval, rval = args
-    #     if ltype.generator.schema.copy(nullable=False) == rtype.generator.schema.copy(nullable=False):
-    #         predicates = []
-    #         lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
-    #         rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
-    #         for attr in ltype.generator.schema.fields:
-    #             lfieldgen = ltype.generator.fields[attr]
-    #             rfieldgen = rtype.generator.fields[attr]
-    #             lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
-    #             rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
-    #             predicates.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
-    #         return all_(builder, predicates)
-    #     else:
-    #         return literal_boolean(False)
+    @numba.typing.templates.infer
+    class RecordProxyEq(ProxyCompare):
+        key = "!="
+
+    @numba.extending.lower_builtin("==", RecordProxyNumbaType, RecordProxyNumbaType)
+    def recordproxy_eq(context, builder, sig, args):
+        ltype, rtype = sig.args
+        lval, rval = args
+        if ltype.generator.schema.copy(nullable=False) == rtype.generator.schema.copy(nullable=False):
+            predicates = []
+            lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+            rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
+            for attr in ltype.generator.schema.fields:
+                lfieldgen = ltype.generator.fields[attr]
+                rfieldgen = rtype.generator.fields[attr]
+                lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
+                rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
+                predicates.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
+            return all_(builder, predicates)
+        else:
+            return literal_boolean(False)
+
+    @numba.extending.lower_builtin("!=", RecordProxyNumbaType, RecordProxyNumbaType)
+    def recordproxy_ne(context, builder, sig, args):
+        return builder.not_(recordproxy_eq(context, builder, sig, args))
 
     @numba.extending.unbox(RecordProxyNumbaType)
     def unbox_recordproxy(typ, obj, c):
@@ -1259,4 +1267,3 @@ else:
     ################################################################ PartitionedListProxy
 
     ################################################################ IndexedPartitionedListProxy
-
