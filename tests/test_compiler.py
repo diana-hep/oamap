@@ -1150,3 +1150,24 @@ class TestCompiler(unittest.TestCase):
             # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
             # self.assertFalse(not_onenone(value1) is False)    # REPORTME
             # self.assertFalse(not_onenone(value2) is False)    # REPORTME
+
+    def test_list_contains(self):
+        if numba is not None:
+            @numba.njit
+            def contains(x):
+                return x.one in x.two
+
+            schema = Record({"one": Record({"x": "int", "y": "float"}), "two": List(Record({"x": "int", "y": "float"}))})
+
+            value = schema.data({"one": {"x": 3, "y": 3.3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
+            print contains(value)
+
+            value = schema.data({"one": {"x": 999, "y": 3.3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
+            print contains(value)
+
+            value = schema.data({"one": {"x": 3, "y": 3.14}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
+            print contains(value)
+
+            # schema = Record({"one": Record({"x": "int"}), "two": List(Record({"x": "int", "y": "float"}))})
+            # value = schema.data({"one": {"x": 3}, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
+            # print contains(value)
