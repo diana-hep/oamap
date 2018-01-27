@@ -86,6 +86,29 @@ else:
             # don't carry any information about the Schema at runtime: it's a purely compile-time constant
             super(SchemaModel, self).__init__(dmm, fe_type, [])
 
+    # # @numba.extending.infer_global
+    # # class SchemaCallable(numba.typing.templates.CallableTemplate):
+    # #     def generic(self):
+    # #         def typer
+
+    # @numba.extending.type_callable(oamap.schema.Primitive)
+    # def type_Primitive(context):
+    #     def typer(dtype):  # , , data=None, mask=None, packing=None, name=None, doc=None, metadata=None):
+    #         if isinstance(dtype, numba.types.Const):
+    #             return SchemaType(oamap.schema.Primitive(dtype.value))
+
+    #     # def typer(*args, **kwds):
+    #     #     if all(isinstance(x, numba.types.Const) for x in args) and all(isinstance(x, numba.types.Const) for x in kwds.values()):
+    #     #         return SchemaType(oamap.schema.Primitive(*[x.value for x in args], **dict((n, x.value) for n, x in kwds.items())))
+    #     return typer
+
+    # @numba.extending.lower_builtin(oamap.schema.Primitive, numba.types.Const)
+    # def impl_Primitive(context, builder, sig, args):
+    #     print "HERE HERE HERE HERE HERE HERE HERE"
+
+
+    #     return numba.cgutils.create_struct_proxy(sig.return_type)(context, builder)._getvalue()
+    
     primtypes = (numba.types.Boolean, numba.types.Integer, numba.types.Float, numba.types.Complex, numba.types.npytypes.CharSeq)
 
     @numba.extending.infer_getattr
@@ -1141,45 +1164,6 @@ else:
     @numba.extending.lower_builtin("!=", RecordProxyNumbaType, RecordProxyNumbaType)
     def recordproxy_ne(context, builder, sig, args):
         return builder.not_(recordproxy_eq(context, builder, sig, args))
-
-    @numba.targets.imputils.lower_constant(RecordProxyNumbaType)
-    def record_constant(context, builder, ty, pyval):
-        pyapi = context.get_python_api(builder)
-
-        pyval._generator._requireall()
-        ptrs, lens, ptrsval, lensval = pyval._generator._entercompiled(pyval._arrays, pyval._cache)
-
-        baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
-        baggage.arrays = llvmlite.llvmpy.core.Constant.inttoptr(literal_intp(id(pyval._arrays)), context.get_value_type(numba.types.pyobject))
-        baggage.cache = llvmlite.llvmpy.core.Constant.inttoptr(literal_intp(id(pyval._cache)), context.get_value_type(numba.types.pyobject))
-        baggage.ptrs = llvmlite.llvmpy.core.Constant.inttoptr(literal_intp(id(ptrs)), context.get_value_type(numba.types.pyobject))
-        baggage.lens = llvmlite.llvmpy.core.Constant.inttoptr(literal_intp(id(lens)), context.get_value_type(numba.types.pyobject))
-
-        recordproxy = numba.cgutils.create_struct_proxy(ty)(context, builder)
-        recordproxy.baggage = baggage._getvalue()
-        recordproxy.ptrs = llvmlite.llvmpy.core.Constant.inttoptr(literal_intp(ptrsval), context.get_value_type(numba.types.voidptr))
-        recordproxy.lens = llvmlite.llvmpy.core.Constant.inttoptr(literal_intp(lensval), context.get_value_type(numba.types.voidptr))
-        recordproxy.index = literal_int64(pyval._index)
-
-        print
-        print "baggage.arrays", id(pyval._arrays)
-        print "baggage.cache", id(pyval._cache)
-        print "baggage.ptrs", id(ptrs), ptrs
-        print "baggage.lens", id(lens), lens
-        print "recordproxy.ptrs", ptrsval
-        print "recordproxy.lens", lensval
-        print "recordproxy.index", pyval._index
-
-        numba.cgutils.printf(builder, "\n")
-        numba.cgutils.printf(builder, "baggage.arrays %ld\n", baggage.arrays)
-        numba.cgutils.printf(builder, "baggage.cache %ld\n", baggage.cache)
-        numba.cgutils.printf(builder, "baggage.ptrs %ld\n", baggage.ptrs)
-        numba.cgutils.printf(builder, "baggage.lens %ld\n", baggage.lens)
-        numba.cgutils.printf(builder, "recordproxy.ptrs %ld\n", recordproxy.ptrs)
-        numba.cgutils.printf(builder, "recordproxy.lens %ld\n", recordproxy.lens)
-        numba.cgutils.printf(builder, "recordproxy.ptrs %ld\n", recordproxy.index)
-
-        return recordproxy._getvalue()
 
     @numba.extending.unbox(RecordProxyNumbaType)
     def unbox_recordproxy(typ, obj, c):

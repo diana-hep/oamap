@@ -972,14 +972,17 @@ class TestCompiler(unittest.TestCase):
             self.assertFalse(not_onenone(value2) is True)
 
     def test_testie(self):
-        value = Record({"one": "int"}).data({"one": 999})
-        
+
+
         @numba.njit
         def doit(x):
-            return value.one + x
+            return Primitive(int).cast(x.one)
 
-        print doit(10)
+        value = Record({"one": Primitive("int", nullable=True)}).data({"one": None})
+        print doit(value)
 
+
+        
     def test_value_equality(self):
         if numba is not None:
             @numba.njit
