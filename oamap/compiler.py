@@ -696,6 +696,12 @@ else:
                 if lhs.generator.schema.types == rhs.generator.schema.types:
                     return numba.types.boolean(*args)
 
+            elif isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, UnionProxyNumbaType):
+                for x in lhs.generator.schema.possibilities:
+                    for y in rhs.generator.schema.possibilities:
+                        if x.copy(nullable=False) == y.copy(nullable=False):
+                            return numba.types.boolean(*args)
+
             elif isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, ProxyNumbaType):
                 for x in lhs.generator.schema.possibilities:
                     if x.copy(nullable=False) == rhs.generator.schema.copy(nullable=False):
@@ -704,6 +710,16 @@ else:
             elif isinstance(rhs, UnionProxyNumbaType) and isinstance(lhs, ProxyNumbaType):
                 for x in rhs.generator.schema.possibilities:
                     if x.copy(nullable=False) == lhs.generator.schema.copy(nullable=False):
+                        return numba.types.boolean(*args)
+
+            elif isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, primtypes):
+                for x in lhs.generator.schema.possibilities:
+                    if isinstance(x, oamap.schema.Primitive) and numba.from_dtype(x.dtype) == rhs:
+                        return numba.types.boolean(*args)
+
+            elif isinstance(rhs, UnionProxyNumbaType) and isinstance(lhs, primtypes):
+                for x in rhs.generator.schema.possibilities:
+                    if isinstance(x, oamap.schema.Primitive) and numba.from_dtype(x.dtype) == lhs:
                         return numba.types.boolean(*args)
 
     ################################################################ ListProxy
@@ -820,6 +836,39 @@ else:
                 ])
         else:
             return literal_boolean(False)
+
+    @numba.typing.templates.infer
+    class ListProxyEq(ProxyCompare):
+        key = "=="
+
+    @numba.typing.templates.infer
+    class ListProxyEq(ProxyCompare):
+        key = "!="
+
+    @numba.extending.lower_builtin("==", ListProxyNumbaType, ListProxyNumbaType)
+    def listproxy_eq(context, builder, sig, args):
+        ltype, rtype = sig.args
+        lval, rval = args
+        if ltype.generator.schema.copy(nullable=False) == rtype.generator.schema.copy(nullable=False):
+            lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+            rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
+            same_size = builder.icmp_signed("==", lproxy.length, rproxy.length)
+            out_ptr = numba.cgutils.alloca_once_value(builder, same_size)
+            with builder.if_then(same_size):
+                with numba.cgutils.for_range(builder, lproxy.length) as loop:
+                    litem = generate(context, builder, ltype.generator.content, lproxy.baggage, lproxy.ptrs, lproxy.lens, loop.index)
+                    ritem = generate(context, builder, rtype.generator.content, rproxy.baggage, rproxy.ptrs, rproxy.lens, loop.index)
+                    predicate = context.get_function("==", numba.types.boolean(typeof_generator(ltype.generator.content), typeof_generator(rtype.generator.content)))(builder, (litem, ritem))
+                    with builder.if_then(builder.not_(predicate)):
+                        builder.store(literal_boolean(False), out_ptr)
+                        loop.do_break()
+            return builder.load(out_ptr)
+        else:
+            return literal_boolean(False)
+
+    @numba.extending.lower_builtin("!=", ListProxyNumbaType, ListProxyNumbaType)
+    def listproxy_ne(context, builder, sig, args):
+        return builder.not_(listproxy_eq(context, builder, sig, args))
 
     @numba.extending.unbox(ListProxyNumbaType)
     def unbox_listproxy(typ, obj, c):
@@ -1048,6 +1097,125 @@ else:
         # reverse the order and use the above
         return unionproxytype_is_left(context, builder, rettype(rtype, ltype), (rval, lval))
 
+
+
+
+
+
+
+
+    @numba.typing.templates.infer
+    class UnionProxyEq(ProxyCompare):
+        key = "=="
+
+    @numba.typing.templates.infer
+    class UnionProxyEq(ProxyCompare):
+        key = "!="
+
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, UnionProxyNumbaType)
+    def unionproxy_eq(context, builder, sig, args):
+        print
+        print "unionproxy_eq"
+
+        ltype, rtype = sig.args
+        lval, rval = args
+        lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+        rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
+        out_ptr = numba.cgutils.alloca_once_value(builder, literal_boolean(False))
+        for li, lgen in enumerate(ltype.generator.possibilities):
+            for ri, rgen in enumerate(rtype.generator.possibilities):
+                if lgen.schema.copy(nullable=False) == rgen.schema.copy(nullable=False):
+                    print "block", li, ri, lgen.schema, rgen.schema
+
+                    numba.cgutils.printf(builder, "block {} {}\n".format(li, ri))
+
+                    with builder.if_then(builder.and_(
+                        builder.icmp_signed("==", lproxy.tag, literal_int(li, ltype.generator.tagdtype.itemsize)),
+                        builder.icmp_signed("==", rproxy.tag, literal_int(ri, rtype.generator.tagdtype.itemsize)))):
+                        ldata = generate(context, builder, lgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.offset)
+                        rdata = generate(context, builder, rgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.offset)
+
+                        numba.cgutils.printf(builder, "has tag\n")
+
+                        with builder.if_then(context.get_function("==", numba.types.boolean(typeof_generator(lgen), typeof_generator(rgen)))(builder, (ldata, rdata))):
+                            numba.cgutils.printf(builder, "is equal %ld %ld\n", ldata, rdata)
+
+                            builder.store(literal_boolean(True), out_ptr)
+                            # FIXME: also break to the end
+
+        numba.cgutils.printf(builder, "return %d\n", builder.load(out_ptr))
+
+        return builder.load(out_ptr)
+
+    @numba.extending.lower_builtin("!=", UnionProxyNumbaType, UnionProxyNumbaType)
+    def unionproxy_ne(context, builder, sig, args):
+        return builder.not_(unionproxy_eq(context, builder, sig, args))
+
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, ProxyNumbaType)
+    def unionproxytype_eq_left(context, builder, sig, args):
+        ltype, rtype = sig.args
+        lval, rval = args
+        lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+        rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
+        out_ptr = numba.cgutils.alloca_once_value(builder, literal_boolean(False))
+        for li, lgen in enumerate(ltype.generator.possibilities):
+            if lgen.schema.copy(nullable=False) == rtype.generator.schema.copy(nullable=False):
+                with builder.if_then(builder.icmp_signed("==", lproxy.tag, literal_int(li, ltype.generator.tagdtype.itemsize))):
+                    ldata = generate(context, builder, lgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.offset)
+                    rdata = generate(context, builder, rtype.generator, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.offset)
+                    with builder.if_then(context.get_function("==", numba.types.boolean(typeof_generator(lgen), rtype))(builder, (ldata, rdata))):
+                        builder.store(literal_boolean(True), out_ptr)
+                        # FIXME: also break to the end
+        return builder.load(out_ptr)
+
+    @numba.extending.lower_builtin("==", ProxyNumbaType, UnionProxyNumbaType)
+    def unionproxytype_eq_right(context, builder, sig, args):
+        rettype, (ltype, rtype) = sig.return_type, sig.args
+        lval, rval = args
+        # reverse the order and use the above
+        return unionproxytype_eq_left(context, builder, rettype(rtype, ltype), (rval, lval))
+
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, numba.types.Boolean)
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, numba.types.Integer)
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, numba.types.Float)
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, numba.types.Complex)
+    @numba.extending.lower_builtin("==", UnionProxyNumbaType, numba.types.npytypes.CharSeq)
+    def unionproxytype_eq_left_primitive(context, builder, sig, args):
+        ltype, rtype = sig.args
+        lval, rval = args
+        lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+        out_ptr = numba.cgutils.alloca_once_value(builder, literal_boolean(False))
+        for li, lgen in enumerate(ltype.generator.possibilities):
+            if isinstance(lgen.schema, oamap.schema.Primitive) and numba.from_dtype(lgen.schema.dtype) == rtype:
+                with builder.if_then(builder.icmp_signed("==", lproxy.tag, literal_int(li, ltype.generator.tagdtype.itemsize))):
+                    ldata = generate(context, builder, lgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.offset)
+                    with builder.if_then(context.get_function("==", numba.types.boolean(typeof_generator(lgen), rtype))(builder, (ldata, rval))):
+                        builder.store(literal_boolean(True), out_ptr)
+        return builder.load(out_ptr)
+
+    @numba.extending.lower_builtin("==", numba.types.Boolean, UnionProxyNumbaType)
+    @numba.extending.lower_builtin("==", numba.types.Integer, UnionProxyNumbaType)
+    @numba.extending.lower_builtin("==", numba.types.Float, UnionProxyNumbaType)
+    @numba.extending.lower_builtin("==", numba.types.Complex, UnionProxyNumbaType)
+    @numba.extending.lower_builtin("==", numba.types.npytypes.CharSeq, UnionProxyNumbaType)
+    def unionproxytype_eq_right_primitive(context, builder, sig, args):
+        rettype, (ltype, rtype) = sig.return_type, sig.args
+        lval, rval = args
+        # reverse the order and use the above
+        return unionproxytype_eq_left_primitive(context, builder, rettype(rtype, ltype), (rval, lval))
+
+
+
+
+
+
+
+
+
+
+
+
+
     @numba.extending.box(UnionProxyNumbaType)
     def box_unionproxy(typ, val, c):
         unionproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
@@ -1128,9 +1296,23 @@ else:
             predicates = []
             lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
             rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
+
+            lbaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=lproxy.baggage)
+            rbaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=rproxy.baggage)
+
+            numba.cgutils.printf(builder, "\n")
+            numba.cgutils.printf(builder, "larrays %ld lcache %ld lptrs %ld llens %ld\n", lbaggage.arrays, lbaggage.cache, lbaggage.ptrs, lbaggage.lens)
+            numba.cgutils.printf(builder, "rarrays %ld rcache %ld rptrs %ld rlens %ld\n", rbaggage.arrays, rbaggage.cache, rbaggage.ptrs, rbaggage.lens)
+
             for attr in ltype.generator.schema.fields:
                 lfieldgen = ltype.generator.fields[attr]
                 rfieldgen = rtype.generator.fields[attr]
+
+                print
+                print ltype.generator.id
+                print rtype.generator.id
+                print repr(attr)
+
                 lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
                 rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
                 predicates.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
