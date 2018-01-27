@@ -365,6 +365,9 @@ else:
         ptrs = pyapi.long_as_voidptr(ptrs_obj)
         lens = pyapi.long_as_voidptr(lens_obj)
 
+        pyapi.incref(baggage.ptrs)
+        pyapi.incref(baggage.lens)
+
         pyapi.decref(generator_obj)
         pyapi.decref(generator_obj)
         pyapi.decref(results_obj)
@@ -384,6 +387,8 @@ else:
 
         pyapi.decref(baggage.arrays)
         pyapi.decref(baggage.cache)
+        # pyapi.decref(baggage.ptrs)
+        # pyapi.decref(baggage.lens)
 
         return generator_obj, baggage.arrays, baggage.cache
 
@@ -1097,13 +1102,6 @@ else:
         # reverse the order and use the above
         return unionproxytype_is_left(context, builder, rettype(rtype, ltype), (rval, lval))
 
-
-
-
-
-
-
-
     @numba.typing.templates.infer
     class UnionProxyEq(ProxyCompare):
         key = "=="
@@ -1114,9 +1112,6 @@ else:
 
     @numba.extending.lower_builtin("==", UnionProxyNumbaType, UnionProxyNumbaType)
     def unionproxy_eq(context, builder, sig, args):
-        print
-        print "unionproxy_eq"
-
         ltype, rtype = sig.args
         lval, rval = args
         lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
@@ -1125,26 +1120,14 @@ else:
         for li, lgen in enumerate(ltype.generator.possibilities):
             for ri, rgen in enumerate(rtype.generator.possibilities):
                 if lgen.schema.copy(nullable=False) == rgen.schema.copy(nullable=False):
-                    print "block", li, ri, lgen.schema, rgen.schema
-
-                    numba.cgutils.printf(builder, "block {} {}\n".format(li, ri))
-
                     with builder.if_then(builder.and_(
                         builder.icmp_signed("==", lproxy.tag, literal_int(li, ltype.generator.tagdtype.itemsize)),
                         builder.icmp_signed("==", rproxy.tag, literal_int(ri, rtype.generator.tagdtype.itemsize)))):
                         ldata = generate(context, builder, lgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.offset)
                         rdata = generate(context, builder, rgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.offset)
-
-                        numba.cgutils.printf(builder, "has tag\n")
-
                         with builder.if_then(context.get_function("==", numba.types.boolean(typeof_generator(lgen), typeof_generator(rgen)))(builder, (ldata, rdata))):
-                            numba.cgutils.printf(builder, "is equal %ld %ld\n", ldata, rdata)
-
                             builder.store(literal_boolean(True), out_ptr)
                             # FIXME: also break to the end
-
-        numba.cgutils.printf(builder, "return %d\n", builder.load(out_ptr))
-
         return builder.load(out_ptr)
 
     @numba.extending.lower_builtin("!=", UnionProxyNumbaType, UnionProxyNumbaType)
@@ -1203,18 +1186,6 @@ else:
         lval, rval = args
         # reverse the order and use the above
         return unionproxytype_eq_left_primitive(context, builder, rettype(rtype, ltype), (rval, lval))
-
-
-
-
-
-
-
-
-
-
-
-
 
     @numba.extending.box(UnionProxyNumbaType)
     def box_unionproxy(typ, val, c):
@@ -1296,23 +1267,11 @@ else:
             predicates = []
             lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
             rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
-
             lbaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=lproxy.baggage)
             rbaggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=rproxy.baggage)
-
-            numba.cgutils.printf(builder, "\n")
-            numba.cgutils.printf(builder, "larrays %ld lcache %ld lptrs %ld llens %ld\n", lbaggage.arrays, lbaggage.cache, lbaggage.ptrs, lbaggage.lens)
-            numba.cgutils.printf(builder, "rarrays %ld rcache %ld rptrs %ld rlens %ld\n", rbaggage.arrays, rbaggage.cache, rbaggage.ptrs, rbaggage.lens)
-
             for attr in ltype.generator.schema.fields:
                 lfieldgen = ltype.generator.fields[attr]
                 rfieldgen = rtype.generator.fields[attr]
-
-                print
-                print ltype.generator.id
-                print rtype.generator.id
-                print repr(attr)
-
                 lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
                 rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
                 predicates.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))

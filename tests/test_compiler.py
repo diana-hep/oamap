@@ -997,90 +997,88 @@ class TestCompiler(unittest.TestCase):
             def not_onenone(x):
                 return x.one != None
 
-            # # lists
+            # lists
 
-            # schema = Record({"one": List("int"), "two": List("int")})
-            # value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
-            # value2 = schema.data({"one": [1, 2, 3], "two": [5, 4, 3]})
-            # value3 = schema.data({"one": [1, 2, 3], "two": [5, 4, 3, 2, 1]})
+            schema = Record({"one": List("int"), "two": List("int")})
+            value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+            value2 = schema.data({"one": [1, 2, 3], "two": [5, 4, 3]})
+            value3 = schema.data({"one": [1, 2, 3], "two": [5, 4, 3, 2, 1]})
 
-            # self.assertTrue(oneone(value1, value1) is True)
-            # self.assertTrue(onetwo(value1, value1) is True)
-            # self.assertTrue(oneone(value1, value2) is True)
-            # self.assertTrue(onetwo(value2, value2) is False)
-            # self.assertTrue(onetwo(value3, value3) is False)
-            # # self.assertTrue(onenone(value1) is False)    # REPORTME
-            # self.assertFalse(not_oneone(value1, value1) is True)
-            # self.assertFalse(not_onetwo(value1, value1) is True)
-            # self.assertFalse(not_oneone(value1, value2) is True)
-            # self.assertFalse(not_onetwo(value2, value2) is False)
-            # self.assertFalse(not_onetwo(value3, value3) is False)
-            # # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+            self.assertTrue(oneone(value1, value1) is True)
+            self.assertTrue(onetwo(value1, value1) is True)
+            self.assertTrue(oneone(value1, value2) is True)
+            self.assertTrue(onetwo(value2, value2) is False)
+            self.assertTrue(onetwo(value3, value3) is False)
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is True)
+            self.assertFalse(not_oneone(value1, value2) is True)
+            self.assertFalse(not_onetwo(value2, value2) is False)
+            self.assertFalse(not_onetwo(value3, value3) is False)
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
 
-            # schema = Record({"one": List("int", nullable=True), "two": List("int")})
-            # value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
-            # value2 = schema.data({"one": None, "two": [1, 2, 3]})
+            schema = Record({"one": List("int", nullable=True), "two": List("int")})
+            value1 = schema.data({"one": [1, 2, 3], "two": [1, 2, 3]})
+            value2 = schema.data({"one": None, "two": [1, 2, 3]})
 
-            # # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
-            # # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
-            # # self.assertTrue(oneone(value1, value2) is False)    # REPORTME
-            # # self.assertTrue(onetwo(value2, value2) is False)    # REPORTME
-            # # self.assertTrue(onenone(value1) is False)    # REPORTME
-            # # self.assertTrue(onenone(value2) is False)    # REPORTME
-            # # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME
-            # # self.assertFalse(not_onetwo(value1, value1) is True)    # REPORTME
-            # # self.assertFalse(not_oneone(value1, value2) is False)    # REPORTME
-            # # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
-            # # self.assertFalse(not_onenone(value1) is False)    # REPORTME
-            # # self.assertFalse(not_onenone(value2) is False)    # REPORTME
+            # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
+            # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
+            # self.assertTrue(oneone(value1, value2) is False)    # REPORTME
+            # self.assertTrue(onetwo(value2, value2) is False)    # REPORTME
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            # self.assertTrue(onenone(value2) is False)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_onetwo(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value2) is False)    # REPORTME
+            # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value2) is False)    # REPORTME
 
-            # # unions
+            # unions
 
-            # schema = Record({"one": Union(["int", "float"]), "two": Union(["int", "float"])})
-            # value1 = schema.data({"one": 999, "two": 999})
-            # value2 = schema.data({"one": 999, "two": 3.14})
+            schema = Record({"one": Union(["int", "float"]), "two": Union(["int", "float"])})
+            value1 = schema.data({"one": 999, "two": 999})
+            value2 = schema.data({"one": 999, "two": 3.14})
 
-            # self.assertTrue(oneone(value1, value1) is True)
-            # self.assertTrue(onetwo(value1, value1) is True)
-            # self.assertTrue(oneone(value1, value2) is True)
-            # self.assertTrue(onetwo(value2, value2) is False)
-            # # self.assertTrue(onenone(value1) is False)    # REPORTME
-            # self.assertFalse(not_oneone(value1, value1) is True)
-            # self.assertFalse(not_onetwo(value1, value1) is True)
-            # self.assertFalse(not_oneone(value1, value2) is True)
-            # self.assertFalse(not_onetwo(value2, value2) is False)
-            # # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+            self.assertTrue(oneone(value1, value1) is True)
+            self.assertTrue(onetwo(value1, value1) is True)
+            self.assertTrue(oneone(value1, value2) is True)
+            self.assertTrue(onetwo(value2, value2) is False)
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is True)
+            self.assertFalse(not_oneone(value1, value2) is True)
+            self.assertFalse(not_onetwo(value2, value2) is False)
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
 
-            # schema = Record({"one": Union(["int", "float"], nullable=True), "two": Union(["int", "float"])})
-            # value1 = schema.data({"one": 999, "two": 999})
-            # value2 = schema.data({"one": None, "two": 999})
+            schema = Record({"one": Union(["int", "float"], nullable=True), "two": Union(["int", "float"])})
+            value1 = schema.data({"one": 999, "two": 999})
+            value2 = schema.data({"one": None, "two": 999})
 
-            # # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
-            # # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
-            # # self.assertTrue(oneone(value1, value2) is False)    # REPORTME
-            # # self.assertTrue(onetwo(value2, value2) is False)    # REPORTME
-            # # self.assertTrue(onenone(value1) is False)    # REPORTME
-            # # self.assertTrue(onenone(value2) is False)    # REPORTME
-            # # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME
-            # # self.assertFalse(not_onetwo(value1, value1) is True)    # REPORTME
-            # # self.assertFalse(not_oneone(value1, value2) is False)    # REPORTME
-            # # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
-            # # self.assertFalse(not_onenone(value1) is False)    # REPORTME
-            # # self.assertFalse(not_onenone(value2) is False)    # REPORTME
+            # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
+            # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
+            # self.assertTrue(oneone(value1, value2) is False)    # REPORTME
+            # self.assertTrue(onetwo(value2, value2) is False)    # REPORTME
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            # self.assertTrue(onenone(value2) is False)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_onetwo(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value2) is False)    # REPORTME
+            # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value2) is False)    # REPORTME
 
-            # schema = Record({"one": Union(["int", "float"]), "two": "int"})
-            # value1 = schema.data({"one": 999, "two": 999})
-            # value2 = schema.data({"one": 123, "two": 999})
-            # value3 = schema.data({"one": 3.14, "two": 999})
+            schema = Record({"one": Union(["int", "float"]), "two": "int"})
+            value1 = schema.data({"one": 999, "two": 999})
+            value2 = schema.data({"one": 123, "two": 999})
+            value3 = schema.data({"one": 3.14, "two": 999})
 
-            # self.assertTrue(oneone(value1, value1) is True)
-            # self.assertTrue(onetwo(value1, value1) is True)
-            # self.assertTrue(oneone(value1, value2) is False)
-            # self.assertTrue(onetwo(value2, value2) is False)
-            # self.assertTrue(oneone(value1, value3) is False)
-            # self.assertTrue(onetwo(value3, value3) is False)
-
-
+            self.assertTrue(oneone(value1, value1) is True)
+            self.assertTrue(onetwo(value1, value1) is True)
+            self.assertTrue(oneone(value1, value2) is False)
+            self.assertTrue(onetwo(value2, value2) is False)
+            self.assertTrue(oneone(value1, value3) is False)
+            self.assertTrue(onetwo(value3, value3) is False)
 
             # records
 
