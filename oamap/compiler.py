@@ -85,29 +85,6 @@ else:
         def __init__(self, dmm, fe_type):
             # don't carry any information about the Schema at runtime: it's a purely compile-time constant
             super(SchemaModel, self).__init__(dmm, fe_type, [])
-
-    # # @numba.extending.infer_global
-    # # class SchemaCallable(numba.typing.templates.CallableTemplate):
-    # #     def generic(self):
-    # #         def typer
-
-    # @numba.extending.type_callable(oamap.schema.Primitive)
-    # def type_Primitive(context):
-    #     def typer(dtype):  # , , data=None, mask=None, packing=None, name=None, doc=None, metadata=None):
-    #         if isinstance(dtype, numba.types.Const):
-    #             return SchemaType(oamap.schema.Primitive(dtype.value))
-
-    #     # def typer(*args, **kwds):
-    #     #     if all(isinstance(x, numba.types.Const) for x in args) and all(isinstance(x, numba.types.Const) for x in kwds.values()):
-    #     #         return SchemaType(oamap.schema.Primitive(*[x.value for x in args], **dict((n, x.value) for n, x in kwds.items())))
-    #     return typer
-
-    # @numba.extending.lower_builtin(oamap.schema.Primitive, numba.types.Const)
-    # def impl_Primitive(context, builder, sig, args):
-    #     print "HERE HERE HERE HERE HERE HERE HERE"
-
-
-    #     return numba.cgutils.create_struct_proxy(sig.return_type)(context, builder)._getvalue()
     
     primtypes = (numba.types.Boolean, numba.types.Integer, numba.types.Float, numba.types.Complex, numba.types.npytypes.CharSeq)
 
@@ -716,7 +693,7 @@ else:
                     return numba.types.boolean(*args)
 
             elif isinstance(lhs, TupleProxyNumbaType) and isinstance(rhs, TupleProxyNumbaType):
-                if lhs.generator.schema.fields == rhs.generator.schema.fields:
+                if lhs.generator.schema.types == rhs.generator.schema.types:
                     return numba.types.boolean(*args)
 
             elif isinstance(lhs, UnionProxyNumbaType) and isinstance(rhs, ProxyNumbaType):
@@ -1271,6 +1248,36 @@ else:
         else:
             return literal_boolean(False)
             
+    @numba.typing.templates.infer
+    class TupleProxyEq(ProxyCompare):
+        key = "=="
+
+    @numba.typing.templates.infer
+    class TupleProxyEq(ProxyCompare):
+        key = "!="
+
+    @numba.extending.lower_builtin("==", TupleProxyNumbaType, TupleProxyNumbaType)
+    def tupleproxy_eq(context, builder, sig, args):
+        ltype, rtype = sig.args
+        lval, rval = args
+        if ltype.generator.schema.copy(nullable=False) == rtype.generator.schema.copy(nullable=False):
+            predicates = []
+            lproxy = numba.cgutils.create_struct_proxy(ltype)(context, builder, value=lval)
+            rproxy = numba.cgutils.create_struct_proxy(rtype)(context, builder, value=rval)
+            for i in range(len(ltype.generator.schema.types)):
+                lfieldgen = ltype.generator.types[i]
+                rfieldgen = rtype.generator.types[i]
+                lfield = generate(context, builder, lfieldgen, lproxy.baggage, lproxy.ptrs, lproxy.lens, lproxy.index)
+                rfield = generate(context, builder, rfieldgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.index)
+                predicates.append(context.get_function("==", numba.types.boolean(typeof_generator(lfieldgen), typeof_generator(rfieldgen)))(builder, (lfield, rfield)))
+            return all_(builder, predicates)
+        else:
+            return literal_boolean(False)
+
+    @numba.extending.lower_builtin("!=", TupleProxyNumbaType, TupleProxyNumbaType)
+    def tupleproxy_ne(context, builder, sig, args):
+        return builder.not_(tupleproxy_eq(context, builder, sig, args))
+
     @numba.extending.unbox(TupleProxyNumbaType)
     def unbox_tupleproxy(typ, obj, c):
         generator_obj = c.pyapi.object_getattr_string(obj, "_generator")

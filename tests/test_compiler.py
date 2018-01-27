@@ -971,18 +971,6 @@ class TestCompiler(unittest.TestCase):
             self.assertFalse(not_onenone(value1) is False)
             self.assertFalse(not_onenone(value2) is True)
 
-    def test_testie(self):
-
-
-        @numba.njit
-        def doit(x):
-            return Primitive(int).cast(x.one)
-
-        value = Record({"one": Primitive("int", nullable=True)}).data({"one": None})
-        print doit(value)
-
-
-        
     def test_value_equality(self):
         if numba is not None:
             @numba.njit
@@ -1029,6 +1017,40 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": Record({"x": "int", "y": "float"}, nullable=True), "two": Record({"x": "int", "y": "float"})})
             value1 = schema.data({"one": {"x": 999, "y": 3.14}, "two": {"x": 999, "y": 3.14}})
             value2 = schema.data({"one": None, "two": {"x": 999, "y": 3.14}})
+
+            # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
+            # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
+            # self.assertTrue(oneone(value1, value2) is False)    # REPORTME
+            # self.assertTrue(onetwo(value2, value2) is False)    # REPORTME
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            # self.assertTrue(onenone(value2) is False)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_onetwo(value1, value1) is True)    # REPORTME
+            # self.assertFalse(not_oneone(value1, value2) is False)    # REPORTME
+            # self.assertFalse(not_onetwo(value2, value2) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+            # self.assertFalse(not_onenone(value2) is False)    # REPORTME
+
+            # tuples
+
+            schema = Record({"one": Tuple(["int", "float"]), "two": Tuple(["int", "float"])})
+            value1 = schema.data({"one": (999, 3.14), "two": (999, 3.14)})
+            value2 = schema.data({"one": (999, 3.14), "two": (999, -3.14)})
+
+            self.assertTrue(oneone(value1, value1) is True)
+            self.assertTrue(onetwo(value1, value1) is True)
+            self.assertTrue(oneone(value1, value2) is True)
+            self.assertTrue(onetwo(value2, value2) is False)
+            # self.assertTrue(onenone(value1) is False)    # REPORTME
+            self.assertFalse(not_oneone(value1, value1) is True)
+            self.assertFalse(not_onetwo(value1, value1) is True)
+            self.assertFalse(not_oneone(value1, value2) is True)
+            self.assertFalse(not_onetwo(value2, value2) is False)
+            # self.assertFalse(not_onenone(value1) is False)    # REPORTME
+
+            schema = Record({"one": Tuple(["int", "float"], nullable=True), "two": Tuple(["int", "float"])})
+            value1 = schema.data({"one": (999, 3.14), "two": (999, 3.14)})
+            value2 = schema.data({"one": None, "two": (999, 3.14)})
 
             # self.assertTrue(oneone(value1, value1) is True)    # REPORTME
             # self.assertTrue(onetwo(value1, value1) is True)    # REPORTME
