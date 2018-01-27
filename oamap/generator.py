@@ -260,6 +260,9 @@ class PrimitiveGenerator(Generator):
         
         return data[index]
 
+    def _requireall(self, memo=None):
+        self._required = True
+
     def iternames(self):
         yield self.data
 
@@ -320,6 +323,14 @@ class ListGenerator(Generator):
             stops = cache[self.stopsidx]
 
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
+
+    def _requireall(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            self._required = True
+            self.content._requireall(memo)
 
     def iternames(self):
         yield self.starts
@@ -389,6 +400,15 @@ class UnionGenerator(Generator):
 
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
+    def _requireall(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            self._required = True
+            for x in self.possibilities:
+                x._requireall(memo)
+
     def iternames(self):
         yield self.tags
         yield self.offsets
@@ -433,6 +453,15 @@ class RecordGenerator(Generator):
     def _generate(self, arrays, index, cache):
         return oamap.proxy.RecordProxy(self, arrays, cache, index)
 
+    def _requireall(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            self._required = True
+            for x in self.fields.values():
+                x._requireall(memo)
+
     def iternames(self):
         for x in self.fields.values():
             for y in x.iternames():
@@ -474,6 +503,15 @@ class TupleGenerator(Generator):
 
     def _generate(self, arrays, index, cache):
         return oamap.proxy.TupleProxy(self, arrays, cache, index)
+
+    def _requireall(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            self._required = True
+            for x in self.types:
+                x._requireall(memo)
 
     def iternames(self):
         for x in self.types:
@@ -529,6 +567,14 @@ class PointerGenerator(Generator):
             positions = cache[self.positionsidx]
 
         return self.target._generate(arrays, positions[index], cache)
+
+    def _requireall(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            self._required = True
+            self.target._requireall(memo)
 
     def iternames(self):
         yield self.positions
