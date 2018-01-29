@@ -1505,6 +1505,49 @@ else:
 
         return out
 
-    ################################################################ PartitionedListProxy
+    ################################################################ PartitionedListProxy and IndexedPartitionedListProxy
 
-    ################################################################ IndexedPartitionedListProxy
+    class ManagedDataFlow(numba.types.Type):pass
+
+    class PartitionedListType(ManagedDataFlow):
+        def __init__(self):
+            ManagedDataFlow.__init__(self, name="PartitionedListType")
+
+    PartitionedListType.tpe = PartitionedListType()
+
+    class IndexedPartitionedListType(PartitionedListType):
+        def __init__(self):
+            ManagedDataFlow.__init__(self, name="IndexedPartitionedListType")
+
+    IndexedPartitionedListTypetpe = IndexedPartitionedListType()
+
+    @numba.extending.typeof_impl.register(oamap.proxy.PartitionedListProxy)
+    def typeof_proxy(val, c):
+        if isinstance(val, oamap.proxy.IndexedPartitionedListProxy):
+            return IndexedPartitionedListType.tpe
+        else:
+            return PartitionedListType.tpe
+
+    @numba.extending.register_model(PartitionedListType)
+    class PartitionedListModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("pyobj", numba.types.pyobject)]
+            super(PartitionedListModel, self).__init__(dmm, fe_type, members)
+
+    # @numba.extending.register_model(IndexedPartitionedListType)
+    # class IndexedPartitionedListModel(numba.datamodel.models.StructModel):
+    #     def __init__(self, dmm, fe_type):
+    #         members = [("pyobj", numba.types.pyobject)]
+    #         super(IndexedPartitionedListModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.unbox(PartitionedListType)
+    def unbox_partitionedlist(typ, obj, c):
+        listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        listproxy.pyobj = obj
+        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+        return numba.extending.NativeValue(listproxy._getvalue(), is_error=is_error)
+
+    @numba.extending.box(PartitionedListType)
+    def unbox_partitionedlist(typ, val, c):
+        listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
+        return listproxy.pyboj

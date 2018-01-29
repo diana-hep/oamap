@@ -1195,3 +1195,14 @@ class TestCompiler(unittest.TestCase):
             schema = Record({"one": "int", "two": List(Record({"x": "int", "y": "float"}))})
             value = schema.data({"one": 3, "two": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}, {"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]})
             self.assertRaises(numba.TypingError, lambda: contains(value))
+
+    def test_boxing_partitionedlist(self):
+        if numba is not None:
+            @numba.njit
+            def boxing1(x):
+                return 3.14
+
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+            for x in value:
+                print(x)

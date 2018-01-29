@@ -198,8 +198,10 @@ class ListProxy(Proxy):
         return False
 
 class PartitionedListProxy(ListProxy):
-    def __init__(self, makepartitions):
-        self._makepartitions = makepartitions
+    def __init__(self, generator, listofarrays):
+        assert isinstance(generator, oamap.generator.ListGenerator)
+        self._generator = generator
+        self._listofarrays = listofarrays
 
     def __repr__(self):
         out = []
@@ -209,12 +211,19 @@ class PartitionedListProxy(ListProxy):
             out.append(x)
         return "[{0}]".format(", ".join(repr(y) for y in out))
 
+    @property
+    def numpartitions(self):
+        return len(self._listofarrays)
+
+    def partition(self, i):
+        return self._generator(self._listofarrays[i])
+
     def indexed(self):
-        return IndexedPartitionedListProxy([x() for x in self._makepartitions])
+        return IndexedPartitionedListProxy([self._partition(i) for i in range(self.numpartitions)])
 
     def __iter__(self):
-        for makepartition in self._makepartitions:
-            partition = makepartition()
+        for arrays in self._listofarrays:
+            partition = self._generator(arrays)
             for x in partition:
                 yield x
 
@@ -224,7 +233,16 @@ class PartitionedListProxy(ListProxy):
 
     def __getitem__(self, index):
         # could be slow because it has to load all of those partitions
-        return self.indexed()[index]
+        if isinstance(index, numbers.Integral) and index >= 0:
+            start = stop = 0
+            for arrays in self._listofarrays:
+                partition = self._generator(arrays)
+                stop += len(partition)
+                if start <= index < stop:
+                    return partition[index - start]
+            raise IndexError("index {0} out of bounds for list of length {1}".format(index, stop))
+        else:
+            return self.indexed()[index]
 
 class IndexedPartitionedListProxy(PartitionedListProxy):
     def __init__(self, partitions, offsets=None):
