@@ -1591,55 +1591,79 @@ else:
         listproxy = numba.cgutils.create_struct_proxy(ListProxyNumbaType(itertpe.partitionedlisttype.generator))(context, builder, value=builder.load(iterproxy.listproxy))
         with builder.if_then(
             builder.or_(builder.icmp_signed("==", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
-                        builder.icmp_signed(">=", builder.load(iterproxy.subindex), listproxy.length)), likely=False):
+                        builder.icmp_signed(">=", builder.load(iterproxy.subindex), listproxy.length)), likely=False) as loadarrays:
+
+            result.set_valid(literal_boolean(False))
 
             pyapi = context.get_python_api(builder)
             numpartitions_obj = pyapi.object_getattr_string(partitionedlist.obj, "numpartitions")
             numpartitions_val = pyapi.long_as_longlong(numpartitions_obj)
 
-            with builder.if_else(builder.icmp_signed(">=", builder.load(iterproxy.superindex), numpartitions_val)) as (is_not_valid, is_valid):
-                with is_not_valid:
-                    result.set_valid(literal_boolean(False))
+            bbcond1 = builder.append_basic_block("do.cond1")
+            bbbody = builder.append_basic_block("do.body")
+            bbcond2 = builder.append_basic_block("do.cond2")
+            bbend = builder.append_basic_block("do.end")
 
-                with is_valid:
-                    index_obj = pyapi.long_from_longlong(builder.load(iterproxy.superindex))
+            bbstart = builder.basic_block
+            builder.branch(bbcond1)
 
-                    generator_obj = pyapi.object_getattr_string(partitionedlist.obj, "_generator")
-                    arrays_fcn = pyapi.object_getattr_string(partitionedlist.obj, "_arrays")
-                    newcache_fcn = pyapi.object_getattr_string(generator_obj, "_newcache")
-                    entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
+            with builder.goto_block(bbcond1):
+                tryit = builder.icmp_signed("<", builder.load(iterproxy.superindex), numpartitions_val)
+                builder.cbranch(tryit, bbbody, bbend)
 
-                    arrays_obj = pyapi.call_function_objargs(arrays_fcn, (index_obj,))
-                    # with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
-                    #     builder.ret(llvmlite.llvmpy.core.Constant.null(pyapi.pyobj))
-                    cache_obj = pyapi.call_function_objargs(newcache_fcn, ())
-                    # with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
-                    #     builder.ret(llvmlite.llvmpy.core.Constant.null(pyapi.pyobj))
-                    results_obj = pyapi.call_function_objargs(entercompiled_fcn, (arrays_obj, cache_obj))
-                    # with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
-                    #     builder.ret(llvmlite.llvmpy.core.Constant.null(pyapi.pyobj))
+            with builder.goto_block(bbbody):
+                bbbody = builder.basic_block
 
-                    baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
-                    baggage.arrays = arrays_obj
-                    baggage.cache = cache_obj
-                    baggage.ptrs = pyapi.tuple_getitem(results_obj, 0)
-                    baggage.lens = pyapi.tuple_getitem(results_obj, 1)
+                index_obj = pyapi.long_from_longlong(builder.load(iterproxy.superindex))
 
-                    ptrs_obj = pyapi.tuple_getitem(results_obj, 2)
-                    lens_obj = pyapi.tuple_getitem(results_obj, 3)
-                    ptrs = pyapi.long_as_voidptr(ptrs_obj)
-                    lens = pyapi.long_as_voidptr(lens_obj)
+                generator_obj = pyapi.object_getattr_string(partitionedlist.obj, "_generator")
+                arrays_fcn = pyapi.object_getattr_string(partitionedlist.obj, "_arrays")
+                newcache_fcn = pyapi.object_getattr_string(generator_obj, "_newcache")
+                entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
 
-                    pyapi.incref(baggage.ptrs)
-                    pyapi.incref(baggage.lens)
+                arrays_obj = pyapi.call_function_objargs(arrays_fcn, (index_obj,))
+                with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
+                    builder.ret(numba.targets.callconv.RETCODE_USEREXC)
+                cache_obj = pyapi.call_function_objargs(newcache_fcn, ())
+                with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
+                    builder.ret(numba.targets.callconv.RETCODE_USEREXC)
+                results_obj = pyapi.call_function_objargs(entercompiled_fcn, (arrays_obj, cache_obj))
+                with builder.if_then(numba.cgutils.is_not_null(builder, pyapi.err_occurred()), likely=False):
+                    builder.ret(numba.targets.callconv.RETCODE_USEREXC)
 
-                    # pyapi.decref(generator_obj)
-                    # pyapi.decref(results_obj)
+                baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
+                baggage.arrays = arrays_obj
+                baggage.cache = cache_obj
+                baggage.ptrs = pyapi.tuple_getitem(results_obj, 0)
+                baggage.lens = pyapi.tuple_getitem(results_obj, 1)
 
-                    builder.store(literal_int64(0), iterproxy.subindex)
-                    builder.store(numba.cgutils.increment_index(builder, builder.load(iterproxy.superindex)), iterproxy.superindex)
-                    builder.store(generate(context, builder, itertpe.partitionedlisttype.generator, baggage._getvalue(), ptrs, lens, builder.load(iterproxy.subindex)), iterproxy.listproxy)
-                    listproxy = numba.cgutils.create_struct_proxy(ListProxyNumbaType(itertpe.partitionedlisttype.generator))(context, builder, value=builder.load(iterproxy.listproxy))
+                ptrs_obj = pyapi.tuple_getitem(results_obj, 2)
+                lens_obj = pyapi.tuple_getitem(results_obj, 3)
+                ptrs = pyapi.long_as_voidptr(ptrs_obj)
+                lens = pyapi.long_as_voidptr(lens_obj)
+
+                pyapi.incref(baggage.ptrs)
+                pyapi.incref(baggage.lens)
+
+                # pyapi.decref(generator_obj)
+                # pyapi.decref(results_obj)
+
+                builder.store(literal_int64(0), iterproxy.subindex)
+                builder.store(numba.cgutils.increment_index(builder, builder.load(iterproxy.superindex)), iterproxy.superindex)
+                builder.store(generate(context, builder, itertpe.partitionedlisttype.generator, baggage._getvalue(), ptrs, lens, builder.load(iterproxy.subindex)), iterproxy.listproxy)
+                listproxy = numba.cgutils.create_struct_proxy(ListProxyNumbaType(itertpe.partitionedlisttype.generator))(context, builder, value=builder.load(iterproxy.listproxy))
+
+                numba.cgutils.terminate(builder, bbcond2)
+
+            with builder.goto_block(bbcond2):
+                result.set_valid(builder.icmp_signed("<", builder.load(iterproxy.subindex), listproxy.length))
+                tryagain = builder.and_(builder.not_(result.is_valid()), builder.icmp_signed("<", builder.load(iterproxy.superindex), numpartitions_val))
+                builder.cbranch(tryagain, bbbody, bbend)
+
+            builder.position_at_end(bbend)
+
+        result.set_valid(builder.and_(builder.icmp_signed("!=", listproxy.ptrs, llvmlite.llvmpy.core.Constant.null(context.get_value_type(numba.types.voidptr))),
+                                      builder.icmp_signed("<", builder.load(iterproxy.subindex), listproxy.length)))
 
         with builder.if_then(result.is_valid(), likely=True):
             at = builder.add(listproxy.whence, builder.mul(listproxy.stride, builder.load(iterproxy.subindex)))
