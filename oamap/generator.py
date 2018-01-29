@@ -140,7 +140,7 @@ class Generator(object):
         return self(oamap.fill.fromiterjsonfile(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
 
     def __call__(self, arrays):
-        return self._generate(arrays, 0, [None] * self._cachelen)
+        return self._generate(arrays, 0, self._newcache())
 
     def _getarrays(self, arrays, cache, roles, require_arrays=False):
         if self.packing is not None:
@@ -161,6 +161,9 @@ class Generator(object):
                 array = numpy.array(array, dtype=dtype)
 
             cache[idx] = array
+
+    def _newcache(self):
+        return [None] * self._cachelen
 
     def _entercompiled(self, arrays, cache, bottomup=True):
         roles = self._togetall(arrays, cache, bottomup, set())

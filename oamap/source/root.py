@@ -159,26 +159,29 @@ else:
             return oamap.schema.List(recurse(self.tree), starts="", stops="")
 
         def partition(self, partitionid):
-            return self.schema(self._arrays(partitionid))
+            generator = self.schema()
+            return generator(self._arrays(partitionid))
 
         def __iter__(self):
+            generator = self.schema()
             for partitionid in range(len(self._offsets) - 1):
-                for x in self.partition(partitionid):
+                for x in generator(self._arrays(partitionid)):
                     yield x
 
         def __getitem__(self, index):
             if isinstance(index, slice):
+                generator = self.schema()
                 start, stop, step = oamap.util.slice2sss(index, self._offsets[-1])
 
                 if start == self._offsets[-1]:
                     assert step > 0
                     assert stop == self._offsets[-1]
-                    return oamap.proxy.IndexedPartitionedListProxy([])
+                    return oamap.proxy.IndexedPartitionedListProxy(generator, [])
 
                 elif start == -1:
                     assert step < 0
                     assert stop == -1
-                    return oamap.proxy.IndexedPartitionedListProxy([])
+                    return oamap.proxy.IndexedPartitionedListProxy(generator, [])
 
                 else:
                     if step > 0:
@@ -193,11 +196,11 @@ else:
                     partitions = []
                     offsets = []
                     for partitionid in range(firstid, lastid):
-                        partitions.append(self.partition(partitionid))
+                        partitions.append(generator(self._arrays(partitionid)))
                         offsets.append(self._offsets[partitionid])
                     offsets.append(self._offsets[lastid])
 
-                    return oamap.proxy.IndexedPartitionedListProxy(partitions, offsets)[start:stop:step]
+                    return oamap.proxy.IndexedPartitionedListProxy(generator, partitions, offsets)[start:stop:step]
 
             else:
                 normalindex = index if index >= 0 else index + self._offsets[-1]

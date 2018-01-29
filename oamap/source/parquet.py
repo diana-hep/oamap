@@ -559,26 +559,29 @@ class ParquetFile(object):
         return dictionary, deflevel, replevel, data, size
 
     def rowgroup(self, rowgroupid):
-        return self.oamapschema(ParquetRowGroupArrays(self, rowgroupid))
+        generator = self.oamapschema.generator()
+        return generator(ParquetRowGroupArrays(self, rowgroupid))
 
     def __iter__(self):
+        generator = self.oamapschema.generator()
         for rowgroupid in range(len(self.footer.row_groups)):
-            for x in self.rowgroup(rowgroupid):
+            for x in generator(ParquetRowGroupArrays(self, rowgroupid)):
                 yield x
 
     def __getitem__(self, index):
         if isinstance(index, slice):
+            generator = self.oamapschema.generator()
             start, stop, step = oamap.util.slice2sss(index, self.rowoffsets[-1])
 
             if start == self.rowoffsets[-1]:
                 assert step > 0
                 assert stop == self.rowoffsets[-1]
-                return oamap.proxy.IndexedPartitionedListProxy([])
+                return oamap.proxy.IndexedPartitionedListProxy(generator, [])
 
             elif start == -1:
                 assert step < 0
                 assert stop == -1
-                return oamap.proxy.IndexedPartitionedListProxy([])
+                return oamap.proxy.IndexedPartitionedListProxy(generator, [])
 
             else:
                 if step > 0:
@@ -593,11 +596,11 @@ class ParquetFile(object):
                 rowgroups = []
                 offsets = []
                 for rowgroupid in range(firstid, lastid):
-                    rowgroups.append(self.rowgroup(rowgroupid))
+                    rowgroups.append(generator(ParquetRowGroupArrays(self, rowgroupid)))
                     offsets.append(self.rowoffsets[rowgroupid])
                 offsets.append(self.rowoffsets[lastid])
 
-                return oamap.proxy.IndexedPartitionedListProxy(rowgroups, offsets)[start:stop:step]
+                return oamap.proxy.IndexedPartitionedListProxy(generator, rowgroups, offsets)[start:stop:step]
 
         else:
             normalindex = index if index >= 0 else index + self.rowoffsets[-1]

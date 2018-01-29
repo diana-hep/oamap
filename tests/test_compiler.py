@@ -1202,7 +1202,52 @@ class TestCompiler(unittest.TestCase):
             def boxing1(x):
                 return 3.14
 
+            @numba.njit
+            def boxing2(x):
+                return x
+
+            @numba.njit
+            def boxing3(x):
+                return x, x
+
+            for j in range(3):
+                generator = List("int").generator()
+                value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+
+                for i in range(10):
+                    boxing1(value)
+                    value2 = boxing2(value)
+                    value3, value4 = boxing3(value)
+
+                    for v in value2, value3, value4:
+                        self.assertTrue(value is v)
+
+                    # print(sys.getrefcount(value))
+
+            for j in range(3):
+                generator = List("int").generator()
+                value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)]).indexed()
+
+                for i in range(10):
+                    boxing1(value)
+                    value2 = boxing2(value)
+                    value3, value4 = boxing3(value)
+
+                    for v in value2, value3, value4:
+                        self.assertTrue(value is v)
+
+                    # print(sys.getrefcount(value))
+
+    def test_partitionedlist_iterate(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                out = 0.0
+                for xi in x:
+                    out += xi
+                return out
+
             generator = List("int").generator()
             value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
-            for x in value:
-                print(x)
+
+

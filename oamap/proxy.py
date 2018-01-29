@@ -218,8 +218,11 @@ class PartitionedListProxy(ListProxy):
     def partition(self, i):
         return self._generator(self._listofarrays[i])
 
+    def _arrays(self, i):
+        return self._listofarrays[i]
+
     def indexed(self):
-        return IndexedPartitionedListProxy([self._partition(i) for i in range(self.numpartitions)])
+        return IndexedPartitionedListProxy(self._generator, [self.partition(i) for i in range(self.numpartitions)])
 
     def __iter__(self):
         for arrays in self._listofarrays:
@@ -245,7 +248,8 @@ class PartitionedListProxy(ListProxy):
             return self.indexed()[index]
 
 class IndexedPartitionedListProxy(PartitionedListProxy):
-    def __init__(self, partitions, offsets=None):
+    def __init__(self, generator, partitions, offsets=None):
+        self._generator = generator
         self._partitions = partitions
 
         if offsets is None:
@@ -265,6 +269,16 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
             return "[{0}, ..., {1}]".format(", ".join(repr(x) for x in self[:5]), ", ".join(repr(x) for x in self[-5:]))
         else:
             return "[{0}]".format(", ".join(repr(x) for x in self))
+
+    @property
+    def numpartitions(self):
+        return len(self._partitions)
+
+    def partition(self, i):
+        return self._partitions[i]
+
+    def _arrays(self, i):
+        return self._partitions[i]._arrays
 
     def indexed(self):
         return self
@@ -286,12 +300,12 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
             if start == self._offsets[-1]:
                 assert step > 0
                 assert stop == self._offsets[-1]
-                return IndexedPartitionedListProxy([])
+                return IndexedPartitionedListProxy(self._generator, [])
 
             elif start == -1:
                 assert step < 0
                 assert stop == -1
-                return IndexedPartitionedListProxy([])
+                return IndexedPartitionedListProxy(self._generator, [])
 
             else:
                 partitions = []
@@ -341,7 +355,7 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
                             else:
                                 partitions.append(partition[localstart::step])
 
-                return IndexedPartitionedListProxy(partitions)
+                return IndexedPartitionedListProxy(self._generator, partitions)
 
         else:
             normalindex = index if index >= 0 else index + self._offsets[-1]

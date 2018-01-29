@@ -54,14 +54,15 @@ class TestProxy(unittest.TestCase):
                                     self.assertEqual(sliced_range100[start2:stop2:step2], sliced_proxy100[start2:stop2:step2])
 
     def test_IndexedPartitionedListProxy_slicing(self):
-        proxy_0_10 = List(Primitive("i8"))({"object-B": [0], "object-E": [10], "object-L-Di8": list(range(0, 10))})
-        proxy_10_20 = List(Primitive("i8"))({"object-B": [0], "object-E": [10], "object-L-Di8": list(range(10, 20))})
-        proxy_20_25 = List(Primitive("i8"))({"object-B": [0], "object-E": [5], "object-L-Di8": list(range(20, 25))})
-        proxy_25_50 = List(Primitive("i8"))({"object-B": [0], "object-E": [25], "object-L-Di8": list(range(25, 50))})
-        proxy_50_100 = List(Primitive("i8"))({"object-B": [0], "object-E": [50], "object-L-Di8": list(range(50, 100))})
+        generator = List(Primitive("i8")).generator()
+        proxy_0_10 = generator({"object-B": [0], "object-E": [10], "object-L-Di8": list(range(0, 10))})
+        proxy_10_20 = generator({"object-B": [0], "object-E": [10], "object-L-Di8": list(range(10, 20))})
+        proxy_20_25 = generator({"object-B": [0], "object-E": [5], "object-L-Di8": list(range(20, 25))})
+        proxy_25_50 = generator({"object-B": [0], "object-E": [25], "object-L-Di8": list(range(25, 50))})
+        proxy_50_100 = generator({"object-B": [0], "object-E": [50], "object-L-Di8": list(range(50, 100))})
 
         range100 = list(range(100))
-        proxy100 = oamap.proxy.IndexedPartitionedListProxy([proxy_0_10, proxy_10_20, proxy_20_25, proxy_25_50, proxy_50_100])
+        proxy100 = oamap.proxy.IndexedPartitionedListProxy(generator, [proxy_0_10, proxy_10_20, proxy_20_25, proxy_25_50, proxy_50_100])
 
         self.assertEqual(range100, proxy100)
         for start1 in [None, 0, 5, 95, 110, -1, -5, -95, -110]:
