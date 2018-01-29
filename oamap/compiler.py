@@ -1598,6 +1598,7 @@ else:
             pyapi = context.get_python_api(builder)
             numpartitions_obj = pyapi.object_getattr_string(partitionedlist.obj, "numpartitions")
             numpartitions_val = pyapi.long_as_longlong(numpartitions_obj)
+            pyapi.decref(numpartitions_obj)
 
             bbcond1 = builder.append_basic_block("do.cond1")
             bbbody = builder.append_basic_block("do.body")
@@ -1645,8 +1646,12 @@ else:
                 pyapi.incref(baggage.ptrs)
                 pyapi.incref(baggage.lens)
 
-                # pyapi.decref(generator_obj)
-                # pyapi.decref(results_obj)
+                pyapi.decref(generator_obj)
+                pyapi.decref(generator_obj)
+                pyapi.decref(generator_obj)
+                pyapi.decref(cache_obj)
+                pyapi.decref(arrays_obj)
+                pyapi.decref(results_obj)
 
                 builder.store(literal_int64(0), iterproxy.subindex)
                 builder.store(numba.cgutils.increment_index(builder, builder.load(iterproxy.superindex)), iterproxy.superindex)
@@ -1675,7 +1680,7 @@ else:
         listproxy = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
         listproxy.obj = obj
 
-        c.pyapi.incref(obj)
+        c.pyapi.incref(listproxy.obj)
 
         is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
         return numba.extending.NativeValue(listproxy._getvalue(), is_error=is_error)

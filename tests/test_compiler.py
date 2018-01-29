@@ -1245,6 +1245,22 @@ class TestCompiler(unittest.TestCase):
                 out = 0.0
                 for xi in x:
                     out += xi
+                return x, out
+            
+            for j in range(3):
+                generator = List("int").generator()
+                value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+
+                for i in range(10):
+                    value2, out = doit(value)
+
+                    print(sys.getrefcount(generator), value is value2, sys.getrefcount(value), sys.getrefcount(value._arrays), sys.getrefcount(generator._newcache), sys.getrefcount(generator._entercompiled), [sys.getrefcount(x) for x in value._listofarrays], sys.getrefcount(generator.DUMMY))
+
+            @numba.njit
+            def doit(x):
+                out = 0.0
+                for xi in x:
+                    out += xi
                 return out
 
             generator = List("int").generator()
