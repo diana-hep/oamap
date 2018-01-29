@@ -1249,5 +1249,20 @@ class TestCompiler(unittest.TestCase):
 
             generator = List("int").generator()
             value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+            self.assertEqual(doit(value), float(sum([1, 2, 3, 999, 998, 997, 1, 2, 3, 4, 5])))
 
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+            self.assertEqual(doit(value), float(sum([1, 2, 3, 1, 2, 3, 4, 5])))
 
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([], generator)])
+            self.assertEqual(doit(value), float(sum([999, 998, 997])))
+
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([], generator), oamap.fill.fromdata([], generator), oamap.fill.fromdata([], generator)])
+            self.assertEqual(doit(value), float(sum([])))
+
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [])
+            self.assertEqual(doit(value), float(sum([])))
