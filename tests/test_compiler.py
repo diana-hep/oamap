@@ -1268,49 +1268,33 @@ class TestCompiler(unittest.TestCase):
                     part11, part12, value10, value11 = partition6(value, 0)
                     part13, part14, value12, value13 = partition6a(value, 0, 1)
 
-                    # print(sys.getrefcount(value), sys.getrefcount(generator), sys.getrefcount(value._listofarrays), sys.getrefcount(value._cache), [sys.getrefcount(x) for x in value._listofarrays], sys.getrefcount(generator._newcache), sys.getrefcount(generator._clearcache), sys.getrefcount(generator._entercompiled))
+                    # print(sys.getrefcount(value), sys.getrefcount(generator), sys.getrefcount(value._listofarrays), sys.getrefcount(value._cache), [sys.getrefcount(x) for x in value._listofarrays], sys.getrefcount(generator._newcache), sys.getrefcount(generator._clearcache), sys.getrefcount(generator._entercompiled), sys.getrefcount(generator._new))
 
-    # def test_partitionedlist_iterate(self):
-    #     if numba is not None:
-    #         @numba.njit
-    #         def doit(x):
-    #             out = 0.0
-    #             for xi in x:
-    #                 out += xi
-    #             return x, out
-            
-    #         for j in range(3):
-    #             generator = List("int").generator()
-    #             value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+    def test_partitionedlist_iterate(self):
+        if numba is not None:
+            @numba.njit
+            def doit(x):
+                out = 0.0
+                for xi in x:
+                    out += xi
+                return out
 
-    #             for i in range(10):
-    #                 value2, out = doit(value)
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+            self.assertEqual(doit(value), float(sum([1, 2, 3, 999, 998, 997, 1, 2, 3, 4, 5])))
 
-    #                 print(sys.getrefcount(generator), value is value2, sys.getrefcount(value), sys.getrefcount(value._arrays), sys.getrefcount(generator._newcache), sys.getrefcount(generator._entercompiled), [sys.getrefcount(x) for x in value._listofarrays], sys.getrefcount(generator.DUMMY))
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
+            self.assertEqual(doit(value), float(sum([1, 2, 3, 1, 2, 3, 4, 5])))
 
-    #         @numba.njit
-    #         def doit(x):
-    #             out = 0.0
-    #             for xi in x:
-    #                 out += xi
-    #             return out
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([], generator)])
+            self.assertEqual(doit(value), float(sum([999, 998, 997])))
 
-    #         generator = List("int").generator()
-    #         value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
-    #         self.assertEqual(doit(value), float(sum([1, 2, 3, 999, 998, 997, 1, 2, 3, 4, 5])))
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([], generator), oamap.fill.fromdata([], generator), oamap.fill.fromdata([], generator)])
+            self.assertEqual(doit(value), float(sum([])))
 
-    #         generator = List("int").generator()
-    #         value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)])
-    #         self.assertEqual(doit(value), float(sum([1, 2, 3, 1, 2, 3, 4, 5])))
-
-    #         generator = List("int").generator()
-    #         value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([], generator)])
-    #         self.assertEqual(doit(value), float(sum([999, 998, 997])))
-
-    #         generator = List("int").generator()
-    #         value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([], generator), oamap.fill.fromdata([], generator), oamap.fill.fromdata([], generator)])
-    #         self.assertEqual(doit(value), float(sum([])))
-
-    #         generator = List("int").generator()
-    #         value = oamap.proxy.PartitionedListProxy(generator, [])
-    #         self.assertEqual(doit(value), float(sum([])))
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [])
+            self.assertEqual(doit(value), float(sum([])))
