@@ -1532,7 +1532,8 @@ else:
     @numba.extending.register_model(IndexedPartitionedListType)
     class PartitionedListModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("listofarrays", numba.types.pyobject),
+            members = [("numpartitions", numba.types.int64),
+                       ("listofarrays", numba.types.pyobject),
                        ("cache", numba.types.pyobject),
                        ("current", numba.types.CPointer(numba.types.int64)),
                        ("listproxy", numba.types.CPointer(ListProxyNumbaType(fe_type.generator)))]
@@ -1555,7 +1556,11 @@ else:
 
         partitionedlist = numba.cgutils.create_struct_proxy(partitionedlisttype)(context, builder, value=partitionedlistval)
 
-        # FIXME: check for index in range
+        raise_exception(context,
+                        builder,
+                        builder.or_(builder.icmp_signed("<", indexval, literal_int64(0)),
+                                    builder.icmp_signed(">=", indexval, partitionedlist.numpartitions)),
+                        TypeError("partition index out of range for PartitionedListProxy"))
 
         with builder.if_then(builder.icmp_signed("!=", builder.load(partitionedlist.current), indexval), likely=False):
             pyapi = context.get_python_api(builder)
@@ -1567,6 +1572,10 @@ else:
 
                 clearcache_fcn = pyapi.object_getattr_string(generator_obj, "_clearcache")
                 results2_obj = pyapi.call_function_objargs(clearcache_fcn, (partitionedlist.cache,))
+                raise_exception(context,
+                                builder,
+                                numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
+                                RuntimeError("call to generator._clearcache failed"))
 
                 pyapi.decref(baggage.ptrs)
                 pyapi.decref(baggage.lens)
@@ -1576,6 +1585,10 @@ else:
 
             arrays_obj = pyapi.list_getitem(partitionedlist.listofarrays, indexval)
             results_obj = pyapi.call_function_objargs(entercompiled_fcn, (arrays_obj, partitionedlist.cache))
+            raise_exception(context,
+                            builder,
+                            numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
+                            RuntimeError("call to generator._entercompiled (get next batch of arrays) failed"))
 
             baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
             baggage.arrays = arrays_obj
@@ -1615,6 +1628,7 @@ else:
         listproxy_ptr = numba.cgutils.alloca_once_value(c.builder, generate_empty(c.context, c.builder, typ.generator, baggage._getvalue()))
 
         partitionedlist = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
+        partitionedlist.numpartitions = c.pyapi.list_size(listofarrays_obj)
         partitionedlist.listofarrays = listofarrays_obj
         partitionedlist.cache = cache_obj
         partitionedlist.current = current_ptr
@@ -1640,12 +1654,13 @@ else:
 
         return out
 
-    # @numba.extending.register_model(PartitionedListType)
-    # @numba.extending.register_model(IndexedPartitionedListType)
-    # class PartitionedListModel(numba.datamodel.models.StructModel):
-    #     def __init__(self, dmm, fe_type):
-    #         members = [("obj", numba.types.pyobject)]
-    #         super(PartitionedListModel, self).__init__(dmm, fe_type, members)
+    ################################################################ PartitionedListProxyIterator
+
+    class PartitionedList
+
+
+
+
 
     # class PartitionedListIteratorType(numba.types.common.SimpleIteratorType):
     #     def __init__(self, partitionedlisttype):
