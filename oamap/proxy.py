@@ -220,11 +220,14 @@ class PartitionedListProxy(ListProxy):
     def partition(self, i):
         if self._current != i:
             self._current = i
-            self._cache = generator._newcache()
+            self._cache = self._generator._newcache()
         return self._generator._generate(self._listofarrays[i], 0, self._cache)
 
     def indexed(self):
-        return IndexedPartitionedListProxy(self._generator, [self.partition(i) for i in range(self.numpartitions)])
+        return IndexedPartitionedListProxy(self._generator, self._listofarrays)
+
+    def nonindexed(self):
+        return self
 
     def __iter__(self):
         for i in range(self.numpartitions):
@@ -233,31 +236,29 @@ class PartitionedListProxy(ListProxy):
                 yield x
 
     def __len__(self):
-        # could be slow because it has to load all of those partitions
-        return len(self.indexed())
+        raise TypeError("a PartitionedListProxy can only be iterated over (use x.partition(i) or x.indexed() to get a random-access ListProxy)")
 
     def __getitem__(self, index):
-        # could be slow because it has to load all of those partitions
-        return self.indexed()[index]
+        raise TypeError("a PartitionedListProxy can only be iterated over (use x.partition(i) or x.indexed() to get a random-access ListProxy)")
 
 class IndexedPartitionedListProxy(PartitionedListProxy):
-    def __init__(self, generator, partitions, offsets=None):
-        self._generator = generator
-        self._partitions = partitions
-        for partition in self._partitions:
-            assert partition._generator is self._generator
+    def __init__(self, generator, listofarrays, offsets=None):
+        super(IndexedPartitionedListProxy, self).__init__(generator, listofarrays)
 
         if offsets is None:
-            self._offsets = []
-            partitionindex = 0
-            for partition in partitions:
-                self._offsets.append(partitionindex)
-                partitionindex += len(partition)
-            self._offsets.append(partitionindex)
-        else:
-            self._offsets = offsets
+            globalindex = 0
+            offsets = []
+            for arrays in self._listofarrays:
+                offsets.append(globalindex)
+                self._generator._getarrays(arrays, self._cache, self._generator._toget(arrays, self._cache))
+                starts = self._cache[self._generator.startsidx]
+                stops = self._cache[self._generator.stopsidx]
+                assert len(starts) == 0 and len(stops) == 0
+                globalindex += stops[0] - starts[0]
+            offsets.append(globalindex)
+        self._offsets = offsets
 
-        assert len(self._partitions) + 1 == len(self._offsets)
+        assert len(self._listofarrays) + 1 == len(self._offsets)
 
     def __repr__(self):
         if len(self) > 10:
@@ -265,100 +266,29 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
         else:
             return "[{0}]".format(", ".join(repr(x) for x in self))
 
-    @property
-    def numpartitions(self):
-        return len(self._partitions)
-
-    def partition(self, i):
-        return self._partitions[i]
-
     def indexed(self):
         return self
 
-    def __iter__(self):
-        for partition in self._partitions:
-            # copy the partition's cache so that arrays loaded during iteration don't persist (but any already-loaded arrays remain)
-            copy = ListProxy(partition._generator, partition._arrays, list(partition._cache), partition._whence, partition._stride, partition._length)
-            for x in copy:
-                yield x
+    def nonindexed(self):
+        return PartitionedListProxy(self._generator, self._listofarrays)
 
     def __len__(self):
         return self._offsets[-1]
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            start, stop, step = oamap.util.slice2sss(index, self._offsets[-1])
-
-            if start == self._offsets[-1]:
-                assert step > 0
-                assert stop == self._offsets[-1]
-                return IndexedPartitionedListProxy(self._generator, [])
-
-            elif start == -1:
-                assert step < 0
-                assert stop == -1
-                return IndexedPartitionedListProxy(self._generator, [])
-
-            else:
-                partitions = []
-                if step > 0:
-                    firstid = bisect.bisect_right(self._offsets, start) - 1
-                    lastid = bisect.bisect_right(self._offsets, stop) - 1
-                    includelast = 1 if stop > self._offsets[lastid] else 0
-                    skip = 0
-                    for partitionid in range(firstid, lastid + includelast):
-                        partition = self._partitions[partitionid]
-
-                        if partitionid == firstid:
-                            localstart = start - self._offsets[partitionid]
-                        else:
-                            localstart = skip
-
-                        if partitionid == lastid:
-                            localstop = stop - self._offsets[partitionid]
-                        else:
-                            localstop = len(partition)
-                            
-                        skip = (step - (len(partition) - localstart)) % step
-                        partitions.append(partition[localstart:localstop:step])
-
-                else:
-                    posstep = -step   # avoid negative modulo
-                    firstid = bisect.bisect_right(self._offsets, start) - 1
-                    lastid = bisect.bisect_right(self._offsets, stop) - 1
-                    skip = 1
-                    for partitionid in range(firstid, max(-1, lastid - 1), -1):
-                        partition = self._partitions[partitionid]
-
-                        if partitionid == firstid:
-                            localstart = start - self._offsets[partitionid]
-                        else:
-                            localstart = len(partition) - skip
-
-                        if partitionid == lastid:
-                            localstop = stop - self._offsets[partitionid]
-                        else:
-                            localstop = -1
-
-                        skip = (((posstep - 1) - localstart) % posstep) + 1
-                        if localstart >= 0:
-                            if localstop >= 0:
-                                partitions.append(partition[localstart:localstop:step])
-                            else:
-                                partitions.append(partition[localstart::step])
-
-                return IndexedPartitionedListProxy(self._generator, partitions)
+            raise TypeError("an IndexedPartitionedListProxy can only be indexed by an integer, not a slice")
 
         else:
-            normalindex = index if index >= 0 else index + self._offsets[-1]
-            if not 0 <= normalindex < self._offsets[-1]:
-                raise IndexError("index {0} is out of bounds for size {1}".format(index, self._offsets[-1]))
+            normalindex = index if index >= 0 else index + len(self)
+            if not 0 <= normalindex < len(self):
+                raise IndexError("index {0} is out of bounds for size {1}".format(index, len(self)))
 
             partitionid = bisect.bisect_right(self._offsets, normalindex) - 1
-            assert 0 <= partitionid < len(self._partitions)
+            assert 0 <= partitionid < self.numpartitions
 
             localindex = normalindex - self._offsets[partitionid]
-            return self._partitions[partitionid][localindex]
+            return self.partition(partitionid)[localindex]
 
 ################################################################ Records
 

@@ -1504,32 +1504,21 @@ else:
 
         return out
 
-    ################################################################ PartitionedListProxy and IndexedPartitionedListProxy
+    ################################################################ PartitionedListProxy
 
-    class ManagedDataFlow(numba.types.Type): pass
+    @numba.extending.typeof_impl.register(oamap.proxy.PartitionedListProxy)
+    def typeof_proxy(val, c):
+        return PartitionedListType(val._generator)
 
-    class PartitionedListType(ManagedDataFlow):
+    class PartitionedListType(numba.types.Type):
         def __init__(self, generator):
             self.generator = generator
-            ManagedDataFlow.__init__(self, name="OAMap-PartitionedListProxy-" + self.generator.id)
+            super(PartitionedListType, self).__init__(name="OAMap-PartitionedListProxy-" + self.generator.id)
 
         def __repr__(self):
             return "\n    Partitioned " + self.generator.schema.__repr__(indent="    ") + "\n"
 
-    class IndexedPartitionedListType(ManagedDataFlow):
-        def __init__(self, generator):
-            self.generator = generator
-            ManagedDataFlow.__init__(self, name="OAMap-IndexedPartitionedListProxy-" + self.generator.id)
-
-    @numba.extending.typeof_impl.register(oamap.proxy.PartitionedListProxy)
-    def typeof_proxy(val, c):
-        if isinstance(val, oamap.proxy.IndexedPartitionedListProxy):
-            return IndexedPartitionedListType(val._generator)
-        else:
-            return PartitionedListType(val._generator)
-
     @numba.extending.register_model(PartitionedListType)
-    @numba.extending.register_model(IndexedPartitionedListType)
     class PartitionedListModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
             members = [("numpartitions", numba.types.int64),

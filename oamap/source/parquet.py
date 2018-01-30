@@ -558,58 +558,21 @@ class ParquetFile(object):
 
         return dictionary, deflevel, replevel, data, size
 
-    def rowgroup(self, rowgroupid):
+    def __call__(self, rowgroupid=None):
         generator = self.oamapschema.generator()
-        return generator(ParquetRowGroupArrays(self, rowgroupid))
+        if rowgroupid is None:
+            listofarrays = []
+            for rowgroupid in range(len(self.footer.row_groups)):
+                listofarrays.append(ParquetRowGroupArrays(self, rowgroupid))
+            return oamap.proxy.IndexedPartitionedListProxy(generator, listofarrays, self.rowoffsets)
+        else:
+            return generator(ParquetRowGroupArrays(self, rowgroupid))
 
     def __iter__(self):
         generator = self.oamapschema.generator()
         for rowgroupid in range(len(self.footer.row_groups)):
             for x in generator(ParquetRowGroupArrays(self, rowgroupid)):
                 yield x
-
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            generator = self.oamapschema.generator()
-            start, stop, step = oamap.util.slice2sss(index, self.rowoffsets[-1])
-
-            if start == self.rowoffsets[-1]:
-                assert step > 0
-                assert stop == self.rowoffsets[-1]
-                return oamap.proxy.IndexedPartitionedListProxy(generator, [])
-
-            elif start == -1:
-                assert step < 0
-                assert stop == -1
-                return oamap.proxy.IndexedPartitionedListProxy(generator, [])
-
-            else:
-                if step > 0:
-                    firstid = bisect.bisect_right(self.rowoffsets, start) - 1
-                    lastid = bisect.bisect_right(self.rowoffsets, stop) - 1
-                    if stop > self.rowoffsets[lastid]:
-                        lastid += 1
-                else:
-                    firstid = max(0, bisect.bisect_right(self.rowoffsets, stop) - 1)
-                    lastid = bisect.bisect_left(self.rowoffsets, start)
-
-                rowgroups = []
-                offsets = []
-                for rowgroupid in range(firstid, lastid):
-                    rowgroups.append(generator(ParquetRowGroupArrays(self, rowgroupid)))
-                    offsets.append(self.rowoffsets[rowgroupid])
-                offsets.append(self.rowoffsets[lastid])
-
-                return oamap.proxy.IndexedPartitionedListProxy(generator, rowgroups, offsets)[start:stop:step]
-
-        else:
-            normalindex = index if index >= 0 else index + self.rowoffsets[-1]
-            if not 0 <= normalindex < self.rowoffsets[-1]:
-                raise IndexError("index {0} is out of bounds for size {1}".format(index, self.rowoffsets[-1]))
-
-            rowgroupid = bisect.bisect_right(self.rowoffsets, normalindex) - 1
-            localindex = normalindex - self.rowoffsets[rowgroupid]
-            return self.rowgroup(rowgroupid)[localindex]
 
     def arrays(self, parquetschema, rowgroupid, parallel=False):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)

@@ -156,16 +156,12 @@ class DbfilenameShelf(MutableMapping):
             return generator(self.ArrayDict(self, lambda key: key))
         else:
             partitionlookup = dataset.partitioning.partitionlookup(self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)], delimiter)
-            def makeproxy(i, size):
-                arrays = self.ArrayDict(self, lambda key: partitionlookup.id2name(key, i))
-                cache = generator._newcache()
-                return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
-
-            listproxies = []
+            def makearrays(i):
+                return self.ArrayDict(self, lambda key: partitionlookup.id2name(key, i))
+            listofarrays = []
             for i in range(partitionlookup.numpartitions):
-                listproxies.append(makeproxy(i, partitionlookup.id2size(i)))
-
-            return oamap.proxy.IndexedPartitionedListProxy(generator, listproxies, offsets=partitionlookup.offsets)
+                listofarrays.append(makearrays(i))
+            return oamap.proxy.IndexedPartitionedListProxy(generator, listofarrays, offsets=partitionlookup.offsets)
 
     def fromdata(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
         if schema is None:

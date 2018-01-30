@@ -158,58 +158,21 @@ else:
 
             return oamap.schema.List(recurse(self.tree), starts="", stops="")
 
-        def partition(self, partitionid):
-            generator = self.schema()
-            return generator(self._arrays(partitionid))
+        def __call__(self, partitionid=None):
+            generator = self.schema.generator()
+            if partitionid is None:
+                listofarrays = []
+                for partitionid in range(len(self._offsets) - 1):
+                    listofarrays.append(self._arrays(partitionid))
+                return oamap.proxy.IndexedPartitionedListProxy(generator, listofarrays, self._offsets)
+            else:
+                return generator(self._arrays(partitionid))
 
         def __iter__(self):
             generator = self.schema()
             for partitionid in range(len(self._offsets) - 1):
                 for x in generator(self._arrays(partitionid)):
                     yield x
-
-        def __getitem__(self, index):
-            if isinstance(index, slice):
-                generator = self.schema()
-                start, stop, step = oamap.util.slice2sss(index, self._offsets[-1])
-
-                if start == self._offsets[-1]:
-                    assert step > 0
-                    assert stop == self._offsets[-1]
-                    return oamap.proxy.IndexedPartitionedListProxy(generator, [])
-
-                elif start == -1:
-                    assert step < 0
-                    assert stop == -1
-                    return oamap.proxy.IndexedPartitionedListProxy(generator, [])
-
-                else:
-                    if step > 0:
-                        firstid = bisect.bisect_right(self._offsets, start) - 1
-                        lastid = bisect.bisect_right(self._offsets, stop) - 1
-                        if stop > self._offsets[lastid]:
-                            lastid += 1
-                    else:
-                        firstid = max(0, bisect.bisect_right(self._offsets, stop) - 1)
-                        lastid = bisect.bisect_left(self._offsets, start)
-
-                    partitions = []
-                    offsets = []
-                    for partitionid in range(firstid, lastid):
-                        partitions.append(generator(self._arrays(partitionid)))
-                        offsets.append(self._offsets[partitionid])
-                    offsets.append(self._offsets[lastid])
-
-                    return oamap.proxy.IndexedPartitionedListProxy(generator, partitions, offsets)[start:stop:step]
-
-            else:
-                normalindex = index if index >= 0 else index + self._offsets[-1]
-                if not 0 <= normalindex < self._offsets[-1]:
-                    raise IndexError("index {0} is out of bounds for size {1}".format(index, self._offsets[-1]))
-
-                partitionid = bisect.bisect_right(self._offsets, normalindex) - 1
-                localindex = normalindex - self._offsets[partitionid]
-                return self.partition(partitionid)[localindex]
 
         class _ArrayDict(object):
             def __init__(self, parent, entrystart, entrystop):

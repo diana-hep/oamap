@@ -129,16 +129,14 @@ else:
 
             else:
                 partitionlookup = dataset.partitioning.partitionlookup(super(OAMapGroup, self).__getitem__(dataset.partitioning.key), delimiter)
-                def makeproxy(i, size):
-                    arrays = self._ArrayDict(super(OAMapGroup, self), lambda key: partitionlookup.id2name(key, i))
-                    cache = generator._newcache()
-                    return oamap.proxy.ListProxy(generator, arrays, cache, 0, 1, size)
+                def makearrays(i):
+                    return self._ArrayDict(super(OAMapGroup, self), lambda key: partitionlookup.id2name(key, i))
 
-                listproxies = []
+                listofarrays = []
                 for i in range(partitionlookup.numpartitions):
-                    listproxies.append(makeproxy(i, partitionlookup.id2size(i)))
+                    listofarrays.append(makearrays(i))
 
-                return oamap.proxy.IndexedPartitionedListProxy(generator, listproxies, offsets=partitionlookup.offsets)
+                return oamap.proxy.IndexedPartitionedListProxy(generator, listofarrays, offsets=partitionlookup.offsets)
 
         def fromdata(self, key, value, schema=None, inferencelimit=None, partitionlimit=None, pointer_fromequal=False):
             if schema is None:
