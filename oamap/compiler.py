@@ -617,7 +617,6 @@ else:
             stopsidx  = literal_int64(generator.stopsidx)
             start = cast_int64(builder, arrayitem(context, builder, startsidx, ptrs, lens, at, generator.posdtype))
             stop  = cast_int64(builder, arrayitem(context, builder, stopsidx,  ptrs, lens, at, generator.posdtype))
-
             listproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
             listproxy.baggage = baggage
             listproxy.ptrs = ptrs
@@ -632,13 +631,11 @@ else:
             offsetsidx = literal_int64(generator.offsetsidx)
             tag    = cast_int64(builder, arrayitem(context, builder, tagsidx,    ptrs, lens, at, generator.tagdtype))
             offset = cast_int64(builder, arrayitem(context, builder, offsetsidx, ptrs, lens, at, generator.offsetdtype))
-
             raise_exception(context,
                             builder,
                             builder.or_(builder.icmp_signed("<", tag, literal_int64(0)),
                                         builder.icmp_signed(">=", tag, literal_int64(len(generator.possibilities)))),
                             RuntimeError("tag out of bounds for union"))
-
             unionproxy = numba.cgutils.create_struct_proxy(typ)(context, builder)
             unionproxy.baggage = baggage
             unionproxy.ptrs = ptrs
@@ -1524,7 +1521,7 @@ else:
     class IndexedPartitionedListType(PartitionedListType):
         def __init__(self, generator):
             self.generator = generator
-            super(IndexedPartitionedListType, self).__init__(name="OAMap-IndexedPartitionedListProxy-" + self.generator.id)
+            super(PartitionedListType, self).__init__(name="OAMap-IndexedPartitionedListProxy-" + self.generator.id)
 
         def __repr__(self):
             return "\n    Indexed Partitioned " + self.generator.schema.__repr__(indent="    ") + "\n"
@@ -1543,8 +1540,8 @@ else:
     @numba.extending.register_model(IndexedPartitionedListType)
     class IndexedPartitionedListModel(numba.datamodel.models.StructModel):
         def __init__(self, dmm, fe_type):
-            members = [("numpartitions", numba.types.int64),
-                       ("offsets", numba.types.voidptr),
+            members = [("offsets", numba.types.voidptr),
+                       ("numpartitions", numba.types.int64),
                        ("generator", numba.types.pyobject),
                        ("listofarrays", numba.types.pyobject),
                        ("cache", numba.types.pyobject),
@@ -1583,17 +1580,17 @@ else:
                 listproxy = numba.cgutils.create_struct_proxy(ListProxyNumbaType(partitionedlisttype.generator))(context, builder, value=builder.load(partitionedlist.listproxy))
                 baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=listproxy.baggage)
 
-                clearcache_fcn = pyapi.object_getattr_string(generator_obj, "_clearcache")
-                results2_obj = pyapi.call_function_objargs(clearcache_fcn, (partitionedlist.cache,))
-                raise_exception(context,
-                                builder,
-                                numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
-                                RuntimeError("call to generator._clearcache failed"))
-
                 pyapi.decref(baggage.ptrs)
                 pyapi.decref(baggage.lens)
-                pyapi.decref(results2_obj)
-                pyapi.decref(generator_obj)
+
+            clearcache_fcn = pyapi.object_getattr_string(generator_obj, "_clearcache")
+            results2_obj = pyapi.call_function_objargs(clearcache_fcn, (partitionedlist.cache,))
+            raise_exception(context,
+                            builder,
+                            numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
+                            RuntimeError("call to generator._clearcache failed"))
+            pyapi.decref(results2_obj)
+            pyapi.decref(generator_obj)
 
             entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
 
@@ -1665,10 +1662,16 @@ else:
             c.builder.ret(llvmlite.llvmpy.core.Constant.null(c.pyapi.pyobj))
         c.pyapi.decref(results_obj)
 
-        partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.PartitionedListProxy))
-
         partitionedlist = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
-        out = c.pyapi.call_function_objargs(partitionedlistproxy_cls, (generator_obj, partitionedlist.listofarrays))
+
+        if isinstance(typ, IndexedPartitionedListType):
+            partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.IndexedPartitionedListProxy))
+            args = (generator_obj, partitionedlist.listofarrays)
+        else:
+            partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.PartitionedListProxy))
+            args = (generator_obj, partitionedlist.listofarrays)
+
+        out = c.pyapi.call_function_objargs(partitionedlistproxy_cls, args)
 
         c.pyapi.decref(partitionedlistproxy_cls)
 

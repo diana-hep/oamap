@@ -1298,3 +1298,33 @@ class TestCompiler(unittest.TestCase):
             generator = List("int").generator()
             value = oamap.proxy.PartitionedListProxy(generator, [])
             self.assertEqual(doit(value), float(sum([])))
+
+    def test_indexedpartitionedlist(self):
+        if numba is not None:
+            @numba.njit
+            def boxing1(x):
+                return 3.14
+
+            @numba.njit
+            def boxing2(x):
+                return x
+
+            @numba.njit
+            def boxing3(x):
+                return x, x
+
+            @numba.njit
+            def doit(x):
+                out = 0.0
+                for xi in x:
+                    out += xi
+                return out
+
+            generator = List("int").generator()
+            value = oamap.proxy.PartitionedListProxy(generator, [oamap.fill.fromdata([1, 2, 3], generator), oamap.fill.fromdata([999, 998, 997], generator), oamap.fill.fromdata([1, 2, 3, 4, 5], generator)]).indexed()
+
+            boxing1(value)
+            value2 = boxing2(value)
+            value3, value4 = boxing3(value)
+
+            self.assertEqual(doit(value), float(sum([1, 2, 3, 999, 998, 997, 1, 2, 3, 4, 5])))

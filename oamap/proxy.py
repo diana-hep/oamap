@@ -253,16 +253,16 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
                 self._generator._getarrays(arrays, self._cache, self._generator._toget(arrays, self._cache))
                 starts = self._cache[self._generator.startsidx]
                 stops = self._cache[self._generator.stopsidx]
-                assert len(starts) == 0 and len(stops) == 0
+                assert len(starts) == 1 and len(stops) == 1
                 globalindex += stops[0] - starts[0]
             offsets.append(globalindex)
-        self._offsets = offsets
+        self._offsets = numpy.array(offsets, dtype=numpy.int64)
 
         assert len(self._listofarrays) + 1 == len(self._offsets)
 
     def __repr__(self):
         if len(self) > 10:
-            return "[{0}, ..., {1}]".format(", ".join(repr(x) for x in self[:5]), ", ".join(repr(x) for x in self[-5:]))
+            return "[{0}, ..., {1}]".format(", ".join(repr(self[i]) for i in range(5)), ", ".join(repr(self[i]) for i in range(-5, 0)))
         else:
             return "[{0}]".format(", ".join(repr(x) for x in self))
 
