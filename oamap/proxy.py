@@ -244,6 +244,8 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
     def __init__(self, generator, partitions, offsets=None):
         self._generator = generator
         self._partitions = partitions
+        for partition in self._partitions:
+            assert partition._generator is self._generator
 
         if offsets is None:
             self._offsets = []
@@ -275,7 +277,7 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
 
     def __iter__(self):
         for partition in self._partitions:
-            # copy the partition's cache so that arrays loaded during iteration don't persist (but any already-loaded arrays do)
+            # copy the partition's cache so that arrays loaded during iteration don't persist (but any already-loaded arrays remain)
             copy = ListProxy(partition._generator, partition._arrays, list(partition._cache), partition._whence, partition._stride, partition._length)
             for x in copy:
                 yield x
