@@ -1646,6 +1646,15 @@ else:
         partitionedlist.current = current_ptr
         partitionedlist.listproxy = listproxy_ptr
 
+        if isinstance(typ, IndexedPartitionedListType):
+            offsets_array_obj = c.pyapi.object_getattr_string(obj, "_offsets")
+            offsets_ctypes_obj = c.pyapi.object_getattr_string(offsets_array_obj, "ctypes")
+            offsets_data_obj = c.pyapi.object_getattr_string(offsets_ctypes_obj, "data")
+            partitionedlist.offsets = c.pyapi.long_as_voidptr(offsets_data_obj)
+            c.pyapi.decref(offsets_array_obj)
+            c.pyapi.decref(offsets_ctypes_obj)
+            c.pyapi.decref(offsets_data_obj)
+
         c.pyapi.decref(generator_obj)
         c.pyapi.decref(listofarrays_obj)
         c.pyapi.decref(cache_obj)
@@ -1654,7 +1663,7 @@ else:
         return numba.extending.NativeValue(partitionedlist._getvalue(), is_error=is_error)
 
     @numba.extending.box(PartitionedListType)
-    def unbox_partitionedlist(typ, val, c):
+    def box_partitionedlist(typ, val, c):
         generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
         new_fcn = c.pyapi.object_getattr_string(generator_obj, "_new")
         results_obj = c.pyapi.call_function_objargs(new_fcn, ())
@@ -1666,7 +1675,17 @@ else:
 
         if isinstance(typ, IndexedPartitionedListType):
             partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.IndexedPartitionedListProxy))
-            args = (generator_obj, partitionedlist.listofarrays)
+            lenoffsets = c.builder.add(partitionedlist.numpartitions, literal_int64(1))
+            offsets_obj = c.pyapi.list_new(cast_intp(c.builder, lenoffsets))
+            with numba.cgutils.for_range(c.builder, lenoffsets) as loop:
+                ptr = c.builder.inttoptr(
+                    c.builder.add(c.builder.ptrtoint(partitionedlist.offsets, llvmlite.llvmpy.core.Type.int(64)), c.builder.mul(loop.index, literal_int64(8))),
+                    llvmlite.llvmpy.core.Type.pointer(c.context.get_value_type(numba.types.int64)))
+                val = numba.targets.arrayobj.load_item(c.context, c.builder, numba.types.int64[:], ptr)
+                val_obj = c.pyapi.long_from_longlong(val)
+                c.pyapi.list_setitem(offsets_obj, loop.index, val_obj)
+
+            args = (generator_obj, partitionedlist.listofarrays, offsets_obj)
         else:
             partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.PartitionedListProxy))
             args = (generator_obj, partitionedlist.listofarrays)
