@@ -162,15 +162,12 @@ class Generator(object):
 
             cache[idx] = array
 
-    DUMMY = [None, None, None]
-
     def _newcache(self):
-        # return [None] * self._cachelen
-        self.DUMMY[0] = None
-        self.DUMMY[1] = None
-        self.DUMMY[2] = None
+        return [None] * self._cachelen
 
-        return self.DUMMY
+    def _clearcache(self, cache):
+        for i in range(len(cache)):
+            cache[i] = None
 
     def _entercompiled(self, arrays, cache, bottomup=True):
         roles = self._togetall(arrays, cache, bottomup, set())

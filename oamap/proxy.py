@@ -202,6 +202,8 @@ class PartitionedListProxy(ListProxy):
         assert isinstance(generator, oamap.generator.ListGenerator)
         self._generator = generator
         self._listofarrays = listofarrays
+        self._current = None
+        self._cache = generator._newcache()
 
     def __repr__(self):
         out = []
@@ -216,17 +218,17 @@ class PartitionedListProxy(ListProxy):
         return len(self._listofarrays)
 
     def partition(self, i):
-        return self._generator(self._listofarrays[i])
-
-    def _arrays(self, i):
-        return self._listofarrays[i]
+        if self._current != i:
+            self._current = i
+            self._cache = generator._newcache()
+        return self._generator._generate(self._listofarrays[i], 0, self._cache)
 
     def indexed(self):
         return IndexedPartitionedListProxy(self._generator, [self.partition(i) for i in range(self.numpartitions)])
 
     def __iter__(self):
-        for arrays in self._listofarrays:
-            partition = self._generator(arrays)
+        for i in range(self.numpartitions):
+            partition = self.partition(i)
             for x in partition:
                 yield x
 
@@ -236,16 +238,7 @@ class PartitionedListProxy(ListProxy):
 
     def __getitem__(self, index):
         # could be slow because it has to load all of those partitions
-        if isinstance(index, numbers.Integral) and index >= 0:
-            start = stop = 0
-            for arrays in self._listofarrays:
-                partition = self._generator(arrays)
-                stop += len(partition)
-                if start <= index < stop:
-                    return partition[index - start]
-            raise IndexError("index {0} out of bounds for list of length {1}".format(index, stop))
-        else:
-            return self.indexed()[index]
+        return self.indexed()[index]
 
 class IndexedPartitionedListProxy(PartitionedListProxy):
     def __init__(self, generator, partitions, offsets=None):
@@ -276,9 +269,6 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
 
     def partition(self, i):
         return self._partitions[i]
-
-    def _arrays(self, i):
-        return self._partitions[i]._arrays
 
     def indexed(self):
         return self
