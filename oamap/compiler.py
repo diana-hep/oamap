@@ -1504,11 +1504,14 @@ else:
 
         return out
 
-    ################################################################ PartitionedListProxy
+    ################################################################ PartitionedListProxy and IndexedPartitionedListProxy
 
     @numba.extending.typeof_impl.register(oamap.proxy.PartitionedListProxy)
     def typeof_proxy(val, c):
-        return PartitionedListType(val._generator)
+        if isinstance(val, oamap.proxy.IndexedPartitionedListProxy):
+            return IndexedPartitionedListType(val._generator)
+        else:
+            return PartitionedListType(val._generator)
 
     class PartitionedListType(numba.types.Type):
         def __init__(self, generator):
@@ -1517,6 +1520,14 @@ else:
 
         def __repr__(self):
             return "\n    Partitioned " + self.generator.schema.__repr__(indent="    ") + "\n"
+
+    class IndexedPartitionedListType(PartitionedListType):
+        def __init__(self, generator):
+            self.generator = generator
+            super(IndexedPartitionedListType, self).__init__(name="OAMap-IndexedPartitionedListProxy-" + self.generator.id)
+
+        def __repr__(self):
+            return "\n    Indexed Partitioned " + self.generator.schema.__repr__(indent="    ") + "\n"
 
     @numba.extending.register_model(PartitionedListType)
     class PartitionedListModel(numba.datamodel.models.StructModel):
@@ -1528,6 +1539,18 @@ else:
                        ("current", numba.types.CPointer(numba.types.int64)),
                        ("listproxy", numba.types.CPointer(ListProxyNumbaType(fe_type.generator)))]
             super(PartitionedListModel, self).__init__(dmm, fe_type, members)
+
+    @numba.extending.register_model(IndexedPartitionedListType)
+    class IndexedPartitionedListModel(numba.datamodel.models.StructModel):
+        def __init__(self, dmm, fe_type):
+            members = [("numpartitions", numba.types.int64),
+                       ("offsets", numba.types.voidptr),
+                       ("generator", numba.types.pyobject),
+                       ("listofarrays", numba.types.pyobject),
+                       ("cache", numba.types.pyobject),
+                       ("current", numba.types.CPointer(numba.types.int64)),
+                       ("listproxy", numba.types.CPointer(ListProxyNumbaType(fe_type.generator)))]
+            super(IndexedPartitionedListModel, self).__init__(dmm, fe_type, members)
 
     @numba.extending.infer_getattr
     class PartitionedListAttribute(numba.typing.templates.AttributeTemplate):
