@@ -267,22 +267,33 @@ def _deflevel2oamap(deflevel, masks, maski):
             maski[i] -= 1
             masks[i][maski[i]] = (i < d)
 
-def _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, def2rep):
+def _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, def2rep, defmap, defmax):
     for j in range(len(deflevel) - 1, -1, -1):
         d = deflevel[j]
         r = replevel[j]
 
-        for i in range(max(r - 1, 0), min(d, len(counts))):
+        for i in range(max(r - 1, 0), defmap[d]):
             count[i] += 1
-        for i in range(r, min(d + 1, len(counts))):
+        for i in range(r, min(defmap[d] + 1, len(counts))):
             counti[i] -= 1
             counts[i][counti[i]] = count[i]
             count[i] = 0
+
+        # for i in range(max(r - 1, 0), min(d, len(counts))):
+        #     print "increment", i
+        #     count[i] += 1
+        # for i in range(r, min(d + 1, len(counts))):
+        #     print "fill", i
+        #     counti[i] -= 1
+        #     counts[i][counti[i]] = count[i]
+        #     count[i] = 0
 
         for i in range(min(d + 1, len(masks))):
             if def2rep[i] >= r:
                 maski[i] -= 1
                 masks[i][maski[i]] = (i < d)
+
+        # print "d", d, "r", r, counts[0][counti[0]:], counts[1][counti[1]:], counts[2][counti[2]:]
 
 def debug(deflevel, replevel, data, defsequence, repsequence):
     # def2rep = (0, 1, 1, 1)
@@ -672,6 +683,15 @@ class ParquetFile(object):
                     i += 1
             def2rep = tuple(def2rep)
 
+            defmap = []
+            if len(parquetschema.defsequence) > 0:
+                for d, n in enumerate(parquetschema.defsequence):
+                    if n in parquetschema.repsequence:
+                        defmap.append(d)
+            defmap.append(len(parquetschema.defsequence))
+            defmax = len(defmap)
+            defmap = tuple(defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1))
+
             assert deflevel is not None
             assert replevel is not None
             assert len(deflevel) == len(replevel)
@@ -685,7 +705,7 @@ class ParquetFile(object):
             maski = numpy.ones(len(parquetschema.defsequence), dtype=numpy.int32) * len(deflevel)
 
         if len(parquetschema.repsequence) > 0:
-            _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, def2rep)
+            _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, def2rep, defmap, defmax)
         elif len(parquetschema.defsequence) > 0:
             _deflevel2oamap(deflevel, masks, maski)
         
@@ -701,7 +721,7 @@ class ParquetFile(object):
         for i, (starts, stops) in enumerate(zip(parquetschema.repsequence, parquetschema.repsequence2)):
             c = counts[i][counti[i]:]
 
-            # print starts[:-2]
+            # print starts[:-2] + "-c", c
 
             o = numpy.empty(len(c) + 1, dtype=c.dtype)
             o[0] = 0

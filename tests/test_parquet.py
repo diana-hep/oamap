@@ -154,6 +154,8 @@ class TestParquet(unittest.TestCase):
 
     def test_nullable_depths(self):
         with ParquetFile(open("tests/samples/nullable-depths.parquet", "rb")) as f:
+            # for line in f():
+            #     print tojson(line)
             self.assertEqual(
                 tojson(f()),
                 [{"whatever": {"r0": [{"r1": [{"r2": [0, 1, 2, 3]}]}]}},
