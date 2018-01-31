@@ -261,7 +261,8 @@ def _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, count
             count[i] = 0
 
 def _deflevel2oamap(deflevel, masks, maski):
-    for d in deflevel:
+    for j in range(len(deflevel) - 1, -1, -1):
+        d = deflevel[j]
         for i in range(min(d + 1, len(masks))):
             maski[i] -= 1
             masks[i][maski[i]] = (i < d)
@@ -271,7 +272,7 @@ def _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, 
         d = deflevel[j]
         r = replevel[j]
 
-        for i in range(max(r - 1, 0), len(counts)):
+        for i in range(max(r - 1, 0), min(d, len(counts))):
             count[i] += 1
         for i in range(r, min(d + 1, len(counts))):
             counti[i] -= 1
@@ -699,6 +700,9 @@ class ParquetFile(object):
 
         for i, (starts, stops) in enumerate(zip(parquetschema.repsequence, parquetschema.repsequence2)):
             c = counts[i][counti[i]:]
+
+            # print starts[:-2]
+
             o = numpy.empty(len(c) + 1, dtype=c.dtype)
             o[0] = 0
             numpy.cumsum(c, out=o[1:])
@@ -783,6 +787,9 @@ class ParquetFile(object):
             assert isinstance(oamapschema, oamap.schema.Primitive)
             assert oamapschema.dtype == data.dtype
             out[oamapschema.data] = data
+
+        # for n in sorted(out):
+        #     print n, out[n].tolist()
 
         return out
 
