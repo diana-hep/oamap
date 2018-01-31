@@ -1151,7 +1151,7 @@ else:
                         rdata = generate(context, builder, rgen, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.offset)
                         with builder.if_then(context.get_function("==", numba.types.boolean(typeof_generator(lgen), typeof_generator(rgen)))(builder, (ldata, rdata))):
                             builder.store(literal_boolean(True), out_ptr)
-                            # FIXME: also break to the end
+                            # TODO: also break to the end
         return builder.load(out_ptr)
 
     @numba.extending.lower_builtin("!=", UnionProxyNumbaType, UnionProxyNumbaType)
@@ -1172,7 +1172,7 @@ else:
                     rdata = generate(context, builder, rtype.generator, rproxy.baggage, rproxy.ptrs, rproxy.lens, rproxy.offset)
                     with builder.if_then(context.get_function("==", numba.types.boolean(typeof_generator(lgen), rtype))(builder, (ldata, rdata))):
                         builder.store(literal_boolean(True), out_ptr)
-                        # FIXME: also break to the end
+                        # TODO: also break to the end
         return builder.load(out_ptr)
 
     @numba.extending.lower_builtin("==", ProxyNumbaType, UnionProxyNumbaType)

@@ -252,13 +252,12 @@ def _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, count
             counts[i][counti[i]] = count[i]
             count[i] = 0
 
-### FIXME!
-# try:
-#     import numba
-# except ImportError:
-#     pass
-# else:
-#     _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
+try:
+    import numba
+except ImportError:
+    pass
+else:
+    _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
 
 def open(filename, mode="r", prefix="object", delimiter="-"):
     if mode == "r":
