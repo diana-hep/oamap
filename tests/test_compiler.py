@@ -1328,3 +1328,40 @@ class TestCompiler(unittest.TestCase):
             value3, value4 = boxing3(value)
 
             self.assertEqual(doit(value), float(sum([1, 2, 3, 999, 998, 997, 1, 2, 3, 4, 5])))
+
+            @numba.njit
+            def length(x):
+                return len(x)
+
+            self.assertEqual(length(value), 11)
+
+            @numba.njit
+            def getitem(x, i):
+                return x[i]
+
+            self.assertEqual(getitem(value, 0), 1)
+            self.assertEqual(getitem(value, 1), 2)
+            self.assertEqual(getitem(value, 2), 3)
+            self.assertEqual(getitem(value, 3), 999)
+            self.assertEqual(getitem(value, 4), 998)
+            self.assertEqual(getitem(value, 5), 997)
+            self.assertEqual(getitem(value, 6), 1)
+            self.assertEqual(getitem(value, 7), 2)
+            self.assertEqual(getitem(value, 8), 3)
+            self.assertEqual(getitem(value, 9), 4)
+            self.assertEqual(getitem(value, 10), 5)
+
+            self.assertEqual(getitem(value, -11), 1)
+            self.assertEqual(getitem(value, -10), 2)
+            self.assertEqual(getitem(value, -9), 3)
+            self.assertEqual(getitem(value, -8), 999)
+            self.assertEqual(getitem(value, -7), 998)
+            self.assertEqual(getitem(value, -6), 997)
+            self.assertEqual(getitem(value, -5), 1)
+            self.assertEqual(getitem(value, -4), 2)
+            self.assertEqual(getitem(value, -3), 3)
+            self.assertEqual(getitem(value, -2), 4)
+            self.assertEqual(getitem(value, -1), 5)
+
+            self.assertRaises(IndexError, lambda: getitem(value, 11))
+            self.assertRaises(IndexError, lambda: getitem(value, -12))
