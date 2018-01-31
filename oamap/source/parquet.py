@@ -260,12 +260,76 @@ def _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, count
             counts[i][counti[i]] = count[i]
             count[i] = 0
 
-try:
-    import numba
-except ImportError:
-    pass
-else:
-    _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
+def _deflevel2oamap(deflevel, masks, maski):
+    for d in deflevel:
+        for i in range(min(d + 1, len(masks))):
+            maski[i] -= 1
+            masks[i][maski[i]] = (i < d)
+
+def _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, def2rep):
+    for j in range(len(deflevel) - 1, -1, -1):
+        d = deflevel[j]
+        r = replevel[j]
+
+        for i in range(max(r - 1, 0), len(counts)):
+            count[i] += 1
+        for i in range(r, min(d + 1, len(counts))):
+            counti[i] -= 1
+            counts[i][counti[i]] = count[i]
+            count[i] = 0
+
+        for i in range(min(d + 1, len(masks))):
+            if def2rep[i] >= r:
+                maski[i] -= 1
+                masks[i][maski[i]] = (i < d)
+
+def debug(deflevel, replevel, data, defsequence, repsequence):
+    # def2rep = (0, 1, 1, 1)
+    def2rep = []
+    i = 0
+    for n in defsequence:
+        def2rep.append(i)
+        if n in repsequence:
+            i += 1
+            
+    print "def2rep", def2rep
+    print "defsequence", defsequence
+    print "repsequence", repsequence
+
+    masks = [[] for x in defsequence]
+    counts = [[] for x in repsequence]
+    count = [0 for x in repsequence]
+
+    print "d r"
+    countdown = 20
+    datai = len(data) - 1
+    for d, r in reversed(zip(deflevel, replevel)):
+        for i in range(max(r - 1, 0), len(counts)):
+            count[i] += 1
+        for i in range(r, min(d + 1, len(counts))):
+            counts[i].append(count[i])
+            count[i] = 0
+
+        for i in range(min(d + 1, len(masks))):
+            if r <= def2rep[i]:
+                masks[i].append(i < d)
+
+        if d == len(defsequence):
+            print d, r, data[datai], masks, counts
+            datai -= 1
+        else:
+            print d, r, "     ", masks, counts
+        countdown -= 1
+        if countdown == 0:
+            return
+
+### FIXME
+# try:
+#     import numba
+# except ImportError:
+#     pass
+# else:
+#     _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
 
 def open(path, mode="r"):
     def explode(x):
@@ -595,54 +659,98 @@ class ParquetFile(object):
 
     def arrays(self, parquetschema, rowgroupid, parallel=False):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
-        out = {}
 
-        defmap = []
-        if len(parquetschema.defsequence) > 0:
-            assert deflevel is not None
-
-            for depth, maskname in enumerate(parquetschema.defsequence):
-                if maskname in parquetschema.repsequence:
-                    # this is a list, not a nullable type
-                    defmap.append(depth)
-
-                else:
-                    # this is a nullable type; need to create and store a mask
-                    masked = (deflevel == depth)
-                    if replevel is not None:
-                        # FIXME: not sure if len(defmap) is the right threshold; need examples of data with nullable elements inside lists
-                        masked = masked[replevel <= len(defmap)]
-                    if depth > 0:
-                        masked = masked[deflevel > depth - 1]
-                    notmasked = numpy.bitwise_not(masked)
-
-                    oamapmask = numpy.empty(len(notmasked), dtype=oamap.generator.Masked.maskdtype)
-                    oamapmask[masked] = oamap.generator.Masked.maskedvalue
-                    oamapmask[notmasked] = numpy.arange(numpy.count_nonzero(notmasked), dtype=oamap.generator.Masked.maskdtype)
-                    out[maskname] = oamapmask
+        # debug(deflevel, replevel, data, parquetschema.defsequence, parquetschema.repsequence)
 
         if len(parquetschema.repsequence) > 0:
+            def2rep = []
+            i = 0
+            for n in parquetschema.defsequence:
+                def2rep.append(i)
+                if n in parquetschema.repsequence:
+                    i += 1
+            def2rep = tuple(def2rep)
+
+            assert deflevel is not None
             assert replevel is not None
             assert len(deflevel) == len(replevel)
+            count = numpy.zeros(len(parquetschema.repsequence), dtype=oamap.generator.ListGenerator.posdtype)
+            counts = tuple(numpy.zeros(len(deflevel), dtype=oamap.generator.ListGenerator.posdtype) for n in parquetschema.repsequence)
+            counti = numpy.ones(len(parquetschema.repsequence), dtype=numpy.int32) * len(deflevel)
 
-            # finish defmap
-            defmap.append(len(parquetschema.defsequence))
-            defmax = len(defmap)
-            # invert defmap (its length becomes len(parquetschema.defsequence))
-            defmap = tuple(defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1))
+        if len(parquetschema.defsequence) > 0:
+            assert deflevel is not None
+            masks = tuple(numpy.zeros(len(deflevel), dtype=numpy.bool_) for n in parquetschema.defsequence)
+            maski = numpy.ones(len(parquetschema.defsequence), dtype=numpy.int32) * len(deflevel)
 
-            count = [0 for i in range(defmax - 1)]
-            counti = [len(deflevel) for i in range(defmax - 1)]
-            counts = tuple(numpy.empty(len(deflevel), dtype=oamap.generator.ListGenerator.posdtype) for i in range(defmax - 1))
+        if len(parquetschema.repsequence) > 0:
+            _defreplevel2oamap(deflevel, replevel, count, counts, counti, masks, maski, def2rep)
+        elif len(parquetschema.defsequence) > 0:
+            _deflevel2oamap(deflevel, masks, maski)
+        
+        out = {}
+        for i, n in enumerate(parquetschema.defsequence):
+            if n not in parquetschema.repsequence:
+                m = masks[i][maski[i]:]
+                o = numpy.empty(len(m), dtype=oamap.generator.Masked.maskdtype)
+                o[m]  = numpy.arange(numpy.count_nonzero(m), dtype=oamap.generator.Masked.maskdtype)
+                o[~m] = oamap.generator.Masked.maskedvalue
+                out[n] = o
 
-            _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, counts)
+        for i, (starts, stops) in enumerate(zip(parquetschema.repsequence, parquetschema.repsequence2)):
+            c = counts[i][counti[i]:]
+            o = numpy.empty(len(c) + 1, dtype=c.dtype)
+            o[0] = 0
+            numpy.cumsum(c, out=o[1:])
+            out[starts] = o[:-1]
+            out[stops]  = o[1:]
 
-            for i in range(defmax - 1):
-                offsets = numpy.empty((len(deflevel) - counti[i]) + 1, dtype=oamap.generator.ListGenerator.posdtype)
-                offsets[0] = 0
-                numpy.cumsum(counts[i][counti[i]:], out=offsets[1:])
-                out[parquetschema.repsequence[i]] = offsets[:-1]
-                out[parquetschema.repsequence2[i]] = offsets[1:]
+        # defmap = []
+        # if len(parquetschema.defsequence) > 0:
+        #     assert deflevel is not None
+
+        #     for depth, maskname in enumerate(parquetschema.defsequence):
+        #         if maskname in parquetschema.repsequence:
+        #             # this is a list, not a nullable type
+        #             defmap.append(depth)
+
+        #         else:
+        #             # this is a nullable type; need to create and store a mask
+        #             masked = (deflevel == depth)
+        #             if replevel is not None:
+        #                 # FIXME: not sure if len(defmap) is the right threshold; need examples of data with nullable elements inside lists
+        #                 masked = masked[replevel <= len(defmap)]
+        #             if depth > 0:
+        #                 masked = masked[deflevel > depth - 1]
+        #             notmasked = numpy.bitwise_not(masked)
+
+        #             oamapmask = numpy.empty(len(notmasked), dtype=oamap.generator.Masked.maskdtype)
+        #             oamapmask[masked] = oamap.generator.Masked.maskedvalue
+        #             oamapmask[notmasked] = numpy.arange(numpy.count_nonzero(notmasked), dtype=oamap.generator.Masked.maskdtype)
+        #             out[maskname] = oamapmask
+
+        # if len(parquetschema.repsequence) > 0:
+        #     assert replevel is not None
+        #     assert len(deflevel) == len(replevel)
+
+        #     # finish defmap
+        #     defmap.append(len(parquetschema.defsequence))
+        #     defmax = len(defmap)
+        #     # invert defmap (its length becomes len(parquetschema.defsequence))
+        #     defmap = tuple(defmap.index(d) if d in defmap else -1 for d in range(len(parquetschema.defsequence) + 1))
+
+        #     count = [0 for i in range(defmax - 1)]
+        #     counti = [len(deflevel) for i in range(defmax - 1)]
+        #     counts = tuple(numpy.empty(len(deflevel), dtype=oamap.generator.ListGenerator.posdtype) for i in range(defmax - 1))
+
+        #     _defreplevel2counts(deflevel, replevel, defmax, defmap, count, counti, counts)
+
+        #     for i in range(defmax - 1):
+        #         offsets = numpy.empty((len(deflevel) - counti[i]) + 1, dtype=oamap.generator.ListGenerator.posdtype)
+        #         offsets[0] = 0
+        #         numpy.cumsum(counts[i][counti[i]:], out=offsets[1:])
+        #         out[parquetschema.repsequence[i]] = offsets[:-1]
+        #         out[parquetschema.repsequence2[i]] = offsets[1:]
 
         oamapschema = parquetschema.oamapschema
 

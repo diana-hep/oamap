@@ -73,10 +73,11 @@ def unpack_byte_array(array, count):
 
     return data, size
 
-try:
-    import numba
-except ImportError:
-    pass
-else:
-    njit = numba.jit(nopython=True, nogil=True)
-    unpack_byte_array = njit(unpack_byte_array)
+### FIXME
+# try:
+#     import numba
+# except ImportError:
+#     pass
+# else:
+#     njit = numba.jit(nopython=True, nogil=True)
+#     unpack_byte_array = njit(unpack_byte_array)

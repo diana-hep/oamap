@@ -2070,7 +2070,7 @@ class Dataset(object):
 
     @delimiter.setter
     def delimiter(self, value):
-        if value is not None and not (isinstance(value, basestring) and Schema._baddelimiter.match(value) is not None):
+        if value is not None and not (isinstance(value, basestring) and Schema._baddelimiter.match(value) is None):
             raise ValueError("delimiters must not contain /{0}/".format(Schema._baddelimiter.pattern))
         self._delimiter = value
 

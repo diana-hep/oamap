@@ -108,7 +108,14 @@ class ListProxy(Proxy):
     def __str__(self):
         return repr(self)
 
+    @property
+    def schema(self):
+        return self._generator.schema
+
     def indexed(self):
+        return self
+
+    def nonindexed(self):
         return self
 
     def __len__(self):

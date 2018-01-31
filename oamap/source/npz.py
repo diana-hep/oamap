@@ -64,7 +64,7 @@ def savez(file, value, schema=None, prefix="object", delimiter=None, extension=N
         dataset = schema
         schema = dataset.schema
     else:
-        dataset = oamap.schema.Dataset(schema, prefix=prefix, delimiter="-")
+        dataset = oamap.schema.Dataset(schema, prefix=prefix, delimiter="-", extension=extension)
 
     if dataset.partitioning is not None:
         raise ValueError("npz files do not support partitioning")
@@ -103,4 +103,4 @@ def savez(file, value, schema=None, prefix="object", delimiter=None, extension=N
         numpy.savez(file, **arrays)
 
 def savez_compressed(file, value, schema=None, prefix="object", delimiter=None, extension=None, saveschema=True, inferencelimit=None, pointer_fromequal=False):
-    return savez(file, value, schema=schema, prefix=prefix, delimiter=delimiter, extension=extension, saveschema=saveschema, compressed=compressed, inferencelimit=inferencelimit, pointer_fromequal=pointer_fromequal)
+    return savez(file, value, schema=schema, prefix=prefix, delimiter=delimiter, extension=extension, saveschema=saveschema, compressed=True, inferencelimit=inferencelimit, pointer_fromequal=pointer_fromequal)
