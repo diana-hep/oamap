@@ -40,8 +40,18 @@ Download the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/
 
 .. code-block:: bash
 
-    wget http://diana-hep.org/oamap/examples/planets_formats/planets.parquet
+    wget http://diana-hep.org/oamap/examples/planets.parquet
 
-or similar (click `this link <http://diana-hep.org/oamap/examples/planets_formats/planets.parquet>`_ and "Save As..." if you wish).
+or similar (click `this link <http://diana-hep.org/oamap/examples/planets.parquet>`_ and "Save As..." if you wish).
 
+Exploring data
+""""""""""""""
 
+Load the Parquet dataset with its ``open`` function. If we had a large set of Parquet files, you could pass a list or glob pattern (wildcard
+
+.. code-block:: python
+
+    >>> import oamap.source.parquet
+    >>> stars = oamap.source.parquet.open("planets.parquet")
+    >>> stars
+    [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>, <Record at index 4>, ...]

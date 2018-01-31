@@ -219,9 +219,15 @@ class PartitionedListProxy(ListProxy):
 
     def partition(self, i):
         if self._current != i:
+            if self._current is not None and hasattr(self._listofarrays[self._current], "close"):
+                self._listofarrays[self._current].close()
             self._current = i
             self._cache = self._generator._newcache()
         return self._generator._generate(self._listofarrays[i], 0, self._cache)
+
+    @property
+    def schema(self):
+        return self._generator.schema
 
     def indexed(self):
         return IndexedPartitionedListProxy(self._generator, self._listofarrays)
@@ -234,13 +240,21 @@ class PartitionedListProxy(ListProxy):
             partition = self.partition(i)
             for x in partition:
                 yield x
-
+                
     def __len__(self):
-        raise TypeError("a PartitionedListProxy can only be iterated over (use x.partition(i) or x.indexed() to get a random-access ListProxy)")
+        return len(self.indexed())
 
     def __getitem__(self, index):
-        raise TypeError("a PartitionedListProxy can only be iterated over (use x.partition(i) or x.indexed() to get a random-access ListProxy)")
+        return self.indexed()[index]
 
+    def __enter__(self, *args, **kwds):
+        return self
+
+    def __exit__(self, *args, **kwds):
+        for arrays in self._listofarrays:
+            if hasattr(arrays, "close"):
+                arrays.close()
+        
 class IndexedPartitionedListProxy(PartitionedListProxy):
     def __init__(self, generator, listofarrays, offsets=None):
         super(IndexedPartitionedListProxy, self).__init__(generator, listofarrays)

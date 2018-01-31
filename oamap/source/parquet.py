@@ -29,12 +29,17 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import bisect
+import glob
 import gzip
 import math
 import os
 import struct
 import sys
 import zlib
+try:
+    from urlparse import urlparse
+except ImportError:
+    from urllib.parse import urlparse
 
 import numpy
 
@@ -42,6 +47,9 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 import oamap.util
+
+if sys.version_info[0] > 2:
+    basestring = str
 
 from oamap.source._fastparquet.extra import parquet_thrift
 if parquet_thrift is not None:
@@ -259,11 +267,26 @@ except ImportError:
 else:
     _defreplevel2counts = numba.jit(nopython=True, nogil=True)(_defreplevel2counts)
 
-def open(filename, mode="r", prefix="object", delimiter="-"):
-    if mode == "r":
-        return ParquetFile(__builtins__["open"](filename, "rb"), prefix=prefix, delimiter=delimiter)
+def open(path, mode="r"):
+    def explode(x):
+        parsed = urlparse(x)
+        if parsed.scheme == "file" or len(parsed.scheme) == 0:
+            return sorted(glob.glob(os.path.expanduser(parsed.netloc + parsed.path)))
+        else:
+            raise ValueError("URL scheme '{0}' not recognized".format(parsed.scheme))
+
+    if isinstance(path, basestring):
+        paths = explode(path)
     else:
-        raise NotImplementedError("Parquet files can only be opened for reading, for now")
+        paths = [y for x in path for y in explode(x)]
+
+    if len(paths) == 0:
+        raise ValueError("no matching filenames")
+
+    first = ParquetFile(__builtins__["open"](paths[0], "rb"))
+    generator = first.oamapschema.generator()
+    listofarrays = [ParquetFileArrays(paths[0], first, first.oamapschema)] + [ParquetFileArrays(x, None, first.oamapschema) for x in paths[1:]]
+    return oamap.proxy.PartitionedListProxy(generator, listofarrays)
 
 class ParquetFile(object):
     def __init__(self, file, prefix="object", delimiter="-"):
@@ -425,99 +448,112 @@ class ParquetFile(object):
         return self
 
     def __exit__(self, *args, **kwds):
+        self.close()
+
+    def close(self):
         if hasattr(self, "memmap"):
             pass   # don't close a memory map
         else:
             if not self.file.closed:
                 self.file.close()
 
+    @property
+    def numrowgroups(self):
+        return len(self.footer.row_groups)
+
     def column(self, parquetschema, rowgroupid, parallel=False):
         if parallel:
             raise NotImplementedError
 
-        columnchunk = parquetschema.chunks[rowgroupid]
-
-        def get_num_values(header):
-            if header.type == parquet_thrift.PageType.DATA_PAGE:
-                return header.data_page_header.num_values
-            elif header.type == parquet_thrift.PageType.INDEX_PAGE:
-                return header.index_page_header.num_values
-            elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
-                return header.dictionary_page_header.num_values
-            elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
-                return header.data_page_header_v2.num_values
-            else:
-                raise AssertionError("unrecognized header type: {0}".format(header.type))
-
-        if hasattr(self, "memmap"):
-            def pagereader(index):
-                # always safe for parallelization
-                num_values = 0
-                while num_values < columnchunk.meta_data.num_values:
-                    tin = self.TFileTransport(self.memmap, index)
-                    pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
-                    header = parquet_thrift.PageHeader()
-                    header.read(pin)
-                    index = tin._index
-                    compressed = self.memmap[index : index + header.compressed_page_size]
-                    index += header.compressed_page_size
-                    num_values += get_num_values(header)
-                    yield header, compressed
-
-        else:
-            def pagereader(index):
-                # if parallel, open a new file to avoid conflicts with other threads
-                file = self.file
-                file.seek(index, os.SEEK_SET)
-                num_values = 0
-                while num_values < columnchunk.meta_data.num_values:
-                    tin = self.TFileTransport(file, index)
-                    pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
-                    header = parquet_thrift.PageHeader()
-                    header.read(pin)
-                    compressed = file.read(header.compressed_page_size)
-                    num_values += get_num_values(header)
-                    yield header, compressed
-        
-        decompress = _decompression(columnchunk.meta_data.codec)
-        
         dictionary = None
         deflevelsegs = []
         replevelsegs = []
         datasegs = []
         sizesegs = []
 
-        for header, compressed in pagereader(columnchunk.file_offset):
-            uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
+        if rowgroupid is None:
+            rowgroupids = list(range(self.numrowgroups))
+        else:
+            rowgroupids = [rowgroupid]
 
-            # data page
-            if header.type == parquet_thrift.PageType.DATA_PAGE:
-                deflevelseg, replevelseg, dataseg = oamap.source._fastparquet.core.read_data_page(uncompressed, self.schema_helper, header, columnchunk.meta_data)
-                
-                if deflevelseg is not None:
-                    deflevelsegs.append(deflevelseg)
-                if replevelseg is not None:
-                    replevelsegs.append(replevelseg)
-                if isinstance(dataseg, tuple) and len(dataseg) == 2:
-                    datasegs.append(dataseg[0])
-                    sizesegs.append(dataseg[1])
+        for rowgroupid in rowgroupids:
+            columnchunk = parquetschema.chunks[rowgroupid]
+
+            def get_num_values(header):
+                if header.type == parquet_thrift.PageType.DATA_PAGE:
+                    return header.data_page_header.num_values
+                elif header.type == parquet_thrift.PageType.INDEX_PAGE:
+                    return header.index_page_header.num_values
+                elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
+                    return header.dictionary_page_header.num_values
+                elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
+                    return header.data_page_header_v2.num_values
                 else:
-                    datasegs.append(dataseg)
+                    raise AssertionError("unrecognized header type: {0}".format(header.type))
 
-            # index page (doesn't exist in Parquet yet, either)
-            elif header.type == parquet_thrift.PageType.INDEX_PAGE:
-                raise NotImplementedError
-
-            # dictionary page
-            elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
-                dictionary = oamap.source._fastparquet.core.read_dictionary_page(uncompressed, self.schema_helper, header, columnchunk.meta_data)
-
-            # data page version 2
-            elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
-                raise NotImplementedError
+            if hasattr(self, "memmap"):
+                def pagereader(index):
+                    # always safe for parallelization
+                    num_values = 0
+                    while num_values < columnchunk.meta_data.num_values:
+                        tin = self.TFileTransport(self.memmap, index)
+                        pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
+                        header = parquet_thrift.PageHeader()
+                        header.read(pin)
+                        index = tin._index
+                        compressed = self.memmap[index : index + header.compressed_page_size]
+                        index += header.compressed_page_size
+                        num_values += get_num_values(header)
+                        yield header, compressed
 
             else:
-                raise AssertionError("unrecognized header type: {0}".format(header.type))
+                def pagereader(index):
+                    # if parallel, open a new file to avoid conflicts with other threads
+                    file = self.file
+                    file.seek(index, os.SEEK_SET)
+                    num_values = 0
+                    while num_values < columnchunk.meta_data.num_values:
+                        tin = self.TFileTransport(file, index)
+                        pin = thriftpy.protocol.compact.TCompactProtocolFactory().get_protocol(tin)
+                        header = parquet_thrift.PageHeader()
+                        header.read(pin)
+                        compressed = file.read(header.compressed_page_size)
+                        num_values += get_num_values(header)
+                        yield header, compressed
+
+            decompress = _decompression(columnchunk.meta_data.codec)
+
+            for header, compressed in pagereader(columnchunk.file_offset):
+                uncompressed = numpy.frombuffer(decompress(compressed, header.compressed_page_size, header.uncompressed_page_size), dtype=numpy.uint8)
+
+                # data page
+                if header.type == parquet_thrift.PageType.DATA_PAGE:
+                    deflevelseg, replevelseg, dataseg = oamap.source._fastparquet.core.read_data_page(uncompressed, self.schema_helper, header, columnchunk.meta_data)
+
+                    if deflevelseg is not None:
+                        deflevelsegs.append(deflevelseg)
+                    if replevelseg is not None:
+                        replevelsegs.append(replevelseg)
+                    if isinstance(dataseg, tuple) and len(dataseg) == 2:
+                        datasegs.append(dataseg[0])
+                        sizesegs.append(dataseg[1])
+                    else:
+                        datasegs.append(dataseg)
+
+                # index page (doesn't exist in Parquet yet, either)
+                elif header.type == parquet_thrift.PageType.INDEX_PAGE:
+                    raise NotImplementedError
+
+                # dictionary page
+                elif header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
+                    dictionary = oamap.source._fastparquet.core.read_dictionary_page(uncompressed, self.schema_helper, header, columnchunk.meta_data)
+
+                # data page version 2
+                elif header.type == parquet_thrift.PageType.DATA_PAGE_V2:
+                    raise NotImplementedError
+
+                else:
+                    raise AssertionError("unrecognized header type: {0}".format(header.type))
 
         # concatenate pages into a column
         if len(deflevelsegs) == 0:
@@ -556,22 +592,6 @@ class ParquetFile(object):
             raise NotImplementedError
 
         return dictionary, deflevel, replevel, data, size
-
-    def __call__(self, rowgroupid=None):
-        generator = self.oamapschema.generator()
-        if rowgroupid is None:
-            listofarrays = []
-            for rowgroupid in range(len(self.footer.row_groups)):
-                listofarrays.append(ParquetRowGroupArrays(self, rowgroupid))
-            return oamap.proxy.IndexedPartitionedListProxy(generator, listofarrays, self.rowoffsets)
-        else:
-            return generator(ParquetRowGroupArrays(self, rowgroupid))
-
-    def __iter__(self):
-        generator = self.oamapschema.generator()
-        for rowgroupid in range(len(self.footer.row_groups)):
-            for x in generator(ParquetRowGroupArrays(self, rowgroupid)):
-                yield x
 
     def arrays(self, parquetschema, rowgroupid, parallel=False):
         dictionary, deflevel, replevel, data, size = self.column(parquetschema, rowgroupid, parallel=parallel)
@@ -658,6 +678,22 @@ class ParquetFile(object):
 
         return out
 
+    def __call__(self, rowgroupid=None):
+        generator = self.oamapschema.generator()
+        if rowgroupid is None:
+            listofarrays = []
+            for rowgroupid in range(len(self.footer.row_groups)):
+                listofarrays.append(ParquetRowGroupArrays(self, rowgroupid))
+            return oamap.proxy.IndexedPartitionedListProxy(generator, listofarrays, self.rowoffsets)
+        else:
+            return generator(ParquetRowGroupArrays(self, rowgroupid))
+
+    def __iter__(self):
+        generator = self.oamapschema.generator()
+        for rowgroupid in range(len(self.footer.row_groups)):
+            for x in generator(ParquetRowGroupArrays(self, rowgroupid)):
+                yield x
+
 class ParquetRowGroupArrays(object):
     def __init__(self, parquetfile, rowgroupid):
         self._parquetfile = parquetfile
@@ -669,11 +705,14 @@ class ParquetRowGroupArrays(object):
             return self._arrays[request]
 
         elif request.startswith(self._parquetfile.oamapschema.starts):
-            self._arrays[request] = numpy.array([0], numpy.int32)
+            self._arrays[request] = numpy.array([0], oamap.generator.ListGenerator.posdtype)
             return self._arrays[request]
             
         elif request.startswith(self._parquetfile.oamapschema.stops):
-            self._arrays[request] = numpy.array([self._parquetfile.footer.row_groups[self._rowgroupid].num_rows], numpy.int32)
+            if self._rowgroupid is None:
+                self._arrays[request] = numpy.array([self._parquetfile.rowoffsets[-1]], oamap.generator.ListGenerator.posdtype)
+            else:
+                self._arrays[request] = numpy.array([self._parquetfile.footer.row_groups[self._rowgroupid].num_rows], oamap.generator.ListGenerator.posdtype)
             return self._arrays[request]
 
         else:
@@ -710,3 +749,24 @@ class ParquetRowGroupArrays(object):
 
                 self._arrays.update(self._parquetfile.arrays(self._parquetfile.triggers[id(parquetschema)], self._rowgroupid, parallel=False))
                 return self._arrays[request]
+
+class ParquetFileArrays(object):
+    def __init__(self, filename, file, schema):
+        self._filename = filename
+        self._file = file
+        self._schema = schema
+        self._arrays = None
+
+    def __getitem__(self, request):
+        if self._file is None:
+            self._file = ParquetFile(__builtins__["open"](self._filename, "rb"))
+            if self._file.oamapschema != self._schema:
+                raise TypeError("file {0} schema:\n\n    {1}\n\ndiffers from first file schema:\n\n    {2}".format(repr(self._filename), self._file.oamapschema.__repr__(indent="    "), self._schema.__repr__(indent="    ")))
+        if self._arrays is None:
+            self._arrays = ParquetRowGroupArrays(self._file, None)
+        return self._arrays[request]
+
+    def close(self):
+        if self._file is not None:
+            self._file.close()
+            self._arrays = None
