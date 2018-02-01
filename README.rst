@@ -444,7 +444,7 @@ Primitives are fixed-width, concrete types such as booleans, numbers, and fixed-
     >>> obj
     [b'one', b'two', b'thre', b'four', b'five']
 
-Note that 
+Note that "three" is truncated (and the rest are implicitly padded) because the Numpy dtype, ``"S4"`` is 4-byte. See the extension type (below) for a better way to make strings.
 
 List
 """"
@@ -453,5 +453,38 @@ Lists are arbitrary length collections of any other type. Unlike dynamically typ
 
 **Examples:**
 
+.. code-block:: python
 
+    >>> schema = List(List("int"))   # shorthand string "int" for Primitive("int")
+    >>> obj = schema.fromdata([[1, 2, 3], [], [4, 5]])
+    >>> for n, x in obj._arrays.items():
+    ...     print(n, x)
+    object-B [0]
+    object-E [3]
+    object-L-B [0 3 3]
+    object-L-E [3 3 5]
+    object-L-L-Di8 [1 2 3 4 5]
+    >>> obj
+    [[1, 2, 3], [], [4, 5]]
 
+is a list of lists and
+
+.. code-block:: python
+
+    >>> schema = List(Tuple(["int", "float"]))
+    >>> obj = schema.fromdata([(1, 1.1), (2, 2.2), (3, 3.3)])
+    >>> for n, x in obj._arrays.items():
+    ...     print(n, x)
+    object-B [0]
+    object-E [3]
+    object-L-F0-Di8 [1 2 3]
+    object-L-F1-Df8 [1.1 2.2 3.3]
+    >>> obj
+    [(1, 1.1), (2, 2.2), (3, 3.3)]
+
+is a list of tuples.
+
+OAMap uses two arrays, one for the beginning (``-B``) offset of the data and the other for the end (``-E``) for maximum flexibility. Lists with dropped elements can be represented with a new pair of arrays, without copying any of the content.
+
+Union
+"""""
