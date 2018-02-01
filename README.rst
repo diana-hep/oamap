@@ -480,7 +480,51 @@ is a list of lists and
 
 is a list of tuples.
 
-OAMap uses two arrays, one for the beginning (``-B``) offset of the data and the other for the end (``-E``) for maximum flexibility. Lists with dropped elements can be represented with a new pair of arrays, without copying any of the content.
-
 Union
 """""
+
+Unions represent data that may be one of a given set of types ("`sum types <https://en.wikipedia.org/wiki/Tagged_union>`_" in type theory). For instance, the elements of the following list could *either* be a floating point number *or* be a list of integers:
+
+.. code-block:: python
+
+    >>> schema = List(Union(["float", List("int")]))
+    >>> obj = schema({"object-B": [0],                     # beginning of outer list
+                      "object-E": [3],                     # end of outer list
+                      "object-L-T": [0, 1, 0],             # tags: possibility 0 (float) or 1 (list of int)?
+                      "object-L-O": [0, 0, 1],             # offsets: where to find the compacted contents
+                      "object-L-U0-Df8": [1.1, 3.3],       # data for possibility 0 (floats)
+                      "object-L-U1-B": [0],                # beginnings of lists for possibility 1
+                      "object-L-U1-E": [4],                # ends of lists for possibility 1
+                      "object-L-U1-L-Di8": [1, 2, 3, 4]})  # list content for possibility 1 (ints)
+    >>> obj
+    [1.1, [1, 2, 3, 4], 3.3]
+
+Unions can emulate a popular object-oriented concept: class inheritance. We can make a list of electrons (which have charge) and photons (which don't) as a union of the two types of records.
+
+.. code-block:: python
+
+    >>> schema = List(Union([
+    ...     Record(name="Electron", fields={"energy": "float", "charge": "int"}),
+    ...     Record(name="Photon",   fields={"energy": "float"})]))
+    ... 
+    >>> obj = schema.fromdata([
+    ...     {"energy": 1.1, "charge":  1},
+    ...     {"energy": 2.2, "charge": -1},
+    ...     {"energy": 3.3},
+    ...     {"energy": 4.4, "charge": -1},
+    ...     {"energy": 5.5}
+    ...     ])
+    ... 
+    >>> obj
+    [<Electron at index 0>, <Electron at index 1>, <Photon at index 0>, <Electron at index 2>,
+     <Photon at index 1>]
+    >>> for n, x in obj._arrays.items():
+    ...     print n, x
+    ... 
+    object-B [0]
+    object-E [5]
+    object-L-T [0 0 1 0 1]
+    object-L-O [0 1 0 2 1]
+    object-L-U0-NElectron-Fcharge-Di8 [ 1 -1 -1]
+    object-L-U0-NElectron-Fenergy-Df8 [1.1 2.2 4.4]
+    object-L-U1-NPhoton-Fenergy-Df8 [3.3 5.5]
