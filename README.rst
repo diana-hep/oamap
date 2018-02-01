@@ -540,37 +540,37 @@ You've seen several examples of record types, so here's one drawn from the exopl
 
     >>> stars.schema.content["planets"].content["discovery"].show()
     Record(
-      name = u'Discovery',
+      name = 'Discovery',
       fields = {
-        u'facility': Pointer(
-          doc = u'Name of facility of planet discovery observations',
+        'facility': Pointer(
+          doc = 'Name of facility of planet discovery observations',
           target = List(
-            name = u'UTF8String',
+            name = 'UTF8String',
             content = Primitive(dtype('uint8'))
           )
         ),
-        u'instrument': List(
-          name = u'UTF8String',
-          doc = u'Name of instrument of planet discovery observations',
+        'instrument': List(
+          name = 'UTF8String',
+          doc = 'Name of instrument of planet discovery observations',
           content = Primitive(dtype('uint8'))
         ),
-        u'link': List(
-          name = u'UTF8String',
-          doc = u'Reference name for discovery publication',
+        'link': List(
+          name = 'UTF8String',
+          doc = 'Reference name for discovery publication',
           content = Primitive(dtype('uint8'))
         ),
-        u'locale': Pointer(
-          doc = u'Location of observation of planet discovery (Ground or Space)',
+        'locale': Pointer(
+          doc = 'Location of observation of planet discovery (Ground or Space)',
           target = List(
-            name = u'UTF8String',
+            name = 'UTF8String',
             content = Primitive(dtype('uint8'))
           )
         ),
-        u'telescope': List(
-          name = u'UTF8String',
-          doc = u'Name of telescope of planet discovery observations',
+        'telescope': List(
+          name = 'UTF8String',
+          doc = 'Name of telescope of planet discovery observations',
           content = Primitive(dtype('uint8'))
         ),
-        u'year': Primitive(dtype('int32'), doc=u'Year the planet was discovered')
+        'year': Primitive(dtype('int32'), doc='Year the planet was discovered')
       })
 
