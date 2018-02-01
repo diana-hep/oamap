@@ -35,22 +35,22 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish).
 
 **Strict dependencies:**
 
-- **python** (2.6+, 3.4+)
-- **numpy**
+- `python <http://docs.python-guide.org/en/latest/starting/installation/>`_ (2.6+, 3.4+)
+- `numpy <https://scipy.org/install.html>`_
 
 **Recommended dependencies:**
 
-- **numba** to JIT-compile functions
-- **thriftpy** to read Parquet files
-- **uproot** to read ROOT files
-- **h5py** to read HDF5 files
+- `numba <http://numba.pydata.org/numba-doc/latest/user/installing.html>`_ to JIT-compile functions (requires LLVM, follow instructions)
+- `thriftpy <https://pypi.python.org/pypi/thriftpy>`_ to read Parquet files (pure Python, pip is fine)
+- `uproot <https://pypi.python.org/pypi/uproot/>`_ to read ROOT files (pure Python, pip is fine)
+- `h5py <http://docs.h5py.org/en/latest/build.html>`_ to read HDF5 files (requires binary libraries; follow instructions)
 
-**Optional dependencies:**
+**Optional dependencies:** (all are bindings to binaries that can be package-installed)
 
-- **lz4** compression used by some ROOT and Parquet files
-- **snappy** compression used by some Parquet files
-- **lzo** compression used by some Parquet files
-- **brotli** compression used by some Parquet files
+- `lz4 <https://anaconda.org/anaconda/lz4>`_ compression used by some ROOT and Parquet files
+- `python-snappy <https://anaconda.org/anaconda/python-snappy>`_ compression used by some Parquet files
+- `lzo <https://anaconda.org/anaconda/lzo>`_ compression used by some Parquet files
+- `brotli <https://anaconda.org/conda-forge/brotli>`_ compression used by some Parquet files
 
 Sample dataset #1: Parquet
 """"""""""""""""""""""""""
@@ -89,7 +89,7 @@ Alternatively, download the same dataset in Numpy form:
 
 Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap bridges the gap. (Numpy is faster to load into OAMap than Parquet but the file size is larger, due to less aggressive packing.)
 
-Load the Parquet dataset with its ``open`` function. If you have a large set of Parquet files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), even if the total dataset is enormous, because nothing is loaded until it is needed.
+Load the Numpy dataset with its ``open`` function. If you have a large set of Numpy files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), even if the total dataset is enormous, because nothing is loaded until it is needed.
 
 .. code-block:: python
 
