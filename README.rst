@@ -153,7 +153,7 @@ One column at a time is probably the right granularity for you because you'll be
 
     >>> import numba
     >>> import oamap.compiler    # crucial! loads OAMap extensions!
-    >>> 
+
     >>> @numba.njit
     ... def period_ratio(stars):
     ...     out = []
@@ -170,7 +170,9 @@ One column at a time is probably the right granularity for you because you'll be
     ...             out.append(star)
     ...     return out
     ... 
+    # On a small dataset like this, the lag is mostly loading compilers and compiling, not running.
     >>> extremes = period_ratio(stars)
+    # Now that we've filtered with compiled code, we can examine the outliers in slow Python.
     >>> extremes
     [<Record at index 284>, <Record at index 466>, <Record at index 469>, <Record at index 472>,
      <Record at index 484>, <Record at index 502>, <Record at index 510>, <Record at index 559>,
@@ -179,8 +181,10 @@ One column at a time is probably the right granularity for you because you'll be
      <Record at index 1814>, <Record at index 1819>, <Record at index 1953>, <Record at index 1979>,
      <Record at index 1980>, <Record at index 2305>, <Record at index 2332>, <Record at index 2366>,
      <Record at index 2623>, <Record at index 2654>]
+    # These are unusual solar systems (most don't have so many planets).
     >>> extremes[0].planets
     [<Record at index 384>, <Record at index 385>, <Record at index 386>, <Record at index 387>,
      <Record at index 388>, <Record at index 389>]
+    # Indeed, the orbital period ratio is 2205.0 / 5.75969.
     >>> [x.orbital_period.val for x in extremes[0].planets]
     [5.75969, 16.357, 49.748, 122.744, 604.67, 2205.0]
