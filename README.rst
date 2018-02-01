@@ -182,7 +182,7 @@ Here's a star with five planets:
     >>> [x.discovery_method for x in stars[258].planets]
     ['Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity']
 
-If you've been working through these examples, you might have noticed that the *first* time you look at an attribute, there's a time lag. The data-fetching granularity is one *column* (attribute array) at a time. Even though this dataset has hundreds of parameters, you don't suffer the cost of loading the parameters you're not interested in, but looking at the first star's temperature loads all the stars' temperatures (per partition/file).
+If you've been working through these examples, you might have noticed that the *first* time you look at an attribute, there's a time lag. The data-fetching granularity is one *column* (attribute array) at a time. Even though the objects in this dataset have hundreds of attributes, you don't suffer the cost of loading the attributes you're not interested in, but looking at the first star's temperature loads all the stars' temperatures (per file).
 
 One column at a time is probably the right granularity for you because you'll be analyzing all or most values of a few attributes. For instance, suppose you're interested in solar systems with extremes of orbital periods.
 
