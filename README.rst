@@ -751,7 +751,7 @@ Extension libraries can be specified at runtime (``oamap.extension.common`` is t
 Nullability
 """""""""""
 
-Every data type, at every level, may be "nullable." A nullable type may be ``None`` at runtime, and the missing data are identified by masking arrays that also serve as offset arrays (so they can handle both dense and sparse data).
+Every data type, at every level, may be "nullable." A nullable value may be ``None`` at runtime, and the missing data are identified by masking arrays that also serve as offset arrays.
 
 .. code-block:: python
 
@@ -778,3 +778,54 @@ Every data type, at every level, may be "nullable." A nullable type may be ``Non
     object-L-E [0 2]
     object-L-L-M [0 1]
     object-L-L-Di8 [4 5]
+
+Using the flexibility of the mask-offset, the missing values may be skipped in the data (as above) or filled with placeholders (as in Apache Arrow).
+
+Datasets and partitions
+-----------------------
+
+In the examples above, we created objects on the fly for small, handwritten schemas. Not all of these were lists, though most data processing is performed on some kind of list, often on subsequences in parallel, and often on datasets that are too large to fit into memory. We must be able to split lists up into large chunks, called partitions, to control when they're operated upon and by whom.
+
+A large schema can be wrapped up in a dataset, which we used in the exoplanet-from-HTTP example.
+
+.. code-block:: python
+
+    >>> dataset.show()
+    Dataset(
+      prefix = 'object',
+      delimiter = '-',
+      metadata = {'source': 'https://exoplanetarchive.ipac.caltech.edu/'},
+      schema = List(
+        content = Record(
+          name = 'Star',
+          fields = {
+            ...
+          })
+      )
+    )
+
+If the dataset's schema is a list, we can specify a partitioning in the dataset description. This partitioning is a rule specifying a naming convention or an explicit lookup table to map a column name and a partition number to an array name. OAMap proxies (including those in a Numba-compiled function) load one partition at a time, flushing the previous partition from memory. More advanced processors may use partition numbers to distribute a job.
+
+To a user, processing a whole dataset can be as simple as
+
+.. code-block:: python
+
+    >>> import numba
+    >>> import oamap.compiler
+    >>> import oamap.source.root
+    >>> events = oamap.source.root.open("particle_physics_data/*.root")
+
+    # turn off Python's GIL in compiled code
+    >>> @numpy.njit(nogil=True)
+    >>> def complex_function(events):
+    ...     # action to perform on one partition of events
+    ... 
+    >>> complex_function(events)
+
+to load each partition serially, holding only one partition in memory at a time, or
+
+    >>> from concurrent.futures import ThreadPoolExecutor
+    >>> executor = ThreadPoolExecutor(16)
+    >>> executor.map(complex_function, events.partitions)
+
+to run them in parallel, holding as many as 16 partitions in memory at a time.
