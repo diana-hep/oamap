@@ -83,7 +83,7 @@ Alternatively, download the same dataset in Numpy form (or click `this link <htt
 
     wget http://diana-hep.org/oamap/examples/planets.npz
 
-Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap bridges the gap. (Numpy is faster to load into OAMap than Parquet but the file size is larger, due to less aggressive packing.)
+Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap effectively adds this feature. (Numpy is faster to load into OAMap than Parquet but the file size is larger, due to less aggressive packing.)
 
 .. code-block:: python
 
