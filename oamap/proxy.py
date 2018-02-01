@@ -327,22 +327,19 @@ class RecordProxy(Proxy):
         return dir(super(RecordProxy, self)) + list(str(x) for x in self._fields)
 
     def __getattr__(self, field):
-        if field.startswith("_"):
-            return self.__dict__[field]
-        else:
-            try:
-                # actual field names get priority (they're not allowed to start with underscore)
-                generator = self._generator.fields[field]
-            except KeyError:
-                # barring any conflicts with actual field names, "schema" and "fields" are convenient
-                if field == "schema":
-                    return self._generator.schema
-                elif field == "fields":
-                    return self._fields
-                else:
-                    raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+        try:
+            # actual field names get priority (they're not allowed to start with underscore)
+            generator = self._generator.fields[field]
+        except KeyError:
+            # barring any conflicts with actual field names, "schema" and "fields" are convenient
+            if field == "schema":
+                return self._generator.schema
+            elif field == "fields":
+                return self._fields
             else:
-                return generator._generate(self._arrays, self._index, self._cache)
+                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+        else:
+            return generator._generate(self._arrays, self._index, self._cache)
 
     def __hash__(self):
         return hash((RecordProxy, self._generator.name) + tuple(self._generator.fields.items()))

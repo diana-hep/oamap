@@ -716,11 +716,11 @@ class ParquetRowGroupArrays(object):
         if request in self._arrays:
             return self._arrays[request]
 
-        elif request.startswith(self._parquetfile.oamapschema.starts):
+        elif request == self._parquetfile.oamapschema.starts:
             self._arrays[request] = numpy.array([0], oamap.generator.ListGenerator.posdtype)
             return self._arrays[request]
             
-        elif request.startswith(self._parquetfile.oamapschema.stops):
+        elif request == self._parquetfile.oamapschema.stops:
             if self._rowgroupid is None:
                 self._arrays[request] = numpy.array([self._parquetfile.rowoffsets[-1]], oamap.generator.ListGenerator.posdtype)
             else:
@@ -733,7 +733,7 @@ class ParquetRowGroupArrays(object):
             found = False
             for n in self._parquetfile.oamapschema.content.fields:
                 fieldprefix = self._parquetfile.oamapschema.content._get_field(contentprefix, self._parquetfile._delimiter, n)
-                if request.startswith(fieldprefix):
+                if request == fieldprefix or request.startswith(fieldprefix + self._parquetfile._delimiter):
                     found = True
                     break
 
@@ -745,14 +745,14 @@ class ParquetRowGroupArrays(object):
 
                     if parquetschema.converted_type == parquet_thrift.ConvertedType.LIST:
                         contentprefix = oamapschema._get_content(prefix, self._parquetfile._delimiter)
-                        if request.startswith(contentprefix):
+                        if request == contentprefix or request.startswith(contentprefix + self._parquetfile._delimiter):
                             content, = parquetschema.children.values()
                             return recurse(content, contentprefix)
 
                     elif isinstance(oamapschema, oamap.schema.Record):
                         for n, x in parquetschema.children.items():
                             fieldprefix = oamapschema._get_field(prefix, self._parquetfile._delimiter, n)
-                            if request.startswith(fieldprefix):
+                            if request == fieldprefix or request.startswith(fieldprefix + self._parquetfile._delimiter):
                                 return recurse(x, fieldprefix)
 
                     return parquetschema

@@ -129,3 +129,58 @@ Here's a star with five planets:
     ['HD 40307 b', 'HD 40307 c', 'HD 40307 d', 'HD 40307 f', 'HD 40307 g']
     >>> [x.discovery_method for x in stars[258].planets]
     ['Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity']
+
+If you've been working through these examples, you might have noticed that the _first_ time you look at an attribute, there's a time lag. The data-fetching granularity is one _column_ (attribute array) at a time. Even though this dataset has hundreds of parameters, you don't suffer the cost of loading the parameters you're not interested in, but looking at the first star's temperature loads all the stars' temperatures (per partition/file).
+
+One column at a time is probably the right granularity for you because you'll be analyzing all or most values of a few attributes. For instance, suppose you're interested in solar systems with extremes of orbital periods.
+
+.. code-block:: python
+
+    def period_ratio(stars):
+        for star in stars:
+            best_ratio = None
+            for one in star.planets:
+                for two in star.planets:
+                    if (one.orbital_period is not None and one.orbital_period.val is not None and
+                        two.orbital_period is not None and two.orbital_period.val is not None):
+                        ratio = one.orbital_period.val / two.orbital_period.val
+                        if best_ratio is None or ratio > best_ratio:
+                            best_ratio = ratio
+            if best_ratio is not None:
+                print(best_ratio)
+
+.. code-block:: python
+
+    >>> import numba
+    >>> import oamap.compiler    # crucial! loads OAMap extensions!
+    >>> 
+    >>> @numba.njit
+    ... def period_ratio(stars):
+    ...     out = []
+    ...     for star in stars:
+    ...         best_ratio = None
+    ...         for one in star.planets:
+    ...             for two in star.planets:
+    ...                 if (one.orbital_period is not None and one.orbital_period.val is not None and
+    ...                     two.orbital_period is not None and two.orbital_period.val is not None):
+    ...                     ratio = one.orbital_period.val / two.orbital_period.val
+    ...                     if best_ratio is None or ratio > best_ratio:
+    ...                         best_ratio = ratio
+    ...         if best_ratio is not None and best_ratio > 200:
+    ...             out.append(star)
+    ...     return out
+    ... 
+    >>> extremes = period_ratio(stars)
+    >>> extremes
+    [<Record at index 284>, <Record at index 466>, <Record at index 469>, <Record at index 472>,
+     <Record at index 484>, <Record at index 502>, <Record at index 510>, <Record at index 559>,
+     <Record at index 651>, <Record at index 665>, <Record at index 674>, <Record at index 728>,
+     <Record at index 1129>, <Record at index 1464>, <Record at index 1529>, <Record at index 1567>,
+     <Record at index 1814>, <Record at index 1819>, <Record at index 1953>, <Record at index 1979>,
+     <Record at index 1980>, <Record at index 2305>, <Record at index 2332>, <Record at index 2366>,
+     <Record at index 2623>, <Record at index 2654>]
+    >>> extremes[0].planets
+    [<Record at index 384>, <Record at index 385>, <Record at index 386>, <Record at index 387>,
+     <Record at index 388>, <Record at index 389>]
+    >>> [x.orbital_period.val for x in extremes[0].planets]
+    [5.75969, 16.357, 49.748, 122.744, 604.67, 2205.0]

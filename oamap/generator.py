@@ -237,9 +237,31 @@ class Masked(object):
 
     def iternames(self):
         yield self.mask
-        for x in self.__class__.__bases__[1].iternames():
+        for x in self.__class__.__bases__[1].iternames(self):
             yield x
-            
+
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        key = (id(self),)
+        if key not in memo:
+            memo.add(key)
+            if cache[self.maskidx] is not None:
+                yield self.mask
+            for x in self.__class__.__bases__[1].loaded(self, cache, memo):
+                yield x
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        key = (id(self),)
+        if key not in memo:
+            memo.add(key)
+            if self._required:
+                yield self.mask
+            for x in self.__class__.__bases__[1].required(self, memo):
+                yield x
+
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
@@ -272,6 +294,22 @@ class PrimitiveGenerator(Generator):
 
     def iternames(self):
         yield self.data
+
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if cache[self.dataidx] is not None:
+                yield self.data
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if self._required:
+                yield self.data
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
     def __init__(self, mask, maskidx, data, dataidx, dtype, packing, name, derivedname, schema):
@@ -310,7 +348,7 @@ class ListGenerator(Generator):
         if id(self) not in memo:
             memo.add(id(self))
             out = self.content._togetall(arrays, cache, bottomup, memo)
-            if self._required and cache[self.startsidx] is None or cache[self.stopsidx] is None:
+            if self._required and (cache[self.startsidx] is None or cache[self.stopsidx] is None):
                 if bottomup:
                     out.update(self._toget(arrays, cache))
                 else:
@@ -344,6 +382,29 @@ class ListGenerator(Generator):
         yield self.stops
         for x in self.content.iternames():
             yield x
+
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if cache[self.startsidx] is not None:
+                yield self.starts
+            if cache[self.stopsidx] is not None:
+                yield self.stops
+            for x in self.content.loaded(cache, memo):
+                yield x
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if self._required:
+                yield self.starts
+                yield self.stops
+            for x in self.content.required(memo):
+                yield x
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
@@ -386,7 +447,7 @@ class UnionGenerator(Generator):
             out = OrderedDict()
             for x in self.possibilities:
                 out.update(x._togetall(arrays, cache, bottomup, memo))
-            if self._required and cache[self.tagsidx] is None or cache[self.offsetsidx] is None:
+            if self._required and (cache[self.tagsidx] is None or cache[self.offsetsidx] is None):
                 if bottomup:
                     out.update(self._toget(arrays, cache))
                 else:
@@ -422,6 +483,31 @@ class UnionGenerator(Generator):
         for x in self.possibilities:
             for y in x.iternames():
                 yield y
+
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if cache[self.tagsidx] is not None:
+                yield self.tags
+            if cache[self.offsetsidx] is not None:
+                yield self.offsets
+            for possibility in self.possibilities:
+                for x in possibility.loaded(cache, memo):
+                    yield x
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if self._required:
+                yield self.tags
+                yield self.offsets
+            for possibility in self.possibilities:
+                for x in possibility.required(memo):
+                    yield x
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
@@ -474,6 +560,24 @@ class RecordGenerator(Generator):
             for y in x.iternames():
                 yield y
 
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            for field in self.fields.values():
+                for x in field.loaded(cache, memo):
+                    yield x
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            for field in self.fields.values():
+                for x in field.required(memo):
+                    yield x
+
 class MaskedRecordGenerator(Masked, RecordGenerator):
     def __init__(self, mask, maskidx, fields, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -524,6 +628,24 @@ class TupleGenerator(Generator):
         for x in self.types:
             for y in x.iternames():
                 yield y
+
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            for field in self.types:
+                for x in field.loaded(cache, memo):
+                    yield x
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            for field in self.types:
+                for x in field.required(memo):
+                    yield x
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
     def __init__(self, mask, maskidx, types, packing, name, derivedname, schema):
@@ -589,6 +711,26 @@ class PointerGenerator(Generator):
             for x in self.target.iternames():
                 yield x
 
+    def loaded(self, cache, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if cache[self.positionsidx] is not None:
+                yield self.positions
+            for x in self.target.loaded(cache, memo):
+                yield x
+
+    def required(self, memo=None):
+        if memo is None:
+            memo = set()
+        if id(self) not in memo:
+            memo.add(id(self))
+            if self._required:
+                yield self.positions
+            for x in self.target.required(memo):
+                yield x
+
 class MaskedPointerGenerator(Masked, PointerGenerator):
     def __init__(self, mask, maskidx, positions, positionsidx, target, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -644,6 +786,14 @@ class ExtendedGenerator(Generator):
 
     def iternames(self):
         for x in self.generic.iternames():
+            yield x
+
+    def loaded(self, cache, memo=None):
+        for x in self.generic.loaded(cache, memo):
+            yield x
+
+    def required(self, memo=None):
+        for x in self.generic.required(memo):
             yield x
 
     @classmethod
