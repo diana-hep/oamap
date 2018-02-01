@@ -683,3 +683,40 @@ The second case builds trees and graphs.
     <Tree at index 0>
     >>> obj.children[0].children[0].label
     2.2
+
+The third case effectively turns contained data into enumeration constants, good for repeated quantities (such as the strings in the exoplanets dataset).
+
+.. code-block:: python
+
+    # the schema for discovery_method is a pointer to strings, rather than strings directly
+    >>> stars.schema.content["planets"].content["discovery_method"].show()
+    Pointer(
+      positions = 'discovery_method-P',
+      doc = 'Discovery Method',
+      target = List(
+        starts = 'discovery_method-X-NUTF8String-B',
+        stops = 'discovery_method-X-NUTF8String-E',
+        name = 'UTF8String',
+        content = Primitive(dtype('uint8'), data='discovery_method-X-NUTF8String-L-Du1')
+      )
+    ) 
+    # string data consists exclusively of unique strings
+    >>> stars._listofarrays[0]["discovery_method-X-NUTF8String-L-Du1"].tostring()
+    'TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timi
+     ng VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry'
+    # the strings are referred to by integer index, thanks to the pointer
+    >>> stars._listofarrays[0]["discovery_method-P"][:300]
+    array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1,
+           0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1,
+           1, 3, 0, 1, 0, 0, 1, 1, 0, 1, 2, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+           0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0,
+           0, 0, 0, 1, 1, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+           0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+           0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=int32)
