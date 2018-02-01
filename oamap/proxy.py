@@ -115,9 +115,6 @@ class ListProxy(Proxy):
     def indexed(self):
         return self
 
-    def nonindexed(self):
-        return self
-
     def __len__(self):
         return self._length
 
@@ -239,9 +236,6 @@ class PartitionedListProxy(ListProxy):
     def indexed(self):
         return IndexedPartitionedListProxy(self._generator, self._listofarrays)
 
-    def nonindexed(self):
-        return self
-
     def __iter__(self):
         for i in range(self.numpartitions):
             partition = self.partition(i)
@@ -290,9 +284,6 @@ class IndexedPartitionedListProxy(PartitionedListProxy):
     def indexed(self):
         return self
 
-    def nonindexed(self):
-        return PartitionedListProxy(self._generator, self._listofarrays)
-
     def __len__(self):
         return self._offsets[-1]
 
@@ -340,9 +331,16 @@ class RecordProxy(Proxy):
             return self.__dict__[field]
         else:
             try:
+                # actual field names get priority (they're not allowed to start with underscore)
                 generator = self._generator.fields[field]
             except KeyError:
-                raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+                # barring any conflicts with actual field names, "schema" and "fields" are convenient
+                if field == "schema":
+                    return self._generator.schema
+                elif field == "fields":
+                    return self._fields
+                else:
+                    raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
             else:
                 return generator._generate(self._arrays, self._index, self._cache)
 

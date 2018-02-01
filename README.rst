@@ -56,3 +56,25 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
     >>> stars
     [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>,
      <Record at index 4>, ...]
+
+This ``stars`` object behaves like a Python list, and each element is a Record, or class instance.
+
+    >>> stars[0].fields
+    ['activity', 'age', 'color', 'dec', 'density', 'distance', 'ecliptic', 'gaia', 'galactic',
+     'luminosity', 'mass', 'metallicity', 'name', 'num_amateur_lightcurves', 'num_general_lightcurves',
+     'num_images', 'num_planets', 'num_radial_timeseries', 'num_spectra', 'num_timeseries',
+     'num_transit_lightcurves', 'opticalband', 'parallax', 'photometry', 'planets', 'propermotion',
+     'ra', 'radialvelocity', 'radius', 'rotational_velocity', 'spectraltype', 'surfacegravity',
+     'temperature', 'update']
+    >>> stars[0].planets
+    [<Record at index 0>]
+    >>> stars[0].planets[0].fields
+    ['angular_separation', 'density', 'discovery', 'discovery_method', 'eccentricity',
+     'encyclopedia_link', 'equilibrium_temperature', 'explorer_link', 'has_astrometrical_variations',
+     'has_binary', 'has_image', 'has_orbital_modulations', 'has_radial_velocity', 'has_timing_variations',
+     'has_transits', 'hd_name', 'hip_name', 'impact_parameter', 'in_k2_data', 'in_kepler_data',
+     'inclination', 'isolation_flux', 'letter', 'longitude_periastron', 'mass', 'mass_best', 'mass_sini',
+     'name', 'num_notes', 'num_parameters', 'occultation_depth', 'orbital_period', 'periastron',
+     'publication_date', 'radial_velocity', 'radius', 'ratio_planetdistance_starradius',
+     'ratio_planetradius_starradius', 'reference_link', 'semimajor_axis', 'timesystem_reference',
+     'transit_depth', 'transit_duration', 'transit_midpoint']
