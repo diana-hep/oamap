@@ -294,7 +294,7 @@ Unconventional workflows: columnar granularity
 
 In the demonstration above, we downloaded the file we wanted to analyze. That required us to take all of the columns, including those we aren't interested in. Object-array mapping shifts the granular unit from a file that describes a complete dataset to its individual columns. Thus,
 
-- columns do not need to be packaged together as files— they may be free-floating objects in an object store;
+- columns do not need to be packaged together as files— they may be free-floating objects in a key-value database or object store;
 - the same columns may be used in different datasets— different versions, different structures, different filters— because datasets with substantial overlaps in content should not be allowed to waste memory.
 
 To demonstrate this, we'll look at the same dataset with download-on-demand. We're using a simple HTTP server for this, but any key-value database or object store would work.
