@@ -83,7 +83,7 @@ Alternatively, download the same dataset in Numpy form (or click `this link <htt
 
     wget http://diana-hep.org/oamap/examples/planets.npz
 
-Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap effectively adds this feature. (Numpy is faster to load into OAMap but a larger file than Parquet, due to less aggressive packing.)
+Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap effectively adds this feature. (Numpy is faster to load into OAMap but is a larger file than Parquet, due to less aggressive packing.)
 
 .. code-block:: python
 
@@ -110,6 +110,9 @@ This ``stars`` object behaves like a Python list, and each element is a record (
 
 .. code-block:: python
 
+    >>> stars
+    [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>,
+     <Record at index 4>, ...]
     >>> stars[0].fields
     ['activity', 'age', 'color', 'dec', 'density', 'distance', 'ecliptic', 'gaia', 'galactic',
      'luminosity', 'mass', 'metallicity', 'name', 'num_amateur_lightcurves', 'num_general_lightcurves',
