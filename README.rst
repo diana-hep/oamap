@@ -55,14 +55,12 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish).
 Sample dataset #1: Parquet
 """"""""""""""""""""""""""
 
-Download the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_ in Parquet form:
+Download the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_ in Parquet form (or click `this link <http://diana-hep.org/oamap/examples/planets.parquet>`_ and "Save As...").
 
 .. code-block:: bash
 
     wget http://diana-hep.org/oamap/examples/planets.parquet
     pip install thriftpy --user
-
-(or click `this link <http://diana-hep.org/oamap/examples/planets.parquet>`_ and "Save As..." if you wish).
 
 Parquet is a columnar data format intended for data with deeply nested structure.
 
@@ -79,17 +77,13 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
 Sample dataset #2: Numpy npz
 """"""""""""""""""""""""""""
 
-Alternatively, download the same dataset in Numpy form:
+Alternatively, download the same dataset in Numpy form (or click `this link <http://diana-hep.org/oamap/examples/planets.npz>`_ and "Save As...").
 
 .. code-block:: bash
 
     wget http://diana-hep.org/oamap/examples/planets.npz
 
-(or click `this link <http://diana-hep.org/oamap/examples/planets.npz>`_ and "Save As..." if you wish).
-
 Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap bridges the gap. (Numpy is faster to load into OAMap than Parquet but the file size is larger, due to less aggressive packing.)
-
-Load the Numpy dataset with its ``open`` function. If you have a large set of Numpy files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), even if the total dataset is enormous, because nothing is loaded until it is needed.
 
 .. code-block:: python
 
