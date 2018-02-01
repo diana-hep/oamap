@@ -57,7 +57,7 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
     [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>,
      <Record at index 4>, ...]
 
-This ``stars`` object behaves like a Python list, and each element is a Record (i.e. class instance or struct).
+This ``stars`` object behaves like a Python list, and each element is a record (i.e. class instance or struct).
 
 .. code-block:: python
 
@@ -81,6 +81,10 @@ This ``stars`` object behaves like a Python list, and each element is a Record (
     >>> stars[0].temperature.val, stars[0].temperature.loerr, stars[0].temperature.hierr
     (6564.0, -198.42, 153.47)
 
+The elements of a record can be other records, but they can also be other lists. Stars can have an arbitrary number of planets, so this dataset can't be expressed as a rectangular table without padding or duplication.
+
+The first star has one planet
+
 .. code-block:: python
 
     >>> stars[0].planets
@@ -95,3 +99,20 @@ This ``stars`` object behaves like a Python list, and each element is a Record (
      'publication_date', 'radial_velocity', 'radius', 'ratio_planetdistance_starradius',
      'ratio_planetradius_starradius', 'reference_link', 'semimajor_axis', 'timesystem_reference',
      'transit_depth', 'transit_duration', 'transit_midpoint']
+    # What's the planet's name?
+    >>> stars[0].planets[0].name
+    'Kepler-1239 b'
+    # Is that like the star's name? (Yup.)
+    >>> stars[0].name
+    'Kepler-1239'
+    # How was it discovered?
+    >>> stars[0].planets[0].discovery_method
+    'Transit'
+    # Oh, it's a transit. That means it should have transit information.
+    >>> stars[0].planets[0].transit_duration
+    <Record at index 0>
+    # Another record! These scientists like their measurement errors!
+    >>> stars[0].planets[0].transit_duration.fields
+    ['hierr', 'lim', 'loerr', 'val']
+    >>> stars[0].planets[0].transit_duration.val, stars[0].planets[0].transit_duration.loerr, stars[0].planets[0].transit_duration.hierr
+    (0.17783, -0.0042900001, 0.0042900001)
