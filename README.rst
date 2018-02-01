@@ -779,7 +779,7 @@ Every data type, at every level, may be "nullable." A nullable value may be ``No
     object-L-L-M [0 1]
     object-L-L-Di8 [4 5]
 
-Using the flexibility of the mask-offset, the missing values may be skipped in the data (as above) or filled with placeholders (as in Apache Arrow).
+Using the flexibility of the mask-offset, the missing values may be skipped in the data (as above) or filled with placeholders (as in `Apache Arrow <https://arrow.apache.org/>`_).
 
 Datasets and partitions
 -----------------------
