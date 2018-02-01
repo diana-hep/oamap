@@ -222,22 +222,14 @@ Peeking further behind the scenes, we can see that these really are Numpy arrays
 .. code-block:: python
 
     for name in stars._generator.loaded(stars._cache):
-        print(name)
         print(stars._listofarrays[0][name])
 
-    object-B
     [0]
-    object-E
     [2660]
-    object-L-NStar-Fplanets-B
     [   0    1    2 ... 3562 3565 3570]
-    object-L-NStar-Fplanets-E
     [   1    2    3 ... 3565 3570 3572]
-    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-M
     [   0    1    2 ... 3495 3496 3497]
-    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-M
     [   0    1    2 ... 3487 3488 3489]
-    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-Df4
     [ 5.19104    4.147876   3.5957696 ... 87.090195   4.425391  13.193242 ]
 
 No objects were involved in the processing of this data.
