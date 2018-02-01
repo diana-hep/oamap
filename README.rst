@@ -57,7 +57,7 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
     [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>,
      <Record at index 4>, ...]
 
-This ``stars`` object behaves like a Python list, and each element is a Record, or class instance.
+This ``stars`` object behaves like a Python list, and each element is a Record (i.e. class instance or struct).
 
 .. code-block:: python
 
@@ -68,6 +68,21 @@ This ``stars`` object behaves like a Python list, and each element is a Record, 
      'num_transit_lightcurves', 'opticalband', 'parallax', 'photometry', 'planets', 'propermotion',
      'ra', 'radialvelocity', 'radius', 'rotational_velocity', 'spectraltype', 'surfacegravity',
      'temperature', 'update']
+    # Where is the star on the sky (RA/Dec)?
+    >>> stars[0].ra, stars[0].dec
+    (293.12738, 42.320103)
+    # How hot is it?
+    >>> stars[0].temperature
+    <Record at index 0>
+    # Oh, that's another Record. What's inside of it?
+    >>> stars[0].temperature.fields
+    ['blend', 'hierr', 'lim', 'loerr', 'val']
+    # Measurement errors! Okay, get the central value with asymmetric errors.
+    >>> stars[0].temperature.val, stars[0].temperature.loerr, stars[0].temperature.hierr
+    (6564.0, -198.42, 153.47)
+
+.. code-block:: python
+
     >>> stars[0].planets
     [<Record at index 0>]
     >>> stars[0].planets[0].fields
