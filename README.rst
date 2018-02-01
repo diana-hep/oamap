@@ -33,21 +33,40 @@ Install OAMap like any other Python package:
 
 or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish).
 
-Sample dataset
-""""""""""""""
+**Strict dependencies:**
+
+- **python** (2.6+, 3.4+)
+- **numpy**
+
+**Recommended dependencies:**
+
+- **numba** to JIT-compile functions
+- **thriftpy** to read Parquet files
+- **uproot** to read ROOT files
+- **h5py** to read HDF5 files
+
+**Optional dependencies:**
+
+- **lz4** compression used by some ROOT and Parquet files
+- **snappy** compression used by some Parquet files
+- **lzo** compression used by some Parquet files
+- **brotli** compression used by some Parquet files
+
+Sample dataset #1
+"""""""""""""""""
 
 Download the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_ in Parquet form:
 
 .. code-block:: bash
 
     wget http://diana-hep.org/oamap/examples/planets.parquet
+    pip install thriftpy --user
 
 (or click `this link <http://diana-hep.org/oamap/examples/planets.parquet>`_ and "Save As..." if you wish).
 
-Exploring data
-""""""""""""""
+Parquet is a columnar data format intended for data with deeply nested structure.
 
-Load the Parquet dataset with its ``open`` function. If you have a large set of Parquet files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), because data are always loaded on demand.
+Load the Parquet dataset with its ``open`` function. If you have a large set of Parquet files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), even if the total dataset is enormous, because nothing is loaded until it is needed.
 
 .. code-block:: python
 
@@ -56,6 +75,32 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
     >>> stars
     [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>,
      <Record at index 4>, ...]
+
+Sample dataset #2
+"""""""""""""""""
+
+Alternatively, download the same dataset in Numpy form:
+
+.. code-block:: bash
+
+    wget http://diana-hep.org/oamap/examples/planets.npz
+
+(or click `this link <http://diana-hep.org/oamap/examples/planets.npz>`_ and "Save As..." if you wish).
+
+Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap bridges the gap.
+
+Load the Parquet dataset with its ``open`` function. If you have a large set of Parquet files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), even if the total dataset is enormous, because nothing is loaded until it is needed.
+
+.. code-block:: python
+
+    >>> import oamap.source.npz
+    >>> stars = oamap.source.npz.open("planets.npz")
+    >>> stars
+    [<Star at index 0>, <Star at index 1>, <Star at index 2>, <Star at index 3>,
+     <Star at index 4>, ...]
+
+Exploring the data
+""""""""""""""""""
 
 This ``stars`` object behaves like a Python list, and each element is a record (i.e. class instance or struct).
 
@@ -136,7 +181,71 @@ One column at a time is probably the right granularity for you because you'll be
 
 .. code-block:: python
 
+    for star in stars:
+        best_ratio = None
+        for one in star.planets:
+            for two in star.planets:
+                if (one.orbital_period is not None and one.orbital_period.val is not None and
+                    two.orbital_period is not None and two.orbital_period.val is not None):
+                    ratio = one.orbital_period.val / two.orbital_period.val
+                    if best_ratio is None or ratio > best_ratio:
+                        best_ratio = ratio
+        if best_ratio is not None:
+            print(best_ratio)
+
+If you're following these examples interactively, you'd have noticed that the lag occurred at the very beginning of the loop, when you asked for the first orbital period and got all of them.
+
+Peeking at OAMap's internals, we can see which arrays are actually loaded.
+
+.. code-block:: python
+
+    >>> print("\n".join(stars._generator.loaded(stars._cache)))
+    object-B
+    object-E
+    object-L-Fplanets-B
+    object-L-Fplanets-E
+    object-L-Fplanets-L-Forbital_period-M
+    object-L-Fplanets-L-Forbital_period-Fval-M
+    object-L-Fplanets-L-Forbital_period-Fval-Df4
+
+The ``-B`` and ``-E`` arrays quantify list and sublist lengths, ``-M`` are for nullable fields (almost all of the exoplanets fields could be null, or ``None`` in the Python code), and ``-D`` is the numerical data. (Note: the listing above is from the Parquet file; the Numpy file differs only in that it preserved the record names.)
+
+Peeking further behind the scenes, we can see that these really are Numpy arrays.
+
+.. code-block:: python
+    for name in stars._generator.loaded(stars._cache):
+        print(name)
+        print(stars._listofarrays[0][name])
+
+    object-B
+    [0]
+    object-E
+    [2660]
+    object-L-NStar-Fplanets-B
+    [   0    1    2 ... 3562 3565 3570]
+    object-L-NStar-Fplanets-E
+    [   1    2    3 ... 3565 3570 3572]
+    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-M
+    [   0    1    2 ... 3495 3496 3497]
+    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-M
+    [   0    1    2 ... 3487 3488 3489]
+    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-Df4
+    [ 5.19104    4.147876   3.5957696 ... 87.090195   4.425391  13.193242 ]
+
+No objects were involved in the processing of this data.
+
+The fact that the data are purely numerical makes it the perfect fit for Numba, which optimizes Pythonic number-crunching by compiling it with LLVM.
+
+Try `installing Numba <http://numba.pydata.org/numba-doc/latest/user/installing.html>`_ and then running the code below. The ``@numba.njit`` decorator specifies that the function must be compiled before it runs and ``import oamap.compiler`` tells Numba how to compile OAMap types.
+
+.. code-block:: python
+
+    import numba
+    import oamap.compiler    # crucial! loads OAMap extensions!
+    
+    @numba.njit
     def period_ratio(stars):
+        out = []
         for star in stars:
             best_ratio = None
             for one in star.planets:
@@ -146,33 +255,14 @@ One column at a time is probably the right granularity for you because you'll be
                         ratio = one.orbital_period.val / two.orbital_period.val
                         if best_ratio is None or ratio > best_ratio:
                             best_ratio = ratio
-            if best_ratio is not None:
-                print(best_ratio)
-
-.. code-block:: python
-
-    >>> import numba
-    >>> import oamap.compiler    # crucial! loads OAMap extensions!
-
-    >>> @numba.njit
-    ... def period_ratio(stars):
-    ...     out = []
-    ...     for star in stars:
-    ...         best_ratio = None
-    ...         for one in star.planets:
-    ...             for two in star.planets:
-    ...                 if (one.orbital_period is not None and one.orbital_period.val is not None and
-    ...                     two.orbital_period is not None and two.orbital_period.val is not None):
-    ...                     ratio = one.orbital_period.val / two.orbital_period.val
-    ...                     if best_ratio is None or ratio > best_ratio:
-    ...                         best_ratio = ratio
-    ...         if best_ratio is not None and best_ratio > 200:
-    ...             out.append(star)
-    ...     return out
-    ... 
-    # On a small dataset like this, the lag is mostly loading compilers and compiling, not running.
+            if best_ratio is not None and best_ratio > 200:
+                out.append(star)
+        return out
+    
+    # The benefit of compiling is lost on a small dataset like this (compilation time ~ run time),
+    # but I'm sure you can find a much bigger one.  :)
     >>> extremes = period_ratio(stars)
-    # Now that we've filtered with compiled code, we can examine the outliers in slow Python.
+    # Now that we've filtered with compiled code, we can examine the outliers in Python.
     >>> extremes
     [<Record at index 284>, <Record at index 466>, <Record at index 469>, <Record at index 472>,
      <Record at index 484>, <Record at index 502>, <Record at index 510>, <Record at index 559>,
@@ -185,6 +275,9 @@ One column at a time is probably the right granularity for you because you'll be
     >>> extremes[0].planets
     [<Record at index 384>, <Record at index 385>, <Record at index 386>, <Record at index 387>,
      <Record at index 388>, <Record at index 389>]
-    # Indeed, the orbital period ratio is 2205.0 / 5.75969.
+    # Indeed, the orbital period ratio for this one is 2205.0 / 5.75969.
     >>> [x.orbital_period.val for x in extremes[0].planets]
     [5.75969, 16.357, 49.748, 122.744, 604.67, 2205.0]
+    # Including attributes that we didn't consider in the search.
+    >>> [x.mass_best.val for x in extremes[0].planets]
+    [0.0416, 0.0378, 0.0805, 0.0722, 0.0732, 0.2066]

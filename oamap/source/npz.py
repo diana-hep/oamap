@@ -28,6 +28,13 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
+import glob
+try:
+    from urlparse import urlparse
+except ImportError:
+    from urllib.parse import urlparse
+
 import numpy
 
 import oamap.schema
@@ -35,6 +42,51 @@ import oamap.inference
 import oamap.fill
 import oamap.proxy
 from oamap.util import import_module
+
+def open(path, mode="r", prefix="object", delimiter="-"):
+    def explode(x):
+        parsed = urlparse(x)
+        if parsed.scheme == "file" or len(parsed.scheme) == 0:
+            return sorted(glob.glob(os.path.expanduser(parsed.netloc + parsed.path)))
+        else:
+            raise ValueError("URL scheme '{0}' not recognized".format(parsed.scheme))
+
+    if isinstance(path, basestring):
+        paths = explode(path)
+    else:
+        paths = [y for x in path for y in explode(x)]
+
+    if len(paths) == 0:
+        raise ValueError("no matching filenames")
+
+    npzfile = numpy.load(paths[0])
+    try:
+        datasetarray = npzfile[prefix]
+        assert datasetarray.dtype == numpy.dtype(numpy.uint8) and len(datasetarray.shape) == 1
+        dataset = oamap.schema.Dataset.fromjsonstring(datasetarray.tostring())
+    except:
+        schema = oamap.inference.fromnames(npzfile.keys(), prefix=prefix, delimiter=delimiter)
+    else:
+        schema = dataset.schema
+
+    generator = schema.generator()
+    listofarrays = [NumpyFileArrays(paths[0], npzfile)] + [NumpyFileArrays(x, None) for x in paths[1:]]
+    return oamap.proxy.PartitionedListProxy(generator, listofarrays)
+
+class NumpyFileArrays(object):
+    def __init__(self, filename, arrays):
+        self._filename = filename
+        self._arrays = arrays
+
+    def __getitem__(self, request):
+        if self._arrays is None:
+            self._arrays = numpy.load(self._filename)
+        return self._arrays[request]
+
+    def close(self):
+        if self._arrays is not None:
+            self._arrays.close()
+            self._arrays = None
 
 def load(npzfile, prefix="object", delimiter="-"):
     if not isinstance(npzfile, numpy.lib.npyio.NpzFile):
