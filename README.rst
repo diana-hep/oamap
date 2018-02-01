@@ -346,30 +346,30 @@ Now we can work with this dataset exactly as we did before. (I'm including the o
 
 .. code-block:: python
 
-    object-B
-    object-E
+    # object-B
+    # object-E
     >>> stars
     [<Star at index 0>, <Star at index 1>, <Star at index 2>, <Star at index 3>, <Star at index 4>, ...,
      <Star at index 2655>, <Star at index 2656>, <Star at index 2657>, <Star at index 2658>,
      <Star at index 2659>]
     >>> stars[0].ra, stars[0].dec
-    object-L-NStar-Fra-Df4
-    object-L-NStar-Fdec-Df4
+    # object-L-NStar-Fra-Df4
+    # object-L-NStar-Fdec-Df4
     (293.12738, 42.320103)
     >>> stars[258].planets
-    object-L-NStar-Fplanets-B
-    object-L-NStar-Fplanets-E
+    # object-L-NStar-Fplanets-B
+    # object-L-NStar-Fplanets-E
     [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>,
      <Planet at index 328>]
     >>> [x.name for x in stars[258].planets]
-    object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-B
-    object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-E
-    object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Du1
+    # object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-B
+    # object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-E
+    # object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Du1
     [u'HD 40307 b', u'HD 40307 c', u'HD 40307 d', u'HD 40307 f', u'HD 40307 g']
     >>> period_ratio(stars)
-    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-M
-    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-Df4
-    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-M
+    # object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-M
+    # object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-Df4
+    # object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-M
     [<Star at index 284>, <Star at index 466>, <Star at index 469>, <Star at index 472>, <Star at index 484>,
      <Star at index 502>, <Star at index 510>, <Star at index 559>, <Star at index 651>, <Star at index 665>,
      <Star at index 674>, <Star at index 728>, <Star at index 1129>, <Star at index 1464>,
