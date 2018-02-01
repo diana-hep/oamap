@@ -376,3 +376,8 @@ Now we can work with this dataset exactly as we did before. (I'm including the o
      <Star at index 1529>, <Star at index 1567>, <Star at index 1814>, <Star at index 1819>,
      <Star at index 1953>, <Star at index 1979>, <Star at index 1980>, <Star at index 2305>,
      <Star at index 2332>, <Star at index 2366>, <Star at index 2623>, <Star at index 2654>]
+
+Scope of computability
+""""""""""""""""""""""
+
+
