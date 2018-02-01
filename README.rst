@@ -52,8 +52,8 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish).
 - **lzo** compression used by some Parquet files
 - **brotli** compression used by some Parquet files
 
-Sample dataset #1
-"""""""""""""""""
+Sample dataset #1: Parquet
+""""""""""""""""""""""""""
 
 Download the `NASA Exoplanet Archive <https://exoplanetarchive.ipac.caltech.edu/>`_ in Parquet form:
 
@@ -76,8 +76,8 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
     [<Record at index 0>, <Record at index 1>, <Record at index 2>, <Record at index 3>,
      <Record at index 4>, ...]
 
-Sample dataset #2
-"""""""""""""""""
+Sample dataset #2: Numpy npz
+""""""""""""""""""""""""""""
 
 Alternatively, download the same dataset in Numpy form:
 
@@ -87,7 +87,7 @@ Alternatively, download the same dataset in Numpy form:
 
 (or click `this link <http://diana-hep.org/oamap/examples/planets.npz>`_ and "Save As..." if you wish).
 
-Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap bridges the gap.
+Numpy's npz format is intended for rectangular arrays, not deeply nested structure. However, OAMap bridges the gap. (Numpy is faster to load into OAMap than Parquet but the file size is larger, due to less aggressive packing.)
 
 Load the Parquet dataset with its ``open`` function. If you have a large set of Parquet files, you could pass a list or glob pattern (``*`` and ``?`` wildcards), even if the total dataset is enormous, because nothing is loaded until it is needed.
 
@@ -98,6 +98,16 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
     >>> stars
     [<Star at index 0>, <Star at index 1>, <Star at index 2>, <Star at index 3>,
      <Star at index 4>, ...]
+
+Sample dataset #3: HDF5
+"""""""""""""""""""""""
+
+TODO
+
+Sample dataset #4: ROOT
+"""""""""""""""""""""""
+
+TODO
 
 Exploring the data
 """"""""""""""""""
@@ -281,3 +291,88 @@ Try `installing Numba <http://numba.pydata.org/numba-doc/latest/user/installing.
     # Including attributes that we didn't consider in the search.
     >>> [x.mass_best.val for x in extremes[0].planets]
     [0.0416, 0.0378, 0.0805, 0.0722, 0.0732, 0.2066]
+
+The exploratory one-liners and the analysis functions you would write to study your data are similar to what they'd be if these were JSON or Python objects. However,
+
+- the data are stored in a binary, columnar form, which minimizes memory use and streamlines data transfers from disk or network to memory to CPU cache);
+- scans over the data can be compiled for higher throughput.
+
+These two features speed up conventional workflows.
+
+Unconventional workflows: columnar granularity
+""""""""""""""""""""""""""""""""""""""""""""""
+
+In the demonstration above, we downloaded the file we wanted to analyze. That required us to take all of the columns, including those we aren't interested in. Object-array mapping shifts the granular unit from a file that describes a complete dataset to its individual columns. Thus,
+
+- columns do not need to be packaged together as files— they may be free-floating objects in an object store;
+- the same columns may be used in different datasets— different versions, different structures, different filters— because datasets with substantial overlaps in content should not be allowed to waste memory.
+
+To demonstrate this, we'll look at the same dataset with download-on-demand. We're using a simple HTTP server for this, but any key-value database or object store would work.
+
+.. code-block:: python
+
+    import numpy
+    import io
+    import codecs
+    try:
+        from urllib.request import urlopen   # Python 3
+    except ImportError:
+        from urllib2 import urlopen          # Python 2
+
+    baseurl = "http://diana-hep.org/oamap/examples/planets/"
+
+    # wrap the website as a dict-like object with a __getitem__ method
+    class DataSource:
+        def __getitem__(self, name):
+            ### uncomment the following line to see how it works
+            # print(name)
+            try:
+                return numpy.load(io.BytesIO(urlopen(baseurl + name + ".npy").read()))
+            except Exception as err:
+                raise KeyError(str(err))
+
+    # download the dataset description
+    remotefile = urlopen(baseurl + "dataset.json")
+
+    # explicit utf-8 conversion required for Python 3
+    remotefile = codecs.getreader("utf-8")(remotefile)
+
+    # the dataset description tells OAMap which arrays (URLs) to fetch
+    from oamap.schema import Dataset
+    dataset = Dataset.fromjsonfile(remotefile)
+    stars = dataset.schema(DataSource())
+
+Now we can work with this dataset exactly as we did before. (I'm including the optional printouts from above.)
+
+.. code-block:: python
+
+    object-B
+    object-E
+    >>> stars
+    [<Star at index 0>, <Star at index 1>, <Star at index 2>, <Star at index 3>, <Star at index 4>, ...,
+     <Star at index 2655>, <Star at index 2656>, <Star at index 2657>, <Star at index 2658>,
+     <Star at index 2659>]
+    >>> stars[0].ra, stars[0].dec
+    object-L-NStar-Fra-Df4
+    object-L-NStar-Fdec-Df4
+    (293.12738, 42.320103)
+    >>> stars[258].planets
+    object-L-NStar-Fplanets-B
+    object-L-NStar-Fplanets-E
+    [<Planet at index 324>, <Planet at index 325>, <Planet at index 326>, <Planet at index 327>,
+     <Planet at index 328>]
+    >>> [x.name for x in stars[258].planets]
+    object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-B
+    object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-E
+    object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Du1
+    [u'HD 40307 b', u'HD 40307 c', u'HD 40307 d', u'HD 40307 f', u'HD 40307 g']
+    >>> period_ratio(stars)
+    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-M
+    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-Df4
+    object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-M
+    [<Star at index 284>, <Star at index 466>, <Star at index 469>, <Star at index 472>, <Star at index 484>,
+     <Star at index 502>, <Star at index 510>, <Star at index 559>, <Star at index 651>, <Star at index 665>,
+     <Star at index 674>, <Star at index 728>, <Star at index 1129>, <Star at index 1464>,
+     <Star at index 1529>, <Star at index 1567>, <Star at index 1814>, <Star at index 1819>,
+     <Star at index 1953>, <Star at index 1979>, <Star at index 1980>, <Star at index 2305>,
+     <Star at index 2332>, <Star at index 2366>, <Star at index 2623>, <Star at index 2654>]
