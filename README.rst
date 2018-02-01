@@ -328,7 +328,7 @@ To demonstrate this, we'll look at the same dataset with download-on-demand. We'
     remotefile = codecs.getreader("utf-8")(remotefile)
 
     # the dataset description tells OAMap which arrays (URLs) to fetch
-    from oamap.schema import Dataset
+    from oamap.schema import *
     dataset = Dataset.fromjsonfile(remotefile)
     stars = dataset.schema(DataSource())
 
@@ -366,6 +366,45 @@ Now we can work with this dataset exactly as we did before. (I'm including the o
      <Star at index 1529>, <Star at index 1567>, <Star at index 1814>, <Star at index 1819>,
      <Star at index 1953>, <Star at index 1979>, <Star at index 1980>, <Star at index 2305>,
      <Star at index 2332>, <Star at index 2366>, <Star at index 2623>, <Star at index 2654>]
+
+We can even modify the dataset without touching all of its elements. For instance, suppose we want to give each star an id number:
+
+.. code-block:: python
+
+    # create a data source that effectively merges the array sets
+    class DataSource2:
+        def __init__(self, arrays, fallback):
+            self.arrays = arrays
+            self.fallback = fallback
+        def __getitem__(self, name):
+            try:
+                return self.arrays[name]
+            except KeyError:
+                return self.fallback[name]
+
+    # modify the schema by adding a primitive (numerical) field
+    >>> schema = dataset.schema
+    >>> schema.content["id"] = Primitive(int, data="id-array")
+
+    # create a new dataset with the new schema and new source
+    >>> source = DataSource2({"id-array": numpy.arange(len(stars), dtype=int)}, DataSource())
+    >>> stars_v2 = schema(source)
+
+    # now the new dataset has the new field and the old one doesn't
+    >>> stars_v2[0].id
+    0
+    >>> stars_v2[100].id
+    100
+    >>> stars_v2[-1].id
+    2659
+    >>> stars[0].id
+    Traceback (most recent call last):
+      File "<stdin>", line 1, in <module>
+      File "oamap/proxy.py", line 340, in __getattr__
+        raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+    AttributeError: u'Star' object has no attribute 'id'
+
+
 
 Scope of computability
 """"""""""""""""""""""
