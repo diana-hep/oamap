@@ -83,7 +83,7 @@ This ``stars`` object behaves like a Python list, and each element is a record (
 
 The elements of a record can be other records, but they can also be other lists. Stars can have an arbitrary number of planets, so this dataset can't be expressed as a rectangular table without padding or duplication.
 
-The first star has one planet
+The first star has one planet.
 
 .. code-block:: python
 
@@ -114,5 +114,6 @@ The first star has one planet
     # Another record! These scientists like their measurement errors!
     >>> stars[0].planets[0].transit_duration.fields
     ['hierr', 'lim', 'loerr', 'val']
-    >>> stars[0].planets[0].transit_duration.val, stars[0].planets[0].transit_duration.loerr, stars[0].planets[0].transit_duration.hierr
+    >>> (stars[0].planets[0].transit_duration.val, stars[0].planets[0].transit_duration.loerr,
+    ...  stars[0].planets[0].transit_duration.hierr)
     (0.17783, -0.0042900001, 0.0042900001)
