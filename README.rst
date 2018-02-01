@@ -389,7 +389,7 @@ We can even modify the dataset without touching all of its elements. For instanc
     >>> source = DataSource2({"id-array": numpy.arange(len(stars), dtype=int)}, DataSource())
     >>> stars_v2 = schema(source)
 
-    # the new dataset has the new field and the old one doesn't, but the share 99% of the data
+    # the new dataset has the new field and the old one doesn't, but they share 99% of the data
     >>> stars_v2[0].id
     0
     >>> stars_v2[100].id
@@ -591,4 +591,107 @@ Tuples are like records, but their content fields are numbered, rather than name
 Pointer
 """""""
 
+Pointers connect parts of the object to form trees and graphs, and they reduce memory use by minimizing the number of times a large, complex object must be represented.
 
+OAMap pointers are similar to pointers in a language like C, in that they reference an object by specifying its location with an integer, with two exceptions.
+
+1. The address is an array index, not a native memory address. This allows OAMap to be portable.
+2. OAMap pointers are `bounded pointers <https://en.wikipedia.org/wiki/Bounded_pointer>`_, limited to a specified "target."
+
+Pointers may be used in three topologies: (1) to point to another object in the same schema, but not its own parent, (2) to point at its parent, creating a loop (the only way to make arbitrary depth trees or graphs in OAMap), and (3) to point to an external object.
+
+The first case is useful for provenance, so that derived collections can refer to their sources (e.g. reconstructed particles point to their raw measurements; tracks and showers in particle physics).
+
+.. code-block:: python
+
+    >>> schema = Record({"points": List(Tuple(["int", "int"])),
+    ...                  "line": List(Pointer(None))})
+    >>> schema.fields["line"].content.target = schema.fields["points"].content
+    >>> schema.show()
+    Record(
+      fields = {
+        'points': List(
+          content = #0: Tuple(
+            types = [
+              Primitive(dtype('int64')),
+              Primitive(dtype('int64'))
+            ])
+        ),
+        'line': List(
+          content = Pointer(
+            target = #0
+          )
+        )
+      })
+    >>> points = [(0, 0), (0, 1), (1, 1), (1, 0)]
+    >>> line = [points[0], points[2], points[1]]
+    >>> obj = schema.fromdata({"points": points, "line": line})
+    >>> for n, x in obj._arrays.items():
+    ...     print n, x
+    ... 
+    object-Fline-B [0]
+    object-Fline-E [3]
+    object-Fpoints-B [0]
+    object-Fpoints-E [4]
+    object-Fpoints-L-F0-Di8 [0 0 1 1]
+    object-Fpoints-L-F1-Di8 [0 1 1 0]
+    object-Fline-L-P-object-Fpoints-L [0 2 1]  # point 0, 2, then 1
+
+The second case builds trees and graphs.
+
+.. code-block:: python
+
+    >>> schema = Record(
+    ...     name = "Tree",
+    ...     fields = dict(
+    ...         label = "float",
+    ...         children = List(Pointer(None))
+    ...     ))
+    ... 
+    >>> schema.fields["children"].content.target = schema
+    >>> schema.show()
+    #0: Record(
+      name = 'Tree',
+      fields = {
+        'label': Primitive(dtype('float64')),
+        'children': List(
+          content = Pointer(
+            target = #0
+          )
+        )
+      })
+    # 1.1
+    #  │
+    #  ├── 2.2
+    #  │    │
+    #  │    ├── 4.4
+    #  │    │    └── 7.7
+    #  │    │
+    #  │    └── 5.5
+    #  │         └── 8.8
+    #  │
+    #  └── 3.3
+    #       └── 6.6
+    >>> obj = schema.fromdata(
+    ...     {"label": 1.1,
+    ...      "children": [
+    ...          {"label": 2.2,
+    ...           "children": [
+    ...               {"label": 4.4,
+    ...                "children": [
+    ...                    {"label": 7.7, "children": []}
+    ...                            ]},
+    ...               {"label": 5.5,
+    ...                "children": [
+    ...                    {"label": 8.8, "children": []}
+    ...                            ]}
+    ...                       ]},
+    ...          {"label": 3.3,
+    ...           "children": [
+    ...               {"label": 6.6, "children": []}
+    ...                       ]}
+    ...                  ]})
+    >>> obj
+    <Tree at index 0>
+    >>> obj.children[0].children[0].label
+    2.2
