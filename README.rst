@@ -824,6 +824,8 @@ To a user, processing a whole dataset can be as simple as
 
 to load each partition serially, holding only one partition in memory at a time, or
 
+.. code-block:: python
+
     >>> from concurrent.futures import ThreadPoolExecutor
     >>> executor = ThreadPoolExecutor(16)
     >>> executor.map(complex_function, events.partitions)
