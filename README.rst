@@ -117,3 +117,13 @@ The first star has one planet.
     >>> (stars[0].planets[0].transit_duration.val, stars[0].planets[0].transit_duration.loerr,
     ...  stars[0].planets[0].transit_duration.hierr)
     (0.17783, -0.0042900001, 0.0042900001)
+
+Here's a star with five planets:
+
+    >>> stars[258].planets
+    [<Record at index 324>, <Record at index 325>, <Record at index 326>, <Record at index 327>,
+     <Record at index 328>]
+    >>> [x.name for x in stars[258].planets]
+    ['HD 40307 b', 'HD 40307 c', 'HD 40307 d', 'HD 40307 f', 'HD 40307 g']
+    >>> [x.discovery_method for x in stars[258].planets]
+    ['Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity', 'Radial Velocity']
