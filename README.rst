@@ -427,8 +427,6 @@ Primitive
 
 Primitives are fixed-width, concrete types such as booleans, numbers, and fixed-size byte strings (e.g. 6-byte MAC addresses or 16-byte UUIDs). The scope will include anything describable by a `Numpy dtype <https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.html>`_, though non-trivial dtype shapes (to describe fixed-dimension tensors) and names (to describe non-columnar, flat records) are not implemented yet.
 
-**Examples:**
-
 .. code-block:: python
 
     >>> from oamap.schema import *
@@ -450,8 +448,6 @@ List
 """"
 
 Lists are arbitrary length collections of any other type. Unlike dynamically typed Python, the contents of a list must all be the same type ("homogeneous"), though unions (below) loosen that requirement.
-
-**Examples:**
 
 .. code-block:: python
 
