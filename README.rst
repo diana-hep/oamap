@@ -40,7 +40,7 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish).
 
 **Recommended dependencies:**
 
-- `numba <http://numba.pydata.org/numba-doc/latest/user/installing.html>`_ to JIT-compile functions (requires LLVM, follow instructions)
+- `numba <http://numba.pydata.org/numba-doc/latest/user/installing.html>`_ to JIT-compile functions (requires a particular version of LLVM, follow instructions)
 - `thriftpy <https://pypi.python.org/pypi/thriftpy>`_ to read Parquet files (pure Python, pip is fine)
 - `uproot <https://pypi.python.org/pypi/uproot/>`_ to read ROOT files (pure Python, pip is fine)
 - `h5py <http://docs.h5py.org/en/latest/build.html>`_ to read HDF5 files (requires binary libraries; follow instructions)
