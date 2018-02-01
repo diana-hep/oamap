@@ -701,12 +701,12 @@ The third case effectively turns contained data into enumeration constants, good
       )
     ) 
 
-    # string data consists exclusively of unique strings
+    # string data consists exclusively of _unique_ strings
     >>> stars._listofarrays[0]["discovery_method-X-NUTF8String-L-Du1"].tostring()
     b"""TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timi
         ng VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry"""
 
-    # the strings are referred to by integer index, thanks to the pointer
+    # and the discovery method string for 3572 planets are referred to by pointer integers
     >>> stars._listofarrays[0]["discovery_method-P"][:300]
     array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 0, 0, 0, 0, 0, 0,
            0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1,
@@ -722,3 +722,59 @@ The third case effectively turns contained data into enumeration constants, good
            0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0,
            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=int32)
+
+This concept maps nicely onto Parquet's dictionary encoding, so Parquet dictionaries are presented as OAMap pointers.
+
+Extensions and names
+""""""""""""""""""""
+
+Extensions allow the six content-oriented type generators to be interpreted in an open-ended variety of ways. For instance, we haven't discussed strings as a distinct type, but strings are just lists of characters, and characters are primitives. Instead of introducing a string type, we allow lists of characters with a special name to be interpreted as strings.
+
+>>> schema = List(List(name="UTF8String", content="uint8"))
+>>> obj = schema.fromdata(["hello there", "you guys"])
+>>> obj
+['hello there', 'you guys']
+>>> for n, x in obj._arrays.items():
+...     print(n, x)
+... 
+object-B [0]
+object-E [2]
+object-L-NUTF8String-B [ 0 11]
+object-L-NUTF8String-E [11 19]
+object-L-NUTF8String-L-Du1 [104 101 108 108 111  32 116 104 101 114 101 121
+                            111 117  32 103 117 121 115]
+>>> obj._arrays["object-L-NUTF8String-L-Du1"].tostring()
+b'hello thereyou guys'
+
+Extension libraries can be specified at runtime (``oamap.extension.common`` is the default, which includes the most common types) and are pattern-matched to schemas. All specified schema attributes are used in the matching, but name is the most significant discriminator.
+
+Nullability
+"""""""""""
+
+Every data type, at every level, may be "nullable." A nullable type may be ``None`` at runtime, and the missing data are identified by masking arrays that also serve as offset arrays (so they can handle both dense and sparse data).
+
+.. code-block:: python
+
+    >>> schema = List(List(Primitive(int, nullable=True), nullable=True))
+
+    >>> obj = schema.fromdata([[1, None, 3], [], [4, 5]])
+    >>> for n, x in obj._arrays.items():
+    ...     print n, x
+    object-B [0]
+    object-E [3]
+    object-L-M [0 1 2]
+    object-L-B [0 3 3]
+    object-L-E [3 3 5]
+    object-L-L-M [ 0 -1  1  2  3]
+    object-L-L-Di8 [1 3 4 5]
+
+    >>> obj = schema.fromdata([None, [], [4, 5]])
+    >>> for n, x in obj._arrays.items():
+    ...     print n, x
+    object-B [0]
+    object-E [3]
+    object-L-M [-1  0  1]
+    object-L-B [0 0]
+    object-L-E [0 2]
+    object-L-L-M [0 1]
+    object-L-L-Di8 [4 5]
