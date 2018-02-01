@@ -220,6 +220,7 @@ The ``-B`` and ``-E`` arrays quantify list and sublist lengths, ``-M`` are for n
 Peeking further behind the scenes, we can see that these really are Numpy arrays.
 
 .. code-block:: python
+
     for name in stars._generator.loaded(stars._cache):
         print(name)
         print(stars._listofarrays[0][name])
