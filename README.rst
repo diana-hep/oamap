@@ -401,7 +401,8 @@ We can even modify the dataset without touching all of its elements. For instanc
     Traceback (most recent call last):
       File "<stdin>", line 1, in <module>
       File "oamap/proxy.py", line 340, in __getattr__
-        raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+        raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if
+            self._generator.name is None else self._generator.name), repr(field)))
     AttributeError: u'Star' object has no attribute 'id'
 
 
