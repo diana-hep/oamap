@@ -59,6 +59,8 @@ Load the Parquet dataset with its ``open`` function. If you have a large set of 
 
 This ``stars`` object behaves like a Python list, and each element is a Record, or class instance.
 
+.. code-block:: python
+
     >>> stars[0].fields
     ['activity', 'age', 'color', 'dec', 'density', 'distance', 'ecliptic', 'gaia', 'galactic',
      'luminosity', 'mass', 'metallicity', 'name', 'num_amateur_lightcurves', 'num_general_lightcurves',
