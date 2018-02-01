@@ -574,3 +574,22 @@ You've seen several examples of record types, so here's one drawn from the exopl
         'year': Primitive(dtype('int32'), doc='Year the planet was discovered')
       })
 
+Tuple
+"""""
+
+Tuples are like records, but their content fields are numbered, rather than named. They are more like records than lists because
+
+- lists may have any length, but the tuple length is fixed by the schema;
+- all elements of a list must have the same type ("homogeneous"), but each element of a tuple may have a different type ("heterogeneous").
+
+.. code-block:: python
+
+    >>> schema = List(Tuple(["int", "float", List("int")]))
+    >>> obj = schema.fromdata([(1, 1.1, [1, 2, 3]), (2, 2.2, []), (3, 3.3, [4, 5])])
+    >>> obj
+    [(1, 1.1, [1, 2, 3]), (2, 2.2, []), (3, 3.3, [4, 5])]
+
+Pointer
+"""""""
+
+
