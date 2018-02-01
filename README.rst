@@ -120,6 +120,8 @@ The first star has one planet.
 
 Here's a star with five planets:
 
+.. code-block:: python
+
     >>> stars[258].planets
     [<Record at index 324>, <Record at index 325>, <Record at index 326>, <Record at index 327>,
      <Record at index 328>]
