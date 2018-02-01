@@ -221,9 +221,8 @@ Peeking further behind the scenes, we can see that these really are Numpy arrays
 
 .. code-block:: python
 
-    for name in stars._generator.loaded(stars._cache):
-        print(stars._listofarrays[0][name])
-
+    >>> for name in stars._generator.loaded(stars._cache):
+    ...     print(stars._listofarrays[0][name])
     [0]
     [2660]
     [   0    1    2 ... 3562 3565 3570]
