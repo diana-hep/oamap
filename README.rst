@@ -390,7 +390,7 @@ We can even modify the dataset without touching all of its elements. For instanc
     >>> source = DataSource2({"id-array": numpy.arange(len(stars), dtype=int)}, DataSource())
     >>> stars_v2 = schema(source)
 
-    # now the new dataset has the new field and the old one doesn't
+    # the new dataset has the new field and the old one doesn't, but the share 99% of the data
     >>> stars_v2[0].id
     0
     >>> stars_v2[100].id
