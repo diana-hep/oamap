@@ -660,23 +660,23 @@ The second case builds trees and graphs.
           )
         )
       })
-    >>> obj = schema.fromdata(                                 # 1.1               
-    ...     {"label": 1.1,                                     #  │                
-    ...      "children": [                                     #  ├── 2.2          
-    ...          {"label": 2.2,                                #  │    │           
-    ...           "children": [                                #  │    ├── 4.4     
-    ...               {"label": 4.4,                           #  │    │    └── 7.7
-    ...                "children": [                           #  │    │           
-    ...                    {"label": 7.7, "children": []}      #  │    └── 5.5     
-    ...                            ]},                         #  │         └── 8.8
-    ...               {"label": 5.5,                           #  │                
-    ...                "children": [                           #  └── 3.3          
-    ...                    {"label": 8.8, "children": []}      #       └── 6.6     
-    ...                            ]}
-    ...                       ]},
-    ...          {"label": 3.3,
-    ...           "children": [
-    ...               {"label": 6.6, "children": []}
+    >>> obj = schema.fromdata(
+    ...     {"label": 1.1,                                     # 1.1
+    ...      "children": [                                     #  |
+    ...          {"label": 2.2,                                #  ├── 2.2
+    ...           "children": [                                #  |    |
+    ...               {"label": 4.4,                           #  │    ├── 4.4
+    ...                "children": [                           #  │    │    |
+    ...                    {"label": 7.7, "children": []}      #  │    │    └── 7.7
+    ...                            ]},                         #  |    |
+    ...               {"label": 5.5,                           #  │    └── 5.5
+    ...                "children": [                           #  |         |
+    ...                    {"label": 8.8, "children": []}      #  │         └── 8.8
+    ...                            ]}                          #  |
+    ...                       ]},                              #  |
+    ...          {"label": 3.3,                                #  └── 3.3
+    ...           "children": [                                #       |
+    ...               {"label": 6.6, "children": []}           #       └── 6.6
     ...                       ]}
     ...                  ]})
     >>> obj
