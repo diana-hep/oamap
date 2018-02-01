@@ -232,9 +232,9 @@ Peeking further behind the scenes, we can see that these really are Numpy arrays
     [   0    1    2 ... 3487 3488 3489]
     [ 5.19104    4.147876   3.5957696 ... 87.090195   4.425391  13.193242 ]
 
-No objects were involved in the processing of this data.
+No objects were involved in the processing of the data.
 
-The fact that the data are purely numerical makes it the perfect fit for Numba, which optimizes Pythonic number-crunching by compiling it with LLVM.
+The fact that the data are in a purely numerical form makes it a perfect fit for Numba, which optimizes number-crunching by compiling Python functions with LLVM.
 
 Try `installing Numba <http://numba.pydata.org/numba-doc/latest/user/installing.html>`_ and then running the code below. The ``@numba.njit`` decorator specifies that the function must be compiled before it runs and ``import oamap.compiler`` tells Numba how to compile OAMap types.
 
