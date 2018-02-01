@@ -355,7 +355,7 @@ Now we can work with this dataset exactly as we did before. (I'm including the o
     # object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-B
     # object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-E
     # object-L-NStar-Fplanets-L-NPlanet-Fname-NUTF8String-L-Du1
-    [u'HD 40307 b', u'HD 40307 c', u'HD 40307 d', u'HD 40307 f', u'HD 40307 g']
+    ['HD 40307 b', 'HD 40307 c', 'HD 40307 d', 'HD 40307 f', 'HD 40307 g']
     >>> period_ratio(stars)
     # object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-M
     # object-L-NStar-Fplanets-L-NPlanet-Forbital_period-NValueAsymErr-Fval-Df4
@@ -403,7 +403,7 @@ We can even modify the dataset without touching all of its elements. For instanc
       File "oamap/proxy.py", line 340, in __getattr__
         raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if
             self._generator.name is None else self._generator.name), repr(field)))
-    AttributeError: u'Star' object has no attribute 'id'
+    AttributeError: 'Star' object has no attribute 'id'
 
 Schemas/data types
 ------------------
@@ -519,12 +519,58 @@ Unions can emulate a popular object-oriented concept: class inheritance. We can 
     [<Electron at index 0>, <Electron at index 1>, <Photon at index 0>, <Electron at index 2>,
      <Photon at index 1>]
     >>> for n, x in obj._arrays.items():
-    ...     print n, x
+    ...     print(n, x)
     ... 
     object-B [0]
     object-E [5]
     object-L-T [0 0 1 0 1]
     object-L-O [0 1 0 2 1]
-    object-L-U0-NElectron-Fcharge-Di8 [ 1 -1 -1]
     object-L-U0-NElectron-Fenergy-Df8 [1.1 2.2 4.4]
+    object-L-U0-NElectron-Fcharge-Di8 [ 1 -1 -1]
     object-L-U1-NPhoton-Fenergy-Df8 [3.3 5.5]
+
+Record
+""""""
+
+Records represent data that contain a set of fields— names that map to types ("`product types <https://en.wikipedia.org/wiki/Product_type>`_" in type theory).
+
+You've seen several examples of record types, so here's one drawn from the exoplanets:
+
+.. code-block:: python
+
+    >>> stars.schema.content["planets"].content["discovery"].show()
+    Record(
+      name = u'Discovery',
+      fields = {
+        u'facility': Pointer(
+          doc = u'Name of facility of planet discovery observations',
+          target = List(
+            name = u'UTF8String',
+            content = Primitive(dtype('uint8'))
+          )
+        ),
+        u'instrument': List(
+          name = u'UTF8String',
+          doc = u'Name of instrument of planet discovery observations',
+          content = Primitive(dtype('uint8'))
+        ),
+        u'link': List(
+          name = u'UTF8String',
+          doc = u'Reference name for discovery publication',
+          content = Primitive(dtype('uint8'))
+        ),
+        u'locale': Pointer(
+          doc = u'Location of observation of planet discovery (Ground or Space)',
+          target = List(
+            name = u'UTF8String',
+            content = Primitive(dtype('uint8'))
+          )
+        ),
+        u'telescope': List(
+          name = u'UTF8String',
+          doc = u'Name of telescope of planet discovery observations',
+          content = Primitive(dtype('uint8'))
+        ),
+        u'year': Primitive(dtype('int32'), doc=u'Year the planet was discovered')
+      })
+
