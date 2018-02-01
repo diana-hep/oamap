@@ -19,11 +19,8 @@ OAMap has two primary modes: (1) pure-Python object proxies, which pretend to be
 
 Any columnar file format or database can be used as a data source: OAMap can get arrays of data from any dict-like object (any Python object implementing ``__getitem__``), even from within a Numba-compiled function. Backends to ROOT, Parquet, and HDF5 are included, as well as a Python ``shelve`` alternative. Storing and accessing a complete dataset, including metadata, requires no more infrastructure than a collection of named arrays. (Data types are encoded in the names, values in the arrays.) OAMap is intended as a middleware layer above file formats and databases but below a fully integrated analysis suite.
 
-Demonstration
--------------
-
 Installation
-""""""""""""
+------------
 
 Install OAMap like any other Python package:
 
@@ -51,6 +48,9 @@ or similar (use ``sudo``, ``virtualenv``, or ``conda`` if you wish).
 - `python-snappy <https://anaconda.org/anaconda/python-snappy>`_ compression used by some Parquet files
 - `lzo <https://anaconda.org/anaconda/lzo>`_ compression used by some Parquet files
 - `brotli <https://anaconda.org/conda-forge/brotli>`_ compression used by some Parquet files
+
+Demonstration
+-------------
 
 Sample dataset #1: Parquet
 """"""""""""""""""""""""""
@@ -405,9 +405,53 @@ We can even modify the dataset without touching all of its elements. For instanc
             self._generator.name is None else self._generator.name), repr(field)))
     AttributeError: u'Star' object has no attribute 'id'
 
+Schemas/data types
+------------------
 
+Columnar datasets must be defined by a schema and compiled functions must have static data types, so all data in OAMap has a schema. As you've seen in the previous example, the schemas are very fluid: you're not locked into an early choice of schema.
 
-Scope of computability
-""""""""""""""""""""""
+You can examine the schema of any list or record through its ``schema`` property:
+
+.. code-block:: python
+
+    >>> stars.schema.show()
+
+For a large dataset like the exoplanets, be prepared for pages of output.
+
+The schema expresses the nested structure of the data and optionally the names of the arrays to fetch (overriding a default naming convention, derived from the schema structure). Schemas can also document the data and carry arbitrary (JSON) metadata.
+
+Schemas are defined by seven generators: **Primitive**, **List**, **Union**, **Record**, **Tuple**, **Pointer**, and **Extension**, which together form a fairly complete programming environment.
+
+Primitive
+"""""""""
+
+Primitives are fixed-width, concrete types such as booleans, numbers, and fixed-size byte strings (e.g. 6-byte MAC addresses or 16-byte UUIDs). The scope will include anything describable by a `Numpy dtype <https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.html>`_, though non-trivial dtype shapes (to describe fixed-dimension tensors) and names (to describe non-columnar, flat records) are not implemented yet.
+
+**Examples:**
+
+.. code-block:: python
+
+    >>> from oamap.schema import *
+    >>> schema = List(Primitive(int, data="p"), starts="b", stops="e")
+    >>> obj = schema({"p": [1, 2, 3, 4, 5], "b": [0], "e": [5]})
+    >>> obj
+    [1, 2, 3, 4, 5]
+
+.. code-block:: python
+
+    >>> schema = List(Primitive("S4"))
+    >>> obj = schema.fromdata(["one", "two", "three", "four", "five"])
+    >>> obj
+    [b'one', b'two', b'thre', b'four', b'five']
+
+Note that 
+
+List
+""""
+
+Lists are arbitrary length collections of any other type. Unlike dynamically typed Python, the contents of a list must all be the same type ("homogeneous"), though unions (below) loosen that requirement.
+
+**Examples:**
+
 
 

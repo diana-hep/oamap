@@ -41,10 +41,10 @@ class TestFill(unittest.TestCase):
 
     def check(self, value, schema=None, debug=False):
         if schema is None:
-            schema = oamap.inference.fromjson(value)
+            schema = oamap.inference.fromdata(value)
         if debug:
             print("schema: {0}".format(schema))
-        arrays = oamap.fill.fromjson(value, schema)
+        arrays = oamap.fill.fromdata(value, schema)
         if debug:
             print("arrays:")
             for n in sorted(arrays):

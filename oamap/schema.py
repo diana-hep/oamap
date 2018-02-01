@@ -44,6 +44,7 @@ import oamap.inference
 import oamap.source.packing
 import oamap.extension.common
 import oamap.proxy
+import oamap.util
 from oamap.util import OrderedDict
 
 if sys.version_info[0] > 2:
@@ -144,7 +145,7 @@ class Schema(object):
 
     @metadata.setter
     def metadata(self, value):
-        self._metadata = oamap.inference.python2json(value)
+        self._metadata = value
 
     def _labels(self):
         labels = []
@@ -251,33 +252,13 @@ class Schema(object):
                     out.extend(self._normalize_extension(x))
             return out
 
-    def data(self, value, pointer_fromequal=False):
+    def fromdata(self, value, pointer_fromequal=False):
         import oamap.fill
         return self(oamap.fill.fromdata(value, generator=self, pointer_fromequal=pointer_fromequal))
 
-    def iterdata(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
+    def fromiterdata(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
         import oamap.fill
         return self(oamap.fill.fromiterdata(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
-
-    def json(self, value, pointer_fromequal=False):
-        import oamap.fill
-        return self(oamap.fill.fromjson(value, generator=self, pointer_fromequal=pointer_fromequal))
-
-    def jsonfile(self, value, pointer_fromequal=False):
-        import oamap.fill
-        return self(oamap.fill.fromjsonfile(value, generator=self, pointer_fromequal=pointer_fromequal))
-
-    def jsonstring(self, value, pointer_fromequal=False):
-        import oamap.fill
-        return self(oamap.fill.fromjsonstring(value, generator=self, pointer_fromequal=pointer_fromequal))
-
-    def iterjson(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
-        import oamap.fill
-        return self(oamap.fill.fromiterjson(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
-
-    def iterjsonfile(self, values, limit=lambda entries, arrayitems, arraybytes: False, pointer_fromequal=False):
-        import oamap.fill
-        return self(oamap.fill.fromiterjsonfile(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
 
     def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
         return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
@@ -496,7 +477,7 @@ class Primitive(Schema):
                 if explicit or self._doc is not None:
                     out["doc"] = self._doc
                 if explicit or self._metadata is not None:
-                    out["metadata"] = self._metadata
+                    out["metadata"] = oamap.util.python2json(self._metadata)
                 if explicit or label is not None:
                     out["label"] = label
                 return out
@@ -510,7 +491,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=data.get("metadata", None))
+            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=oamap.util.json2python(data.get("metadata", None)))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -737,7 +718,7 @@ class List(Schema):
             if explicit or self._doc is not None:
                 out["doc"] = self._doc
             if explicit or self._metadata is not None:
-                out["metadata"] = self._metadata
+                out["metadata"] = oamap.util.python2json(self._metadata)
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -757,7 +738,7 @@ class List(Schema):
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
-        out.metadata = data.get("metadata", None)
+        out.metadata = oamap.util.json2python(data.get("metadata", None))
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -1038,7 +1019,7 @@ class Union(Schema):
             if explicit or self._doc is not None:
                 out["doc"] = self._doc
             if explicit or self._metadata is not None:
-                out["metadata"] = self._metadata
+                out["metadata"] = oamap.util.python2json(self._metadata)
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1060,7 +1041,7 @@ class Union(Schema):
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
-        out.metadata = data.get("metadata", None)
+        out.metadata = oamap.util.json2python(data.get("metadata", None))
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -1291,7 +1272,7 @@ class Record(Schema):
             if explicit or self._doc is not None:
                 out["doc"] = self._doc
             if explicit or self._metadata is not None:
-                out["metadata"] = self._metadata
+                out["metadata"] = oamap.util.python2json(self._metadata)
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1314,7 +1295,7 @@ class Record(Schema):
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
-        out.metadata = data.get("metadata", None)
+        out.metadata = oamap.util.json2python(data.get("metadata", None))
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -1543,7 +1524,7 @@ class Tuple(Schema):
             if explicit or self._doc is not None:
                 out["doc"] = self._doc
             if explicit or self._metadata is not None:
-                out["metadata"] = self._metadata
+                out["metadata"] = oamap.util.python2json(self._metadata)
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1563,7 +1544,7 @@ class Tuple(Schema):
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
-        out.metadata = data.get("metadata", None)
+        out.metadata = oamap.util.json2python(data.get("metadata", None))
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -1767,7 +1748,7 @@ class Pointer(Schema):
             if explicit or self._doc is not None:
                 out["doc"] = self._doc
             if explicit or self._metadata is not None:
-                out["metadata"] = self._metadata
+                out["metadata"] = oamap.util.python2json(self._metadata)
             if explicit or label is not None:
                 out["label"] = label
             return out
@@ -1786,7 +1767,7 @@ class Pointer(Schema):
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
-        out.metadata = data.get("metadata", None)
+        out.metadata = oamap.util.json2python(data.get("metadata", None))
         if "label" in data:
             labels[data["label"]] = out
         return out
@@ -2188,7 +2169,7 @@ class Dataset(object):
 
     @metadata.setter
     def metadata(self, value):
-        self._metadata = oamap.inference.python2json(value)
+        self._metadata = value
 
     def __getitem__(self, index):
         return self._metadata[index]
@@ -2297,7 +2278,7 @@ class Dataset(object):
         if explicit or self._doc is not None:
             out["doc"] = self._doc
         if explicit or self._metadata is not None:
-            out["metadata"] = self._metadata
+            out["metadata"] = oamap.util.python2json(self._metadata)
         return out
 
     @staticmethod
@@ -2319,7 +2300,7 @@ class Dataset(object):
             packing = Dataset._packingfromjson(data.get("packing", None))
             name = data.get("data", None)
             doc = data.get("doc", None)
-            metadata = data.get("metadata", None)
+            metadata = oamap.util.json2python(data.get("metadata", None))
             return Dataset(schema, prefix=prefix, delimiter=delimiter, partitioning=partitioning, packing=packing, name=name, doc=doc, metadata=metadata)
         else:
             raise TypeError("JSON for Dataset must be a dict, not {0}".format(repr(data)))
