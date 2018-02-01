@@ -703,8 +703,8 @@ The third case effectively turns contained data into enumeration constants, good
 
     # string data consists exclusively of unique strings
     >>> stars._listofarrays[0]["discovery_method-X-NUTF8String-L-Du1"].tostring()
-    """TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timi
-       ng VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry"""
+    b"""TransitRadial VelocityImagingMicrolensingEclipse Timing VariationsPulsar TimingTransit Timi
+        ng VariationsOrbital Brightness ModulationPulsation Timing VariationsAstrometry"""
 
     # the strings are referred to by integer index, thanks to the pointer
     >>> stars._listofarrays[0]["discovery_method-P"][:300]
