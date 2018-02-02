@@ -21,13 +21,13 @@ install:
   - pip install --upgrade pip
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.6" ]]; then
       echo "Python 2.6, no Miniconda";
-      export INSTALL_NUMBA="no"
+      export INSTALL_NUMBA="no";
   - elif [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
       wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh;
-      export INSTALL_NUMBA="yes"
+      export INSTALL_NUMBA="yes";
     else
       wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
-      export INSTALL_NUMBA="yes"
+      export INSTALL_NUMBA="yes";
     fi
   - if [[ "$INSTALL_NUMBA" == "yes"]]; then
       bash miniconda.sh -b -p $HOME/miniconda
