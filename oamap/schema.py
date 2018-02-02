@@ -521,8 +521,11 @@ class Primitive(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def __hash__(self):
+        return hash((Primitive, self._dtype, self._nullable, self._data, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
     def __eq__(self, other, memo=None):
-        return isinstance(other, Primitive) and self.dtype == other.dtype and self.nullable == other.nullable and self.data == other.data and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata
+        return isinstance(other, Primitive) and self._dtype == other._dtype and self._nullable == other._nullable and self._data == other._data and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata
 
     def __contains__(self, value, memo=None):
         if value is None:
@@ -782,12 +785,15 @@ class List(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def __hash__(self):
+        return hash((List, self._content, self._nullable, self._starts, self._stops, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, List) and self.starts == other.starts and self.stops == other.stops and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata):
+        if not (isinstance(other, List) and self._nullable == other._nullable and self._starts == other._starts and self._stops == other._stops and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return self.content.__eq__(other.content, memo)
@@ -1033,7 +1039,7 @@ class Union(Schema):
         if not isinstance(data["possibilities"], list):
             raise TypeError("argument 'possibilities' for Union Schema from JSON should be a list, not {0}".format(repr(data["possibilities"])))
         out = Union.__new__(Union)
-        out._possibilities = [Schema._fromjson(x, labels) for x in data["possibilities"]]
+        out.possibilities = [Schema._fromjson(x, labels) for x in data["possibilities"]]
         out.nullable = data.get("nullable", False)
         out.tags = data.get("tags", None)
         out.offsets = data.get("offsets", None)
@@ -1087,12 +1093,15 @@ class Union(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def __hash__(self):
+        return hash((Union, self._possibilities, self._nullable, self._tags, self._offsets, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Union) and len(self.possibilities) == len(other.possibilities) and self.nullable == other.nullable and self.tags == other.tags and self.offsets == other.offsets and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata):
+        if not (isinstance(other, Union) and len(self._possibilities) == len(other._possibilities) and self._nullable == other._nullable and self._tags == other._tags and self._offsets == other._offsets and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self.possibilities, other.possibilities))
@@ -1101,7 +1110,7 @@ class Union(Schema):
         if memo is None:
             memo = {}
         if value is None:
-            return self.nullable or any(x.nullable for x in self.possibilities)
+            return self._nullable or any(x._nullable for x in self._possibilities)
         return any(x.__contains__(value, memo) for x in self.possibilities)
 
     def _get_tags(self, prefix, delimiter):
@@ -1337,12 +1346,15 @@ class Record(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def __hash__(self):
+        return hash((Record, tuple(self._fields.items()), self._nullable, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self.nullable == other.nullable and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata):
+        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self._nullable == other._nullable and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return all(self._fields[n].__eq__(other._fields[n], memo) for n in self._fields)
@@ -1353,13 +1365,13 @@ class Record(Schema):
         if value is None:
             return self.nullable
         if isinstance(value, dict):
-            return all(n in value and x.__contains__(value[n], memo) for n, x in self.fields.items())
+            return all(n in value and x.__contains__(value[n], memo) for n, x in self._fields.items())
         elif isinstance(value, tuple) and hasattr(value, "_fields"):
-            return all(n in value._fields and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
+            return all(n in value._fields and x.__contains__(getattr(value, n), memo) for n, x in self._fields.items())
         elif isinstance(value, (list, tuple)):
             return False
         else:
-            return all(hasattr(value, n) and x.__contains__(getattr(value, n), memo) for n, x in self.fields.items())
+            return all(hasattr(value, n) and x.__contains__(getattr(value, n), memo) for n, x in self._fields.items())
 
     def _get_field(self, prefix, delimiter, n):
         return self._get_name(prefix, delimiter) + delimiter + "F" + n
@@ -1586,12 +1598,15 @@ class Tuple(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def __hash__(self):
+        return hash((Tuple, self._types, self._nullable, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self.nullable == other.nullable and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata):
+        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self._nullable == other._nullable and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self._types, other._types))
@@ -1601,8 +1616,8 @@ class Tuple(Schema):
             memo = {}
         if value is None:
             return self.nullable
-        if isinstance(value, tuple) and len(value) == len(self.types):
-            return all(x.__contains__(v, memo) for v, x in zip(value, self.types))
+        if isinstance(value, tuple) and len(value) == len(self._types):
+            return all(x.__contains__(v, memo) for v, x in zip(value, self._types))
         else:
             return False
 
@@ -1809,12 +1824,15 @@ class Pointer(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def __hash__(self):
+        return hash((Pointer, self._target, self._nullable, self._positions, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Pointer) and self.nullable == other.nullable and self.positions == other.positions and self.mask == other.mask and self.packing == other.packing and self.name == other.name and self.doc == other.doc and self.metadata == other.metadata):
+        if not (isinstance(other, Pointer) and self._nullable == other._nullable and self._positions == other._positions and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return self.target.__eq__(other.target, memo)
@@ -1826,7 +1844,7 @@ class Pointer(Schema):
             return memo[id(value)] == id(self)
         memo[id(value)] = id(self)
         if value is None:
-            return self.nullable
+            return self._nullable
         return self.target.__contains__(value, memo)
 
     def _get_positions(self, prefix, delimiter):
@@ -1989,6 +2007,15 @@ class Partitioning(object):
 
     def partitionlookup(self, array, delimiter):
         return Partitioning.Lookup(array, delimiter, True)
+
+    def __hash__(self):
+        return hash((self.__class__, self._key))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self._key == other._key
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     def tojson(self):
         return OrderedDict([(self.__class__.__name__, [self.key])])
@@ -2254,6 +2281,15 @@ class Dataset(object):
                            doc=self._doc,
                            metadata=copy.deepcopy(self._metadata)),
                    *args, **kwds)
+
+    def __hash__(self):
+        return hash((Dataset, self._schema, self._prefix, self._delimiter, self._extension, self._partitioning, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+
+    def __eq__(self, other):
+        return isinstance(other, Dataset) and self._schema == other._schema and self._prefix == other._prefix and self._delimiter == other._delimiter and self._extension == other._extension and self._partitioning == other._partitioning and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     def tojsonfile(self, file, *args, **kwds):
         json.dump(self.tojson(), file, *args, **kwds)

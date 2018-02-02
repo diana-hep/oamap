@@ -69,7 +69,7 @@ class TestHDF5(unittest.TestCase):
             self.assertEqual(d["four"], u"hello")
 
             d["five"] = ["one", b"two", u"three"]
-            self.assertEqual(d.schema("five"), List(List(Primitive("uint8"), nullable=True, name="UTF8String")))
+            self.assertEqual(d.schema("five"), List(List(Primitive("uint8"), name="UTF8String")))
             self.assertEqual(d["five"], [u"one", u"two", u"three"])
 
         finally:

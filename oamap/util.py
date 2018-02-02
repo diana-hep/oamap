@@ -169,3 +169,13 @@ def python2json(value, allowlinks=False):
         return memo[id(value)]
 
     return recurse(value, {})
+
+def python2hashable(value):
+    def recurse(value):
+        if isinstance(value, dict):
+            return tuple((n, recurse(value[n])) for n in sorted(value))
+        elif isinstance(value, list):
+            return tuple(recurse(x) for x in value)
+        else:
+            return value
+    return recurse(python2json(value))

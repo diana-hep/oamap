@@ -204,7 +204,7 @@ class DbfilenameShelf(MutableMapping):
 
             if dataset.partitioning is None:
                 for n, x in arrays.items():
-                    self.dbm[_asbytes(self.ARRAY + n)] = x
+                    self.dbm[_asbytes(self.ARRAY + n)] = x.tostring()
 
             else:
                 partitionlookup = dataset.partitioning.empty_partitionlookup(delimiter)
@@ -225,7 +225,7 @@ class DbfilenameShelf(MutableMapping):
             if key in self:
                 del self[key]
 
-            self.dbm[_asbytes(self.ARRAY + key)] = numpy.array(partitionlookup)
+            self.dbm[_asbytes(self.ARRAY + key)] = numpy.array(partitionlookup).tostring()
             self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
 
             for partitionid, (numentries, arrays) in enumerate(oamap.fill.fromiterdata(values, generator=generator, limit=partitionlimit, pointer_fromequal=pointer_fromequal)):
