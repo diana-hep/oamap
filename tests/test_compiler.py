@@ -47,7 +47,9 @@ class TestCompiler(unittest.TestCase):
         pass
 
     def test_boxing_list(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing1(x):
                 return 3.14
@@ -79,7 +81,9 @@ class TestCompiler(unittest.TestCase):
                     # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._whence), sys.getrefcount(value._stride), sys.getrefcount(value._length))
 
     def test_boxing_record(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing1(x):
                 return 3.14
@@ -109,7 +113,9 @@ class TestCompiler(unittest.TestCase):
                     # print(sys.getrefcount(value), sys.getrefcount(value._generator), sys.getrefcount(value2._generator), sys.getrefcount(value3._generator), sys.getrefcount(value4._generator), sys.getrefcount(value._arrays), sys.getrefcount(value._cache), sys.getrefcount(value._generator._entercompiled), sys.getrefcount(value._index))
 
     def test_boxing_tuple(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing1(x):
                 return 3.14
@@ -141,7 +147,9 @@ class TestCompiler(unittest.TestCase):
                 value = value2
 
     def test_record_attr(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x):
                 return x.one, x.two
@@ -157,7 +165,9 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(value._cache[1] is value._arrays["object-Ftwo-Df8"])
 
     def test_record_attr_masked(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def one(x):
                 return x.one
@@ -194,7 +204,9 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(value._cache[3] is value._arrays["object-Ftwo-Df8"])
 
     def test_record_attr_attr(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x):
                 return x.one.uno, x.one.dos, x.two.tres
@@ -210,7 +222,9 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(value._cache[2] is value._arrays["object-Ftwo-Ftres-Db1"])
 
     def test_record_attr_attr_masked(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit1(x):
                 return x.two.tres
@@ -233,7 +247,9 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(doit2(value) is None)
 
     def test_list_getitem(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x, i):
                 return x[i]
@@ -256,7 +272,9 @@ class TestCompiler(unittest.TestCase):
             self.assertRaises(IndexError, lambda: doit(value, -6))
 
     def test_list_getitem_slice(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def low(x, i):
                 return x[i:]
@@ -300,7 +318,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(negstep(value, -3), data[9:1:-3])
 
     def test_list_len(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x):
                 return len(x)
@@ -318,7 +338,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(doit(value), 5)
 
     def test_list_iter(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x):
                 out = 0.0
@@ -362,7 +384,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(doit2(value), 4.4)
 
     def test_tuple_len(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x):
                 return len(x)
@@ -374,7 +398,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(doit(value), 1)
 
     def test_tuple_getitem(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit0(x):
                 return x[0]
@@ -406,7 +432,9 @@ class TestCompiler(unittest.TestCase):
             self.assertRaises(numba.errors.TypingError, lambda: doit2(value))
 
     def test_pointer(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             linkedlist = Record({"label": Primitive(int)})
             linkedlist["next"] = Pointer(linkedlist)
 
@@ -455,7 +483,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(open4(value).label, 1)
 
     def test_pointer_masked(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x, i):
                 return x[i]
@@ -484,7 +514,9 @@ class TestCompiler(unittest.TestCase):
                 self.assertEqual(doit(value, i), data[i])
 
     def test_boxing_schema(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing1(x):
                 return 3.14
@@ -508,7 +540,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(schema, schema4)
 
     def test_deriving_schema(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def nullable(x):
                 return x.nullable
@@ -570,7 +604,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(target(Pointer("int")), Primitive("int"))
 
     def test_schema_case(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def case(x, y):
                 return x.case(y)
@@ -669,7 +705,9 @@ class TestCompiler(unittest.TestCase):
             self.assertTrue(case_i(justfloat, values, 9) is False)
 
     def test_schema_cast(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def cast(x, y):
                 return x.cast(y)
@@ -768,7 +806,9 @@ class TestCompiler(unittest.TestCase):
             self.assertRaises(TypeError, lambda: cast_i(justfloat, values, 9))
 
     def test_union_getattr(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def one(x, i):
                 return x[i].one
@@ -782,7 +822,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(one(value, 4), 5.0)
 
     def test_boxing_optional(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing(x):
                 return x.one
@@ -843,7 +885,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(boxing(value2), None)
 
     def test_reference_equality(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def oneone(x, y):
                 return x.one is y.one
@@ -972,7 +1016,9 @@ class TestCompiler(unittest.TestCase):
             self.assertFalse(not_onenone(value2) is True)
 
     def test_value_equality(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def oneone(x, y):
                 return x.one == y.one
@@ -1152,7 +1198,9 @@ class TestCompiler(unittest.TestCase):
             # self.assertFalse(not_onenone(value2) is False)    # REPORTME
 
     def test_list_contains(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def contains(x):
                 return x.one in x.two
@@ -1197,7 +1245,9 @@ class TestCompiler(unittest.TestCase):
             self.assertRaises(numba.TypingError, lambda: contains(value))
 
     def test_boxing_partitionedlist(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing1(x):
                 return 3.14
@@ -1271,7 +1321,9 @@ class TestCompiler(unittest.TestCase):
                     # print(sys.getrefcount(value), sys.getrefcount(generator), sys.getrefcount(value._listofarrays), sys.getrefcount(value._cache), [sys.getrefcount(x) for x in value._listofarrays], sys.getrefcount(generator._newcache), sys.getrefcount(generator._clearcache), sys.getrefcount(generator._entercompiled), sys.getrefcount(generator._new))
 
     def test_partitionedlist_iterate(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def doit(x):
                 out = 0.0
@@ -1300,7 +1352,9 @@ class TestCompiler(unittest.TestCase):
             self.assertEqual(doit(value), float(sum([])))
 
     def test_indexedpartitionedlist(self):
-        if numba is not None:
+        if numba is None:
+            sys.stderr.write("Numba is not installed: skipping\n")
+        else:
             @numba.njit
             def boxing1(x):
                 return 3.14
