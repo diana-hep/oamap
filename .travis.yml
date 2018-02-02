@@ -22,7 +22,7 @@ install:
   - python .travis-conda.py
 
 script:
-  python setup.py test
+  source $HOME/miniconda/bin/activate test-environment; python setup.py test
 
 deploy:
   provider: pypi

@@ -19,5 +19,8 @@ if miniconda:
     os.system("{0}/miniconda/bin/conda update -q conda".format(os.environ["HOME"]))
     os.system("{0}/miniconda/bin/conda info -a".format(os.environ["HOME"]))
     os.system("{0}/miniconda/bin/conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numba".format(os.environ["HOME"]))
-    os.system("{0}/miniconda/bin/source activate test-environment".format(os.environ["HOME"]))
-    os.system("{0}/miniconda/bin/python setup.py install".format(os.environ["HOME"]))
+    os.system("source {0}/miniconda/bin/activate test-environment; python setup.py install".format(os.environ["HOME"]))
+
+else:
+    os.system("mkdir -p miniconda/bin")
+    open("miniconda/bin/activate", "w").write("")
