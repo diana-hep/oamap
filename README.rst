@@ -4,8 +4,6 @@ OAMap: Object-Array Mapping
 .. image:: https://travis-ci.org/diana-hep/oamap.svg?branch=master
    :target: https://travis-ci.org/diana-hep/oamap
 
-Perform high-speed calculations on columnar data without creating intermediate objects.
-
 Introduction
 ------------
 
