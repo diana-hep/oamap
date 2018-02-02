@@ -211,8 +211,8 @@ class DbfilenameShelf(MutableMapping):
                 partitionlookup.append(arrays[generator.stops][0] - arrays[generator.starts][0], arrays.keys())
 
                 for n, x in arrays.items():
-                    self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, 0))] = x
-                self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup)
+                    self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, 0))] = x.tostring()
+                self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup).tostring()
 
             self.dbm[_asbytes(self.DATASET + key)] = dataset.tojsonstring()
 
@@ -232,8 +232,8 @@ class DbfilenameShelf(MutableMapping):
                 partitionlookup.append(numentries, arrays.keys())
 
                 for n, x in arrays.items():
-                    self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, partitionid))] = x
-                self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup)
+                    self.dbm[_asbytes(self.ARRAY + partitionlookup.id2name(n, partitionid))] = x.tostring()
+                self.dbm[_asbytes(self.ARRAY + dataset.partitioning.key)] = numpy.array(partitionlookup).tostring()
 
     def __setitem__(self, key, value):
         self.fromdata(key, value)
