@@ -145,7 +145,11 @@ class Generator(object):
     def _newcache(self):
         return [None] * self._cachelen
 
-    def _clearcache(self, cache):
+    def _clearcache(self, cache, listofarrays, index):
+        if 0 <= index < len(listofarrays):
+            arrays = listofarrays[index]
+            if hasattr(arrays, "close"):
+                arrays.close()
         for i in range(len(cache)):
             cache[i] = None
 

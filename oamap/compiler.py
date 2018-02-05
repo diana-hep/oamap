@@ -1583,14 +1583,16 @@ else:
                 pyapi.decref(baggage.ptrs)
                 pyapi.decref(baggage.lens)
 
+            index_obj = pyapi.long_from_longlong(builder.load(partitionedlist.current))
             clearcache_fcn = pyapi.object_getattr_string(generator_obj, "_clearcache")
-            results2_obj = pyapi.call_function_objargs(clearcache_fcn, (partitionedlist.cache,))
+            results2_obj = pyapi.call_function_objargs(clearcache_fcn, (partitionedlist.cache, partitionedlist.listofarrays, index_obj))
             raise_exception(context,
                             builder,
                             numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
                             RuntimeError("call to generator._clearcache failed"))
             pyapi.decref(results2_obj)
             pyapi.decref(generator_obj)
+            pyapi.decref(index_obj)
 
             entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
             arrays_obj = pyapi.list_getitem(partitionedlist.listofarrays, indexval)
