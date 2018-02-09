@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import re
 import bisect
 import numbers
 
@@ -90,12 +91,15 @@ else:
 
         @property
         def schema(self):
-            def frominterp(name, interpretation):
-                if isinstance(interpretation, uproot.interp.asdtype):
+            def frominterp(name, branch, interpretation):
+                if len(branch.fBranches) > 0:
+                    return recurse(branch)
+
+                elif isinstance(interpretation, uproot.interp.asdtype):
                     if interpretation.todtype.names is None:
                         return oamap.schema.Primitive(interpretation.todtype, data=name)
                     else:
-                        rec = oamap.schema.Record({})
+                        rec = oamap.schema.Record({}); raise AssertionError
                         for n in interpretation.todtype.names:
                             rec[n] = oamap.schema.Primitive(interpretation.todtype[n], data=(name + "/" + n))
                         return rec
@@ -104,7 +108,7 @@ else:
                     if interpretation.asdtype.todtype.names is None:
                         return oamap.schema.List(oamap.schema.Primitive(interpretation.asdtype.todtype, data=name), starts=name, stops=name)
                     else:
-                        rec = oamap.schema.Record({})
+                        rec = oamap.schema.Record({}); raise AssertionError
                         for n in interpretation.asdtype.todtype.names:
                             rec[n] = oamap.schema.Primitive(interpretation.asdtype.todtype[n], data=(name + "/" + n))
                         return oamap.schema.List(rec, starts=name, stops=name)
@@ -113,7 +117,7 @@ else:
                     return oamap.schema.List(oamap.schema.Primitive("u1", data=name), starts=name, stops=name, name="ByteString")
 
                 else:
-                    raise NotImplementedError
+                    return None
 
             def recurse(parent):
                 flats = []
@@ -131,14 +135,14 @@ else:
                 out = oamap.schema.Record({})
 
                 for name, branch in flats:
-                    x = frominterp(name, uproot.interp.auto.interpret(branch))
+                    x = frominterp(name, branch, uproot.interp.auto.interpret(branch))
                     if x is not None:
                         out[name.split(".")[-1]] = x
 
                 for leafcount, namebranches in lists.items():
                     rec = oamap.schema.Record({})
                     for name, branch in namebranches:
-                        x = frominterp(name, uproot.interp.auto.interpret(branch))
+                        x = frominterp(name, branch, uproot.interp.auto.interpret(branch))
                         if x is not None:
                             assert isinstance(x, oamap.schema.List)
                             rec[name.split(".")[-1]] = x.content
@@ -150,9 +154,30 @@ else:
                             break
                     if not found:
                         raise ValueError("could not find a single-leaf branch corresponding to leaf count {0}".format(leafcount))
-                    
+
+                    if hasattr(branch, "_streamer") and hasattr(branch._streamer, "fName"):
+                        name = branch._streamer.fName.decode("ascii")
+                        name = re.split("[^a-zA-Z_0-9]", name)[-1]
+                        if len(name) > 0:
+                            rec.name = name
+
                     if len(rec.fields) > 0:
-                        out[leafcount.fName.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
+                        out[branchname.split(".")[-1]] = oamap.schema.List(rec, starts=branchname, stops=branchname)
+
+                if hasattr(parent, "_streamer") and hasattr(parent._streamer, "fName"):
+                    name = parent._streamer.fName.decode("ascii")
+                elif isinstance(parent, uproot.tree.TTreeMethods):
+                    name = parent.name
+                else:
+                    name = None
+
+                if name is not None:
+                    name = re.split("[^a-zA-Z_0-9]", name)[-1]
+                    if len(name) > 0:
+                        out.name = name
+
+                if len(flats) == 0 and len(lists) == 1:
+                    out, = out.fields.values()
 
                 return out
 
@@ -191,6 +216,7 @@ else:
             def getall(self, names):
                 branchnames = []
                 for name in names:
+                    name = str(name)
                     if len(name) > 0:
                         branchname, recarrayitem = self.chop(name)
                         if branchname not in branchnames:
@@ -203,7 +229,7 @@ else:
 
                 out = {}
                 for name in names:
-                    if len(name) == 0:
+                    if len(str(name)) == 0:
                         if isinstance(name, oamap.generator.StartsRole):
                             out[name] = numpy.array([0], dtype=oamap.generator.ListGenerator.posdtype)
                         elif isinstance(name, oamap.generator.StopsRole):
@@ -212,7 +238,7 @@ else:
                             raise AssertionError
 
                     else:
-                        branchname, recarrayitem = self.chop(name)
+                        branchname, recarrayitem = self.chop(str(name))
                         array = arrays[branchname]
                         
                         if isinstance(array, numpy.ndarray):
@@ -220,12 +246,12 @@ else:
                                 if name not in out:
                                     starts, stops = oamap.source.packing.ListCounts.fromcounts(array)
                                     out[name] = starts
-                                    out[oamap.generator.StopsRole(name)] = stops
+                                    out[oamap.generator.StopsRole(str(name.stops), str(name))] = stops
 
                             elif isinstance(name, oamap.generator.StopsRole):
                                 if name not in out:
                                     starts, stops = oamap.source.packing.ListCounts.fromcounts(array)
-                                    out[oamap.generator.StartsRole(name)] = starts
+                                    out[oamap.generator.StartsRole(str(name.starts), str(name))] = starts
                                     out[name] = stops
 
                             elif isinstance(name, oamap.generator.DataRole):
@@ -245,7 +271,7 @@ else:
                                 out[name] = array.stops
 
                             elif isinstance(name, oamap.generator.DataRole):
-                                out[name] = array.contents
+                                out[name] = array.content
 
                             else:
                                 raise AssertionError
@@ -258,7 +284,7 @@ else:
                                 out[name] = array.jaggedarray.stops
 
                             elif isinstance(name, oamap.generator.DataRole):
-                                out[name] = array.jaggedarray.contents
+                                out[name] = array.jaggedarray.content
 
                             else:
                                 raise AssertionError

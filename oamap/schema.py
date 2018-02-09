@@ -127,7 +127,7 @@ class Schema(object):
             if match is not None and len(match.group(0)) == len(value):
                 self._name = value
                 return
-        raise TypeError("name must be None or a string matching /{0}/, not {1}".format(repr(value), self._identifier.pattern))
+        raise TypeError("name must be None or a string matching /{0}/, not {1}".format(self._identifier.pattern, repr(value)))
 
     @property
     def doc(self):
@@ -168,6 +168,24 @@ class Schema(object):
         else:
             stream.write(out)
             stream.write("\n")
+
+    def defaultnames(self, prefix="object", delimiter="-"):
+        memo = {}
+        pointers = []
+        self._defaultnames(prefix, delimiter, memo, pointers, set())
+
+        for pointer in pointers:
+            if id(pointer.target) in memo:
+                # internal
+                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter) + delimiter + memo[id(pointer.target)]
+            else:
+                # external
+                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter)
+                pointer._target.defaultnames(pointer._get_external(memo[id(pointer)], delimiter), delimiter)
+
+    @property
+    def hasarraynames(self):
+        return self._hasarraynames(set())
 
     def tojsonfile(self, file, explicit=False, *args, **kwds):
         json.dump(self.tojson(explicit=explicit), file, *args, **kwds)
@@ -270,20 +288,6 @@ class Schema(object):
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
         return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
-
-    def defaultnames(self, prefix="object", delimiter="-"):
-        memo = {}
-        pointers = []
-        self._defaultnames(prefix, delimiter, memo, pointers, set())
-
-        for pointer in pointers:
-            if id(pointer.target) in memo:
-                # internal
-                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter) + delimiter + memo[id(pointer.target)]
-            else:
-                # external
-                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter)
-                pointer._target.defaultnames(pointer._get_external(memo[id(pointer)], delimiter), delimiter)
 
     def _get_name(self, prefix, delimiter):
         if self._name is not None:
@@ -413,6 +417,9 @@ class Primitive(Schema):
         if not (value is None or isinstance(value, basestring)):
             raise TypeError("data must be None or an array name (string), not {0}".format(repr(value)))
         self._data = value
+
+    def _hasarraynames(self, memo):
+        return self._data is not None and (not self._nullable or self._mask is not None)
 
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "="
@@ -653,6 +660,13 @@ class List(Schema):
         if not (value is None or isinstance(value, basestring)):
             raise TypeError("stops must be None or an array name (string), not {0}".format(repr(value)))
         self._stops = value
+
+    def _hasarraynames(self, memo):
+        if id(self) in memo:
+            return True
+        else:
+            memo.add(id(self))
+            return self._starts is not None and self._stops is not None and (not self._nullable or self._mask is not None) and self._content._hasarraynames(memo)
 
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "=" if indent is None else " = "
@@ -958,6 +972,13 @@ class Union(Schema):
             raise TypeError("possibilities must be Schemas, not {0}".format(repr(value)))
         self._possibilities[index] = value
 
+    def _hasarraynames(self, memo):
+        if id(self) in memo:
+            return True
+        else:
+            memo.add(id(self))
+            return self._tags is not None and self._offsets is not None and (not self._nullable or self._mask is not None) and all(x._hasarraynames(memo) for x in self._possibilities)
+
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "=" if indent is None else " = "
 
@@ -1222,6 +1243,28 @@ class Record(Schema):
             raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
         self._fields[index] = value
 
+    def rename(self, fromfield, tofield):
+        if not self.hasarraynames:
+            raise ValueError("cannot rename a field in a schema without fixed array names; try calling defaultnames() to assign fixed array names")
+        renamed = []    # but maintain order
+        found = False
+        for n, x in self._fields.items():
+            if n == fromfield:
+                renamed.append((tofield, x))
+                found = True
+            else:
+                renamed.append((n, x))
+        if not found:
+            raise KeyError("field not found: {0}".format(repr(fromfield)))
+        self._fields = OrderedDict(renamed)
+
+    def _hasarraynames(self, memo):
+        if id(self) in memo:
+            return True
+        else:
+            memo.add(id(self))
+            return (not self._nullable or self._mask is not None) and all(x._hasarraynames(memo) for x in self._fields.values())
+
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "=" if indent is None else " = "
 
@@ -1478,6 +1521,13 @@ class Tuple(Schema):
             raise TypeError("types must be Schemas, not {0}".format(repr(value)))
         self._types[index] = value
 
+    def _hasarraynames(self, memo):
+        if id(self) in memo:
+            return True
+        else:
+            memo.add(id(self))
+            return (not self._nullable or self._mask is not None) and all(x._hasarraynames(memo) for x in self._types)
+
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "=" if indent is None else " = "
 
@@ -1699,6 +1749,13 @@ class Pointer(Schema):
         if not (value is None or isinstance(value, basestring)):
             raise TypeError("positions must be None or an array name (string), not {0}".format(repr(value)))
         self._positions = value
+
+    def _hasarraynames(self, memo):
+        if id(self) in memo:
+            return True
+        else:
+            memo.add(id(self))
+            return self._positions is not None and (not self._nullable or self._mask is not None) and self._target._hasarraynames(memo)
 
     def __repr__(self, labels=None, shown=None, indent=None):
         eq = "=" if indent is None else " = "
@@ -2205,6 +2262,13 @@ class Dataset(object):
         if not isinstance(index, basestring):
             raise TypeError("metadata keys must be strings, not {0}".format(repr(index)))
         self._metadata[index] = value
+
+    def defaultnames(self, prefix="object", delimiter="-"):
+        self.schema.defaultnames(prefix=prefix, delimiter=delimiter)
+
+    @property
+    def hasarraynames(self):
+        return self.schema.hasarraynames
 
     def __repr__(self, indent=None):
         eq = "=" if indent is None else " = "

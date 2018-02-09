@@ -112,6 +112,9 @@ class ListProxy(Proxy):
     def schema(self):
         return self._generator.schema
 
+    def regenerate(self):
+        self._generator = self._generator.schema.generator()
+
     def indexed(self):
         return self
 
@@ -229,10 +232,6 @@ class PartitionedListProxy(ListProxy):
             self._cache = self._generator._newcache()
         return self._generator._generate(self._listofarrays[i], 0, self._cache)
 
-    @property
-    def schema(self):
-        return self._generator.schema
-
     def indexed(self):
         return IndexedPartitionedListProxy(self._generator, self._listofarrays)
 
@@ -338,6 +337,10 @@ class RecordProxy(Proxy):
                 return self._fields
             elif field == "name":
                 return self._generator.name
+            elif field == "regenerate":
+                def regenerate():
+                    self._generator = self._generator.schema.generator()
+                return regenerate
             else:
                 raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
         else:
