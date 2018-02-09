@@ -167,7 +167,7 @@ else:
                 if hasattr(parent, "_streamer") and hasattr(parent._streamer, "fName"):
                     name = parent._streamer.fName.decode("ascii")
                 elif isinstance(parent, uproot.tree.TTreeMethods):
-                    name = parent.name
+                    name = parent.name.decode("ascii")
                 else:
                     name = None
 
