@@ -211,7 +211,7 @@ else:
                 except ValueError:
                     return str(name), None
                 else:
-                    return n[:slashindex], n[slashindex + 1 :]
+                    return name[:slashindex], name[slashindex + 1 :]
 
             def getall(self, names):
                 branchnames = []
