@@ -32,9 +32,9 @@ import oamap
 from oamap.util import OrderedDict
 
 import numpy
-import pyarrow
 
 def schema(table, nullable=True):
+    import pyarrow
     def recurse(node, name, index):
         if isinstance(node, pyarrow.lib.ListType):
             return oamap.schema.List(recurse(node.value_type, name, index + 2),
@@ -56,6 +56,7 @@ def schema(table, nullable=True):
         stops="")
 
 def proxy(table, nullable=True):
+    import pyarrow
     class _ArrayDict(object):
         def __init__(self, table):
             self.table = table
