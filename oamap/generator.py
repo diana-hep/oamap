@@ -98,7 +98,8 @@ class Generator(object):
         Generator._nextid += 1
         return out
 
-    def __init__(self, packing, name, derivedname, schema):
+    def __init__(self, namespace, packing, name, derivedname, schema):
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.derivedname = derivedname
@@ -249,11 +250,11 @@ class Masked(object):
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
-    def __init__(self, data, dataidx, dtype, packing, name, derivedname, schema):
+    def __init__(self, data, dataidx, dtype, namespace, packing, name, derivedname, schema):
         self.data = data
         self.dataidx = dataidx
         self.dtype = dtype
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
         return OrderedDict([(DataRole(self.data), (self.dataidx, self.dtype))])
@@ -296,22 +297,22 @@ class PrimitiveGenerator(Generator):
                 yield self.data
 
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
-    def __init__(self, mask, maskidx, data, dataidx, dtype, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, data, dataidx, dtype, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PrimitiveGenerator.__init__(self, data, dataidx, dtype, packing, name, derivedname, schema)
+        PrimitiveGenerator.__init__(self, data, dataidx, dtype, namespace, packing, name, derivedname, schema)
 
 ################################################################ Lists
 
 class ListGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
+    def __init__(self, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema):
         self.starts = starts
         self.startsidx = startsidx
         self.stops = stops
         self.stopsidx = stopsidx
         self.content = content
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -391,9 +392,9 @@ class ListGenerator(Generator):
                 yield x
 
 class MaskedListGenerator(Masked, ListGenerator):
-    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema)
+        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema)
 
 ################################################################ Unions
 
@@ -401,13 +402,13 @@ class UnionGenerator(Generator):
     tagdtype = numpy.dtype(numpy.int8)
     offsetdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
+    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema):
         self.tags = tags
         self.tagsidx = tagsidx
         self.offsets = offsets
         self.offsetsidx = offsetsidx
         self.possibilities = possibilities
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -494,16 +495,16 @@ class UnionGenerator(Generator):
                     yield x
 
 class MaskedUnionGenerator(Masked, UnionGenerator):
-    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema)
+        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema)
 
 ################################################################ Records
 
 class RecordGenerator(Generator):
-    def __init__(self, fields, packing, name, derivedname, schema):
+    def __init__(self, fields, namespace, packing, name, derivedname, schema):
         self.fields = fields
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -563,16 +564,16 @@ class RecordGenerator(Generator):
                     yield x
 
 class MaskedRecordGenerator(Masked, RecordGenerator):
-    def __init__(self, mask, maskidx, fields, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, fields, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        RecordGenerator.__init__(self, fields, packing, name, derivedname, schema)
+        RecordGenerator.__init__(self, fields, namespace, packing, name, derivedname, schema)
 
 ################################################################ Tuples
 
 class TupleGenerator(Generator):
-    def __init__(self, types, packing, name, derivedname, schema):
+    def __init__(self, types, namespace, packing, name, derivedname, schema):
         self.types = types
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -632,20 +633,20 @@ class TupleGenerator(Generator):
                     yield x
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
-    def __init__(self, mask, maskidx, types, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, types, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        TupleGenerator.__init__(self, types, packing, name, derivedname, schema)
+        TupleGenerator.__init__(self, types, namespace, packing, name, derivedname, schema)
 
 ################################################################ Pointers
 
 class PointerGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, positions, positionsidx, target, packing, name, derivedname, schema):
+    def __init__(self, positions, positionsidx, target, namespace, packing, name, derivedname, schema):
         self.positions = positions
         self.positionsidx = positionsidx
         self.target = target
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -716,9 +717,9 @@ class PointerGenerator(Generator):
                 yield x
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
-    def __init__(self, mask, maskidx, positions, positionsidx, target, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, positions, positionsidx, target, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PointerGenerator.__init__(self, positions, positionsidx, target, packing, name, derivedname, schema)
+        PointerGenerator.__init__(self, positions, positionsidx, target, namespace, packing, name, derivedname, schema)
 
 ################################################################ for extensions: domain-specific and user
 
@@ -751,6 +752,10 @@ class ExtendedGenerator(Generator):
 
     def _togetall(self, arrays, cache, bottomup, memo):
         return self.generic._togetall(arrays, cache, bottomup, memo)
+
+    @property
+    def namespace(self):
+        return self.generic.namespace
 
     @property
     def packing(self):
