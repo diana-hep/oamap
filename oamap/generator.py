@@ -42,47 +42,66 @@ if sys.version_info[0] > 2:
 
 # for sources that perform specialized actions on particular kinds of arrays
 class Role(object):
-    def __init__(self, name):
+    def __init__(self, name, namespace):
         self.name = name
+        self.namespace = namespace
+    @property
+    def args(self):
+        return (self.name, self.namespace)
     def __repr__(self):
-        return "{0}({1})".format(self.__class__.__name__, repr(str(self)))
+        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(x) for x in self.args))
     def __str__(self):
         return self.name
     def __hash__(self):
-        return hash((Role, str(self)))
+        return hash((Role, self.name, self.namespace))
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and str(self) == str(other)
+        return isinstance(other, self.__class__) and self.name == other.name and self.namespace == other.namespace
     def __ne__(self, other):
         return not self.__eq__(other)
 
 class NoRole(Role): pass
 
 class MaskRole(Role):
-    def __init__(self, name, others):
-        super(MaskRole, self).__init__(name)
+    def __init__(self, name, namespace, others):
+        super(MaskRole, self).__init__(name, namespace)
         self.others = others
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.others)
 
 class DataRole(Role): pass
 
 class StartsRole(Role):
-    def __init__(self, name, stops):
-        super(StartsRole, self).__init__(name)
+    def __init__(self, name, namespace, stops):
+        super(StartsRole, self).__init__(name, namespace)
         self.stops = stops
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.stops)
 
 class StopsRole(Role):
-    def __init__(self, name, starts):
-        super(StopsRole, self).__init__(name)
+    def __init__(self, name, namespace, starts):
+        super(StopsRole, self).__init__(name, namespace)
         self.starts = starts
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.starts)
 
 class TagsRole(Role):
-    def __init__(self, name, offsets):
-        super(TagsRole, self).__init__(name)
+    def __init__(self, name, namespace, offsets):
+        super(TagsRole, self).__init__(name, namespace)
         self.offsets = offsets
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.offsets)
 
 class OffsetsRole(Role):
-    def __init__(self, name, tags):
-        super(OffsetsRole, self).__init__(name)
+    def __init__(self, name, namespace, tags):
+        super(OffsetsRole, self).__init__(name, namespace)
         self.tags = tags
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.tags)
 
 class PositionsRole(Role): pass
 
@@ -184,7 +203,7 @@ class Masked(object):
 
     def _toget(self, arrays, cache):
         others = self.__class__.__bases__[1]._toget(self, arrays, cache)
-        out = OrderedDict([(MaskRole(self.mask, others), (self.maskidx, self.maskdtype))])
+        out = OrderedDict([(MaskRole(self.mask, self.namespace, others), (self.maskidx, self.maskdtype))])
         out.update(others)
         return out
 
@@ -257,7 +276,7 @@ class PrimitiveGenerator(Generator):
         Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return OrderedDict([(DataRole(self.data), (self.dataidx, self.dtype))])
+        return OrderedDict([(DataRole(self.data, self.namespace), (self.dataidx, self.dtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -323,8 +342,8 @@ class ListGenerator(Generator):
             self.content._new(memo)
 
     def _toget(self, arrays, cache):
-        starts = StartsRole(self.starts, None)
-        stops = StopsRole(self.stops, None)
+        starts = StartsRole(self.starts, self.namespace, None)
+        stops = StopsRole(self.stops, self.namespace, None)
         starts.stops = stops
         stops.starts = starts
         return OrderedDict([(starts, (self.startsidx, self.posdtype)), (stops, (self.stopsidx, self.posdtype))])
@@ -420,8 +439,8 @@ class UnionGenerator(Generator):
                 x._new(memo)
 
     def _toget(self, arrays, cache):
-        tags = TagsRole(self.tags, None)
-        offsets = OffsetsRole(self.offsets, None)
+        tags = TagsRole(self.tags, self.namespace, None)
+        offsets = OffsetsRole(self.offsets, self.namespace, None)
         tags.offsets = offsets
         offsets.tags = tags
         return OrderedDict([(tags, (self.tagsidx, self.tagdtype)), (offsets, (self.offsetsidx, self.offsetdtype))])
@@ -657,7 +676,7 @@ class PointerGenerator(Generator):
             self.target._new(memo)
 
     def _toget(self, arrays, cache):
-        return OrderedDict([(PositionsRole(self.positions), (self.positionsidx, self.posdtype))])
+        return OrderedDict([(PositionsRole(self.positions, self.namespace), (self.positionsidx, self.posdtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
