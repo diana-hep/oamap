@@ -174,6 +174,68 @@ class Dataset(object):
         self.metadata = metadata
 
     @property
+    def schema(self):
+        return self._schema
+
+    @schema.setter
+    def schema(self, value):
+        if isinstance(value, oamap.schema.Schema):
+            self._schema = value
+        else:
+            raise TypeError("schema must be a Schema")
+
+    @property
+    def namespaces(self):
+        return self._namespaces
+
+    @namespaces.setter
+    def namespaces(self, value):
+        if isinstance(value, dict) and all(isinstance(n, basestring) and isinstance(x, Namespace) for n, x in value.items()):
+            self._namespaces = value
+        else:
+            raise TypeError("namespaces must be a dict from strings to Namespaces")
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @extension.setter
+    def extension(self, value):
+        if value is None:
+            self._extension = None
+        elif isinstance(value, basestring):
+            self._extension = value
+        else:
+            try:
+                modules = []
+                for x in value:
+                    if not isinstance(x, basestring):
+                        raise TypeError
+                    modules.append(x)
+            except TypeError:
+                raise ValueError("extension must be None, a string, or a list of strings, not {0}".format(repr(value)))
+            else:
+                self._extension = modules
+
+    @property
+    def doc(self):
+        return self._doc
+
+    @doc.setter
+    def doc(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("doc must be None or a string, not {0}".format(repr(value)))
+        self._doc = value
+
+    @property
+    def metadata(self):
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, value):
+        self._metadata = value
+
+    @property
     def data(self):
         raise NotImplementedError
 
