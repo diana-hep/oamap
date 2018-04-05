@@ -37,77 +37,18 @@ import sys
 import numpy
 
 import oamap.schema
+import oamap.proxy
 
 if sys.version_info[0] > 2:
     basestring = str
     unicode = str
 
-################################################################ Partitions
-
-class Partitions(object):
-    dtype = numpy.dtype(numpy.int64)
-
-    def __init__(self, backend, partitionargs):
-        self.backend = backend
-        self.partitionargs = partitionargs
-
-    @property
-    def numpartitions(self):
-        return len(self.partitionargs)
-
-    def __getitem__(self, id):
-        normalid = id if id >= 0 else id + self.numpartitions
-        if 0 <= normalid < self.numpartitions:
-            return self.backend(*self.partitionargs[normalid])
-        else:
-            raise IndexError("partition id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-    def __iter__(self):
-        def generate(self):
-            for args in self.partitionargs:
-                arrays = self.backend(*args)
-                yield arrays
-                if hasattr(arrays, "close"):
-                    arrays.close()
-        return generate()
-
-class IndexedPartitions(Partitions):
-    def __init__(self, backend, partitionargs, offsets):
-        if not isinstance(offsets, numpy.ndarray):
-            offsets = numpy.array(offsets, dtype=self.dtype)
-        assert offsets.dtype == self.dtype
-        assert len(offsets.shape) == 1
-        assert numpy.all(offsets[:-1] <= offsets[1:])
-        assert len(partitionargs) + 1 == len(offsets)
-
-        self.offsets = offsets
-        super(IndexedPartitions, self).__init__(partitionargs)
-
-    @property
-    def numentries(self):
-        return self.offsets[-1]
-
-    def numentriesof(self, id):
-        normalid = id if id >= 0 else id + self.numpartitions
-        if 0 <= normalid < self.numpartitions:
-            return self.offsets[normalid + 1] - self.offsets[normalid]
-        else:
-            raise IndexError("partition id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-    def partitionid(self, index):
-        normalindex = index if index >= 0 else index + self.numentries
-        if 0 <= normalindex < self.numentries:
-            return numpy.searchsorted(self.offsets, normalindex, side="right") - 1
-        else:
-            raise IndexError("index of {0} is out of range for numentries {1}".format(index, self.numentries))
-
 ################################################################ Namespace
 
 class Namespace(object):
-    def __init__(self, backend, partitionargs, offsets=None):
+    def __init__(self, backend, partitionargs):
         self.backend = backend
         self.partitionargs = partitionargs
-        self.offsets = offsets
 
     @property
     def backend(self):
@@ -141,34 +82,16 @@ class Namespace(object):
         self._partitionargs = value
 
     @property
-    def offsets(self):
-        return self._offsets
-
-    @offsets.setter
-    def offsets(self, value):
-        if value is None:
-            self._offsets = None
-        else:
-            try:
-                value = list(value)
-            except TypeError:
-                raise TypeError("offsets must be None or an iterable of integers")
-            if not all(isinstance(x, numbers.Integral) for x in value):
-                raise TypeError("offsets must all be integers")
-            self._offsets = value
-
-    def partitions(self):
-        if self._offsets is None:
-            return Partitions(self._backend, self._partitionargs)
-        else:
-            return IndexedPartitions(self._backend, self._partitionargs, self._offsets)
+    def numpartitions(self):
+        return len(self._partitionargs)
 
 ################################################################ Dataset
 
 class Dataset(object):
-    def __init__(self, schema, namespaces, extension=None, doc=None, metadata=None):
+    def __init__(self, schema, namespace, offsets=None, extension=None, doc=None, metadata=None):
         self.schema = schema
-        self.namespaces = namespaces
+        self.namespace = namespace
+        self.offsets = offsets
         self.extension = extension
         self.doc = doc
         self.metadata = metadata
@@ -183,17 +106,54 @@ class Dataset(object):
             self._schema = value
         else:
             raise TypeError("schema must be a Schema")
+        self._generator = self._schema.generator(extension=self._extension)
 
     @property
-    def namespaces(self):
-        return self._namespaces
+    def namespace(self):
+        return dict(self._namespace)
 
-    @namespaces.setter
-    def namespaces(self, value):
-        if isinstance(value, dict) and all(isinstance(n, basestring) and isinstance(x, Namespace) for n, x in value.items()):
-            self._namespaces = value
+    @namespace.setter
+    def namespace(self, value):
+        if isinstance(value, Namespace):
+            value = {"": value}
+        if not isinstance(value, dict) or not all(isinstance(n, basestring) and isinstance(x, Namespace) for n, x in value.items()) or len(value) == 0:
+            raise TypeError("namespace must be a non-empty dict from strings to Namespaces")
+
+        numpartitions = None
+        out = {}
+        for n, x in value.items():
+            if numpartitions is None:
+                numpartitions = x.numpartitions
+            elif numpartitions != x.numpartitions:
+                raise ValueError("one namespace has {0} partitions, another has {1}".format(numpartitions, x.numpartitions))
+            out[n] = x
+
+        self._namespace = out
+
+    offsetsdtype = numpy.dtype(numpy.int64)
+
+    @property
+    def offsets(self):
+        return self._offsets
+
+    @offsets.setter
+    def offsets(self, value):
+        if value is None:
+            self._offsets = None
         else:
-            raise TypeError("namespaces must be a dict from strings to Namespaces")
+            if not isinstance(value, numpy.ndarray):
+                value = numpy.array(value, dtype=self.offsetsdtype)
+            if value.dtype != self.offsetsdtype:
+                raise ValueError("offsets array must have {0}".format(repr(self.offsetsdtype)))
+            if len(value.shape) != 1:
+                raise ValueError("offsets array must be one-dimensional")
+            if len(value) < 2:
+                raise ValueError("offsets array must have at least 2 items")
+            if value[0] != 0:
+                raise ValueError("offsets array must begin with 0")
+            if not numpy.all(value[:-1] <= value[1:])
+                raise ValueError("offsets array must be monotonically increasing")
+            self._offsets = value
 
     @property
     def extension(self):
@@ -216,6 +176,7 @@ class Dataset(object):
                 raise ValueError("extension must be None, a string, or a list of strings, not {0}".format(repr(value)))
             else:
                 self._extension = modules
+        self._generator = self._schema.generator(extension=self._extension)
 
     @property
     def doc(self):
@@ -236,11 +197,67 @@ class Dataset(object):
         self._metadata = value
 
     @property
-    def data(self):
-        raise NotImplementedError
+    def numpartitions(self):
+        for x in self._namespace.values():
+            break
+        return x.numpartitions
 
-    def partition(self, id):
-        raise NotImplementedError
+    @property
+    def numentries(self):
+        if not isinstance(self._schema, oamap.schema.List):
+            raise TypeError("only Lists have a numentries")
+        if self._offsets is not None:
+            return self._offsets[-1]
+        else:
+            return sum(len(self.partition(i)) for i in self.numpartitions)
+
+    class _Arrays(object):
+        def __init__(self, namespace):
+            self.backend = dict((n, x.backend) for n, x in namespace.items())
+            self.partitionargs = dict((n, x.partitionargs) for n, x in namespace.items())
+            self.arrays = dict((n, None) for n in namespace)
+
+        def getall(self, roles):
+            out = {}
+            for n in self.arrays:
+                filtered = [x for x in roles if x.namespace == n]
+                if len(filtered) > 0:
+                    if self.arrays[n] is None:
+                        self.arrays[n] = self.backend[n](*self.partitionargs[n])
+                    out.update(self.arrays[n].getall(filtered))
+            return out
+
+        def close(self):
+            for n in self.arrays:
+                if hasattr(self.arrays[n], "close"):
+                    self.arrays[n].close()
+                self.arrays[n] = None
+
+    def _arrays(self, id):
+        return self._Arrays(self._namespace)
+
+    def __call__(self, id=None):
+        if not isinstance(self._schema, oamap.schema.List) and self.numpartitions != 1:
+            raise TypeError("only Lists can have numpartitions != 1")
+
+        if id is not None:
+            normid = id if id >= 0 else id + self.numpartitions
+            if 0 <= normid < self.numpartitions:
+                return self._generator(self._arrays(id))
+            else:
+                raise IndexError("partition id {0} out of range for {1} partitions".format(id, self.numpartitions))
+
+        elif self.numpartitions == 1:
+            return self(0)
+
+        else:
+            listofarrays = [self._arrays(id) for id in range(self.numpartitions)]
+            if self._offsets is None:
+                return oamap.proxy.PartitionedListProxy(self._generator, listofarrays)
+            else:
+                if self.numpartitions + 1 != len(self._offsets):
+                    raise ValueError("offsets array must have a length one greater than numpartitions")
+                return oamap.proxy.IndexedPartitionedListProxy(self._generator, listofarrays, self._offsets)
 
 ################################################################ Database
 

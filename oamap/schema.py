@@ -90,8 +90,8 @@ class Schema(object):
 
     @namespace.setter
     def namespace(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("namespace must be None or a string, not {0}".format(repr(value)))
+        if not isinstance(value, basestring):
+            raise TypeError("namespace must be a string, not {0}".format(repr(value)))
         self._namespace = value
 
     @property
@@ -350,7 +350,7 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, nullable=False, data=None, mask=None, namespace=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, dtype, nullable=False, data=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.dtype = dtype
         self.nullable = nullable
         self.data = data
@@ -450,7 +450,7 @@ class Primitive(Schema):
                 args.append("data" + eq + repr(self._data))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
-            if self._namespace is not None:
+            if self._namespace != "":
                 args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
@@ -480,7 +480,7 @@ class Primitive(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if not explicit and self._nullable is False and self._data is None and self._mask is None and self._namespace is None and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
+            if not explicit and self._nullable is False and self._data is None and self._mask is None and self._namespace == "" and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
                 return str(self._dtype)
             else:
                 out = OrderedDict([("type", "primitive"), ("dtype", self._dtype2str(self._dtype, "-"))])
@@ -490,7 +490,7 @@ class Primitive(Schema):
                     out["data"] = self._data
                 if explicit or self._mask is not None:
                     out["mask"] = self._mask
-                if explicit or self._namespace is not None:
+                if explicit or self._namespace != "":
                     out["namespace"] = self._namespace
                 if explicit or self._packing is not None:
                     out["packing"] = self._packingtojson()
@@ -513,7 +513,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), namespace=data.get("namespace", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=oamap.util.json2python(data.get("metadata", None)))
+            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), namespace=data.get("namespace", ""), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=oamap.util.json2python(data.get("metadata", None)))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -636,7 +636,7 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, namespace=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
@@ -709,7 +709,7 @@ class List(Schema):
                 args.append("stops" + eq + repr(self._stops))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
-            if self._namespace is not None:
+            if self._namespace != "":
                 args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
@@ -749,7 +749,7 @@ class List(Schema):
                 out["stops"] = self._stops
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if explicit or self._namespace is not None:
+            if explicit or self._namespace != "":
                 out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
@@ -775,7 +775,7 @@ class List(Schema):
         out.starts = data.get("starts", None)
         out.stops = data.get("stops", None)
         out.mask = data.get("mask", None)
-        out.namespace = data.get("namespace", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -917,7 +917,7 @@ class List(Schema):
 ################################################################ Unions may be one of several types
 
 class Union(Schema):
-    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, namespace=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.possibilities = possibilities
         self.nullable = nullable
         self.tags = tags
@@ -1029,7 +1029,7 @@ class Union(Schema):
                 args.append("offsets" + eq + repr(self._offsets))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
-            if self._namespace is not None:
+            if self._namespace != "":
                 args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
@@ -1069,7 +1069,7 @@ class Union(Schema):
                 out["offsets"] = self._offsets
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if explicit or self._namespace is not None:
+            if explicit or self._namespace != "":
                 out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
@@ -1097,7 +1097,7 @@ class Union(Schema):
         out.tags = data.get("tags", None)
         out.offsets = data.get("offsets", None)
         out.mask = data.get("mask", None)
-        out.namespace = data.get("namespace", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1233,7 +1233,7 @@ class Union(Schema):
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
-    def __init__(self, fields, nullable=False, mask=None, namespace=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, fields, nullable=False, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.fields = fields
         self.nullable = nullable
         self.mask = mask
@@ -1320,7 +1320,7 @@ class Record(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
-            if self._namespace is not None:
+            if self._namespace != "":
                 args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
@@ -1356,7 +1356,7 @@ class Record(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if explicit or self._namespace is not None:
+            if explicit or self._namespace != "":
                 out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
@@ -1385,7 +1385,7 @@ class Record(Schema):
             raise TypeError("argument 'fields' for Record Schema from JSON should be a list or dict of key-value pairs (in which the keys are strings), not {0}".format(repr(data["fields"])))
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
-        out.namespace = data.get("namespace", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1506,7 +1506,7 @@ class Record(Schema):
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, types, nullable=False, mask=None, namespace=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, types, nullable=False, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.types = types
         self.nullable = nullable
         self.mask = mask
@@ -1592,7 +1592,7 @@ class Tuple(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
-            if self._namespace is not None:
+            if self._namespace != "":
                 args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
@@ -1627,7 +1627,7 @@ class Tuple(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if explicit or self._namespace is not None:
+            if explicit or self._namespace != "":
                 out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
@@ -1653,7 +1653,7 @@ class Tuple(Schema):
         out._types = [Schema._fromjson(x, labels) for x in data["types"]]
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
-        out.namespace = data.get("namespace", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1770,7 +1770,7 @@ class Tuple(Schema):
 ################################################################ Pointers redirect to the contents of other types
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None, namespace=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, target, nullable=False, positions=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.target = target
         self.nullable = nullable
         self.positions = positions
@@ -1832,7 +1832,7 @@ class Pointer(Schema):
                 args.append("positions" + eq + repr(self._positions))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
-            if self._namespace is not None:
+            if self._namespace != "":
                 args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
@@ -1870,7 +1870,7 @@ class Pointer(Schema):
                 out["positions"] = self._positions
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
-            if explicit or self._namespace is not None:
+            if explicit or self._namespace != "":
                 out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
@@ -1895,7 +1895,7 @@ class Pointer(Schema):
         out.nullable = data.get("nullable", False)
         out.positions = data.get("positions", None)
         out.mask = data.get("mask", None)
-        out.namespace = data.get("namespace", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
