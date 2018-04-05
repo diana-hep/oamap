@@ -221,10 +221,18 @@ class Dataset(object):
             out = {}
             for n in self.arrays:
                 filtered = [x for x in roles if x.namespace == n]
+
                 if len(filtered) > 0:
                     if self.arrays[n] is None:
                         self.arrays[n] = self.backend[n](*self.partitionargs[n])
-                    out.update(self.arrays[n].getall(filtered))
+                    arrays = self.arrays[n]
+
+                    if hasattr(arrays, "getall"):
+                        out.update(arrays.getall(filtered))     # pass on the roles to a source that knows about getall
+                    else:
+                        for x in roles:
+                            out[x] = arrays[str(x)]             # drop the roles; it's a plain-dict interface
+
             return out
 
         def close(self):
