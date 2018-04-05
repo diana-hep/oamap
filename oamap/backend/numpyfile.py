@@ -33,8 +33,8 @@ import os
 import numpy
 
 class NumpyFile(object):
-    def __init__(self, directory):
-        self.directory = directory
+    def __init__(self, base, partition):
+        self.directory = os.path.join(base, partition)
 
     def __getitem__(self, name):
         return numpy.load(os.path.join(self.directory, name))

@@ -37,6 +37,7 @@ import sys
 import numpy
 
 import oamap.schema
+import oamap.generator
 import oamap.proxy
 import oamap.extension.common
 
@@ -251,20 +252,26 @@ class Dataset(object):
         if self._offsets is not None:
             return self._offsets[-1]
         else:
-            return sum(len(self.partition(i)) for i in self.numpartitions)
+            return sum(len(self(i)) for i in range(self.numpartitions))
 
     class _Arrays(object):
-        def __init__(self, partitionid, namespace):
+        def __init__(self, partitionid, namespace, startsrole, stopsrole, numentries):
             self.partitionid = partitionid
             self.backend = dict((n, x.backend) for n, x in namespace.items())
             self.args = dict((n, x.args) for n, x in namespace.items())
             self.partargs = dict((n, list(x.partargs)) for n, x in namespace.items())
             self.arrays = dict((n, None) for n in namespace)
+            self.startsrole = startsrole
+            self.stopsrole = stopsrole
+            self.numentries = numentries
 
         def getall(self, roles):
             out = {}
             for n in self.arrays:
                 filtered = [x for x in roles if x.namespace == n]
+
+                # HERE: if self.numentries is None, remove self.startsrole and self.stopsrole
+                # and replace them with the number of entries
 
                 if len(filtered) > 0:
                     if self.arrays[n] is None:
@@ -286,7 +293,15 @@ class Dataset(object):
                 self.arrays[n] = None
 
     def _arrays(self, partitionid):
-        return self._Arrays(partitionid, self._namespace)
+        if self._offsets is not None and isinstance(self._schema, oamap.schema.List) and self._schema.starts is None and self._schema.stops is None:
+            numentries = self._offsets[partitionid + 1] - self._offsets[partitionid]
+            startsrole = oamap.generator.StartsRole("object-B", self._schema.namespace, None)
+            stopsrole = oamap.generator.StopsRole("object-E", self._schema.namespace, None)
+        else:
+            numentries = None
+            startsrole = None
+            stopsrole = None
+        return self._Arrays(partitionid, self._namespace, startsrole, stopsrole, numentries)
 
     def __call__(self, partitionid=None):
         if not isinstance(self._schema, oamap.schema.List) and self.numpartitions != 1:
@@ -360,11 +375,12 @@ class InMemoryDatabase(Database):
 
 ################################################################ quick test
 
-# import oamap.backend.numpyfile
+import oamap.backend.numpyfile
 
-# ns = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [()])
+ns = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
 
-# test = Dataset(oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy"), starts="starts.npy", stops="stops.npy"), starts="starts0.npy", stops="stops0.npy"), ns)
+sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
 
-# db = InMemoryDatabase(test=test)
+test = Dataset(sch, ns, [0, 3, 6])
 
+db = InMemoryDatabase(test=test)
