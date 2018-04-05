@@ -38,6 +38,7 @@ import numpy
 
 import oamap.schema
 import oamap.proxy
+import oamap.extension.common
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -46,9 +47,10 @@ if sys.version_info[0] > 2:
 ################################################################ Namespace
 
 class Namespace(object):
-    def __init__(self, backend, partitionargs):
+    def __init__(self, backend, args, partargs):
         self.backend = backend
-        self.partitionargs = partitionargs
+        self.args = args
+        self.partargs = partargs
 
     @property
     def backend(self):
@@ -71,30 +73,62 @@ class Namespace(object):
             raise TypeError("backend must be a class or a fully qualified class name")
 
     @property
-    def partitionargs(self):
-        return self._partitionargs
+    def args(self):
+        return self._args
 
-    @partitionargs.setter
-    def partitionargs(self, value):
+    @args.setter
+    def args(self, value):
+        if not isinstance(value, tuple):
+            raise TypeError("args mut be a tuple")
+        self._args = value
+
+    @property
+    def partargs(self):
+        return self._partargs
+
+    @partargs.setter
+    def partargs(self, value):
         value = list(value)
         if not all(isinstance(x, tuple) for x in value):
-            raise TypeError("partitionargs must be an iterable of tuples")
-        self._partitionargs = value
+            raise TypeError("partargs must be an iterable of tuples")
+        if len(value) == 0:
+            raise ValueError("partargs must have at least one partition")
+        self._partargs = value
 
     @property
     def numpartitions(self):
-        return len(self._partitionargs)
+        return len(self._partargs)
 
 ################################################################ Dataset
 
 class Dataset(object):
-    def __init__(self, schema, namespace, offsets=None, extension=None, doc=None, metadata=None):
+    def __init__(self, schema, namespace, offsets=None, extension=None, name=None, doc=None, metadata=None):
+        self._extension = oamap.extension.common
         self.schema = schema
         self.namespace = namespace
         self.offsets = offsets
-        self.extension = extension
+        if extension is not None:
+            self.extension = extension
+        self.name = name
         self.doc = doc
         self.metadata = metadata
+
+    def __repr__(self):
+        if self._name is None:
+            n = ""
+        else:
+            n = repr(self._name) + " "
+        p = "{0} partition".format(self.numpartitions)
+        if self.numpartitions != 1:
+            p = p + "s"
+        if self._offsets is None:
+            e = ""
+        else:
+            e = " {0} entries".format(self.numentries)
+        return "<Dataset {0}{1}{2}>".format(n, p, e)
+
+    def rename(self, name):
+        return Dataset(self._schema, self._namespace, offsets=self._offsets, extension=(None if self._extension is oamap.extension.common else self._extension), name=name, doc=self._doc, metadata=self._metadata)
 
     @property
     def schema(self):
@@ -151,7 +185,7 @@ class Dataset(object):
                 raise ValueError("offsets array must have at least 2 items")
             if value[0] != 0:
                 raise ValueError("offsets array must begin with 0")
-            if not numpy.all(value[:-1] <= value[1:])
+            if not numpy.all(value[:-1] <= value[1:]):
                 raise ValueError("offsets array must be monotonically increasing")
             self._offsets = value
 
@@ -161,9 +195,7 @@ class Dataset(object):
 
     @extension.setter
     def extension(self, value):
-        if value is None:
-            self._extension = None
-        elif isinstance(value, basestring):
+        if isinstance(value, basestring):
             self._extension = value
         else:
             try:
@@ -173,10 +205,20 @@ class Dataset(object):
                         raise TypeError
                     modules.append(x)
             except TypeError:
-                raise ValueError("extension must be None, a string, or a list of strings, not {0}".format(repr(value)))
+                raise ValueError("extension must be a string or a list of strings, not {0}".format(repr(value)))
             else:
                 self._extension = modules
         self._generator = self._schema.generator(extension=self._extension)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if not (value is None or isinstance(value, basestring)):
+            raise TypeError("name must be None or a string, not {0}".format(repr(value)))
+        self._name = value
 
     @property
     def doc(self):
@@ -212,9 +254,11 @@ class Dataset(object):
             return sum(len(self.partition(i)) for i in self.numpartitions)
 
     class _Arrays(object):
-        def __init__(self, namespace):
+        def __init__(self, partitionid, namespace):
+            self.partitionid = partitionid
             self.backend = dict((n, x.backend) for n, x in namespace.items())
-            self.partitionargs = dict((n, x.partitionargs) for n, x in namespace.items())
+            self.args = dict((n, x.args) for n, x in namespace.items())
+            self.partargs = dict((n, list(x.partargs)) for n, x in namespace.items())
             self.arrays = dict((n, None) for n in namespace)
 
         def getall(self, roles):
@@ -224,7 +268,7 @@ class Dataset(object):
 
                 if len(filtered) > 0:
                     if self.arrays[n] is None:
-                        self.arrays[n] = self.backend[n](*self.partitionargs[n])
+                        self.arrays[n] = self.backend[n](*(self.args[n] + self.partargs[n][self.partitionid]))
                     arrays = self.arrays[n]
 
                     if hasattr(arrays, "getall"):
@@ -241,25 +285,25 @@ class Dataset(object):
                     self.arrays[n].close()
                 self.arrays[n] = None
 
-    def _arrays(self, id):
-        return self._Arrays(self._namespace)
+    def _arrays(self, partitionid):
+        return self._Arrays(partitionid, self._namespace)
 
-    def __call__(self, id=None):
+    def __call__(self, partitionid=None):
         if not isinstance(self._schema, oamap.schema.List) and self.numpartitions != 1:
             raise TypeError("only Lists can have numpartitions != 1")
 
-        if id is not None:
-            normid = id if id >= 0 else id + self.numpartitions
+        if partitionid is not None:
+            normid = partitionid if partitionid >= 0 else partitionid + self.numpartitions
             if 0 <= normid < self.numpartitions:
-                return self._generator(self._arrays(id))
+                return self._generator(self._arrays(normid))
             else:
-                raise IndexError("partition id {0} out of range for {1} partitions".format(id, self.numpartitions))
+                raise IndexError("partition id {0} out of range for {1} partitions".format(partitionid, self.numpartitions))
 
         elif self.numpartitions == 1:
             return self(0)
 
         else:
-            listofarrays = [self._arrays(id) for id in range(self.numpartitions)]
+            listofarrays = [self._arrays(partitionid) for partitionid in range(self.numpartitions)]
             if self._offsets is None:
                 return oamap.proxy.PartitionedListProxy(self._generator, listofarrays)
             else:
@@ -272,11 +316,13 @@ class Dataset(object):
 class Database(object):
     class Datasets(object):
         def __init__(self, database):
-            self._database = database
+            self.__dict__["_database"] = database
+        def __repr__(self):
+            return "<Datasets: {0}>".format(self._database.list())
         def __getattr__(self, name):
-            return self._database.getdataset(name)
+            return self.__dict__["_database"].get(name)
         def __setattr__(self, name, value):
-            self._database.setdataset(name, value)
+            self.__dict__["_database"].set(name, value)
             
     def __init__(self, connection):
         self._connection = connection
@@ -285,10 +331,17 @@ class Database(object):
     def connection(self):
         return self._connection
 
-    def getdataset(self, name):
+    @property
+    def datasets(self):
+        return self.Datasets(self)
+
+    def list(self):
         raise NotImplementedError
 
-    def setdataset(self, name, value):
+    def get(self, name):
+        raise NotImplementedError
+
+    def set(self, name, value):
         raise NotImplementedError
 
 class InMemoryDatabase(Database):
@@ -296,8 +349,22 @@ class InMemoryDatabase(Database):
         self._datasets = datasets
         super(InMemoryDatabase, self).__init__(None)
 
-    def getdataset(self, name):
-        return self._datasets[name]
+    def list(self):
+        return list(self._datasets)
 
-    def setdataset(self, name, value):
+    def get(self, name):
+        return self._datasets[name].rename(name)
+
+    def set(self, name, value):
         self._datasets[name] = value
+
+################################################################ quick test
+
+# import oamap.backend.numpyfile
+
+# ns = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [()])
+
+# test = Dataset(oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy"), starts="starts.npy", stops="stops.npy"), starts="starts0.npy", stops="stops0.npy"), ns)
+
+# db = InMemoryDatabase(test=test)
+

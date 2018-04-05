@@ -49,7 +49,7 @@ class Role(object):
     def args(self):
         return (self.name, self.namespace)
     def __repr__(self):
-        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(x) for x in self.args))
+        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(str(x)) for x in self.args))
     def __str__(self):
         return self.name
     def __hash__(self):
