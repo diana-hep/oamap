@@ -270,8 +270,23 @@ class Dataset(object):
             for n in self.arrays:
                 filtered = [x for x in roles if x.namespace == n]
 
-                # HERE: if self.numentries is None, remove self.startsrole and self.stopsrole
-                # and replace them with the number of entries
+                if self.numentries is not None:
+                    try:
+                        startsindex = filtered.index(self.startsrole)
+                    except ValueError:
+                        pass
+                    else:
+                        starts = filtered[startsindex]
+                        out[starts] = numpy.array([0], dtype=oamap.generator.ListGenerator.posdtype)
+                        del filtered[startsindex]
+                    try:
+                        stopsindex = filtered.index(self.stopsrole)
+                    except ValueError:
+                        pass
+                    else:
+                        stops = filtered[stopsindex]
+                        out[stops] = numpy.array([self.numentries], dtype=oamap.generator.ListGenerator.posdtype)
+                        del filtered[stopsindex]
 
                 if len(filtered) > 0:
                     if self.arrays[n] is None:
@@ -375,12 +390,12 @@ class InMemoryDatabase(Database):
 
 ################################################################ quick test
 
-import oamap.backend.numpyfile
+# import oamap.backend.numpyfile
 
-ns = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+# ns = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
 
-sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
+# sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
 
-test = Dataset(sch, ns, [0, 3, 6])
+# test = Dataset(sch, ns, [0, 3, 6])
 
-db = InMemoryDatabase(test=test)
+# db = InMemoryDatabase(test=test)
