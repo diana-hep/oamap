@@ -98,7 +98,7 @@ class NewArrays(object):
 
 ################################################################ project
 
-def project(data, fieldname, numba=True):
+def project(data, fieldname):
     if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
         if data._generator.schema.content.nullable:
             raise NotImplementedError("the inner Record is nullable; need to merge masks")
@@ -111,57 +111,43 @@ def project(data, fieldname, numba=True):
     else:
         raise TypeError("project can only be applied to List(Record({{{0}: ...}}))".format(repr(fieldname)))
 
-################################################################ filter
+################################################################ attach
 
-def filter(data, fcn, depth=0, numba=True):
-    def checklist(schema, depth):
-        if not isinstance(schema, oamap.schema.List):
-            return False
-        if d == 0:
-            return True
-        else:
-            return checklist(schema.content, depth - 1)
+def attach(data, fieldname, newfield):
+    if isinstance(newfield, oamap.proxy.Proxy):
+        newfield._generator._requireall()
+        newfield._entercompiled(newfield._arrays, newfield._cache)
+        fieldarrays = {}
+        for n, idx in newfield._generator.iternames(idx=True):
+            fieldarrays[n] = newfield._cache[idx]
 
-    if isinstance(data, oamap.proxy.ListProxy) and checklist(data._generator.schema, depth):
-        topschema = schema = data._generator.namedschema()
-        for i in range(depth):
-            schema = schema.content
-
-        schema.content = oamap.schema.Pointer(schema.content)
+    if isinstance(data, oamap.proxy.RecordProxy):
+        schema = data._generator.namedschema()
 
         HERE
 
+
+    elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
+        raise NotImplementedError
+
     else:
-        raise TypeError("filter for depth {0} can only be applied to {1}...{2}".format(depth, "List(" * depth, ")" * depth))
+        raise TypeError("attach can only be applied to Record(...) or List(Record(...))")
 
-    def single(listproxy):
-        oldschema = listproxy._generator.namedschema()
-        newschema = oamap.schema.List(oamap.schema.Pointer(oldschema.content))
+################################################################ detach
 
-        fcn = maybecompile(numba)(fcn)
+def detach(data, fieldname):
+    if isinstance(data, oamap.proxy.RecordProxy):
+        raise NotImplementedError
 
-        @maybecompile(numba)
-        def setpointers(listproxy, pointers):
-            j = 0
-            for i in range(len(listproxy)):
-                if fcn(listproxy[i]):
-                    pointers[j] = i
-                    j += 1
-            return j
+    elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
+        raise NotImplementedError
 
-        pointers = numpy.empty(len(listproxy), dtype=oamap.generator.PointerGenerator.posdtype)
-        numentries = setpointers(listproxy, pointers)
-
-        newarrays = NewArrays.get(listproxy._arrays, listproxy._generator.iternames(namespace=True))
-        newarrays.put(newschema, "starts", numpy.array([0], dtype=listproxy._generator.posdtype))
-        newarrays.put(newschema, "stops", numpy.array([numentries], dtype=listproxy._generator.posdtype))
-        newarrays.put(newschema.content, "positions", pointers[:numentries])
-
-        return newschema(newarrays)
+    else:
+        raise TypeError("detach can only be applied to Record(...) or List(Record(...))")
 
 ################################################################ flatten
 
-def flatten(data, numba=True):
+def flatten(data):
     if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.List):
         if data._generator.schema.content.nullable:
             raise NotImplementedError("the inner List is nullable; need to merge masks")
@@ -185,9 +171,38 @@ def flatten(data, numba=True):
     else:
         raise TypeError("flatten can only be applied to List(List(...))")
 
-################################################################ define
+################################################################ filter
 
-################################################################ remove
+def filter(data, fcn, numba=True):
+    if isinstance(data, oamap.proxy.ListProxy):
+        schema = data._generator.namedschema()
+        schema.content = oamap.schema.Pointer(schema.content)
+
+        fcn = maybecompile(numba)(fcn)
+
+        @maybecompile(numba)
+        def setpointers(data, pointers):
+            j = 0
+            for i in range(len(data)):
+                if fcn(data[i]):
+                    pointers[j] = i
+                    j += 1
+            return j
+
+        pointers = numpy.empty(len(data), dtype=oamap.generator.PointerGenerator.posdtype)
+        numentries = setpointers(data, pointers)
+
+        newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+        newarrays.put(schema, "starts", numpy.array([0], dtype=data._generator.posdtype))
+        newarrays.put(schema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
+        newarrays.put(schema.content, "positions", pointers[:numentries])
+
+        return schema(newarrays)
+
+    else:
+        raise TypeError("filter can only be applied to List(...)")
+
+################################################################ define
 
 ################################################################ reduce
 
