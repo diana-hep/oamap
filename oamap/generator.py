@@ -236,12 +236,15 @@ class Masked(object):
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
 
-    def names(self):
-        return list(self.iternames())
+    def names(self, namespace=False):
+        return list(self.iternames(namespace=namespace))
 
-    def iternames(self):
-        yield self.mask
-        for x in self.__class__.__bases__[1].iternames(self):
+    def iternames(self, namespace=False):
+        if namespace:
+            yield self.mask, self.namespace
+        else:
+            yield self.mask
+        for x in self.__class__.__bases__[1].iternames(self, namespace=namespace):
             yield x
 
     def loaded(self, cache, memo=None):
@@ -296,8 +299,11 @@ class PrimitiveGenerator(Generator):
     def _requireall(self, memo=None):
         self._required = True
 
-    def iternames(self):
-        yield self.data
+    def iternames(self, namespace=False):
+        if namespace:
+            yield self.data, self.namespace
+        else:
+            yield self.data
 
     def loaded(self, cache, memo=None):
         if memo is None:
@@ -381,10 +387,14 @@ class ListGenerator(Generator):
             self._required = True
             self.content._requireall(memo)
 
-    def iternames(self):
-        yield self.starts
-        yield self.stops
-        for x in self.content.iternames():
+    def iternames(self, namespace=False):
+        if namespace:
+            yield self.starts, self.namespace
+            yield self.stops, self.namespace
+        else:
+            yield self.starts
+            yield self.stops
+        for x in self.content.iternames(namespace=namespace):
             yield x
 
     def loaded(self, cache, memo=None):
@@ -481,11 +491,15 @@ class UnionGenerator(Generator):
             for x in self.possibilities:
                 x._requireall(memo)
 
-    def iternames(self):
-        yield self.tags
-        yield self.offsets
+    def iternames(self, namespace=False):
+        if namespace:
+            yield self.tags, self.namespace
+            yield self.offsets, self.namespace
+        else:
+            yield self.tags
+            yield self.offsets
         for x in self.possibilities:
-            for y in x.iternames():
+            for y in x.iternames(namespace=namespace):
                 yield y
 
     def loaded(self, cache, memo=None):
@@ -559,9 +573,9 @@ class RecordGenerator(Generator):
             for x in self.fields.values():
                 x._requireall(memo)
 
-    def iternames(self):
+    def iternames(self, namespace=False):
         for x in self.fields.values():
-            for y in x.iternames():
+            for y in x.iternames(namespace=namespace):
                 yield y
 
     def loaded(self, cache, memo=None):
@@ -628,9 +642,9 @@ class TupleGenerator(Generator):
             for x in self.types:
                 x._requireall(memo)
 
-    def iternames(self):
+    def iternames(self, namespace=False):
         for x in self.types:
-            for y in x.iternames():
+            for y in x.iternames(namespace=namespace):
                 yield y
 
     def loaded(self, cache, memo=None):
@@ -709,10 +723,13 @@ class PointerGenerator(Generator):
             self._required = True
             self.target._requireall(memo)
 
-    def iternames(self):
-        yield self.positions
+    def iternames(self, namespace=False):
+        if namespace:
+            yield self.positions, self.namespace
+        else:
+            yield self.positions
         if not self._internal:
-            for x in self.target.iternames():
+            for x in self.target.iternames(namespace=namespace):
                 yield x
 
     def loaded(self, cache, memo=None):
@@ -792,8 +809,8 @@ class ExtendedGenerator(Generator):
     def schema(self):
         return self.generic.schema
 
-    def iternames(self):
-        for x in self.generic.iternames():
+    def iternames(self, namespace=False):
+        for x in self.generic.iternames(namespace=namespace):
             yield x
 
     def loaded(self, cache, memo=None):

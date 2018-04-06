@@ -402,19 +402,18 @@ class Database(object):
             
     def __init__(self, connection):
         self._connection = connection
-        self._namespace = set()
 
     @property
     def connection(self):
         return self._connection
 
     @property
-    def namespace(self):
-        return frozenset(self._namespace)
-
-    @property
     def datasets(self):
         return self.Datasets(self)
+
+    @property
+    def namespace(self):
+        raise NotImplementedError
 
     def list(self):
         raise NotImplementedError
@@ -429,8 +428,13 @@ class InMemoryDatabase(Database):
     def __init__(self, **datasets):
         super(InMemoryDatabase, self).__init__(None)
         self._datasets = {}
+        self._refcounts = {}
         for n, x in datasets.items():
             self.set(n, x)
+
+    @property
+    def namespace(self):
+        return frozenset(self._refcounts)
 
     def list(self):
         return list(self._datasets)
@@ -441,19 +445,27 @@ class InMemoryDatabase(Database):
     def set(self, name, value):
         if not isinstance(value, Dataset):
             raise TypeError("datasets must have type Dataset")
-        self._namespace.update(value.namespace.values())
+
+        for x in value.namespace.values():
+            if x not in self._refcounts:
+                self._refcounts[x] = {}
+        for n, ns in value._generator.iternames(namespace=True):
+            if value._offsets is None or ns != "" or n not in ("object-B", "object-E"):
+                refcounts = self._refcounts[value.namespace[ns]]
+                refcounts[n] = refcounts.get(n, 0) + 1
+            
         self._datasets[name] = value
 
 ################################################################ quick test
 
-# import oamap.backend.numpyfile
+import oamap.backend.numpyfile
 
-# ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
-# ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
-# ns3 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part2",), ("part1",)])
+ns3 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
 
-# sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
+sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
 
-# test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
+test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
 
-# db = InMemoryDatabase(test=test)
+db = InMemoryDatabase(test=test)
