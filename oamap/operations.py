@@ -96,43 +96,78 @@ class NewArrays(object):
         if hasattr(self.oldarrays, "close"):
             self.oldarrays.close()
 
+################################################################ project
+
+def project(data, fieldname, numba=True):
+    if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
+        if data._generator.schema.content.nullable:
+            raise NotImplementedError("the inner Record is nullable; need to merge masks")
+        schema = data._generator.namedschema()
+        schema.content = schema.content.fields[fieldname]
+        newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+        out = schema(newarrays)
+        out._whence, out._stride, out._length = data._whence, data._stride, data._length
+        return out
+    else:
+        raise TypeError("project can only be applied to List(Record({{{0}: ...}}))".format(repr(fieldname)))
+
 ################################################################ filter
 
-def filter(data, fcn, fieldname=None, numba=True):
-    if not isinstance(data, oamap.proxy.ListProxy):
-        raise TypeError("filter can only be applied to OAMap lists")
+def filter(data, fcn, depth=0, numba=True):
+    def checklist(schema, depth):
+        if not isinstance(schema, oamap.schema.List):
+            return False
+        if d == 0:
+            return True
+        else:
+            return checklist(schema.content, depth - 1)
 
-    if isinstance(data, oamap.proxy.PartitionedListProxy):
-        raise NotImplementedError
+    if isinstance(data, oamap.proxy.ListProxy) and checklist(data._generator.schema, depth):
+        topschema = schema = data._generator.namedschema()
+        for i in range(depth):
+            schema = schema.content
 
-    if fieldname is not None:
-        raise NotImplementedError
+        schema.content = oamap.schema.Pointer(schema.content)
 
-    oldschema = data._generator.namedschema()
-    newschema = oamap.schema.List(oamap.schema.Pointer(oldschema.content))
+        HERE
 
-    fcn = maybecompile(numba)(fcn)
+    else:
+        raise TypeError("filter for depth {0} can only be applied to {1}...{2}".format(depth, "List(" * depth, ")" * depth))
 
-    @maybecompile(numba)
-    def setpointers(data, pointers):
-        j = 0
-        for i in range(len(data)):
-            if fcn(data[i]):
-                pointers[j] = i
-                j += 1
-        return j
+    def single(listproxy):
+        oldschema = listproxy._generator.namedschema()
+        newschema = oamap.schema.List(oamap.schema.Pointer(oldschema.content))
 
-    pointers = numpy.empty(len(data), dtype=oamap.generator.PointerGenerator.posdtype)
-    numentries = setpointers(data, pointers)
-    
-    newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
-    newarrays.put(newschema, "starts", numpy.array([0], dtype=data._generator.posdtype))
-    newarrays.put(newschema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
-    newarrays.put(newschema.content, "positions", pointers[:numentries])
+        fcn = maybecompile(numba)(fcn)
 
-    return newschema(newarrays)
+        @maybecompile(numba)
+        def setpointers(listproxy, pointers):
+            j = 0
+            for i in range(len(listproxy)):
+                if fcn(listproxy[i]):
+                    pointers[j] = i
+                    j += 1
+            return j
+
+        pointers = numpy.empty(len(listproxy), dtype=oamap.generator.PointerGenerator.posdtype)
+        numentries = setpointers(listproxy, pointers)
+
+        newarrays = NewArrays.get(listproxy._arrays, listproxy._generator.iternames(namespace=True))
+        newarrays.put(newschema, "starts", numpy.array([0], dtype=listproxy._generator.posdtype))
+        newarrays.put(newschema, "stops", numpy.array([numentries], dtype=listproxy._generator.posdtype))
+        newarrays.put(newschema.content, "positions", pointers[:numentries])
+
+        return newschema(newarrays)
 
 ################################################################ flatten
+
+def flatten(data, numba=True):
+    if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.List):
+        schema = data._generator.namedschema()
+        
+
+
+
 
 ################################################################ define
 
@@ -142,3 +177,5 @@ def filter(data, fcn, fieldname=None, numba=True):
 
 # dataset = oamap.schema.List("int").fromdata(range(10))
 
+from oamap.schema import *
+dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
