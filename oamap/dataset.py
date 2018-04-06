@@ -33,6 +33,7 @@ import importlib
 import numbers
 import os
 import sys
+import collections
 
 import numpy
 
@@ -52,6 +53,12 @@ class Namespace(object):
         self.backend = backend
         self.args = args
         self.partargs = partargs
+
+    def __repr__(self):
+        p = " {0} partition".format(self.numpartitions)
+        if self.numpartitions != 1:
+            p = p + "s"
+        return "<Namespace of {0}({1}, ...){2}>".format(self._backend.__name__, ", ".join(repr(x) for x in self.args), p)
 
     @property
     def backend(self):
@@ -95,22 +102,31 @@ class Namespace(object):
         if len(value) == 0:
             raise ValueError("partargs must have at least one partition")
         self._partargs = value
-
+    
     @property
     def numpartitions(self):
         return len(self._partargs)
 
+    def __eq__(self, other):
+        return isinstance(other, Namespace) and self.backend == other.backend and self.args == other.args and self.partargs == other.partargs
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((Namespace, self.backend, self.args, tuple(self.partargs)))
+
 ################################################################ Dataset
 
 class Dataset(object):
-    def __init__(self, schema, namespace, offsets=None, extension=None, name=None, doc=None, metadata=None):
+    def __init__(self, name, schema, namespace, offsets=None, extension=None, doc=None, metadata=None):
         self._extension = oamap.extension.common
+        self._name = name
         self.schema = schema
         self.namespace = namespace
         self.offsets = offsets
         if extension is not None:
             self.extension = extension
-        self.name = name
         self.doc = doc
         self.metadata = metadata
 
@@ -128,8 +144,9 @@ class Dataset(object):
             e = " {0} entries".format(self.numentries)
         return "<Dataset {0}{1}{2}>".format(n, p, e)
 
-    def rename(self, name):
-        return Dataset(self._schema, self._namespace, offsets=self._offsets, extension=(None if self._extension is oamap.extension.common else self._extension), name=name, doc=self._doc, metadata=self._metadata)
+    @property
+    def name(self):
+        return self._name
 
     @property
     def schema(self):
@@ -143,9 +160,34 @@ class Dataset(object):
             raise TypeError("schema must be a Schema")
         self._generator = self._schema.generator(extension=self._extension)
 
+    class _DictOfNamespaces(collections.MutableMapping):
+        def __init__(self, numpartitions, namespace):
+            self._numpartitions = numpartitions
+            self._namespace = namespace
+        def __getitem__(self, key):
+            return self._namespace[key]
+        def __setitem__(self, key, value):
+            if not isinstance(key, basestring) or not isinstance(value, Namespace):
+                raise TypeError("namespace dict keys must be strings and values must be Namespaces")
+            if self._numpartitions != value.numpartitions:
+                raise ValueError("one namespace has {0} partitions, another has {1}".format(self._numpartitions, value.numpartitions))
+            self._namespace[key] = value
+        def __delitem__(self, key):
+            if len(self._namespace) == 1:
+                raise ValueError("namespace dict must not be empty")
+            del self._namespace[key]
+        def __iter__(self):
+            return iter(self._namespace)
+        def __len__(self):
+            return len(self._namespace)
+        def __repr__(self):
+            return repr(self._namespace)
+        def __str__(self):
+            return str(self._namespace)
+        
     @property
     def namespace(self):
-        return dict(self._namespace)
+        return self._DictOfNamespaces(self.numpartitions, self._namespace)
 
     @namespace.setter
     def namespace(self, value):
@@ -155,15 +197,12 @@ class Dataset(object):
             raise TypeError("namespace must be a non-empty dict from strings to Namespaces")
 
         numpartitions = None
-        out = {}
         for n, x in value.items():
             if numpartitions is None:
                 numpartitions = x.numpartitions
             elif numpartitions != x.numpartitions:
                 raise ValueError("one namespace has {0} partitions, another has {1}".format(numpartitions, x.numpartitions))
-            out[n] = x
-
-        self._namespace = out
+        self._namespace = value
 
     offsetsdtype = numpy.dtype(numpy.int64)
 
@@ -212,16 +251,6 @@ class Dataset(object):
         self._generator = self._schema.generator(extension=self._extension)
 
     @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("name must be None or a string, not {0}".format(repr(value)))
-        self._name = value
-
-    @property
     def doc(self):
         return self._doc
 
@@ -238,6 +267,23 @@ class Dataset(object):
     @metadata.setter
     def metadata(self, value):
         self._metadata = value
+
+    def copy(self, **replacements):
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        if "schema" not in replacements:
+            replacements["schema"] = self._schema
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
+        if "offsets" not in replacements:
+            replacements["offsets"] = self._offsets
+        if "extension" not in replacements:
+            replacements["extension"] = None if self._extension is oamap.extension.common else self._extension
+        if "doc" not in replacements:
+            replacements["doc"] = self._doc
+        if "metadata" not in replacements:
+            replacements["metadata"] = self._metadata
+        return Dataset(**replacements)
 
     @property
     def numpartitions(self):
@@ -356,10 +402,15 @@ class Database(object):
             
     def __init__(self, connection):
         self._connection = connection
+        self._namespace = set()
 
     @property
     def connection(self):
         return self._connection
+
+    @property
+    def namespace(self):
+        return frozenset(self._namespace)
 
     @property
     def datasets(self):
@@ -376,14 +427,33 @@ class Database(object):
 
 class InMemoryDatabase(Database):
     def __init__(self, **datasets):
-        self._datasets = datasets
         super(InMemoryDatabase, self).__init__(None)
+        self._datasets = {}
+        for n, x in datasets.items():
+            self.set(n, x)
 
     def list(self):
         return list(self._datasets)
 
     def get(self, name):
-        return self._datasets[name].rename(name)
+        return self._datasets[name].copy(name=name)
 
     def set(self, name, value):
+        if not isinstance(value, Dataset):
+            raise TypeError("datasets must have type Dataset")
+        self._namespace.update(value.namespace.values())
         self._datasets[name] = value
+
+################################################################ quick test
+
+# import oamap.backend.numpyfile
+
+# ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+# ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+# ns3 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+
+# sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
+
+# test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
+
+# db = InMemoryDatabase(test=test)
