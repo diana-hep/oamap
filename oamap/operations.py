@@ -39,7 +39,7 @@ import oamap.proxy
 if sys.version_info[0] < 3:
     range = xrange
 
-################################################################ fcn
+################################################################ utilities
 
 def maybecompile(numba):
     if numba is not None and numba is not False:
@@ -51,6 +51,50 @@ def maybecompile(numba):
         return nb.jit(**numbaopts)
     else:
         return lambda fcn: fcn
+
+class NewArrays(object):
+    @staticmethod
+    def get(oldarrays, names):
+        if isinstance(oldarrays, NewArrays):
+            return oldarrays
+        else:
+            return NewArrays(oldarrays, names)
+
+    def __init__(self, oldarrays, names):
+        self.oldarrays = oldarrays
+        self.newarrays = {}
+        self.schemas = {}
+
+        nss = set()
+        for n, ns in names:
+            nss.add(ns)
+
+        num = 0
+        self.namespace = None
+        while self.namespace is None or self.namespace in nss:
+            self.namespace = "namespace-{0}".format(num)
+            num += 1
+
+    def getall(self, roles):
+        out = dict((x, self.newarrays[str(x)]) for x in roles if x.namespace == self.namespace)
+        if hasattr(self.oldarrays, "getall"):
+            out.update(self.oldarrays.getall([x for x in roles if x.namespace != self.namespace]))
+        else:
+            out.update(dict((x, self.oldarrays[str(x)]) for x in roles if x.namespace != self.namespace))
+        return out
+
+    def put(self, schema, attr, value):
+        name = str(len(self.newarrays))
+
+        self.schemas[name] = schema
+        schema.namespace = self.namespace
+        setattr(schema, attr, name)
+
+        self.newarrays[name] = value
+
+    def close(self):
+        if hasattr(self.oldarrays, "close"):
+            self.oldarrays.close()
 
 ################################################################ filter
 
@@ -64,9 +108,8 @@ def filter(data, fcn, fieldname=None, numba=True):
     if fieldname is not None:
         raise NotImplementedError
 
-    schema = data._generator.schema.deepcopy()
-
-
+    oldschema = data._generator.namedschema()
+    newschema = oamap.schema.List(oamap.schema.Pointer(oldschema.content))
 
     fcn = maybecompile(numba)(fcn)
 
@@ -80,15 +123,14 @@ def filter(data, fcn, fieldname=None, numba=True):
         return j
 
     pointers = numpy.empty(len(data), dtype=oamap.generator.PointerGenerator.posdtype)
-    length = setpointers(data, pointers)
-    pointers[:length]
+    numentries = setpointers(data, pointers)
+    
+    newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+    newarrays.put(newschema, "starts", numpy.array([0], dtype=data._generator.posdtype))
+    newarrays.put(newschema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
+    newarrays.put(newschema.content, "positions", pointers[:numentries])
 
-
-
-        
-
-
-
+    return newschema(newarrays)
 
 ################################################################ flatten
 
@@ -98,6 +140,5 @@ def filter(data, fcn, fieldname=None, numba=True):
 
 ################################################################ reduce
 
-
-
+# dataset = oamap.schema.List("int").fromdata(range(10))
 

@@ -413,7 +413,7 @@ class Database(object):
         def __getattr__(self, name):
             return self.__dict__["_database"].get(name)
         def __setattr__(self, name, value):
-            self.__dict__["_database"].set(name, value)
+            self.__dict__["_database"].put(name, value)
         def __delattr__(self, name):
             self.__dict__["_database"].delete(name)
             
@@ -438,7 +438,7 @@ class Database(object):
     def get(self, name):
         raise NotImplementedError
 
-    def set(self, name, value):
+    def put(self, name, value):
         raise NotImplementedError
 
     def delete(self, name):
@@ -450,7 +450,7 @@ class InMemoryDatabase(Database):
         self._datasets = {}
         self._refcounts = {}
         for n, x in datasets.items():
-            self.set(n, x)
+            self.put(n, x)
 
     @property
     def namespace(self):
@@ -462,7 +462,7 @@ class InMemoryDatabase(Database):
     def get(self, name):
         return self._datasets[name].copy(name=name)
 
-    def set(self, name, value):
+    def put(self, name, value):
         if not isinstance(value, Dataset):
             raise TypeError("datasets must have type Dataset")
 
