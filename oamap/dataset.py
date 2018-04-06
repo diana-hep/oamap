@@ -387,15 +387,3 @@ class InMemoryDatabase(Database):
 
     def set(self, name, value):
         self._datasets[name] = value
-
-################################################################ quick test
-
-# import oamap.backend.numpyfile
-
-# ns = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
-
-# sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
-
-# test = Dataset(sch, ns, [0, 3, 6])
-
-# db = InMemoryDatabase(test=test)
