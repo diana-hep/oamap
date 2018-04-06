@@ -268,23 +268,6 @@ class Dataset(object):
     def metadata(self, value):
         self._metadata = value
 
-    def copy(self, **replacements):
-        if "name" not in replacements:
-            replacements["name"] = self._name
-        if "schema" not in replacements:
-            replacements["schema"] = self._schema
-        if "namespace" not in replacements:
-            replacements["namespace"] = self._namespace
-        if "offsets" not in replacements:
-            replacements["offsets"] = self._offsets
-        if "extension" not in replacements:
-            replacements["extension"] = None if self._extension is oamap.extension.common else self._extension
-        if "doc" not in replacements:
-            replacements["doc"] = self._doc
-        if "metadata" not in replacements:
-            replacements["metadata"] = self._metadata
-        return Dataset(**replacements)
-
     @property
     def numpartitions(self):
         for x in self._namespace.values():
@@ -387,6 +370,38 @@ class Dataset(object):
                     raise ValueError("offsets array must have a length one greater than numpartitions")
                 return oamap.proxy.IndexedPartitionedListProxy(self._generator, listofarrays, self._offsets)
 
+    def copy(self, **replacements):
+        if "name" not in replacements:
+            replacements["name"] = self._name
+        if "schema" not in replacements:
+            replacements["schema"] = self._schema
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
+        if "offsets" not in replacements:
+            replacements["offsets"] = self._offsets
+        if "extension" not in replacements:
+            replacements["extension"] = None if self._extension is oamap.extension.common else self._extension
+        if "doc" not in replacements:
+            replacements["doc"] = self._doc
+        if "metadata" not in replacements:
+            replacements["metadata"] = self._metadata
+        return Dataset(**replacements)
+
+    def filter(self, fcn, fieldname=None, numba=True, partitionid=None):
+        raise NotImplementedError
+
+    def flatten(self, fieldname=None, numba=True, partitionid=None):
+        raise NotImplementedError
+
+    def define(self, fieldname, fcn, numba=True, partitionid=None):
+        raise NotImplementedError
+
+    def remove(self, *fieldnames, numba=True, partitionid=None):
+        raise NotImplementedError
+
+    def reduce(self, increment, combine=None, numba=True, partitionid=None):
+        raise NotImplementedError
+
 ################################################################ Database
 
 class Database(object):
@@ -399,6 +414,8 @@ class Database(object):
             return self.__dict__["_database"].get(name)
         def __setattr__(self, name, value):
             self.__dict__["_database"].set(name, value)
+        def __delattr__(self, name):
+            self.__dict__["_database"].delete(name)
             
     def __init__(self, connection):
         self._connection = connection
@@ -422,6 +439,9 @@ class Database(object):
         raise NotImplementedError
 
     def set(self, name, value):
+        raise NotImplementedError
+
+    def delete(self, name):
         raise NotImplementedError
 
 class InMemoryDatabase(Database):

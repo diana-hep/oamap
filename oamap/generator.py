@@ -186,6 +186,9 @@ class Generator(object):
 
         return ptrs, lens, ptrs.ctypes.data, lens.ctypes.data
 
+    def namedschema(self):
+        return self._namedschema({})
+
     def case(self, obj):
         return self.schema.case(obj)
 
@@ -321,6 +324,15 @@ class PrimitiveGenerator(Generator):
             if self._required:
                 yield self.data
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(data=self.data, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(data=self.data)
+        return memo[id(self)]
+
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
     def __init__(self, mask, maskidx, data, dataidx, dtype, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -419,6 +431,16 @@ class ListGenerator(Generator):
                 yield self.stops
             for x in self.content.required(memo):
                 yield x
+
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(starts=self.starts, stops=self.stops, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(starts=self.starts, stops=self.stops)
+        memo[id(self)].content = self.content._namedschema(memo)
+        return memo[id(self)]
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema):
@@ -527,6 +549,16 @@ class UnionGenerator(Generator):
                 for x in possibility.required(memo):
                     yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(tags=self.tags, offsets=self.offsets, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(tags=self.tags, offsets=self.offsets)
+        memo[id(self)].possibilities = [x._namedschema(memo) for x in self.possibilities]
+        return memo[id(self)]
+
 class MaskedUnionGenerator(Masked, UnionGenerator):
     def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -596,6 +628,17 @@ class RecordGenerator(Generator):
                 for x in field.required(memo):
                     yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy()
+        for n in memo[id(self)].fields:
+            memo[id(self)][n] = self.fields[n]._namedschema(memo)
+        return memo[id(self)]
+
 class MaskedRecordGenerator(Masked, RecordGenerator):
     def __init__(self, mask, maskidx, fields, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -664,6 +707,16 @@ class TupleGenerator(Generator):
             for field in self.types:
                 for x in field.required(memo):
                     yield x
+
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy()
+        memo[id(self)].types = tuple(x._namedschema(memo) for x in self.types)
+        return memo[id(self)]
 
 class MaskedTupleGenerator(Masked, TupleGenerator):
     def __init__(self, mask, maskidx, types, namespace, packing, name, derivedname, schema):
@@ -752,6 +805,16 @@ class PointerGenerator(Generator):
             for x in self.target.required(memo):
                 yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(positions=self.positions, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(positions=self.positions)
+        memo[id(self)].target = self.target._namedschema(memo)
+        return memo[id(self)]
+
 class MaskedPointerGenerator(Masked, PointerGenerator):
     def __init__(self, mask, maskidx, positions, positionsidx, target, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
@@ -820,6 +883,9 @@ class ExtendedGenerator(Generator):
     def required(self, memo=None):
         for x in self.generic.required(memo):
             yield x
+
+    def _namedschema(self, memo):
+        return self.generic._namedschema(memo)
 
     @classmethod
     def matches(cls, schema):

@@ -38,3 +38,9 @@ class NumpyFile(object):
 
     def __getitem__(self, name):
         return numpy.load(os.path.join(self.directory, name))
+
+    def __setitem__(self, name, value):
+        numpy.save(os.path.join(self.directory, name), value)
+
+    def __delitem__(self, name):
+        os.remove(os.path.join(self.directory, name))

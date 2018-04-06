@@ -1825,7 +1825,10 @@ class Pointer(Schema):
 
             args = []
             if indent is None:
-                args.append(self._target.__repr__(labels, shown, indent))
+                if self._target is None:
+                    args.append(repr(None))
+                else:
+                    args.append(self._target.__repr__(labels, shown, indent))
             if self._nullable is not False:
                 args.append("nullable" + eq + repr(self._nullable))
             if self._positions is not None:
@@ -1846,7 +1849,10 @@ class Pointer(Schema):
             if indent is None:
                 argstr = ", ".join(args)
             else:
-                args.append("target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+                if self._target is None:
+                    args.append("target" + eq + repr(None) + "\n" + indent)
+                else:
+                    args.append("target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
                 args[0] = "\n" + indent + "  " + args[0]
                 argstr = ("," + "\n" + indent + "  ").join(args)
                 
@@ -1863,6 +1869,8 @@ class Pointer(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
+            if self._target is None:
+                raise TypeError("pointer target is still None; must be resolved before it can be stored")
             out = OrderedDict([("type", "pointer"), ("target", self._target._tojson(explicit, labels, shown))])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
@@ -1915,7 +1923,8 @@ class Pointer(Schema):
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
-            self._target._collectlabels(collection, labels)
+            if self._target is not None:
+                self._target._collectlabels(collection, labels)
         else:
             labels.append(self)
 
