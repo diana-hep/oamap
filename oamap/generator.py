@@ -381,14 +381,17 @@ class ListGenerator(Generator):
         else:
             return OrderedDict()
 
-    def _generate(self, arrays, index, cache):
+    def _getstartsstops(self, arrays, cache):
         starts = cache[self.startsidx]
         stops = cache[self.stopsidx]
         if starts is None or stops is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             starts = cache[self.startsidx]
             stops = cache[self.stopsidx]
+        return starts, stops
 
+    def _generate(self, arrays, index, cache):
+        starts, stops = self._getstartsstops(arrays, cache)
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
     def _requireall(self, memo=None):

@@ -163,11 +163,27 @@ def filter(data, fcn, depth=0, numba=True):
 
 def flatten(data, numba=True):
     if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.List):
-        schema = data._generator.namedschema()
-        
+        if data._generator.schema.content.nullable:
+            raise NotImplementedError("the inner List is nullable; need to merge masks")
 
+        schema = oamap.schema.List(data._generator.namedschema().content.content)
 
+        starts, stops = data._generator.content._getstartsstops(data._arrays, data._cache)
+        starts = starts[data._whence : data._whence + data._stride*data._length]
+        stops  =  stops[data._whence : data._whence + data._stride*data._length]
 
+        if numpy.array_equal(starts[1:], stops[:-1]):
+            # important special case: contiguous
+            newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+            newarrays.put(schema, "starts", starts[:1])
+            newarrays.put(schema, "stops", stops[-1:])
+            return schema(newarrays)
+
+        else:
+            raise NotImplementedError("non-contiguous arrays: have to do some sort of concatenate")
+
+    else:
+        raise TypeError("flatten can only be applied to List(List(...))")
 
 ################################################################ define
 
@@ -177,5 +193,5 @@ def flatten(data, numba=True):
 
 # dataset = oamap.schema.List("int").fromdata(range(10))
 
-from oamap.schema import *
-dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+# from oamap.schema import *
+# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
