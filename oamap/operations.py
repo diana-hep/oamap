@@ -42,7 +42,7 @@ if sys.version_info[0] < 3:
 
 ################################################################ utilities
 
-def maybecompile(numba):
+def _maybecompile(numba):
     if numba is not None and numba is not False:
         if numba is True:
             numbaopts = {}
@@ -275,11 +275,11 @@ def filter(data, fcn, fieldname=None, numba=True):
 
         schema = oamap.schema.List(oamap.schema.Pointer(data._generator.namedschema().content))
 
-        fcn = maybecompile(numba)(fcn)
+        fcn = _maybecompile(numba)(fcn)
         whence = data._whence
         stride = data._stride
 
-        @maybecompile(numba)
+        @_maybecompile(numba)
         def setpointers(data, pointers):
             i = whence
             j = 0
@@ -291,29 +291,69 @@ def filter(data, fcn, fieldname=None, numba=True):
             return j
 
         pointers = numpy.empty(data._length, dtype=oamap.generator.PointerGenerator.posdtype)
-        numentries = setpointers(data, pointers)
+        numitems = setpointers(data, pointers)
+        offsets = numpy.array([0, numitems], dtype=data._generator.posdtype)
 
         arrays = _NewArrays.instance(data._arrays, data._generator)
-        arrays.put(schema, "starts", numpy.array([0], dtype=data._generator.posdtype))
-        arrays.put(schema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
-        arrays.put(schema.content, "positions", pointers[:numentries])
-
+        arrays.put(schema, "starts", offsets[:-1])
+        arrays.put(schema, "stops", offsets[1:])
+        arrays.put(schema.content, "positions", pointers[:numitems])
         return schema(arrays)
 
-    elif fieldname is not None and isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
-        raise NotImplementedError
+    elif isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields and isinstance(data._generator.schema.content[fieldname], oamap.schema.List):
+        if data._generator.schema.nullable:
+            raise NotImplementedError("data is nullable; need to merge masks")
+        if data._generator.schema.content.nullable:
+            raise NotImplementedError("inner records are nullable; need to merge masks")
+        if data._generator.schema.content[fieldname].nullable:
+            raise NotImplementedError("inner record lists are nullable; need to merge masks")
+
+        schema = data._generator.namedschema()
+        schema.content[fieldname] = oamap.schema.List(oamap.schema.Pointer(schema.content[fieldname].content))
+
+        fcn = _maybecompile(numba)(fcn)
+
+        env = {"fcn": fcn}
+        exec("""
+def setpointers(data, innerstarts, stops, pointers):
+    i = 0
+    numitems = 0
+    for outer in data:
+        index = innerstarts[i]
+        for inner in outer.{0}:
+            if fcn(inner):
+                pointers[numitems] = index
+                numitems += 1
+            index += 1
+        stops[i] = numitems
+        i += 1
+    return numitems
+""".format(fieldname), env)
+        setpointers = _maybecompile(numba)(env["setpointers"])
+
+        innerstarts, innerstops = data._generator.content.fields[fieldname]._getstartsstops(data._arrays, data._cache)
+        offsets = numpy.empty(data._length + 1, dtype=data._generator.content.fields[fieldname].posdtype)
+        offsets[0] = 0
+        pointers = numpy.empty(innerstops.max(), dtype=oamap.generator.PointerGenerator.posdtype)
+        numitems = setpointers(data, innerstarts, offsets[1:], pointers)
+
+        arrays = _NewArrays.instance(data._arrays, data._generator)
+        arrays.put(schema.content[fieldname], "starts", offsets[:-1])
+        arrays.put(schema.content[fieldname], "stops", offsets[1:])
+        arrays.put(schema.content[fieldname].content, "positions", pointers[:numitems])
+        return schema(arrays)
 
     elif fieldname is None:
         raise TypeError("filter without fieldname can only be applied to a List(...)")
 
     else:
-        raise TypeError("filter with fieldname can only be applied to a List(Record({{{0}: ...}}))".format(repr(fieldname)))
+        raise TypeError("filter with fieldname can only be applied to a top-level List(Record({{{0}: List(...)}}))".format(repr(fieldname)))
 
 ################################################################ reduce
 
-from oamap.schema import *
+# from oamap.schema import *
 
-dataset = List("int").fromdata(range(10))
+# dataset = List("int").fromdata(range(10))
 
-one = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
-two = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+# one = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+# two = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
