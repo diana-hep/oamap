@@ -52,7 +52,33 @@ def maybecompile(numba):
     else:
         return lambda fcn: fcn
 
-class NewArrays(object):
+class Multisource(object):
+    def __init__(self):
+        self.namespaces = {}
+
+    def add(self, arrays, generator):
+        for n, ns in generator.iternames(namespace=True):
+            if ns in self.namespaces and self.namespaces[ns] is not arrays:
+                raise ValueError("multiple sources would satisfy namespace {0}".format(repr(ns)))
+            self.namespaces[ns] = arrays
+
+    def getall(self, roles):
+        if any(x.namespace not in self.namespaces for x in roles):
+            raise ValueError("request for namespace not in Multisource")
+        out = {}
+        for namespace, arrays in self.namespaces.items():
+            if hasattr(arrays, "getall"):
+                out.update(arrays.getall([x for x in roles if x.namespace == namespace]))
+            else:
+                out.update(dict((x, arrays[x]) for x in roles if x.namespace == namespace))
+        return out
+
+    def close(self):
+        for arrays in self.namespaces.values():
+            if "close" in arrays:
+                arrays.close()
+
+class NewArrays(Multisource):
     @staticmethod
     def get(oldarrays, names):
         if isinstance(oldarrays, NewArrays):
@@ -60,41 +86,25 @@ class NewArrays(object):
         else:
             return NewArrays(oldarrays, names)
 
-    def __init__(self, oldarrays, names):
-        self.oldarrays = oldarrays
-        self.newarrays = {}
+    def __init__(self, oldarrays, generator):
+        super(NewArrays, self).__init__()
+        super(NewArrays, self).add(oldarrays, generator)
+
         self.schemas = {}
-
-        nss = set()
-        for n, ns in names:
-            nss.add(ns)
-
-        num = 0
-        self.namespace = None
-        while self.namespace is None or self.namespace in nss:
-            self.namespace = "namespace-{0}".format(num)
-            num += 1
-
-    def getall(self, roles):
-        out = dict((x, self.newarrays[str(x)]) for x in roles if x.namespace == self.namespace)
-        if hasattr(self.oldarrays, "getall"):
-            out.update(self.oldarrays.getall([x for x in roles if x.namespace != self.namespace]))
-        else:
-            out.update(dict((x, self.oldarrays[str(x)]) for x in roles if x.namespace != self.namespace))
-        return out
+        self.arrays = {}
+        self.namespace = "0"
+        while self.namespace in self.namespaces:
+            self.namespace = str(int(self.namespace) + 1)
+        self.namespaces[self.namespace] = self.arrays
 
     def put(self, schema, attr, value):
-        name = str(len(self.newarrays))
+        name = str(len(self.arrays))
 
         self.schemas[name] = schema
         schema.namespace = self.namespace
         setattr(schema, attr, name)
 
-        self.newarrays[name] = value
-
-    def close(self):
-        if hasattr(self.oldarrays, "close"):
-            self.oldarrays.close()
+        self.arrays[name] = value
 
 ################################################################ project
 
@@ -104,27 +114,36 @@ def project(data, fieldname):
             raise NotImplementedError("the inner Record is nullable; need to merge masks")
         schema = data._generator.namedschema()
         schema.content = schema.content.fields[fieldname]
-        newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
-        out = schema(newarrays)
+        out = schema(data._arrays)
         out._whence, out._stride, out._length = data._whence, data._stride, data._length
         return out
+
+    elif isinstance(data, oamap.proxy.RecordProxy) and fieldname in data._generator.schema.fields:
+        if data._generator.schema.nullable:
+            raise NotImplementedError("the Record is nullable; need to merge masks")
+        schema = data._generator.fields[fieldname].namedschema()
+        return schema(data._arrays)
+
     else:
         raise TypeError("project can only be applied to List(Record({{{0}: ...}}))".format(repr(fieldname)))
 
 ################################################################ attach
 
 def attach(data, fieldname, newfield):
-    if isinstance(newfield, oamap.proxy.Proxy):
-        newfield._generator._requireall()
-        newfield._entercompiled(newfield._arrays, newfield._cache)
-        fieldarrays = {}
-        for n, idx in newfield._generator.iternames(idx=True):
-            fieldarrays[n] = newfield._cache[idx]
+    if not isinstance(data, (oamap.proxy.ListProxy, oamap.proxy.RecordProxy)):
+        raise TypeError("attach can only be applied to Record(...) or List(Record(...))")
+
+    if isinstance(newfield, oampa.proxy.Proxy):
+        if isinstance(data._arrays, NewArrays):
+            
+
+
+
+
 
     if isinstance(data, oamap.proxy.RecordProxy):
         schema = data._generator.namedschema()
 
-        HERE
 
 
     elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
