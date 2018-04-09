@@ -44,9 +44,6 @@ if sys.version_info[0] > 2:
 # base class of all runtime types that require proxies: List, Record, and Tuple
 class Proxy(object): pass
 
-# mix-in for proxies that represent the whole dataset
-class Top(object): pass
-
 def tojson(value):
     if isinstance(value, ListProxy):
         return [tojson(x) for x in value]
@@ -207,8 +204,6 @@ class ListProxy(Proxy):
                 return True
         return False
 
-class TopListProxy(ListProxy, Top): pass
-
 ################################################################ Records
 
 class RecordProxy(Proxy):
@@ -270,8 +265,6 @@ class RecordProxy(Proxy):
     def __le__(self, other): return self.__lt__(other) or self.__eq__(other)
     def __gt__(self, other): return not self.__lt__(other) and not self.__eq__(other)
     def __ge__(self, other): return not self.__lt__(other)
-
-class TopRecordProxy(RecordProxy, Top): pass
 
 ################################################################ Tuples
 
@@ -370,5 +363,3 @@ class TupleProxy(Proxy):
             if x == value:
                 return True
         return False
-
-class TopTupleProxy(TupleProxy, Top): pass

@@ -53,7 +53,7 @@ def maybecompile(numba):
     else:
         return lambda fcn: fcn
 
-class Multisource(object):
+class _Multisource(object):
     def __init__(self):
         self.namespaces = {}
 
@@ -79,16 +79,16 @@ class Multisource(object):
             if "close" in arrays:
                 arrays.close()
 
-class NewArrays(Multisource):
+class _NewArrays(_Multisource):
     @staticmethod
     def instance(arrays, generator):
-        if isinstance(arrays, NewArrays):
+        if isinstance(arrays, _NewArrays):
             return arrays
         else:
-            return NewArrays(arrays, generator)
+            return _NewArrays(arrays, generator)
 
     def __init__(self, arrays, generator):
-        super(NewArrays, self).__init__()
+        super(_NewArrays, self).__init__()
         self.add(arrays, generator)
 
         self.schemas = {}
@@ -108,7 +108,7 @@ class NewArrays(Multisource):
         self.arrays[name] = value
 
     def merge(self, other, generator):
-        if not isinstance(other, NewArrays):
+        if not isinstance(other, _NewArrays):
             self.add(other, generator)
 
         else:
@@ -149,7 +149,15 @@ class NewArrays(Multisource):
 ################################################################ project
 
 def project(data, fieldname):
-    if isinstance(data, oamap.proxy.TopListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
+    if isinstance(data, oamap.proxy.RecordProxy) and fieldname in data._generator.schema.fields:
+        if data._generator.schema.nullable:
+            raise NotImplementedError("the Record is nullable; need to merge masks")
+        schema = data._generator.fields[fieldname].namedschema()
+        out = schema(data._arrays)
+        out._index = data._index
+        return out
+
+    elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
         if data._generator.schema.content.nullable:
             raise NotImplementedError("the inner Record is nullable; need to merge masks")
         schema = data._generator.namedschema()
@@ -158,14 +166,8 @@ def project(data, fieldname):
         out._whence, out._stride, out._length = data._whence, data._stride, data._length
         return out
 
-    elif isinstance(data, oamap.proxy.TopRecordProxy) and fieldname in data._generator.schema.fields:
-        if data._generator.schema.nullable:
-            raise NotImplementedError("the Record is nullable; need to merge masks")
-        schema = data._generator.fields[fieldname].namedschema()
-        return schema(data._arrays)
-
     else:
-        raise TypeError("project can only be applied to a top-level List(Record({{{0}: ...}}))".format(repr(fieldname)))
+        raise TypeError("project can only be applied to a Record({{{0}: ...}}) or a List(Record({{{0}: ...}}))".format(repr(fieldname)))
 
 ################################################################ attach
 
@@ -176,8 +178,8 @@ def attach(data, fieldname, newfield):
     if data._generator.schema.nullable:
         raise NotImplementedError("data is nullable; need to merge masks")
 
-    if isinstance(data, oamap.proxy.TopRecordProxy):
-        newarrays = NewArrays.instance(data._arrays, data._generator)
+    if isinstance(data, oamap.proxy.RecordProxy) and data._index == 0:
+        newarrays = _NewArrays.instance(data._arrays, data._generator)
         if isinstance(newfield, oamap.proxy.Proxy):
             newarrays.merge(data._arrays, data._generator)
             fieldschema = data._generator.namedschema()
@@ -197,13 +199,15 @@ def attach(data, fieldname, newfield):
         schema[fieldname] = fieldschema
         return schema(newarrays)
 
-    elif isinstance(data, oamap.proxy.TopListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
-        newarrays = NewArrays.instance(data._arrays, data._generator)
+    elif isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and isinstance(data._generator.schema.content, oamap.schema.Record):
+        newarrays = _NewArrays.instance(data._arrays, data._generator)
         if isinstance(newfield, oamap.proxy.ListProxy) and len(data) == len(newfield):
             newarrays.merge(data._arrays, data._generator)
-            fieldschema = data._generator.namedschema()
+            fieldschema = data._generator.namedschema().content
 
-        elif isinstance(newfield, numpy.ndarray) and len(data) == len(newfield):
+        elif len(data) == len(newfield):
+            if not isinstance(newfield, numpy.ndarray):
+                newfield = numpy.array(newfield)
             fieldschema = oamap.schema.Primitive(newfield.dtype)
             newarrays.put(fieldschema, "data", newfield)
 
@@ -220,14 +224,22 @@ def attach(data, fieldname, newfield):
 ################################################################ detach
 
 def detach(data, fieldname):
-    if isinstance(data, oamap.proxy.RecordProxy):
-        raise NotImplementedError
+    if isinstance(data, oamap.proxy.RecordProxy) and fieldname in data._generator.schema.fields:
+        schema = data._generator.namedschema()
+        del schema[fieldname]
+        out = schema(data._arrays)
+        out._index = data._index
+        return out
 
-    elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
-        raise NotImplementedError
+    elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
+        schema = data._generator.namedschema()
+        del schema.content[fieldname]
+        out = schema(data._arrays)
+        out._whence, out._stride, out._length = data._whence, data._stride, data._length
+        return out
 
     else:
-        raise TypeError("detach can only be applied to Record(...) or List(Record(...))")
+        raise TypeError("detach can only be applied to Record({{{0}: ...}}) or List(Record({{{0}: ...}}))".format(repr(fieldname)))
 
 ################################################################ flatten
 
@@ -244,7 +256,7 @@ def flatten(data):
 
         if numpy.array_equal(starts[1:], stops[:-1]):
             # important special case: contiguous
-            newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+            newarrays = _NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
             newarrays.put(schema, "starts", starts[:1])
             newarrays.put(schema, "stops", stops[-1:])
             return schema(newarrays)
@@ -276,7 +288,7 @@ def filter(data, fcn, numba=True):
         pointers = numpy.empty(len(data), dtype=oamap.generator.PointerGenerator.posdtype)
         numentries = setpointers(data, pointers)
 
-        newarrays = NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+        newarrays = _NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
         newarrays.put(schema, "starts", numpy.array([0], dtype=data._generator.posdtype))
         newarrays.put(schema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
         newarrays.put(schema.content, "positions", pointers[:numentries])
@@ -293,7 +305,6 @@ def filter(data, fcn, numba=True):
 from oamap.schema import *
 
 # dataset = List("int").fromdata(range(10))
-# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
-# one = Record(dict(x=List("int"), y=List("double"))).fromdata({"x": [1, 2, 3], "y": [1.1, 2.2]})
-# two = Record(dict(x=List("int"), y=List("double"))).fromdata({"x": [1, 2, 3], "y": [1.1, 2.2]})
+one = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+two = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])

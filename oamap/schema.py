@@ -1280,6 +1280,9 @@ class Record(Schema):
             raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
         self._fields[index] = value
 
+    def __delitem__(self, index):
+        del self._fields[index]
+
     def rename(self, fromfield, tofield):
         if not self.hasarraynames:
             raise ValueError("cannot rename a field in a schema without fixed array names; try calling defaultnames() to assign fixed array names")
