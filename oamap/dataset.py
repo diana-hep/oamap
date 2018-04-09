@@ -347,28 +347,15 @@ class Dataset(object):
             stopsrole = None
         return self._Arrays(partitionid, self._namespace, startsrole, stopsrole, numentries)
 
-    def __call__(self, partitionid=None):
+    def partition(self, partitionid):
         if not isinstance(self._schema, oamap.schema.List) and self.numpartitions != 1:
             raise TypeError("only Lists can have numpartitions != 1")
 
-        if partitionid is not None:
-            normid = partitionid if partitionid >= 0 else partitionid + self.numpartitions
-            if 0 <= normid < self.numpartitions:
-                return self._generator(self._arrays(normid))
-            else:
-                raise IndexError("partition id {0} out of range for {1} partitions".format(partitionid, self.numpartitions))
-
-        elif self.numpartitions == 1:
-            return self(0)
-
+        normid = partitionid if partitionid >= 0 else partitionid + self.numpartitions
+        if 0 <= normid < self.numpartitions:
+            return self._generator(self._arrays(normid))
         else:
-            listofarrays = [self._arrays(partitionid) for partitionid in range(self.numpartitions)]
-            if self._offsets is None:
-                return oamap.proxy.PartitionedListProxy(self._generator, listofarrays)
-            else:
-                if self.numpartitions + 1 != len(self._offsets):
-                    raise ValueError("offsets array must have a length one greater than numpartitions")
-                return oamap.proxy.IndexedPartitionedListProxy(self._generator, listofarrays, self._offsets)
+            raise IndexError("partition id {0} out of range for {1} partitions".format(partitionid, self.numpartitions))
 
     def copy(self, **replacements):
         if "name" not in replacements:
@@ -387,19 +374,22 @@ class Dataset(object):
             replacements["metadata"] = self._metadata
         return Dataset(**replacements)
 
-    def filter(self, fcn, fieldname=None, numba=True, partitionid=None):
+    def project(self, fieldname):
         raise NotImplementedError
 
-    def flatten(self, fieldname=None, numba=True, partitionid=None):
+    def attach(self, fieldname, newfield):
         raise NotImplementedError
 
-    def define(self, fieldname, fcn, numba=True, partitionid=None):
+    def detach(self, data, fieldname):
         raise NotImplementedError
 
-    def remove(self, *fieldnames, numba=True, partitionid=None):
+    def flatten(self):
         raise NotImplementedError
 
-    def reduce(self, increment, combine=None, numba=True, partitionid=None):
+    def filter(self, fcn, fieldname=None, numba=True):
+        raise NotImplementedError
+
+    def reduce(self, increment, combine=None, numba=True):
         raise NotImplementedError
 
 ################################################################ Database
@@ -478,14 +468,14 @@ class InMemoryDatabase(Database):
 
 ################################################################ quick test
 
-import oamap.backend.numpyfile
+# import oamap.backend.numpyfile
 
-ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
-ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part2",), ("part1",)])
-ns3 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+# ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+# ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part2",), ("part1",)])
+# ns3 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
 
-sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
+# sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
 
-test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
+# test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
 
-db = InMemoryDatabase(test=test)
+# db = InMemoryDatabase(test=test)

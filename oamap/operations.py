@@ -199,7 +199,7 @@ def attach(data, fieldname, newfield):
         schema[fieldname] = fieldschema
         return schema(newarrays)
 
-    elif isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and isinstance(data._generator.schema.content, oamap.schema.Record):
+    elif isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.schema.content, oamap.schema.Record):
         newarrays = _NewArrays.instance(data._arrays, data._generator)
         if isinstance(newfield, oamap.proxy.ListProxy) and len(data) == len(newfield):
             newarrays.merge(data._arrays, data._generator)
@@ -244,19 +244,18 @@ def detach(data, fieldname):
 ################################################################ flatten
 
 def flatten(data):
-    if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.List):
+    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.schema.content, oamap.schema.List):
         if data._generator.schema.content.nullable:
             raise NotImplementedError("the inner List is nullable; need to merge masks")
 
-        schema = oamap.schema.List(data._generator.namedschema().content.content)
+        schema = data._generator.namedschema()
+        schema.content = schema.content.content
 
         starts, stops = data._generator.content._getstartsstops(data._arrays, data._cache)
-        starts = starts[data._whence : data._whence + data._stride*data._length]
-        stops  =  stops[data._whence : data._whence + data._stride*data._length]
 
         if numpy.array_equal(starts[1:], stops[:-1]):
             # important special case: contiguous
-            newarrays = _NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
+            newarrays = _NewArrays.instance(data._arrays, data._generator)
             newarrays.put(schema, "starts", starts[:1])
             newarrays.put(schema, "stops", stops[-1:])
             return schema(newarrays)
@@ -269,42 +268,52 @@ def flatten(data):
 
 ################################################################ filter
 
-def filter(data, fcn, numba=True):
-    if isinstance(data, oamap.proxy.ListProxy):
-        schema = data._generator.namedschema()
-        schema.content = oamap.schema.Pointer(schema.content)
+def filter(data, fcn, fieldname=None, numba=True):
+    if fieldname is None and isinstance(data, oamap.proxy.ListProxy):
+        if data._generator.schema.nullable:
+            raise NotImplementedError("data is nullable; need to merge masks")
+
+        schema = oamap.schema.List(oamap.schema.Pointer(data._generator.namedschema().content))
 
         fcn = maybecompile(numba)(fcn)
+        whence = data._whence
+        stride = data._stride
 
         @maybecompile(numba)
         def setpointers(data, pointers):
+            i = whence
             j = 0
-            for i in range(len(data)):
-                if fcn(data[i]):
+            for datum in data:
+                if fcn(datum):
                     pointers[j] = i
                     j += 1
+                i += stride
             return j
 
-        pointers = numpy.empty(len(data), dtype=oamap.generator.PointerGenerator.posdtype)
+        pointers = numpy.empty(data._length, dtype=oamap.generator.PointerGenerator.posdtype)
         numentries = setpointers(data, pointers)
 
-        newarrays = _NewArrays.get(data._arrays, data._generator.iternames(namespace=True))
-        newarrays.put(schema, "starts", numpy.array([0], dtype=data._generator.posdtype))
-        newarrays.put(schema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
-        newarrays.put(schema.content, "positions", pointers[:numentries])
+        arrays = _NewArrays.instance(data._arrays, data._generator)
+        arrays.put(schema, "starts", numpy.array([0], dtype=data._generator.posdtype))
+        arrays.put(schema, "stops", numpy.array([numentries], dtype=data._generator.posdtype))
+        arrays.put(schema.content, "positions", pointers[:numentries])
 
-        return schema(newarrays)
+        return schema(arrays)
+
+    elif fieldname is not None and isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
+        raise NotImplementedError
+
+    elif fieldname is None:
+        raise TypeError("filter without fieldname can only be applied to a List(...)")
 
     else:
-        raise TypeError("filter can only be applied to List(...)")
-
-################################################################ define
+        raise TypeError("filter with fieldname can only be applied to a List(Record({{{0}: ...}}))".format(repr(fieldname)))
 
 ################################################################ reduce
 
 from oamap.schema import *
 
-# dataset = List("int").fromdata(range(10))
+dataset = List("int").fromdata(range(10))
 
 one = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 two = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
