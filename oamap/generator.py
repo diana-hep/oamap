@@ -401,7 +401,7 @@ class ListGenerator(Generator):
 
     def _generate(self, arrays, index, cache):
         starts, stops = self._getstartsstops(arrays, cache)
-        return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
+        return oamap.proxy.TopListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
     def _requireall(self, memo=None):
         if memo is None:
@@ -622,7 +622,7 @@ class RecordGenerator(Generator):
             return OrderedDict()
 
     def _generate(self, arrays, index, cache):
-        return oamap.proxy.RecordProxy(self, arrays, cache, index)
+        return oamap.proxy.TopRecordProxy(self, arrays, cache, index)
 
     def _requireall(self, memo=None):
         if memo is None:
@@ -702,7 +702,7 @@ class TupleGenerator(Generator):
             return OrderedDict()
 
     def _generate(self, arrays, index, cache):
-        return oamap.proxy.TupleProxy(self, arrays, cache, index)
+        return oamap.proxy.TopTupleProxy(self, arrays, cache, index)
 
     def _requireall(self, memo=None):
         if memo is None:

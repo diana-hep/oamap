@@ -29,6 +29,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import sys
+import numbers
 
 import numpy
 
@@ -64,13 +65,13 @@ class Multisource(object):
 
     def getall(self, roles):
         if any(x.namespace not in self.namespaces for x in roles):
-            raise ValueError("request for namespace not in Multisource")
+            raise KeyError("request for namespace not in Multisource")
         out = {}
         for namespace, arrays in self.namespaces.items():
             if hasattr(arrays, "getall"):
                 out.update(arrays.getall([x for x in roles if x.namespace == namespace]))
             else:
-                out.update(dict((x, arrays[x]) for x in roles if x.namespace == namespace))
+                out.update(dict((x, arrays[str(x)]) for x in roles if x.namespace == namespace))
         return out
 
     def close(self):
@@ -80,15 +81,15 @@ class Multisource(object):
 
 class NewArrays(Multisource):
     @staticmethod
-    def get(oldarrays, names):
-        if isinstance(oldarrays, NewArrays):
-            return oldarrays
+    def instance(arrays, generator):
+        if isinstance(arrays, NewArrays):
+            return arrays
         else:
-            return NewArrays(oldarrays, names)
+            return NewArrays(arrays, generator)
 
-    def __init__(self, oldarrays, generator):
+    def __init__(self, arrays, generator):
         super(NewArrays, self).__init__()
-        super(NewArrays, self).add(oldarrays, generator)
+        self.add(arrays, generator)
 
         self.schemas = {}
         self.arrays = {}
@@ -106,10 +107,49 @@ class NewArrays(Multisource):
 
         self.arrays[name] = value
 
+    def merge(self, other, generator):
+        if not isinstance(other, NewArrays):
+            self.add(other, generator)
+
+        else:
+            for n, a in other.namespaces.items():
+                if n != other.namespace:
+                    self.namespaces[n] = a
+
+            del self.namespaces[self.namespace]
+            del other.namespaces[other.namespace]
+
+            while self.namespace in self.namespaces:
+                self.namespace = str(int(self.namespace) + 1)
+            other.namespace = self.namespace
+
+            self.namespaces[self.namespace] = self.arrays
+            other.namespaces[other.namespace] = other.arrays
+
+            for n, s in other.schemas.items():
+                if isinstance(s, oamap.schema.Primitive):
+                    self.put(s, "data", n)
+                elif isinstance(s, oamap.schema.List):
+                    self.put(s, "starts", n)
+                    self.put(s, "stops", n)
+                elif isinstance(s, oamap.schema.Union):
+                    self.put(s, "tags", n)
+                    self.put(s, "offsets", n)
+                elif isinstance(s, oamap.schema.Record):
+                    pass
+                elif isinstance(s, oamap.schema.Tuple):
+                    pass
+                elif isinstance(s, oamap.schema.Pointer):
+                    self.put(s, "positions", n)
+                else:
+                    raise AssertionError(s)
+                if s.nullable:
+                    self.put(s, "mask", n)
+
 ################################################################ project
 
 def project(data, fieldname):
-    if isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
+    if isinstance(data, oamap.proxy.TopListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record) and fieldname in data._generator.schema.content.fields:
         if data._generator.schema.content.nullable:
             raise NotImplementedError("the inner Record is nullable; need to merge masks")
         schema = data._generator.namedschema()
@@ -118,39 +158,64 @@ def project(data, fieldname):
         out._whence, out._stride, out._length = data._whence, data._stride, data._length
         return out
 
-    elif isinstance(data, oamap.proxy.RecordProxy) and fieldname in data._generator.schema.fields:
+    elif isinstance(data, oamap.proxy.TopRecordProxy) and fieldname in data._generator.schema.fields:
         if data._generator.schema.nullable:
             raise NotImplementedError("the Record is nullable; need to merge masks")
         schema = data._generator.fields[fieldname].namedschema()
         return schema(data._arrays)
 
     else:
-        raise TypeError("project can only be applied to List(Record({{{0}: ...}}))".format(repr(fieldname)))
+        raise TypeError("project can only be applied to a top-level List(Record({{{0}: ...}}))".format(repr(fieldname)))
 
 ################################################################ attach
 
 def attach(data, fieldname, newfield):
-    if not isinstance(data, (oamap.proxy.ListProxy, oamap.proxy.RecordProxy)):
-        raise TypeError("attach can only be applied to Record(...) or List(Record(...))")
+    if not isinstance(fieldname, basestring):
+        raise TypeError("fieldname must be a string")
 
-    if isinstance(newfield, oampa.proxy.Proxy):
-        if isinstance(data._arrays, NewArrays):
-            
+    if data._generator.schema.nullable:
+        raise NotImplementedError("data is nullable; need to merge masks")
 
+    if isinstance(data, oamap.proxy.TopRecordProxy):
+        newarrays = NewArrays.instance(data._arrays, data._generator)
+        if isinstance(newfield, oamap.proxy.Proxy):
+            newarrays.merge(data._arrays, data._generator)
+            fieldschema = data._generator.namedschema()
 
+        elif isinstance(newfield, numbers.Integral):
+            fieldschema = oamap.schema.Primitive(numpy.int64)
+            newarrays.put(fieldschema, "data", numpy.array([newfield], dtype=fieldschema.dtype))
 
+        elif isinstance(newfield, numbers.Real):
+            fieldschema = oamap.schema.Primitive(numpy.float64)
+            newarrays.put(fieldschema, "data", numpy.array([newfield], dtype=fieldschema.dtype))
 
+        else:
+            raise TypeError("if data is a Record, newfield must be a Proxy (e.g. List or Record) or a number (e.g. int or float)")
 
-    if isinstance(data, oamap.proxy.RecordProxy):
         schema = data._generator.namedschema()
+        schema[fieldname] = fieldschema
+        return schema(newarrays)
 
+    elif isinstance(data, oamap.proxy.TopListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
+        newarrays = NewArrays.instance(data._arrays, data._generator)
+        if isinstance(newfield, oamap.proxy.ListProxy) and len(data) == len(newfield):
+            newarrays.merge(data._arrays, data._generator)
+            fieldschema = data._generator.namedschema()
 
+        elif isinstance(newfield, numpy.ndarray) and len(data) == len(newfield):
+            fieldschema = oamap.schema.Primitive(newfield.dtype)
+            newarrays.put(fieldschema, "data", newfield)
 
-    elif isinstance(data, oamap.proxy.ListProxy) and isinstance(data._generator.schema.content, oamap.schema.Record):
-        raise NotImplementedError
+        else:
+            raise TypeError("if data is a List, newfield must be a ListProxy or Numpy array of the right length ({0} elements)".format(len(data)))
+
+        schema = data._generator.namedschema()
+        schema.content[fieldname] = fieldschema
+        return schema(newarrays)
 
     else:
-        raise TypeError("attach can only be applied to Record(...) or List(Record(...))")
+        raise TypeError("attach can only be applied to a top-level Record(...) or List(Record(...))")
 
 ################################################################ detach
 
@@ -225,7 +290,10 @@ def filter(data, fcn, numba=True):
 
 ################################################################ reduce
 
-# dataset = oamap.schema.List("int").fromdata(range(10))
+from oamap.schema import *
 
-# from oamap.schema import *
+# dataset = List("int").fromdata(range(10))
 # dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+
+# one = Record(dict(x=List("int"), y=List("double"))).fromdata({"x": [1, 2, 3], "y": [1.1, 2.2]})
+# two = Record(dict(x=List("int"), y=List("double"))).fromdata({"x": [1, 2, 3], "y": [1.1, 2.2]})
