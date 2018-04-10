@@ -35,12 +35,25 @@ import numpy
 class NumpyFile(object):
     def __init__(self, base, partition):
         self.directory = os.path.join(base, partition)
+        if not os.path.exists(self.directory):
+            os.mkdir(self.directory)
 
     def __getitem__(self, name):
-        return numpy.load(os.path.join(self.directory, name))
+        try:
+            return numpy.load(os.path.join(self.directory, name))
+        except Exception as err:
+            raise KeyError(str(err))
+
+class WritableNumpyFile(NumpyFile):
+    @staticmethod
+    def partarg(nsname, partitionid):
+        return nsname + "-" + str(partitionid)
 
     def __setitem__(self, name, value):
         numpy.save(os.path.join(self.directory, name), value)
 
     def __delitem__(self, name):
-        os.remove(os.path.join(self.directory, name))
+        try:
+            os.remove(os.path.join(self.directory, name))
+        except Exception as err:
+            raise KeyError(str(err))

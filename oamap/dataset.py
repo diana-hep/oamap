@@ -434,8 +434,10 @@ class Database(object):
         def __delattr__(self, name):
             self.__dict__["_database"].delete(name)
             
-    def __init__(self, connection):
+    def __init__(self, connection, backend=None, args=()):
         self._connection = connection
+        self.backend = backend
+        self.args = args
 
     @property
     def connection(self):
@@ -462,8 +464,8 @@ class Database(object):
         raise NotImplementedError
 
 class InMemoryDatabase(Database):
-    def __init__(self, **datasets):
-        super(InMemoryDatabase, self).__init__(None)
+    def __init__(self, datasets, backend=None, args=()):
+        super(InMemoryDatabase, self).__init__(None, backend=backend, args=args)
         self._datasets = {}
         self._refcounts = {}
         for n, x in datasets.items():
@@ -482,16 +484,33 @@ class InMemoryDatabase(Database):
     def put(self, name, value):
         if not isinstance(value, Dataset):
             raise TypeError("datasets must have type Dataset")
+        if self.backend is None:
+            raise TypeError("no writable backend specified")
 
         for x in value.namespace.values():
             if x not in self._refcounts:
                 self._refcounts[x] = {}
+
         for n, ns in value._generator.iternames(namespace=True):
-            if value._offsets is None or ns != "" or n not in ("object-B", "object-E"):
-                refcounts = self._refcounts[value.namespace[ns]]
-                refcounts[n] = refcounts.get(n, 0) + 1
-            
-        self._datasets[name] = value
+            refcounts = self._refcounts[value.namespace[ns]]
+            refcounts[n] = refcounts.get(n, 0) + 1
+
+        newschema = value.schema
+        newnamespace = dict(value._namespace)
+
+        for nsname, namespace in value.namespace.items():
+            if namespace.backend is dict:
+                partargs = []
+                for partitionid in range(value.numpartitions):
+                    partargs.append(self.backend.partarg(nsname, partitionid))
+                    output = self.backend(*(self.args + partargs[-1]))
+                    for arrayname, array in namespace.partargs[partitionid][0]:
+                        output[arrayname] = array
+                newns = Namespace(self.backend, self.args, partargs)
+                newschema = newschema.deepcopy(namespace=newns)
+                newnamespace[nsname] = newns
+
+        self._datasets[name] = Dataset(name, newschema, newnamespace, offsets=value.offsets, extension=value.extension, doc=value.doc, metadata=value.metadata)
 
 ################################################################ quick test
 
@@ -504,7 +523,7 @@ sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="da
 
 test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
 
-db = InMemoryDatabase(test=test)
+db = InMemoryDatabase({"test": test}, backend=oamap.backend.numpyfile.WritableNumpyFile, args=("/home/pivarski/diana/oamap",))
 q = db.datasets.test.filter(lambda x: len(x) > 0)
 print q.partition(0)
 print q.partition(1)
