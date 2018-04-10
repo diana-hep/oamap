@@ -398,7 +398,23 @@ class Dataset(object):
     #     raise NotImplementedError
 
     def filter(self, fcn, fieldname=None, numba=True):
-        raise NotImplementedError
+        fcn = oamap.operations._maybecompile(numba)(fcn)
+
+        partargs = []
+        offsets = [0]
+        for partitionid in range(self.numpartitions):
+            data = oamap.operations.filter(self.partition(partitionid), fcn, fieldname=fieldname, numba=numba)
+            partargs.append(_dict_partarg(data._arrays))
+            offsets.append(offsets[-1] + len(data))
+
+        schema = data._generator.schema
+        namespace = dict(self._namespace)
+        for ns in namespace:
+            if ns not in data._arrays.namespaces:
+                del namespace[ns]
+        namespace[data._arrays.namespace] = Namespace(dict, (), partargs)
+                    
+        return Dataset(None, schema, namespace, offsets=offsets, extension=self.extension, doc=self.doc, metadata=self.metadata)
 
     # def reduce(self, increment, combine=None, numba=True):
     #     raise NotImplementedError
@@ -489,6 +505,6 @@ sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="da
 test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
 
 db = InMemoryDatabase(test=test)
-q = db.datasets.test.flatten()
+q = db.datasets.test.filter(lambda x: len(x) > 0)
 print q.partition(0)
 print q.partition(1)

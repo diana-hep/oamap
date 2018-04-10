@@ -49,7 +49,7 @@ def _maybecompile(numba):
         else:
             numbaopts = numba
         import numba as nb
-        return nb.jit(**numbaopts)
+        return lambda fcn: fcn if isinstance(fcn, nb.dispatcher.Dispatcher) else nb.jit(**numbaopts)(fcn)
     else:
         return lambda fcn: fcn
 
