@@ -487,14 +487,6 @@ class InMemoryDatabase(Database):
         if self.backend is None:
             raise TypeError("no writable backend specified")
 
-        for x in value.namespace.values():
-            if x not in self._refcounts:
-                self._refcounts[x] = {}
-
-        for n, ns in value._generator.iternames(namespace=True):
-            refcounts = self._refcounts[value.namespace[ns]]
-            refcounts[n] = refcounts.get(n, 0) + 1
-
         newschema = value.schema
         newnamespace = dict(value._namespace)
 
@@ -509,6 +501,13 @@ class InMemoryDatabase(Database):
                 newns = Namespace(self.backend, self.args, partargs)
                 newschema = newschema.deepcopy(namespace=newns)
                 newnamespace[nsname] = newns
+
+        for x in newnamespace.values():
+            if x not in self._refcounts:
+                self._refcounts[x] = {}
+        for n, ns in value._generator.iternames(namespace=True):
+            refcounts = self._refcounts[newnamespace[ns]]
+            refcounts[n] = refcounts.get(n, 0) + 1
 
         self._datasets[name] = Dataset(name, newschema, newnamespace, offsets=value.offsets, extension=value.extension, doc=value.doc, metadata=value.metadata)
 
@@ -525,5 +524,7 @@ test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
 
 db = InMemoryDatabase({"test": test}, backend=oamap.backend.numpyfile.WritableNumpyFile, args=("/home/pivarski/diana/oamap",))
 q = db.datasets.test.filter(lambda x: len(x) > 0)
-print q.partition(0)
-print q.partition(1)
+
+db.datasets.q = q
+
+

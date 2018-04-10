@@ -47,7 +47,7 @@ class NumpyFile(object):
 class WritableNumpyFile(NumpyFile):
     @staticmethod
     def partarg(nsname, partitionid):
-        return nsname + "-" + str(partitionid)
+        return (nsname + "-" + str(partitionid),)
 
     def __setitem__(self, name, value):
         numpy.save(os.path.join(self.directory, name), value)
