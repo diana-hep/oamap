@@ -40,7 +40,7 @@ import numpy
 import oamap.schema
 import oamap.generator
 import oamap.proxy
-import oamap.extension.common
+import oamap.operations
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -116,11 +116,15 @@ class Namespace(object):
     def __hash__(self):
         return hash((Namespace, self.backend, self.args, tuple(self.partargs)))
 
+def _dict_partarg(newarrays):
+    assert isinstance(newarrays, oamap.operations._NewArrays)
+    return (tuple(newarrays.arrays.items()),)
+
 ################################################################ Dataset
 
 class Dataset(object):
     def __init__(self, name, schema, namespace, offsets=None, extension=None, doc=None, metadata=None):
-        self._extension = oamap.extension.common
+        self._extension = None
         self._name = name
         self.schema = schema
         self.namespace = namespace
@@ -158,7 +162,7 @@ class Dataset(object):
             self._schema = value
         else:
             raise TypeError("schema must be a Schema")
-        self._generator = self._schema.generator(extension=self._extension)
+        self._generator = self._schema.generator()   # FIXME: extension=self._extension)
 
     class _DictOfNamespaces(collections.MutableMapping):
         def __init__(self, numpartitions, namespace):
@@ -235,20 +239,7 @@ class Dataset(object):
 
     @extension.setter
     def extension(self, value):
-        if isinstance(value, basestring):
-            self._extension = value
-        else:
-            try:
-                modules = []
-                for x in value:
-                    if not isinstance(x, basestring):
-                        raise TypeError
-                    modules.append(x)
-            except TypeError:
-                raise ValueError("extension must be a string or a list of strings, not {0}".format(repr(value)))
-            else:
-                self._extension = modules
-        self._generator = self._schema.generator(extension=self._extension)
+        raise NotImplementedError
 
     @property
     def doc(self):
@@ -320,6 +311,7 @@ class Dataset(object):
                 if len(filtered) > 0:
                     if self.arrays[n] is None:
                         self.arrays[n] = self.backend[n](*(self.args[n] + self.partargs[n][self.partitionid]))
+
                     arrays = self.arrays[n]
 
                     if hasattr(arrays, "getall"):
@@ -367,7 +359,7 @@ class Dataset(object):
         if "offsets" not in replacements:
             replacements["offsets"] = self._offsets
         if "extension" not in replacements:
-            replacements["extension"] = None if self._extension is oamap.extension.common else self._extension
+            replacements["extension"] = None if self._extension is None else self._extension
         if "doc" not in replacements:
             replacements["doc"] = self._doc
         if "metadata" not in replacements:
@@ -375,22 +367,41 @@ class Dataset(object):
         return Dataset(**replacements)
 
     def project(self, fieldname):
-        raise NotImplementedError
+        data = oamap.operations.project(self.partition(0), fieldname)
+        return Dataset(None, data._generator.schema, self.namespace, offsets=self.offsets, extension=self.extension, doc=self.doc, metadata=self.metadata)
 
     def attach(self, fieldname, newfield):
         raise NotImplementedError
 
-    def detach(self, data, fieldname):
-        raise NotImplementedError
-
+    def detach(self, fieldname):
+        data = oamap.operations.detach(self.partition(0), fieldname)
+        return Dataset(None, data._generator.schema, self.namespace, offsets=self.offsets, extension=self.extension, doc=self.doc, metadata=self.metadata)
+    
     def flatten(self):
-        raise NotImplementedError
+        partargs = []
+        offsets = [0]
+        for partitionid in range(self.numpartitions):
+            data = oamap.operations.flatten(self.partition(partitionid))
+            partargs.append(_dict_partarg(data._arrays))
+            offsets.append(offsets[-1] + len(data))
+
+        schema = data._generator.schema
+        namespace = dict(self._namespace)
+        for ns in namespace:
+            if ns not in data._arrays.namespaces:
+                del namespace[ns]
+        namespace[data._arrays.namespace] = Namespace(dict, (), partargs)
+                    
+        return Dataset(None, schema, namespace, offsets=offsets, extension=self.extension, doc=self.doc, metadata=self.metadata)
+
+    # def define(self, fcn, fieldname, numba=True):
+    #     raise NotImplementedError
 
     def filter(self, fcn, fieldname=None, numba=True):
         raise NotImplementedError
 
-    def reduce(self, increment, combine=None, numba=True):
-        raise NotImplementedError
+    # def reduce(self, increment, combine=None, numba=True):
+    #     raise NotImplementedError
 
 ################################################################ Database
 
@@ -468,14 +479,16 @@ class InMemoryDatabase(Database):
 
 ################################################################ quick test
 
-# import oamap.backend.numpyfile
+import oamap.backend.numpyfile
 
-# ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
-# ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part2",), ("part1",)])
-# ns3 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+ns1 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part1",), ("part2",)])
+ns2 = Namespace(oamap.backend.numpyfile.NumpyFile, ("/home/pivarski/diana/oamap",), [("part2",), ("part1",)])
 
-# sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))   # , starts="starts0.npy", stops="stops0.npy"
+sch = oamap.schema.List(oamap.schema.List(oamap.schema.Primitive(float, data="data.npy", namespace="DATA"), starts="starts.npy", stops="stops.npy"))
 
-# test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
+test = Dataset(None, sch, {"": ns1, "DATA": ns2}, [0, 3, 6])
 
-# db = InMemoryDatabase(test=test)
+db = InMemoryDatabase(test=test)
+q = db.datasets.test.flatten()
+print q.partition(0)
+print q.partition(1)
