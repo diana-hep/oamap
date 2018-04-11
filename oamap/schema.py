@@ -29,12 +29,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import bisect
-import copy
 import codecs
+import copy
+import fnmatch
+import json
+import numbers
 import re
 import sys
-import numbers
-import json
 from types import ModuleType
 
 import numpy
@@ -256,6 +257,12 @@ class Schema(object):
 
     def deepcopy(self, **replacements):
         return self.replace(lambda x: x, **replacements)
+
+    def keep(self, *paths):
+        return self._keep((), paths, {})
+
+    def drop(self, *paths):
+        return self._drop((), paths, {})
 
     def _normalize_extension(self, extension):
         if isinstance(extension, ModuleType):
@@ -545,6 +552,12 @@ class Primitive(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def _keep(self, path, paths, memo):
+        return self.deepcopy()
+
+    def _drop(self, path, paths, memo):
+        return self.deepcopy()
+
     def __hash__(self):
         return hash((Primitive, self._dtype, self._nullable, self._data, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -824,6 +837,20 @@ class List(Schema):
 
     def replace(self, fcn, *args, **kwds):
         return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _keep(self, path, paths, memo):
+        content = self.content._keep(path, paths, memo)
+        if content is None:
+            return None
+        else:
+            return self.copy(content=content)
+
+    def _drop(self, path, paths, memo):
+        content = self.content._drop(path, paths, memo)
+        if content is None:
+            return None
+        else:
+            return self.copy(content=content)
 
     def __hash__(self):
         return hash((List, self._content, self._nullable, self._starts, self._stops, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
@@ -1149,6 +1176,26 @@ class Union(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def _keep(self, path, paths, memo):
+        possibilities = []
+        for x in self._possibilities:
+            p = self._keep(path, paths, memo)
+            if p is None:
+                return None
+            else:
+                possibilities.append(p)
+        return self.copy(possibilities)
+
+    def _drop(self, path, paths, memo):
+        possibilities = []
+        for x in self._possibilities:
+            p = self._drop(path, paths, memo)
+            if p is None:
+                return None
+            else:
+                possibilities.append(p)
+        return self.copy(possibilities)
+
     def __hash__(self):
         return hash((Union, self._possibilities, self._nullable, self._tags, self._offsets, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -1436,6 +1483,32 @@ class Record(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def _keep(self, path, paths, memo):
+        fields = OrderedDict()
+        for n, x in self._fields.items():
+            if any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
+                fields[n] = x
+            elif any(fnmatch.fnmatchcase("/".join(path + (n,)), "/".join(p.split("/")[:len(path) + 1])) for p in paths):
+                f = x._keep(path + (n,), paths, memo)
+                if f is not None:
+                    fields[n] = f
+        if len(fields) == 0:
+            return None
+        else:
+            return self.copy(fields=fields)
+
+    def _drop(self, path, paths, memo):
+        fields = OrderedDict()
+        for n, x in self._fields.items():
+            if not any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
+                f = x._drop(path + (n,), paths, memo)
+                if f is not None:
+                    fields[n] = f
+        if len(fields) == 0:
+            return None
+        else:
+            return self.copy(fields=fields)
+
     def __hash__(self):
         return hash((Record, tuple(self._fields.items()), self._nullable, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -1704,6 +1777,34 @@ class Tuple(Schema):
     def replace(self, fcn, *args, **kwds):
         return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def _keep(self, path, paths, memo):
+        types = []
+        for i, x in enumerate(self._types):
+            n = str(i)
+            if any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
+                types.append(x)
+            elif any(fnmatch.fnmatchcase("/".join(path + (n,)), "/".join(p.split("/")[:len(path) + 1])) for p in paths):
+                f = x._keep(path + (n,), paths, memo)
+                if f is not None:
+                    types.append(f)
+        if len(types) == 0:
+            return None
+        else:
+            return self.copy(types=types)
+
+    def _drop(self, path, paths, memo):
+        types = []
+        for i, x in enumerate(self._types):
+            n = str(i)
+            if not any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
+                f = x._drop(path + (n,), paths, memo)
+                if f is not None:
+                    types.append(f)
+        if len(types) == 0:
+            return None
+        else:
+            return self.copy(types=types)
+
     def __hash__(self):
         return hash((Tuple, self._types, self._nullable, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -1954,6 +2055,28 @@ class Pointer(Schema):
 
     def replace(self, fcn, *args, **kwds):
         return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _keep(self, path, paths, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        memo[id(self)] = self.copy(target=None)
+        target = self._target._keep(path, paths, memo)
+        if target is None:
+            return None
+        else:
+            memo[id(self)]._target = target
+            return memo[id(self)]
+
+    def _drop(self, path, paths, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        memo[id(self)] = self.copy(target=None)
+        target = self._target._drop(path, paths, memo)
+        if target is None:
+            return None
+        else:
+            memo[id(self)]._target = target
+            return memo[id(self)]
 
     def __hash__(self):
         return hash((Pointer, self._target, self._nullable, self._positions, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
