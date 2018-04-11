@@ -42,6 +42,12 @@ if sys.version_info[0] < 3:
 
 ################################################################ utilities
 
+def newvar(avoid, trial=None):
+    while trial is None or trial in avoid:
+        trial = "v" + str(len(avoid))
+    avoid.add(trial)
+    return trial
+
 def trycompile(numba):
     if numba is None or numba is False:
         return lambda fcn: fcn
@@ -230,28 +236,45 @@ def flatten(data):
 
 ################################################################ filter
 
-def filter(data, fcn, fieldname=None, numba=True):
+def filter(data, fcn, args=(), numba=True, fieldname=None):
+    if not isinstance(args, tuple):
+        args = tuple(args)
+
     if fieldname is None and isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
         if isinstance(data._generator, oamap.generator.Masked):
             raise NotImplementedError("nullable; need to merge masks")            
 
         schema = oamap.schema.List(oamap.schema.Pointer(data._generator.namedschema().content))
 
-        fcn = trycompile(numba)(fcn)
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        avoid = set(params)
+        fcnname = newvar(avoid, "fcn")
+        fillname = newvar(avoid, "fill")
 
-        @trycompile(numba)
-        def fill(data, pointers):
-            i = 0
-            numitems = 0
-            for datum in data:
-                if fcn(datum):
-                    pointers[numitems] = i
-                    numitems += 1
-                i += 1
-            return numitems
+        fcn = trycompile(numba)(fcn)
+        env = {fcnname: fcn}
+        exec("""
+def {fill}({data}, {pointers}{params}):
+    {i} = 0
+    {numitems} = 0
+    for {datum} in {data}:
+        if {fcn}({datum}{params}):
+            {pointers}[{numitems}] = {i}
+            {numitems} += 1
+        {i} += 1
+    return {numitems}
+""".format(fill=fillname,
+           data=newvar(avoid, "data"),
+           pointers=newvar(avoid, "pointers"),
+           params="".join("," + x for x in params[1:]),
+           i=newvar(avoid, "i"),
+           numitems=newvar(avoid, "numitems"),
+           datum=newvar(avoid, "datum"),
+           fcn=fcnname), env)
+        fill = trycompile(numba)(env[fillname])
 
         pointers = numpy.empty(data._length, dtype=oamap.generator.PointerGenerator.posdtype)
-        numitems = fill(data, pointers)
+        numitems = fill(*((data, pointers) + args))
         offsets = numpy.array([0, numitems], dtype=data._generator.posdtype)
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
@@ -266,30 +289,47 @@ def filter(data, fcn, fieldname=None, numba=True):
         schema = data._generator.namedschema()
         schema.content[fieldname] = oamap.schema.List(oamap.schema.Pointer(schema.content[fieldname].content))
 
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        avoid = set(params)
+        fcnname = newvar(avoid, "fcn")
+        fillname = newvar(avoid, "fill")
+
         fcn = trycompile(numba)(fcn)
-        env = {"fcn": fcn}
+        env = {fcnname: fcn}
         exec("""
-def fill(data, innerstarts, stops, pointers):
-    i = 0
-    numitems = 0
-    for outer in data:
-        index = innerstarts[i]
-        for inner in outer.{0}:
-            if fcn(inner):
-                pointers[numitems] = index
-                numitems += 1
-            index += 1
-        stops[i] = numitems
-        i += 1
-    return numitems
-""".format(fieldname), env)
-        fill = trycompile(numba)(env["fill"])
+def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
+    {i} = 0
+    {numitems} = 0
+    for {outer} in {data}:
+        {index} = {innerstarts}[{i}]
+        for {inner} in {outer}.{fieldname}:
+            if {fcn}({inner}{params}):
+                {pointers}[{numitems}] = {index}
+                {numitems} += 1
+            {index} += 1
+        {stops}[{i}] = {numitems}
+        {i} += 1
+    return {numitems}
+""".format(fill=fillname,
+           data=newvar(avoid, "data"),
+           innerstarts=newvar(avoid, "innerstarts"),
+           stops=newvar(avoid, "stops"),
+           pointers=newvar(avoid, "pointers"),
+           params="".join("," + x for x in params[1:]),
+           i=newvar(avoid, "i"),
+           numitems=newvar(avoid, "numitems"),
+           outer=newvar(avoid, "outer"),
+           index=newvar(avoid, "index"),
+           inner=newvar(avoid, "inner"),
+           fieldname=fieldname,
+           fcn=fcnname), env)
+        fill = trycompile(numba)(env[fillname])
 
         innerstarts, innerstops = data._generator.content.fields[fieldname]._getstartsstops(data._arrays, data._cache)
         offsets = numpy.empty(data._length + 1, dtype=data._generator.content.fields[fieldname].posdtype)
         offsets[0] = 0
         pointers = numpy.empty(innerstops.max(), dtype=oamap.generator.PointerGenerator.posdtype)
-        numitems = fill(data, innerstarts, offsets[1:], pointers)
+        numitems = fill(*((data, innerstarts, offsets[1:], pointers) + args))
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
         arrays.put(schema.content[fieldname], offsets[:-1], offsets[1:])
@@ -304,10 +344,15 @@ def fill(data, innerstarts, stops, pointers):
 
 ################################################################ quick test
 
-# from oamap.schema import *
+from oamap.schema import *
 
-# dataset = List(Record(dict(z=List(Record(dict(x=List("int"), y=List("double"))))))).fromdata([{"z": [{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}]}])
+dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
 # dataset = List(List(List("int"))).fromdata([[[1, 2, 3], [4, 5], []], [], [[6], [7, 8]]])
+
+# def f(x, y):
+#   return len(x) == y
+
+# filter(dataset, f, (0,), numba=False)
