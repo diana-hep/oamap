@@ -344,9 +344,9 @@ def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
 
 ################################################################ quick test
 
-from oamap.schema import *
+# from oamap.schema import *
 
-dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
