@@ -211,6 +211,43 @@ def filter(data, fcn, fieldname=None, numba=True):
         arrays.put(schema.content, pointers[:numitems])
         return schema(arrays)
 
+    elif fieldname is not None and isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.RecordGenerator) and fieldname in data._generator.content.fields and isinstance(data._generator.content.fields[fieldname], oamap.generator.ListGenerator):
+        if isinstance(data._generator, oamap.generator.Masked) or isinstance(data._generator.content, oamap.generator.Masked) or isinstance(data._generator.content.fields[fieldname], oamap.generator.Masked):
+            raise NotImplementedError("nullable; need to merge masks")            
+
+        schema = data._generator.namedschema()
+        schema.content[fieldname] = oamap.schema.List(oamap.schema.Pointer(schema.content[fieldname].content))
+
+        fcn = trycompile(numba)(fcn)
+        env = {"fcn": fcn}
+        exec("""
+def fill(data, innerstarts, stops, pointers):
+    i = 0
+    numitems = 0
+    for outer in data:
+        index = innerstarts[i]
+        for inner in outer.{0}:
+            if fcn(inner):
+                pointers[numitems] = index
+                numitems += 1
+            index += 1
+        stops[i] = numitems
+        i += 1
+    return numitems
+""".format(fieldname), env)
+        fill = trycompile(numba)(env["fill"])
+
+        innerstarts, innerstops = data._generator.content.fields[fieldname]._getstartsstops(data._arrays, data._cache)
+        offsets = numpy.empty(data._length + 1, dtype=data._generator.content.fields[fieldname].posdtype)
+        offsets[0] = 0
+        pointers = numpy.empty(innerstops.max(), dtype=oamap.generator.PointerGenerator.posdtype)
+        numitems = fill(data, innerstarts, offsets[1:], pointers)
+
+        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays.put(schema.content[fieldname], offsets[:-1], offsets[1:])
+        arrays.put(schema.content[fieldname].content, pointers[:numitems])
+        return schema(arrays)
+        
     elif fieldname is None:
         raise TypeError("filter without fieldname can only be applied to a List(...)")
 
