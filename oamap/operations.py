@@ -42,16 +42,20 @@ if sys.version_info[0] < 3:
 
 ################################################################ utilities
 
-def compile(numba):
-    if numba is not None and numba is not False:
-        if numba is True:
-            numbaopts = {}
-        else:
-            numbaopts = numba
-        import numba as nb
-        return lambda fcn: fcn if isinstance(fcn, nb.dispatcher.Dispatcher) else nb.jit(**numbaopts)(fcn)
-    else:
+def trycompile(numba):
+    if numba is None or numba is False:
         return lambda fcn: fcn
+    else:
+        try:
+            import numba as nb
+        except ImportError:
+            return lambda fcn: fcn
+        else:
+            if numba is True:
+                numbaopts = {}
+            else:
+                numbaopts = numba
+            return lambda fcn: fcn if isinstance(fcn, nb.dispatcher.Dispatcher) else nb.jit(**numbaopts)(fcn)
 
 class DualSource(object):
     def __init__(self, old, oldns):
@@ -106,9 +110,29 @@ class DualSource(object):
             roles2arrays = {startsrole: arrays[0], stopsrole: arrays[1]}
             schemanode.starts = str(startsrole)
             schemanode.stops = str(stopsrole)
-                
+
+        elif isinstance(schemanode, oamap.schema.Union):
+            tagsrole = oamap.generator.TagsRole(self.arrayname(), self.namespace, None)
+            offsetsrole = oamap.generator.OffsetsRole(self.arrayname(), self.namespace, None)
+            tagsrole.offsets = offsetsrole
+            offsetsrole.tags = tagsrole
+            roles2arrays = {tagsrole: arrays[0], offsetsrole: arrays[1]}
+            schemanode.tags = str(tagsrole)
+            schemanode.offsets = str(offsetsrole)
+
+        elif isinstance(schemanode, oamap.schema.Record):
+            pass
+
+        elif isinstance(schemanode, oamap.schema.Tuple):
+            pass
+
+        elif isinstance(schemanode, oamap.schema.Pointer):
+            positionsrole = oamap.generator.PositionsRole(self.arrayname(), self.namespace)
+            roles2arrays = {positionsrole: arrays[0]}
+            schemanode.positions = str(positionsrole)
+
         else:
-            raise NotImplementedError(schemanode)
+            raise AssertionError(schemanode)
 
         if schemanode.nullable:
             maskrole = oamap.generator.MaskRole(self.arrayname(), self.namespace, roles2arrays)
@@ -138,7 +162,7 @@ class DualSource(object):
 def flatten(data):
     if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.ListGenerator):
         if isinstance(data._generator, oamap.generator.Masked) or isinstance(data._generator.content, oamap.generator.Masked):
-            raise NotImplementedError("nullable lists; need to merge masks")
+            raise NotImplementedError("nullable; need to merge masks")
 
         schema = data._generator.namedschema()
         schema.content = schema.content.content
@@ -157,6 +181,41 @@ def flatten(data):
         raise TypeError("flatten can only be applied to List(List(...))")
 
 ################################################################ filter
+
+def filter(data, fcn, fieldname=None, numba=True):
+    if fieldname is None and isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
+        if isinstance(data._generator, oamap.generator.Masked):
+            raise NotImplementedError("nullable; need to merge masks")            
+
+        schema = oamap.schema.List(oamap.schema.Pointer(data._generator.namedschema().content))
+
+        fcn = trycompile(numba)(fcn)
+
+        @trycompile(numba)
+        def fill(data, pointers):
+            i = 0
+            numitems = 0
+            for datum in data:
+                if fcn(datum):
+                    pointers[numitems] = i
+                    numitems += 1
+                i += 1
+            return numitems
+
+        pointers = numpy.empty(data._length, dtype=oamap.generator.PointerGenerator.posdtype)
+        numitems = fill(data, pointers)
+        offsets = numpy.array([0, numitems], dtype=data._generator.posdtype)
+
+        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays.put(schema, offsets[:-1], offsets[1:])
+        arrays.put(schema.content, pointers[:numitems])
+        return schema(arrays)
+
+    elif fieldname is None:
+        raise TypeError("filter without fieldname can only be applied to a List(...)")
+
+    else:
+        raise TypeError("filter with fieldname can only be applied to a top-level List(Record({{{0}: List(...)}}))".format(repr(fieldname)))
 
 ################################################################ quick test
 
