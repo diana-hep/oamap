@@ -155,7 +155,55 @@ class DualSource(object):
         if hasattr(self.new, "close"):
             self.new.close()
 
-################################################################ project
+################################################################ keep/drop
+
+def project(data, path):
+    if isinstance(data, oamap.proxy.Proxy):
+        out = data._generator.namedschema().project(path)(data._arrays)
+        if isinstance(data, oamap.proxy.ListProxy):
+            out._whence, out._stride, out._length = data._whence, data._stride, data._length
+        elif isinstance(data, oamap.proxy.RecordProxy):
+            out._index = data._index
+        elif isinstance(data, oamap.proxy.TupleProxy):
+            out._index = data._index
+        else:
+            raise AssertionError(type(data))
+        return out
+
+    else:
+        raise TypeError("keep can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+def keep(data, *paths):
+    if isinstance(data, oamap.proxy.Proxy):
+        out = data._generator.namedschema().keep(*paths)(data._arrays)
+        if isinstance(data, oamap.proxy.ListProxy):
+            out._whence, out._stride, out._length = data._whence, data._stride, data._length
+        elif isinstance(data, oamap.proxy.RecordProxy):
+            out._index = data._index
+        elif isinstance(data, oamap.proxy.TupleProxy):
+            out._index = data._index
+        else:
+            raise AssertionError(type(data))
+        return out
+
+    else:
+        raise TypeError("keep can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+def drop(data, *paths):
+    if isinstance(data, oamap.proxy.Proxy):
+        out = data._generator.namedschema().drop(*paths)(data._arrays)
+        if isinstance(data, oamap.proxy.ListProxy):
+            out._whence, out._stride, out._length = data._whence, data._stride, data._length
+        elif isinstance(data, oamap.proxy.RecordProxy):
+            out._index = data._index
+        elif isinstance(data, oamap.proxy.TupleProxy):
+            out._index = data._index
+        else:
+            raise AssertionError(type(data))
+        return out
+
+    else:
+        raise TypeError("drop can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ flatten
 
@@ -256,9 +304,9 @@ def fill(data, innerstarts, stops, pointers):
 
 ################################################################ quick test
 
-# from oamap.schema import *
+from oamap.schema import *
 
-# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
