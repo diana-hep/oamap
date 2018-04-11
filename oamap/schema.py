@@ -1488,18 +1488,16 @@ class Record(Schema):
 
     def _keep(self, path, paths, project, memo):
         fields = OrderedDict()
-        applied = False
         for n, x in self._fields.items():
             if any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
                 fields[n] = x
-                applied = True
             elif any(fnmatch.fnmatchcase("/".join(path + (n,)), "/".join(p.split("/")[:len(path) + 1])) for p in paths):
                 f = x._keep(path + (n,), paths, project, memo)
                 if f is not None:
                     fields[n] = f
         if len(fields) == 0:
             return None
-        elif project and applied and len(fields) == 1:
+        elif project and len(fields) == 1:
             out, = fields.values()
             return out
         else:
@@ -1787,19 +1785,17 @@ class Tuple(Schema):
 
     def _keep(self, path, paths, project, memo):
         types = []
-        applied = False
         for i, x in enumerate(self._types):
             n = str(i)
             if any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
                 types.append(x)
-                applied = True
             elif any(fnmatch.fnmatchcase("/".join(path + (n,)), "/".join(p.split("/")[:len(path) + 1])) for p in paths):
                 f = x._keep(path + (n,), paths, project, memo)
                 if f is not None:
                     types.append(f)
         if len(types) == 0:
             return None
-        elif project and applied and len(fields) == 1:
+        elif project and len(fields) == 1:
             out, = fields.values()
             return out
         else:

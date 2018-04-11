@@ -304,9 +304,9 @@ def fill(data, innerstarts, stops, pointers):
 
 ################################################################ quick test
 
-from oamap.schema import *
+# from oamap.schema import *
 
-dataset = Record(dict(z=List(Record(dict(x=List("int"), y=List("double")))))).fromdata({"z": [{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}]})
+# dataset = List(Record(dict(z=List(Record(dict(x=List("int"), y=List("double"))))))).fromdata([{"z": [{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}]}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
