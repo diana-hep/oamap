@@ -155,7 +155,7 @@ class DualSource(object):
         if hasattr(self.new, "close"):
             self.new.close()
 
-################################################################ keep/drop
+################################################################ project/keep/drop
 
 def project(data, path):
     if isinstance(data, oamap.proxy.Proxy):
@@ -171,7 +171,7 @@ def project(data, path):
         return out
 
     else:
-        raise TypeError("keep can only be applied to an OAMap proxy (List, Record, Tuple)")
+        raise TypeError("project can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 def keep(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
@@ -306,7 +306,7 @@ def fill(data, innerstarts, stops, pointers):
 
 from oamap.schema import *
 
-dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+dataset = Record(dict(z=List(Record(dict(x=List("int"), y=List("double")))))).fromdata({"z": [{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}]})
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 

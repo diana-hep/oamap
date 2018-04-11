@@ -265,7 +265,7 @@ class Schema(object):
         return self._keep((), paths, False, {})
 
     def drop(self, *paths):
-        return self._drop((), paths, False, {})
+        return self._drop((), paths, {})
 
     def _normalize_extension(self, extension):
         if isinstance(extension, ModuleType):
@@ -558,7 +558,7 @@ class Primitive(Schema):
     def _keep(self, path, paths, project, memo):
         return self.deepcopy()
 
-    def _drop(self, path, paths, project, memo):
+    def _drop(self, path, paths, memo):
         return self.deepcopy()
 
     def __hash__(self):
@@ -848,8 +848,8 @@ class List(Schema):
         else:
             return self.copy(content=content)
 
-    def _drop(self, path, paths, project, memo):
-        content = self.content._drop(path, paths, project, memo)
+    def _drop(self, path, paths, memo):
+        content = self.content._drop(path, paths, memo)
         if content is None:
             return None
         else:
@@ -1189,10 +1189,10 @@ class Union(Schema):
                 possibilities.append(p)
         return self.copy(possibilities)
 
-    def _drop(self, path, paths, project, memo):
+    def _drop(self, path, paths, memo):
         possibilities = []
         for x in self._possibilities:
-            p = self._drop(path, paths, project, memo)
+            p = self._drop(path, paths, memo)
             if p is None:
                 return None
             else:
@@ -1488,33 +1488,32 @@ class Record(Schema):
 
     def _keep(self, path, paths, project, memo):
         fields = OrderedDict()
+        applied = False
         for n, x in self._fields.items():
             if any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
                 fields[n] = x
+                applied = True
             elif any(fnmatch.fnmatchcase("/".join(path + (n,)), "/".join(p.split("/")[:len(path) + 1])) for p in paths):
                 f = x._keep(path + (n,), paths, project, memo)
                 if f is not None:
                     fields[n] = f
         if len(fields) == 0:
             return None
-        elif project and len(fields) == 1 and len(self._fields) > 1:
+        elif project and applied and len(fields) == 1:
             out, = fields.values()
             return out
         else:
             return self.copy(fields=fields)
 
-    def _drop(self, path, paths, project, memo):
+    def _drop(self, path, paths, memo):
         fields = OrderedDict()
         for n, x in self._fields.items():
             if not any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
-                f = x._drop(path + (n,), paths, project, memo)
+                f = x._drop(path + (n,), paths, memo)
                 if f is not None:
                     fields[n] = f
         if len(fields) == 0:
             return None
-        elif project and len(fields) == 1 and len(self._fields) > 1:
-            out, = fields.values()
-            return out
         else:
             return self.copy(fields=fields)
 
@@ -1788,35 +1787,34 @@ class Tuple(Schema):
 
     def _keep(self, path, paths, project, memo):
         types = []
+        applied = False
         for i, x in enumerate(self._types):
             n = str(i)
             if any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
                 types.append(x)
+                applied = True
             elif any(fnmatch.fnmatchcase("/".join(path + (n,)), "/".join(p.split("/")[:len(path) + 1])) for p in paths):
                 f = x._keep(path + (n,), paths, project, memo)
                 if f is not None:
                     types.append(f)
         if len(types) == 0:
             return None
-        elif project and len(fields) == 1 and len(self._fields) > 1:
+        elif project and applied and len(fields) == 1:
             out, = fields.values()
             return out
         else:
             return self.copy(types=types)
 
-    def _drop(self, path, paths, project, memo):
+    def _drop(self, path, paths, memo):
         types = []
         for i, x in enumerate(self._types):
             n = str(i)
             if not any(fnmatch.fnmatchcase("/".join(path + (n,)), p) for p in paths):
-                f = x._drop(path + (n,), paths, project, memo)
+                f = x._drop(path + (n,), paths, memo)
                 if f is not None:
                     types.append(f)
         if len(types) == 0:
             return None
-        elif project and len(fields) == 1 and len(self._fields) > 1:
-            out, = fields.values()
-            return out
         else:
             return self.copy(types=types)
 
@@ -2082,11 +2080,11 @@ class Pointer(Schema):
             memo[id(self)]._target = target
             return memo[id(self)]
 
-    def _drop(self, path, paths, project, memo):
+    def _drop(self, path, paths, memo):
         if id(self) in memo:
             return memo[id(self)]
         memo[id(self)] = self.copy(target=None)
-        target = self._target._drop(path, paths, project, memo)
+        target = self._target._drop(path, paths, memo)
         if target is None:
             return None
         else:
