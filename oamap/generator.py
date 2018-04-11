@@ -186,6 +186,12 @@ class Generator(object):
 
         return ptrs, lens, ptrs.ctypes.data, lens.ctypes.data
 
+    def names(self, namespace=False, idx=False):
+        return list(self.iternames(namespace=namespace, idx=idx))
+
+    def namespaces(self):
+        return set(ns for n, ns in self.iternames(namespace=True))
+
     def namedschema(self):
         return self._namedschema({})
 
@@ -238,9 +244,6 @@ class Masked(object):
         else:
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
-
-    def names(self, namespace=False, idx=False):
-        return list(self.iternames(namespace=namespace, idx=idx))
 
     def iternames(self, namespace=False, idx=False):
         out = (self.mask,)
