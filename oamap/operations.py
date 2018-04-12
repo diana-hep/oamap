@@ -165,7 +165,10 @@ class DualSource(object):
 
 def project(data, path):
     if isinstance(data, oamap.proxy.Proxy):
-        out = data._generator.namedschema().project(path)(data._arrays)
+        schema = data._generator.namedschema().project(path)
+        if schema is None:
+            raise TypeError("projection resulted in no schema")
+        out = schema(data._arrays)
         if isinstance(data, oamap.proxy.ListProxy):
             out._whence, out._stride, out._length = data._whence, data._stride, data._length
         elif isinstance(data, oamap.proxy.RecordProxy):
@@ -181,7 +184,10 @@ def project(data, path):
 
 def keep(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
-        out = data._generator.namedschema().keep(*paths)(data._arrays)
+        schema = data._generator.namedschema().keep(*paths)
+        if schema is None:
+            raise TypeError("keep operation resulted in no schema")
+        out = schema(data._arrays)
         if isinstance(data, oamap.proxy.ListProxy):
             out._whence, out._stride, out._length = data._whence, data._stride, data._length
         elif isinstance(data, oamap.proxy.RecordProxy):
@@ -197,7 +203,10 @@ def keep(data, *paths):
 
 def drop(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
-        out = data._generator.namedschema().drop(*paths)(data._arrays)
+        schema = data._generator.namedschema().drop(*paths)
+        if schema is None:
+            raise TypeError("drop operation resulted in no schema")
+        out = schema(data._arrays)
         if isinstance(data, oamap.proxy.ListProxy):
             out._whence, out._stride, out._length = data._whence, data._stride, data._length
         elif isinstance(data, oamap.proxy.RecordProxy):
@@ -342,11 +351,100 @@ def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
     else:
         raise TypeError("filter with fieldname can only be applied to a top-level List(Record({{{0}: List(...)}}))".format(repr(fieldname)))
 
+################################################################ define
+
+def define(data, fieldname, fcn, args=(), numba=True, fieldtype=oamap.schema.Primitive(numpy.float64)):
+    if not isinstance(args, tuple):
+        args = tuple(args)
+
+    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.RecordGenerator):
+        if isinstance(data._generator, oamap.generator.Masked) or isinstance(data._generator.content, oamap.generator.Masked):
+            raise NotImplementedError("nullable; need to merge masks")            
+
+        schema = data._generator.namedschema()
+        schema.content[fieldname] = fieldtype.deepcopy()
+
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        avoid = set(params)
+        fcnname = newvar(avoid, "fcn")
+        fillname = newvar(avoid, "fill")
+
+        if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
+            fcn = trycompile(numba)(fcn)
+            env = {fcnname: fcn}
+            exec("""
+def {fill}({data}, {primitive}{params}):
+    {i} = 0
+    for {datum} in {data}:
+        {primitive}[{i}] = {fcn}({datum}{params})
+        {i} += 1
+""".format(fill=fillname,
+           data=newvar(avoid, "data"),
+           primitive=newvar(avoid, "primitive"),
+           params="".join("," + x for x in params[1:]),
+           i=newvar(avoid, "i"),
+           datum=newvar(avoid, "datum"),
+           fcn=fcnname), env)
+            fill = trycompile(numba)(env[fillname])
+            
+            primitive = numpy.empty(len(data), dtype=fieldtype.dtype)
+            fill(*((data, primitive) + args))
+
+            arrays = DualSource(data._arrays, data._generator.namespaces())
+            arrays.put(schema.content[fieldname], primitive)
+            return schema(arrays)
+
+        elif isinstance(fieldtype, oamap.schema.Primitive):
+            fcn = trycompile(numba)(fcn)
+            env = {fcnname: fcn}
+            exec("""
+def {fill}({data}, {primitive}, {mask}{params}):
+    {i} = 0
+    {numitems} = 0
+    for {datum} in {data}:
+        {tmp} = {fcn}({datum}{params})
+        if {tmp} is None:
+            {mask}[{i}] = {maskedvalue}
+        else:
+            {mask}[{i}] = {numitems}
+            {primitive}[{numitems}] = {tmp}
+            {numitems} += 1
+        {i} += 1
+    return {numitems}
+""".format(fill=fillname,
+           data=newvar(avoid, "data"),
+           primitive=newvar(avoid, "primitive"),
+           mask=newvar(avoid, "mask"),
+           params="".join("," + x for x in params[1:]),
+           i=newvar(avoid, "i"),
+           numitems=newvar(avoid, "numitems"),
+           datum=newvar(avoid, "datum"),
+           tmp=newvar(avoid, "tmp"),
+           fcn=fcnname,
+           maskedvalue=oamap.generator.Masked.maskedvalue), env)
+            fill = trycompile(numba)(env[fillname])
+            
+            primitive = numpy.empty(len(data), dtype=fieldtype.dtype)
+            mask = numpy.empty(len(data), dtype=oamap.generator.Masked.maskdtype)
+            fill(*((data, primitive, mask) + args))
+
+            arrays = DualSource(data._arrays, data._generator.namespaces())
+            arrays.put(schema.content[fieldname], primitive, mask)
+            return schema(arrays)
+
+        else:
+            raise NotImplementedError("define not implemented for fieldtype:\n\n    {0}".format(fieldtype.__repr__(indent="    ")))
+
+    else:
+        raise TypeError("define can only be applied to a top-level List(Record(...))")
+
 ################################################################ quick test
 
-# from oamap.schema import *
+from oamap.schema import *
 
-# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+
+# dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
@@ -356,3 +454,13 @@ def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
 #   return len(x) == y
 
 # filter(dataset, f, (0,), numba=False)
+
+def f(obj):
+    if len(obj.x) > 0 and len(obj.y) > 0:
+        return obj.x[0] + obj.y[0]
+    else:
+        return None
+
+q = define(dataset, "z", f, numba=False, fieldtype=Primitive(float, nullable=True))
+
+print project(q, "z")
