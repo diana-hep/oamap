@@ -28,8 +28,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import sys
+import math
 import numbers
+import sys
 
 import numpy
 
@@ -222,12 +223,60 @@ def drop(data, *paths):
 
 ################################################################ mask
 
-def mask(data, path, value):
-    HERE
+def mask(data, path, low, high=None):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+        node, parent = schema.path(path, parent=True)
+        if node is None:
+            raise TypeError("mask path {0} does not refer to a field in schema".format(repr(path)))
 
+        while isinstance(node, oamap.schema.List):
+            parent = node
+            node = node.content
 
+        arrays = DualSource(data._arrays, data._generator.namespaces())
 
+        if isinstance(node, oamap.schema.Primitive):
+            generator = data._generator.findbynames("Primitive", data=node.data, mask=node.mask)
 
+            primitive = generator._getdata(data._arrays, data._cache).copy()
+            if node.nullable:
+                mask = generator._getmask(data._arrays, data._cache).copy()
+            else:
+                node.nullable = True
+                mask = numpy.arange(len(primitive), dtype=oamap.generator.Masked.maskdtype)
+
+            if high is None:
+                if math.isnan(low):
+                    selection = numpy.isnan(primitive)
+                else:
+                    selection = (primitive == low)
+            else:
+                if math.isnan(low) or math.isnan(high):
+                    raise ValueError("if a range is specified, neither of the endpoints can be NaN")
+                selection = (primitive >= low)
+                numpy.bitwise_and(selection, (primitive <= high), selection)
+
+            mask[selection] = oamap.generator.Masked.maskedvalue
+
+            arrays.put(node, primitive, mask)
+
+        else:
+            raise NotImplementedError("mask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(path), node.__repr__(indent="    ")))
+
+        out = schema(arrays)
+        if isinstance(data, oamap.proxy.ListProxy):
+            out._whence, out._stride, out._length = data._whence, data._stride, data._length
+        elif isinstance(data, oamap.proxy.RecordProxy):
+            out._index = data._index
+        elif isinstance(data, oamap.proxy.TupleProxy):
+            out._index = data._index
+        else:
+            raise AssertionError(type(data))
+        return out
+
+    else:
+        raise TypeError("mask can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ flatten
 
@@ -238,9 +287,10 @@ def flatten(data):
 
         schema = data._generator.namedschema()
         schema.content = schema.content.content
-        arrays = DualSource(data._arrays, data._generator.namespaces())
 
         starts, stops = data._generator.content._getstartsstops(data._arrays, data._cache)
+
+        arrays = DualSource(data._arrays, data._generator.namespaces())
 
         if numpy.array_equal(starts[1:], stops[:-1]):
             # important special case: contiguous
@@ -451,7 +501,7 @@ def {fill}({data}, {primitive}, {mask}{params}):
 
 from oamap.schema import *
 
-dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
 # dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
 
@@ -463,13 +513,3 @@ dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1
 #   return len(x) == y
 
 # filter(dataset, f, (0,), numba=False)
-
-def f(obj):
-    if len(obj.x) > 0 and len(obj.y) > 0:
-        return obj.x[0] + obj.y[0]
-    else:
-        return None
-
-q = define(dataset, "z", f, numba=False, fieldtype=Primitive(float, nullable=True))
-
-print project(q, "z")

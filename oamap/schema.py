@@ -259,15 +259,16 @@ class Schema(object):
         return self.replace(lambda x: x, **replacements)
 
     def path(self, path, parent=False):
-        return self._path((), path, None if parent else False, set())
-
+        node, parentnode = self._path((), path, None, set())
+        if parent:
+            return node, parentnode
+        else:
+            return node
+        
     def _path(self, loc, path, parent, memo):
         if fnmatch.fnmatchcase("/".join(loc), path):
-            if parent is False:
-                return self
-            else:
-                return self, parent
-        return None
+            return self, parent
+        return None, None
 
     def project(self, path):
         return self._keep((), [path], True, {})
@@ -853,10 +854,10 @@ class List(Schema):
         return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parent, memo):
-        out = Schema._path(self, loc, path, parent, memo)
-        if out is None:
-            return self._content._path(loc, path, False if parent is False else self, memo)
-        return out
+        node, parentnode = Schema._path(self, loc, path, parent, memo)
+        if node is None:
+            return self._content._path(loc, path, self, memo)
+        return node, parentnode
 
     def _keep(self, loc, paths, project, memo):
         content = self.content._keep(loc, paths, project, memo)
@@ -1197,13 +1198,13 @@ class Union(Schema):
         return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parent, memo):
-        out = Schema._path(self, loc, path, parent, memo)
-        if out is None:
+        node, parentnode = Schema._path(self, loc, path, parent, memo)
+        if node is None:
             for possibility in self._possibilities:
-                out = possibility._path(loc, path, False if parent is False else self, memo)
-                if out is not None:
-                    return out
-        return out
+                node, parentnode = possibility._path(loc, path, self, memo)
+                if node is not None:
+                    return node, parentnode
+        return node, parentnode
 
     def _keep(self, loc, paths, project, memo):
         possibilities = []
@@ -1513,13 +1514,13 @@ class Record(Schema):
         return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parent, memo):
-        out = Schema._path(self, loc, path, parent, memo)
-        if out is None:
+        node, parentnode = Schema._path(self, loc, path, parent, memo)
+        if node is None:
             for n, x in self._fields.items():
-                out = x._path(loc + (n,), path, False if parent is False else self, memo)
-                if out is not None:
-                    return out
-        return out
+                node, parentnode = x._path(loc + (n,), path, self, memo)
+                if node is not None:
+                    return node, parentnode
+        return node, parentnode
 
     def _keep(self, loc, paths, project, memo):
         fields = OrderedDict()
@@ -1819,13 +1820,13 @@ class Tuple(Schema):
         return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parent, memo):
-        out = Schema._path(self, loc, path, parent, memo)
-        if out is None:
+        node, parentnode = Schema._path(self, loc, path, parent, memo)
+        if node is None:
             for i, x in enumerate(self._types):
-                out = x._path(loc + (str(i),), path, False if parent is False else self, memo)
-                if out is not None:
-                    return out
-        return out
+                node, parentnode = x._path(loc + (str(i),), path, self, memo)
+                if node is not None:
+                    return node, parentnode
+        return node, parentnode
 
     def _keep(self, loc, paths, project, memo):
         types = []
@@ -2110,13 +2111,13 @@ class Pointer(Schema):
         return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parent, memo):
-        out = Schema._path(self, loc, path, parent, memo)
-        if out is None:
+        node, parentnode = Schema._path(self, loc, path, parent, memo)
+        if node is None:
             if id(self) in memo:
                 return None
             memo.add(id(self))
-            return self._target._path(loc, path, False if parent is False else self, memo)
-        return out
+            return self._target._path(loc, path, self, memo)
+        return node, parentnode
         
     def _keep(self, loc, paths, project, memo):
         if id(self) in memo:
