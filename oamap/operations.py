@@ -220,6 +220,15 @@ def drop(data, *paths):
     else:
         raise TypeError("drop can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+################################################################ mask
+
+def mask(data, path, value):
+    HERE
+
+
+
+
+
 ################################################################ flatten
 
 def flatten(data):
