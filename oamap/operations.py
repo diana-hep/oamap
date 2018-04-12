@@ -226,13 +226,10 @@ def drop(data, *paths):
 def mask(data, path, low, high=None):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
-        node, parent = schema.path(path, parent=True)
-        if node is None:
-            raise TypeError("mask path {0} does not refer to a field in schema".format(repr(path)))
-
-        while isinstance(node, oamap.schema.List):
-            parent = node
-            node = node.content
+        nodes = schema.path(path, parents=True)
+        while isinstance(nodes[0], oamap.schema.List):
+            nodes = (nodes[0].content,) + nodes
+        node = nodes[0]
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
 
@@ -304,7 +301,7 @@ def flatten(data):
 
 ################################################################ filter
 
-def filter(data, fcn, args=(), numba=True, fieldname=None):
+def filter(data, fcn, args=(), fieldname=None, numba=True):
     if not isinstance(args, tuple):
         args = tuple(args)
 
@@ -428,16 +425,35 @@ def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
 
 ################################################################ define
 
-def define(data, fieldname, fcn, args=(), numba=True, fieldtype=oamap.schema.Primitive(numpy.float64)):
+def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitive(numpy.float64), numba=True):
     if not isinstance(args, tuple):
         args = tuple(args)
 
-    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.RecordGenerator):
-        if isinstance(data._generator, oamap.generator.Masked) or isinstance(data._generator.content, oamap.generator.Masked):
-            raise NotImplementedError("nullable; need to merge masks")            
-
+    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
         schema = data._generator.namedschema()
-        schema.content[fieldname] = fieldtype.deepcopy()
+        nodes = schema.path(at, parents=True)
+        while isinstance(nodes[0], oamap.schema.List):
+            nodes = (nodes[0].content,) + nodes
+        if not isinstance(nodes[0], oamap.schema.Record):
+            raise TypeError("path {0} does not refer to a record:\n\n    {1}".format(repr(at), nodes[0].__repr__(indent="    ")))
+        if len(nodes) < 2 or not isinstance(nodes[1], oamap.schema.List):
+            raise TypeError("path {0} does not refer to a record in a list:\n\n    {1}".format(repr(at), nodes[1].__repr__(indent="    ")))
+        recordnode = nodes[0]
+        listnode = nodes[1]
+        if recordnode.nullable or listnode.nullable:
+            raise NotImplementedError("nullable; need to merge masks")
+
+        recordnode[fieldname] = fieldtype.deepcopy()
+
+        listgenerator = data._generator.findbynames("List", starts=listnode.starts, stops=listnode.stops)
+        viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+        viewschema = listgenerator.namedschema()
+        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        if numpy.array_equal(viewstarts[1:], viewstops[:-1]):
+            viewarrays.put(viewschema, viewstarts[:1], viewstops[-1:])
+        else:
+            raise NotImplementedError("non-contiguous arrays: have to do some sort of concatenation")
+        view = viewschema(viewarrays)
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
@@ -448,35 +464,35 @@ def define(data, fieldname, fcn, args=(), numba=True, fieldtype=oamap.schema.Pri
             fcn = trycompile(numba)(fcn)
             env = {fcnname: fcn}
             exec("""
-def {fill}({data}, {primitive}{params}):
+def {fill}({view}, {primitive}{params}):
     {i} = 0
-    for {datum} in {data}:
+    for {datum} in {view}:
         {primitive}[{i}] = {fcn}({datum}{params})
         {i} += 1
 """.format(fill=fillname,
-           data=newvar(avoid, "data"),
+           view=newvar(avoid, "view"),
            primitive=newvar(avoid, "primitive"),
            params="".join("," + x for x in params[1:]),
            i=newvar(avoid, "i"),
            datum=newvar(avoid, "datum"),
            fcn=fcnname), env)
             fill = trycompile(numba)(env[fillname])
-            
-            primitive = numpy.empty(len(data), dtype=fieldtype.dtype)
-            fill(*((data, primitive) + args))
+
+            primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
+            fill(*((view, primitive) + args))
 
             arrays = DualSource(data._arrays, data._generator.namespaces())
-            arrays.put(schema.content[fieldname], primitive)
+            arrays.put(recordnode[fieldname], primitive)
             return schema(arrays)
 
         elif isinstance(fieldtype, oamap.schema.Primitive):
             fcn = trycompile(numba)(fcn)
             env = {fcnname: fcn}
             exec("""
-def {fill}({data}, {primitive}, {mask}{params}):
+def {fill}({view}, {primitive}, {mask}{params}):
     {i} = 0
     {numitems} = 0
-    for {datum} in {data}:
+    for {datum} in {view}:
         {tmp} = {fcn}({datum}{params})
         if {tmp} is None:
             {mask}[{i}] = {maskedvalue}
@@ -487,7 +503,7 @@ def {fill}({data}, {primitive}, {mask}{params}):
         {i} += 1
     return {numitems}
 """.format(fill=fillname,
-           data=newvar(avoid, "data"),
+           view=newvar(avoid, "view"),
            primitive=newvar(avoid, "primitive"),
            mask=newvar(avoid, "mask"),
            params="".join("," + x for x in params[1:]),
@@ -499,27 +515,29 @@ def {fill}({data}, {primitive}, {mask}{params}):
            maskedvalue=oamap.generator.Masked.maskedvalue), env)
             fill = trycompile(numba)(env[fillname])
             
-            primitive = numpy.empty(len(data), dtype=fieldtype.dtype)
-            mask = numpy.empty(len(data), dtype=oamap.generator.Masked.maskdtype)
-            fill(*((data, primitive, mask) + args))
+            primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
+            mask = numpy.empty(len(view), dtype=oamap.generator.Masked.maskdtype)
+            fill(*((view, primitive, mask) + args))
 
             arrays = DualSource(data._arrays, data._generator.namespaces())
-            arrays.put(schema.content[fieldname], primitive, mask)
+            arrays.put(recordnode[fieldname], primitive, mask)
             return schema(arrays)
 
         else:
             raise NotImplementedError("define not implemented for fieldtype:\n\n    {0}".format(fieldtype.__repr__(indent="    ")))
 
     else:
-        raise TypeError("define can only be applied to a top-level List(Record(...))")
+        raise TypeError("define can only be applied to a top-level List(...)")
 
 ################################################################ quick test
 
-from oamap.schema import *
+# from oamap.schema import *
 
-dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
 # dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
+
+# dataset = List(Record(dict(x=List(Record({"xx": "int"})), y="double"))).fromdata([{"x": [{"xx": 1}, {"xx": 2}], "y": 1.1}, {"x": [], "y": 2.2}, {"x": [{"xx": 3}], "y": 3.3}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
