@@ -275,7 +275,14 @@ def mask(data, path, low, high=None):
     else:
         raise TypeError("mask can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+################################################################ merge
+
+def merge(data, one, two):    # one and two are paths
+    raise NotImplementedError
+
 ################################################################ flatten
+
+# FIXME: at=""
 
 def flatten(data):
     if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.ListGenerator):
@@ -301,133 +308,93 @@ def flatten(data):
 
 ################################################################ filter
 
-def filter(data, fcn, args=(), fieldname=None, numba=True):
+def filter(data, fcn, args=(), at="", numba=True):
     if not isinstance(args, tuple):
-        args = tuple(args)
+        try:
+            args = tuple(args)
+        except TypeError:
+            args = (args,)
 
-    if fieldname is None and isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
-        if isinstance(data._generator, oamap.generator.Masked):
-            raise NotImplementedError("nullable; need to merge masks")            
+    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
+        schema = data._generator.namedschema()
+        listnode = schema.path(at)
+        if not isinstance(listnode, oamap.schema.List):
+            raise TypeError("path {0} does not refer to a list:\n\n    {1}".format(repr(at), listnode.__repr__(indent="    ")))
+        if listnode.nullable:
+            raise NotImplementedError("nullable; need to merge masks")
 
-        schema = oamap.schema.List(oamap.schema.Pointer(data._generator.namedschema().content))
+        listgenerator = data._generator.findbynames("List", starts=listnode.starts, stops=listnode.stops)
+        viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+        viewschema = listgenerator.namedschema()
+        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
+        viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
+        view = viewschema(viewarrays)
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = newvar(avoid, "fcn")
         fillname = newvar(avoid, "fill")
+        lenname = newvar(avoid, "len")
+        rangename = newvar(avoid, "range")
 
         fcn = trycompile(numba)(fcn)
-        env = {fcnname: fcn}
+        env = {fcnname: fcn, lenname: len, rangename: xrange if sys.version_info[0] <= 2 else range}
         exec("""
-def {fill}({data}, {pointers}{params}):
-    {i} = 0
+def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
     {numitems} = 0
-    for {datum} in {data}:
-        if {fcn}({datum}{params}):
-            {pointers}[{numitems}] = {i}
-            {numitems} += 1
-        {i} += 1
+    for {i} in {range}({len}({viewstarts})):
+        for {j} in {range}({viewstarts}[{i}], {viewstops}[{i}]):
+            {datum} = {view}[{j}]
+            if {fcn}({datum}{params}):
+                {pointers}[{numitems}] = {j}
+                {numitems} += 1
+        {stops}[{i}] = {numitems}
     return {numitems}
 """.format(fill=fillname,
-           data=newvar(avoid, "data"),
+           view=newvar(avoid, "view"),
+           viewstarts=newvar(avoid, "viewstarts"),
+           viewstops=newvar(avoid, "viewstops"),
+           stops=newvar(avoid, "stops"),
            pointers=newvar(avoid, "pointers"),
            params="".join("," + x for x in params[1:]),
-           i=newvar(avoid, "i"),
            numitems=newvar(avoid, "numitems"),
+           i=newvar(avoid, "i"),
+           range=rangename,
+           len=lenname,
+           j=newvar(avoid, "j"),
            datum=newvar(avoid, "datum"),
            fcn=fcnname), env)
         fill = trycompile(numba)(env[fillname])
 
-        pointers = numpy.empty(data._length, dtype=oamap.generator.PointerGenerator.posdtype)
-        numitems = fill(*((data, pointers) + args))
-        offsets = numpy.array([0, numitems], dtype=data._generator.posdtype)
-        pointers = pointers[:numitems]
-
-        if isinstance(data._generator.content, oamap.generator.PointerGenerator):
-            if isinstance(data._generator.content, oamap.generator.Masked):
-                raise NotImplementedError("nullable; need to merge masks")
-            innerpointers = data._generator.content._getpositions(data._arrays, data._cache)
-            pointers = innerpointers[pointers]
-            schema.content.target = schema.content.target.target
-
-        arrays = DualSource(data._arrays, data._generator.namespaces())
-        arrays.put(schema, offsets[:-1], offsets[1:])
-        arrays.put(schema.content, pointers)
-        return schema(arrays)
-
-    elif fieldname is not None and isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.RecordGenerator) and fieldname in data._generator.content.fields and isinstance(data._generator.content.fields[fieldname], oamap.generator.ListGenerator):
-        if isinstance(data._generator, oamap.generator.Masked) or isinstance(data._generator.content, oamap.generator.Masked) or isinstance(data._generator.content.fields[fieldname], oamap.generator.Masked):
-            raise NotImplementedError("nullable; need to merge masks")            
-
-        schema = data._generator.namedschema()
-        schema.content[fieldname] = oamap.schema.List(oamap.schema.Pointer(schema.content[fieldname].content))
-
-        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
-        avoid = set(params)
-        fcnname = newvar(avoid, "fcn")
-        fillname = newvar(avoid, "fill")
-
-        fcn = trycompile(numba)(fcn)
-        env = {fcnname: fcn}
-        exec("""
-def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
-    {i} = 0
-    {numitems} = 0
-    for {outer} in {data}:
-        {index} = {innerstarts}[{i}]
-        for {inner} in {outer}.{fieldname}:
-            if {fcn}({inner}{params}):
-                {pointers}[{numitems}] = {index}
-                {numitems} += 1
-            {index} += 1
-        {stops}[{i}] = {numitems}
-        {i} += 1
-    return {numitems}
-""".format(fill=fillname,
-           data=newvar(avoid, "data"),
-           innerstarts=newvar(avoid, "innerstarts"),
-           stops=newvar(avoid, "stops"),
-           pointers=newvar(avoid, "pointers"),
-           params="".join("," + x for x in params[1:]),
-           i=newvar(avoid, "i"),
-           numitems=newvar(avoid, "numitems"),
-           outer=newvar(avoid, "outer"),
-           index=newvar(avoid, "index"),
-           inner=newvar(avoid, "inner"),
-           fieldname=fieldname,
-           fcn=fcnname), env)
-        fill = trycompile(numba)(env[fillname])
-
-        innerstarts, innerstops = data._generator.content.fields[fieldname]._getstartsstops(data._arrays, data._cache)
-        offsets = numpy.empty(data._length + 1, dtype=data._generator.content.fields[fieldname].posdtype)
+        offsets = numpy.empty(len(viewstarts) + 1, dtype=oamap.generator.ListGenerator.posdtype)
         offsets[0] = 0
-        pointers = numpy.empty(innerstops.max(), dtype=oamap.generator.PointerGenerator.posdtype)
-        numitems = fill(*((data, innerstarts, offsets[1:], pointers) + args))
+        pointers = numpy.empty(len(view), dtype=oamap.generator.PointerGenerator.posdtype)
+        numitems = fill(*((view, viewstarts, viewstops, offsets[1:], pointers) + args))
         pointers = pointers[:numitems]
 
-        if isinstance(data._generator.content.fields[fieldname].content, oamap.generator.PointerGenerator):
-            if isinstance(data._generator.content.fields[fieldname].content, oamap.generator.Masked):
+        listnode.content = oamap.schema.Pointer(listnode.content)
+
+        if isinstance(listgenerator.content, oamap.generator.PointerGenerator):
+            if isinstance(listgenerator.content, oamap.generator.Masked):
                 raise NotImplementedError("nullable; need to merge masks")
-            innerpointers = data._generator.content.fields[fieldname].content._getpositions(data._arrays, data._cache)
+            innerpointers = listgenerator.content._getpositions(data._arrays, data._cache)
             pointers = innerpointers[pointers]
-            schema.content[fieldname].content.target = schema.content[fieldname].content.target.target
+            listnode.content.target = listnode.content.target.target
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
-        arrays.put(schema.content[fieldname], offsets[:-1], offsets[1:])
-        arrays.put(schema.content[fieldname].content, pointers)
+        arrays.put(listnode, offsets[:-1], offsets[1:])
+        arrays.put(listnode.content, pointers)
         return schema(arrays)
-        
-    elif fieldname is None:
-        raise TypeError("filter without fieldname can only be applied to a List(...)")
-
-    else:
-        raise TypeError("filter with fieldname can only be applied to a top-level List(Record({{{0}: List(...)}}))".format(repr(fieldname)))
 
 ################################################################ define
 
 def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitive(numpy.float64), numba=True):
     if not isinstance(args, tuple):
-        args = tuple(args)
+        try:
+            args = tuple(args)
+        except TypeError:
+            args = (args,)
 
     if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
         schema = data._generator.namedschema()
