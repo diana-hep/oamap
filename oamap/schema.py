@@ -259,18 +259,27 @@ class Schema(object):
         return self.replace(lambda x: x, **replacements)
 
     def path(self, path, parents=False):
-        nodes = self._path((), path, (), set())
-        if nodes is None:
-            raise ValueError("path {0} does not match any fields in the schema".format(repr(path)))
-        if parents:
-            return nodes
-        else:
-            return nodes[0]
-        
+        for nodes in self._path((), path, (), set()):
+            if parents:
+                return nodes
+            else:
+                return nodes[0]
+        raise ValueError("path {0} does not match any fields in the schema".format(repr(path)))
+
+    def paths(self, *paths, **options):
+        parents = options.pop("parents", False)
+        if len(options) > 0:
+            raise TypeError("unrecognized options: {0}".format(", ".join(options)))
+        for path in paths:
+            for nodes in self._path((), path, (), set()):
+                if parents:
+                    yield nodes
+                else:
+                    yield nodes[0]
+
     def _path(self, loc, path, parents, memo):
         if fnmatch.fnmatchcase("/".join(loc), path):
-            return (self,) + parents
-        return None
+            yield (self,) + parents
 
     def project(self, path):
         return self._keep((), [path], True, {})
@@ -862,10 +871,12 @@ class List(Schema):
         return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
-        nodes = Schema._path(self, loc, path, parents, memo)
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, memo):
+            yield nodes
         if nodes is None:
-            return self._content._path(loc, path, (self,) + parents, memo)
-        return nodes
+            for nodes in self._content._path(loc, path, (self,) + parents, memo):
+                yield nodes
 
     def _keep(self, loc, paths, project, memo):
         content = self.content._keep(loc, paths, project, memo)
@@ -1212,13 +1223,13 @@ class Union(Schema):
         return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
-        nodes = Schema._path(self, loc, path, parents, memo)
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, memo):
+            yield nodes
         if nodes is None:
             for possibility in self._possibilities:
-                nodes = possibility._path(loc, path, (self,) + parents, memo)
-                if nodes is not None:
-                    return nodes
-        return nodes
+                for nodes in possibility._path(loc, path, (self,) + parents, memo):
+                    yield nodes
 
     def _keep(self, loc, paths, project, memo):
         possibilities = []
@@ -1534,13 +1545,13 @@ class Record(Schema):
         return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
-        nodes = Schema._path(self, loc, path, parents, memo)
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, memo):
+            yield nodes
         if nodes is None:
             for n, x in self._fields.items():
-                nodes = x._path(loc + (n,), path, (self,) + parents, memo)
-                if nodes is not None:
-                    return nodes
-        return nodes
+                for nodes in x._path(loc + (n,), path, (self,) + parents, memo):
+                    yield nodes
 
     def _keep(self, loc, paths, project, memo):
         fields = OrderedDict()
@@ -1846,13 +1857,13 @@ class Tuple(Schema):
         return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
-        nodes = Schema._path(self, loc, path, parents, memo)
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, memo):
+            yield nodes
         if nodes is None:
             for i, x in enumerate(self._types):
-                nodes = x._path(loc + (str(i),), path, (self,) + parents, memo)
-                if nodes is not None:
-                    return nodes
-        return nodes
+                for nodes in x._path(loc + (str(i),), path, (self,) + parents, memo):
+                    yield nodes
 
     def _keep(self, loc, paths, project, memo):
         types = []
@@ -2143,13 +2154,14 @@ class Pointer(Schema):
         return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
-        nodes = Schema._path(self, loc, path, parents, memo)
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, memo):
+            yield nodes
         if nodes is None:
-            if id(self) in memo:
-                return None
-            memo.add(id(self))
-            return self._target._path(loc, path, (self,) + parents, memo)
-        return nodes
+            if id(self) not in memo:
+                memo.add(id(self))
+                for nodes in self._target._path(loc, path, (self,) + parents, memo):
+                    yield nodes
         
     def _keep(self, loc, paths, project, memo):
         if id(self) in memo:

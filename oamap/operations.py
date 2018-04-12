@@ -277,8 +277,16 @@ def mask(data, path, low, high=None):
 
 ################################################################ merge
 
-def merge(data, one, two):    # one and two are paths
-    raise NotImplementedError
+def merge(data, *paths):
+    if isinstance(data, oamap.proxy.Proxy):
+        HERE
+
+
+
+
+
+    else:
+        raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ flatten
 
