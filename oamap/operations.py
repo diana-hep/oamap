@@ -344,10 +344,18 @@ def {fill}({data}, {pointers}{params}):
         pointers = numpy.empty(data._length, dtype=oamap.generator.PointerGenerator.posdtype)
         numitems = fill(*((data, pointers) + args))
         offsets = numpy.array([0, numitems], dtype=data._generator.posdtype)
+        pointers = pointers[:numitems]
+
+        if isinstance(data._generator.content, oamap.generator.PointerGenerator):
+            if isinstance(data._generator.content, oamap.generator.Masked):
+                raise NotImplementedError("nullable; need to merge masks")
+            innerpointers = data._generator.content._getpositions(data._arrays, data._cache)
+            pointers = innerpointers[pointers]
+            schema.content.target = schema.content.target.target
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
         arrays.put(schema, offsets[:-1], offsets[1:])
-        arrays.put(schema.content, pointers[:numitems])
+        arrays.put(schema.content, pointers)
         return schema(arrays)
 
     elif fieldname is not None and isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.RecordGenerator) and fieldname in data._generator.content.fields and isinstance(data._generator.content.fields[fieldname], oamap.generator.ListGenerator):
@@ -398,10 +406,18 @@ def {fill}({data}, {innerstarts}, {stops}, {pointers}{params}):
         offsets[0] = 0
         pointers = numpy.empty(innerstops.max(), dtype=oamap.generator.PointerGenerator.posdtype)
         numitems = fill(*((data, innerstarts, offsets[1:], pointers) + args))
+        pointers = pointers[:numitems]
+
+        if isinstance(data._generator.content.fields[fieldname].content, oamap.generator.PointerGenerator):
+            if isinstance(data._generator.content.fields[fieldname].content, oamap.generator.Masked):
+                raise NotImplementedError("nullable; need to merge masks")
+            innerpointers = data._generator.content.fields[fieldname].content._getpositions(data._arrays, data._cache)
+            pointers = innerpointers[pointers]
+            schema.content[fieldname].content.target = schema.content[fieldname].content.target.target
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
         arrays.put(schema.content[fieldname], offsets[:-1], offsets[1:])
-        arrays.put(schema.content[fieldname].content, pointers[:numitems])
+        arrays.put(schema.content[fieldname].content, pointers)
         return schema(arrays)
         
     elif fieldname is None:
@@ -499,9 +515,9 @@ def {fill}({data}, {primitive}, {mask}{params}):
 
 ################################################################ quick test
 
-from oamap.schema import *
+# from oamap.schema import *
 
-dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
+# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
 # dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
 
