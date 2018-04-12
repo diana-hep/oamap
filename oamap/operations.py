@@ -215,25 +215,24 @@ def split(data, *paths):
 
         for path in paths:
             for nodes in schema.paths(path, parents=True):
-                if len(nodes) >= 4 and isinstance(nodes[1], oamap.schema.Record) and isinstance(nodes[2], oamap.schema.List) and isinstance(nodes[3], oamap.schema.Record):
-                    datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
-                    for n, x in innernode.fields.items():
-                        if x is datanode:
-                            innername = n
-                            break
-                    for n, x in outernode.fields.items():
-                        if x is listnode:
-                            outername = n
-                            break
-
-                    del innernode[innername]
-                    if len(innernode.fields) == 0:
-                        del outernode[outername]
-
-                    outernode[innername] = listnode.copy(content=datanode)
-
-                else:
+                if len(nodes) < 4 or not isinstance(nodes[1], oamap.schema.Record) or not isinstance(nodes[2], oamap.schema.List) or not isinstance(nodes[3], oamap.schema.Record):
                     raise TypeError("path {0} matches a field that is not in a Record(List(Record({{field: ...}})))".format(repr(path)))
+
+                datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
+                for n, x in innernode.fields.items():
+                    if x is datanode:
+                        innername = n
+                        break
+                for n, x in outernode.fields.items():
+                    if x is listnode:
+                        outername = n
+                        break
+
+                del innernode[innername]
+                if len(innernode.fields) == 0:
+                    del outernode[outername]
+
+                outernode[innername] = listnode.copy(content=datanode)
 
         return schema(data._arrays)
 
@@ -242,14 +241,59 @@ def split(data, *paths):
 
 ################################################################ merge
 
-def merge(data, *paths):
+def merge(data, container, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
+
+        try:
+            nodes = schema.path(container, parents=True)
+        except ValueError:
+            try:
+                slash = container.rindex("/")
+            except ValueError:
+                nodes = (data,)
+            else:
+                tofind, tomake = container[:slash], container[slash + 1:]
+                nodes = schema.path(tofind, parents=True)
+
+            while isinstance(nodes[0], oamap.schema.List):
+                nodes = (nodes[0].content,) + nodes
+            if not isinstance(nodes[0], oamap.schema.Record):
+                raise TypeError("container parent {0} is not a record".format(repr(tofind)))
+            nodes[0][tomake] = oamap.schema.Record({})
+            nodes = (nodes[0][tomake],) + nodes
+
+        if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.Record) or not isinstance(nodes[1], oamap.schema.List):
+            raise TypeError("container must be a List(Record(...))")
         
+        containerrecord, containerlist = nodes[0], nodes[1]
+        parents = nodes[2:]
+        listnodes = []
 
+        for path in paths:
+            for nodes in schema.paths(path, parents=True):
+                if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.List) or not isinstance(nodes[1], oamap.schema.Record) or nodes[2:] != parents:
+                    raise TypeError("".format(repr(path)))
 
+                listnode, outernode = nodes[0], nodes[1]
+                listnodes.append(listnode)
 
+                for n, x in outernode.fields.items():
+                    if x is listnode:
+                        outername = n
+                        break
 
+                del outernode[outername]
+                containerrecord[outername] = listnode.contents
+
+        containerstarts, containerstops = data._generator.findbynames("List", starts=containerlist.starts, stops=containerlist.stops)._getstartsstops(data._arrays, data._cache)
+
+        for listnode in listnodes:
+            liststarts, liststops = data._generator.findbynames("List", starts=listnode.starts, stops=listnode.stops)._getstartsstops(data._arrays, data._cache)
+            if not (liststarts is containerstarts or numpy.array_equal(liststarts, containerstarts)) and (liststops is containerstops or numpy.array_equal(liststops, containerstops)):
+                raise ValueError("")
+
+        return schema(data._arrays)
 
     else:
         raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
