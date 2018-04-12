@@ -279,6 +279,9 @@ class Schema(object):
     def drop(self, *paths):
         return self._drop((), paths, {})
 
+    def contains(self, schema):
+        return self._contains(schema, set())
+
     def _normalize_extension(self, extension):
         if isinstance(extension, ModuleType):
             recurse = False
@@ -572,6 +575,9 @@ class Primitive(Schema):
 
     def _drop(self, loc, paths, memo):
         return self.deepcopy()
+
+    def _contains(self, schema, memo):
+        return self == schema
 
     def __hash__(self):
         return hash((Primitive, self._dtype, self._nullable, self._data, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
@@ -872,6 +878,12 @@ class List(Schema):
             return None
         else:
             return self.copy(content=content)
+
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return self._content._contains(schema, memo)
 
     def __hash__(self):
         return hash((List, self._content, self._nullable, self._starts, self._stops, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
@@ -1226,6 +1238,12 @@ class Union(Schema):
                 possibilities.append(p)
         return self.copy(possibilities)
 
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return any(x._contains(schema, memo) for x in self._possibilities)
+
     def __hash__(self):
         return hash((Union, self._possibilities, self._nullable, self._tags, self._offsets, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -1551,6 +1569,12 @@ class Record(Schema):
         else:
             return self.copy(fields=fields)
 
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return any(x._contains(schema, memo) for x in self._fields.values())
+
     def __hash__(self):
         return hash((Record, tuple(self._fields.items()), self._nullable, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -1859,6 +1883,12 @@ class Tuple(Schema):
         else:
             return self.copy(types=types)
 
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return any(x._contains(schema, memo) for x in self._types)
+
     def __hash__(self):
         return hash((Tuple, self._types, self._nullable, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
@@ -2140,6 +2170,15 @@ class Pointer(Schema):
         else:
             memo[id(self)]._target = target
             return memo[id(self)]
+
+    def _contains(self, schema, memo):
+        if id(self) in memo:
+            return False
+        memo.add(id(self))
+        if self == schema:
+            return True
+        else:
+            return self._target._contains(schema, memo)
 
     def __hash__(self):
         return hash((Pointer, self._target, self._nullable, self._positions, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
