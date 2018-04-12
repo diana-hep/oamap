@@ -162,6 +162,22 @@ class DualSource(object):
         if hasattr(self.new, "close"):
             self.new.close()
 
+def _setindexes(input, output):
+    if isinstance(input, oamap.proxy.ListProxy):
+        output._whence, output._stride, output._length = input._whence, input._stride, input._length
+    elif isinstance(input, oamap.proxy.RecordProxy):
+        output._index = input._index
+    elif isinstance(input, oamap.proxy.TupleProxy):
+        output._index = input._index
+    else:
+        raise AssertionError(type(input))
+    return output
+    
+################################################################ rename
+
+def rename(data, path, fieldname):
+    raise NotImplementedError
+
 ################################################################ project/keep/drop
 
 def project(data, path):
@@ -169,17 +185,7 @@ def project(data, path):
         schema = data._generator.namedschema().project(path)
         if schema is None:
             raise TypeError("projection resulted in no schema")
-        out = schema(data._arrays)
-        if isinstance(data, oamap.proxy.ListProxy):
-            out._whence, out._stride, out._length = data._whence, data._stride, data._length
-        elif isinstance(data, oamap.proxy.RecordProxy):
-            out._index = data._index
-        elif isinstance(data, oamap.proxy.TupleProxy):
-            out._index = data._index
-        else:
-            raise AssertionError(type(data))
-        return out
-
+        return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("project can only be applied to an OAMap proxy (List, Record, Tuple)")
 
@@ -188,17 +194,7 @@ def keep(data, *paths):
         schema = data._generator.namedschema().keep(*paths)
         if schema is None:
             raise TypeError("keep operation resulted in no schema")
-        out = schema(data._arrays)
-        if isinstance(data, oamap.proxy.ListProxy):
-            out._whence, out._stride, out._length = data._whence, data._stride, data._length
-        elif isinstance(data, oamap.proxy.RecordProxy):
-            out._index = data._index
-        elif isinstance(data, oamap.proxy.TupleProxy):
-            out._index = data._index
-        else:
-            raise AssertionError(type(data))
-        return out
-
+        return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("keep can only be applied to an OAMap proxy (List, Record, Tuple)")
 
@@ -207,19 +203,56 @@ def drop(data, *paths):
         schema = data._generator.namedschema().drop(*paths)
         if schema is None:
             raise TypeError("drop operation resulted in no schema")
-        out = schema(data._arrays)
-        if isinstance(data, oamap.proxy.ListProxy):
-            out._whence, out._stride, out._length = data._whence, data._stride, data._length
-        elif isinstance(data, oamap.proxy.RecordProxy):
-            out._index = data._index
-        elif isinstance(data, oamap.proxy.TupleProxy):
-            out._index = data._index
-        else:
-            raise AssertionError(type(data))
-        return out
-
+        return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("drop can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+################################################################ split
+
+def split(data, *paths):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+
+        for path in paths:
+            for nodes in schema.paths(path, parents=True):
+                if len(nodes) >= 4 and isinstance(nodes[1], oamap.schema.Record) and isinstance(nodes[2], oamap.schema.List) and isinstance(nodes[3], oamap.schema.Record):
+                    datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
+                    for n, x in innernode.fields.items():
+                        if x is datanode:
+                            innername = n
+                            break
+                    for n, x in outernode.fields.items():
+                        if x is listnode:
+                            outername = n
+                            break
+
+                    del innernode[innername]
+                    if len(innernode.fields) == 0:
+                        del outernode[outername]
+
+                    outernode[innername] = listnode.copy(content=datanode)
+
+                else:
+                    raise TypeError("path {0} matches a field that is not in a Record(List(Record({{field: ...}})))".format(repr(path)))
+
+        return schema(data._arrays)
+
+    else:
+        raise TypeError("split can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+################################################################ merge
+
+def merge(data, *paths):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+        
+
+
+
+
+
+    else:
+        raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ mask
 
@@ -261,32 +294,10 @@ def mask(data, path, low, high=None):
         else:
             raise NotImplementedError("mask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(path), node.__repr__(indent="    ")))
 
-        out = schema(arrays)
-        if isinstance(data, oamap.proxy.ListProxy):
-            out._whence, out._stride, out._length = data._whence, data._stride, data._length
-        elif isinstance(data, oamap.proxy.RecordProxy):
-            out._index = data._index
-        elif isinstance(data, oamap.proxy.TupleProxy):
-            out._index = data._index
-        else:
-            raise AssertionError(type(data))
-        return out
+        return _setindexes(data, schema(arrays))
 
     else:
         raise TypeError("mask can only be applied to an OAMap proxy (List, Record, Tuple)")
-
-################################################################ merge
-
-def merge(data, *paths):
-    if isinstance(data, oamap.proxy.Proxy):
-        HERE
-
-
-
-
-
-    else:
-        raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ flatten
 
@@ -394,6 +405,9 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         arrays.put(listnode, offsets[:-1], offsets[1:])
         arrays.put(listnode.content, pointers)
         return schema(arrays)
+
+    else:
+        raise TypeError("filter can only be applied to a top-level List(...)")
 
 ################################################################ define
 
@@ -512,7 +526,7 @@ def {fill}({view}, {primitive}, {mask}{params}):
 
 # dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
 
-# dataset = List(Record(dict(x=List(Record({"xx": "int"})), y="double"))).fromdata([{"x": [{"xx": 1}, {"xx": 2}], "y": 1.1}, {"x": [], "y": 2.2}, {"x": [{"xx": 3}], "y": 3.3}])
+# dataset = List(Record(dict(x=List(Record({"xx": "int", "yy": "double"})), y="double"))).fromdata([{"x": [{"xx": 1, "yy": 1.1}, {"xx": 2, "yy": 2.2}], "y": 1.1}, {"x": [], "y": 2.2}, {"x": [{"xx": 3, "yy": 3.3}], "y": 3.3}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
 
