@@ -38,9 +38,6 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 
-if sys.version_info[0] < 3:
-    range = xrange
-
 ################################################################ utilities
 
 def newvar(avoid, trial=None):
@@ -364,29 +361,60 @@ def mask(data, path, low, high=None):
 
 ################################################################ flatten
 
-# FIXME: at=""
-
-def flatten(data):
-    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1 and isinstance(data._generator.content, oamap.generator.ListGenerator):
-        if isinstance(data._generator, oamap.generator.Masked) or isinstance(data._generator.content, oamap.generator.Masked):
+def flatten(data, at="", numba=True):
+    if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
+        schema = data._generator.namedschema()
+        outernode = schema.path(at)
+        if not isinstance(outernode, oamap.schema.List) or not isinstance(outernode.content, oamap.schema.List):
+            raise TypeError("path {0} does not refer to a list within a list:\n\n    {1}".format(repr(at), outernode.__repr__(indent="    ")))
+        innernode = outernode.content
+        if outernode.nullable or innernode.nullable:
             raise NotImplementedError("nullable; need to merge masks")
 
-        schema = data._generator.namedschema()
-        schema.content = schema.content.content
+        outergenerator = data._generator.findbynames("List", outernode.namespace, starts=outernode.starts, stops=outernode.stops)
+        outerstarts, outerstops = outergenerator._getstartsstops(data._arrays, data._cache)
+        innergenerator = data._generator.findbynames("List", innernode.namespace, starts=innernode.starts, stops=innernode.stops)
+        innerstarts, innerstops = innergenerator._getstartsstops(data._arrays, data._cache)
 
-        starts, stops = data._generator.content._getstartsstops(data._arrays, data._cache)
+        if not numpy.array_equal(innerstarts[1:], innerstops[:-1]):
+            raise NotImplementedError("inner arrays are not contiguous: flatten would require the creation of pointers")
+
+        avoid = set()
+        fillname = newvar(avoid, "fill")
+        lenname = newvar(avoid, "len")
+        rangename = newvar(avoid, "range")
+
+        env = {lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
+        exec("""
+def {fill}({outerstarts}, {outerstops}, {innerstarts}, {innerstops}, {starts}, {stops}):
+    for {i} in {range}({len}({outerstarts})):
+        {starts}[{i}] = {innerstarts}[{outerstarts}[{i}]]
+        {stops}[{i}] = {innerstops}[{outerstops}[{i}] - 1]
+""".format(fill=fillname,
+           outerstarts=newvar(avoid, "outerstarts"),
+           outerstops=newvar(avoid, "outerstops"),
+           innerstarts=newvar(avoid, "innerstarts"),
+           innerstops=newvar(avoid, "innerstops"),
+           starts=newvar(avoid, "starts"),
+           stops=newvar(avoid, "stops"),
+           i=newvar(avoid, "i"),
+           range=rangename,
+           len=lenname), env)
+
+        fill = trycompile(numba)(env[fillname])
+
+        starts = numpy.empty(len(outerstarts), dtype=oamap.generator.ListGenerator.posdtype)
+        stops = numpy.empty(len(outerstops), dtype=oamap.generator.ListGenerator.posdtype)
+        fill(outerstarts, outerstops, innerstarts, innerstops, starts, stops)
+
+        outernode.content = innernode.content
 
         arrays = DualSource(data._arrays, data._generator.namespaces())
-
-        if numpy.array_equal(starts[1:], stops[:-1]):
-            # important special case: contiguous
-            arrays.put(schema, starts[:1], stops[-1:])
-            return schema(arrays)
-        else:
-            raise NotImplementedError("non-contiguous arrays: have to do some sort of concatenation")
+        arrays.put(outernode, starts, stops)
+        return schema(arrays)
 
     else:
-        raise TypeError("flatten can only be applied to List(List(...))")
+        raise TypeError("flatten can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
 
 ################################################################ filter
 
@@ -397,7 +425,7 @@ def filter(data, fcn, args=(), at="", numba=True):
         except TypeError:
             args = (args,)
 
-    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
+    if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
         schema = data._generator.namedschema()
         listnode = schema.path(at)
         if not isinstance(listnode, oamap.schema.List):
@@ -421,7 +449,7 @@ def filter(data, fcn, args=(), at="", numba=True):
         rangename = newvar(avoid, "range")
 
         fcn = trycompile(numba)(fcn)
-        env = {fcnname: fcn, lenname: len, rangename: xrange if sys.version_info[0] <= 2 else range}
+        env = {fcnname: fcn, lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
         exec("""
 def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
     {numitems} = 0
@@ -470,7 +498,7 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         return schema(arrays)
 
     else:
-        raise TypeError("filter can only be applied to a top-level List(...)")
+        raise TypeError("filter can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
 
 ################################################################ define
 
@@ -481,7 +509,7 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
         except TypeError:
             args = (args,)
 
-    if isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1:
+    if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
         schema = data._generator.namedschema()
         nodes = schema.path(at, parents=True)
         while isinstance(nodes[0], oamap.schema.List):
@@ -579,11 +607,14 @@ def {fill}({view}, {primitive}, {mask}{params}):
             raise NotImplementedError("define not implemented for fieldtype:\n\n    {0}".format(fieldtype.__repr__(indent="    ")))
 
     else:
-        raise TypeError("define can only be applied to a top-level List(...)")
+        raise TypeError("define can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
 
 ################################################################ quick test
 
 # from oamap.schema import *
+
+# dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
+
 
 # dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
 
