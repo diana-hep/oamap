@@ -46,7 +46,7 @@ def _newvar(avoid, trial=None):
     avoid.add(trial)
     return trial
 
-def paramtypes(*args):
+def paramtypes(args):
     try:
         import numba as nb
     except ImportError:
@@ -482,7 +482,17 @@ def filter(data, fcn, args=(), at="", numba=True):
         lenname = _newvar(avoid, "len")
         rangename = _newvar(avoid, "range")
 
-        fcn = trycompile(numba)(fcn)
+        ptypes = paramtypes(args)
+        if ptypes is not None:
+            import numba as nb
+            from oamap.compiler import typeof_generator
+            ptypes = (typeof_generator(view._generator.content),) + ptypes
+        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = returntype(fcn, ptypes)
+        if rtype is not None:
+            if rtype != nb.types.boolean:
+                raise TypeError("filter function must return boolean, not {0}".format(rtype))
+
         env = {fcnname: fcn, lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
         exec("""
 def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
@@ -509,7 +519,7 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
            j=_newvar(avoid, "j"),
            datum=_newvar(avoid, "datum"),
            fcn=fcnname), env)
-        fill = trycompile(numba)(env[fillname])
+        fill = trycompile(env[fillname], numba=numba)
 
         offsets = numpy.empty(len(viewstarts) + 1, dtype=oamap.generator.ListGenerator.posdtype)
         offsets[0] = 0
@@ -574,9 +584,21 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
         fcnname = _newvar(avoid, "fcn")
         fillname = _newvar(avoid, "fill")
 
-        fcn = trycompile(numba)(fcn)
+        ptypes = paramtypes(args)
+        if ptypes is not None:
+            import numba as nb
+            from oamap.compiler import typeof_generator
+            ptypes = (typeof_generator(view._generator.content),) + ptypes
+        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = returntype(fcn, ptypes)
 
         if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
+            if rtype is not None:
+                if rtype == nb.types.pyobject:
+                    raise TypeError("numba could not prove that the function's output type is:\n\n    {0}".format(fieldtype.__repr__(indent="    ")))
+                elif rtype != nb.from_dtype(fieldtype.dtype):
+                    raise TypeError("function returns {0} but fieldtype is set to:\n\n    {1}".format(rtype, fieldtype.__repr__(indent="    ")))
+
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {primitive}{params}):
@@ -591,7 +613,7 @@ def {fill}({view}, {primitive}{params}):
            i=_newvar(avoid, "i"),
            datum=_newvar(avoid, "datum"),
            fcn=fcnname), env)
-            fill = trycompile(numba)(env[fillname])
+            fill = trycompile(env[fillname], numba=numba)
 
             primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
             fill(*((view, primitive) + args))
@@ -601,6 +623,10 @@ def {fill}({view}, {primitive}{params}):
             return schema(arrays)
 
         elif isinstance(fieldtype, oamap.schema.Primitive):
+            if rtype is not None:
+                if rtype != nb.types.optional(nb.from_dtype(fieldtype.dtype)):
+                    raise TypeError("function returns {0} but fieldtype is set to:\n\n    {1}".format(rtype, fieldtype.__repr__(indent="    ")))
+
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {primitive}, {mask}{params}):
@@ -627,7 +653,7 @@ def {fill}({view}, {primitive}, {mask}{params}):
            tmp=_newvar(avoid, "tmp"),
            fcn=fcnname,
            maskedvalue=oamap.generator.Masked.maskedvalue), env)
-            fill = trycompile(numba)(env[fillname])
+            fill = trycompile(env[fillname], numba=numba)
             
             primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
             mask = numpy.empty(len(view), dtype=oamap.generator.Masked.maskdtype)
@@ -655,7 +681,7 @@ def reduce(data, init, fcn, args=(), at="", numba=True):
 
 from oamap.schema import *
 
-dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
+# dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
 
 # dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
 
@@ -664,11 +690,13 @@ dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [],
 
 # dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
-# dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
+dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
 
 # dataset = List(Record(dict(x=List(Record({"xx": "int", "yy": "double"})), y="double"))).fromdata([{"x": [{"xx": 1, "yy": 1.1}, {"xx": 2, "yy": 2.2}], "y": 1.1}, {"x": [], "y": 2.2}, {"x": [{"xx": 3, "yy": 3.3}], "y": 3.3}])
 
 # dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
+
+# dataset = List("int").fromdata([1, 2, 3, 4, 5])
 
 # dataset = List(List(List("int"))).fromdata([[[1, 2, 3], [4, 5], []], [], [[6], [7, 8]]])
 
