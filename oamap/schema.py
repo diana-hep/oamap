@@ -259,12 +259,20 @@ class Schema(object):
         return self.replace(lambda x: x, **replacements)
 
     def path(self, path, parents=False):
+        out = None
         for nodes in self._path((), path, (), set()):
-            if parents:
-                return nodes
+            if out is None:
+                if parents:
+                    out = nodes
+                else:
+                    out = nodes[0]
             else:
-                return nodes[0]
-        raise ValueError("path {0} does not match any fields in the schema".format(repr(path)))
+                raise ValueError("path {0} matches more than one field in schema".format(repr(path)))
+
+        if out is None:
+            raise ValueError("path {0} does not match any fields in the schema".format(repr(path)))
+        else:
+            return out
 
     def paths(self, *paths, **options):
         parents = options.pop("parents", False)

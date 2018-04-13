@@ -172,8 +172,24 @@ def _setindexes(input, output):
     
 ################################################################ rename
 
-def rename(data, path, fieldname):
-    raise NotImplementedError
+def fieldname(data, path, newname):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+        nodes = schema.path(path, parents=True)
+        if len(nodes) < 2:
+            raise TypeError("path {0} did not match a field in a record".format(repr(path)))
+
+        for n, x in nodes[1].fields.items():
+            if x is nodes[0]:
+                oldname = n
+                break
+
+        del nodes[1][oldname]
+        nodes[1][newname] = nodes[0]
+        return _setindexes(data, schema(data._arrays))
+        
+    else:
+        raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ project/keep/drop
 
@@ -361,7 +377,7 @@ def mask(data, path, low, high=None):
 
 ################################################################ flatten
 
-def flatten(data, at="", numba=True):
+def flatten(data, at=""):
     if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
         schema = data._generator.namedschema()
         outernode = schema.path(at)
@@ -379,33 +395,8 @@ def flatten(data, at="", numba=True):
         if not numpy.array_equal(innerstarts[1:], innerstops[:-1]):
             raise NotImplementedError("inner arrays are not contiguous: flatten would require the creation of pointers")
 
-        avoid = set()
-        fillname = newvar(avoid, "fill")
-        lenname = newvar(avoid, "len")
-        rangename = newvar(avoid, "range")
-
-        env = {lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
-        exec("""
-def {fill}({outerstarts}, {outerstops}, {innerstarts}, {innerstops}, {starts}, {stops}):
-    for {i} in {range}({len}({outerstarts})):
-        {starts}[{i}] = {innerstarts}[{outerstarts}[{i}]]
-        {stops}[{i}] = {innerstops}[{outerstops}[{i}] - 1]
-""".format(fill=fillname,
-           outerstarts=newvar(avoid, "outerstarts"),
-           outerstops=newvar(avoid, "outerstops"),
-           innerstarts=newvar(avoid, "innerstarts"),
-           innerstops=newvar(avoid, "innerstops"),
-           starts=newvar(avoid, "starts"),
-           stops=newvar(avoid, "stops"),
-           i=newvar(avoid, "i"),
-           range=rangename,
-           len=lenname), env)
-
-        fill = trycompile(numba)(env[fillname])
-
-        starts = numpy.empty(len(outerstarts), dtype=oamap.generator.ListGenerator.posdtype)
-        stops = numpy.empty(len(outerstops), dtype=oamap.generator.ListGenerator.posdtype)
-        fill(outerstarts, outerstops, innerstarts, innerstops, starts, stops)
+        starts = innerstarts[outerstarts]
+        stops  = innerstops[outerstops - 1]
 
         outernode.content = innernode.content
 
@@ -611,9 +602,9 @@ def {fill}({view}, {primitive}, {mask}{params}):
 
 ################################################################ quick test
 
-# from oamap.schema import *
+from oamap.schema import *
 
-# dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
+dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
 
 
 # dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
