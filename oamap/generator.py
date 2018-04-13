@@ -195,8 +195,8 @@ class Generator(object):
     def namedschema(self):
         return self._namedschema({})
 
-    def findbynames(self, schematype, **names):
-        return self._findbynames(schematype, names, set())
+    def findbynames(self, schematype, namespace, **names):
+        return self._findbynames(schematype, namespace, names, set())
 
     def case(self, obj):
         return self.schema.case(obj)
@@ -352,8 +352,8 @@ class PrimitiveGenerator(Generator):
             memo[id(self)] = self.schema.copy(data=self.data)
         return memo[id(self)]
 
-    def _findbynames(self, schematype, names, memo):
-        if schematype == "Primitive" and names.get("data", None) == self.data and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Primitive" and namespace == self.namespace and names.get("data", None) == self.data and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
             return self
         else:
             return None
@@ -478,11 +478,11 @@ class ListGenerator(Generator):
         memo[id(self)].content = self.content._namedschema(memo)
         return memo[id(self)]
 
-    def _findbynames(self, schematype, names, memo):
-        if schematype == "List" and names.get("starts", None) == self.starts and names.get("stops", None) == self.stops and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "List" and namespace == self.namespace and names.get("starts", None) == self.starts and names.get("stops", None) == self.stops and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
             return self
         else:
-            return self.content._findbynames(schematype, names, memo)
+            return self.content._findbynames(schematype, namespace, names, memo)
 
 class MaskedListGenerator(Masked, ListGenerator):
     def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema):
@@ -612,12 +612,12 @@ class UnionGenerator(Generator):
         memo[id(self)].possibilities = [x._namedschema(memo) for x in self.possibilities]
         return memo[id(self)]
 
-    def _findbynames(self, schematype, names, memo):
-        if schematype == "Union" and names.get("tags", None) == self.tags and names.get("offsets", None) == self.offsets and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Union" and namespace == self.namespace and names.get("tags", None) == self.tags and names.get("offsets", None) == self.offsets and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
             return self
         else:
             for possibility in self.possibilities:
-                out = possibility._findbynames(schematype, names, memo)
+                out = possibility._findbynames(schematype, namespace, names, memo)
                 if out is not None:
                     return out
             return None
@@ -702,12 +702,12 @@ class RecordGenerator(Generator):
             memo[id(self)][n] = self.fields[n]._namedschema(memo)
         return memo[id(self)]
 
-    def _findbynames(self, schematype, names, memo):
-        if schematype == "Record" and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Record" and namespace == self.namespace and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
             return self
         else:
             for x in self.fields.values():
-                out = x._findbynames(schematype, names, memo)
+                out = x._findbynames(schematype, namespace, names, memo)
                 if out is not None:
                     return out
             return None
@@ -791,12 +791,12 @@ class TupleGenerator(Generator):
         memo[id(self)].types = tuple(x._namedschema(memo) for x in self.types)
         return memo[id(self)]
 
-    def _findbynames(self, schematype, names, memo):
-        if schematype == "Tuple" and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Tuple" and namespace == self.namespace and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
             return self
         else:
             for x in self.types:
-                out = x._findbynames(schematype, names, memo)
+                out = x._findbynames(schematype, namespace, names, memo)
                 if out is not None:
                     return out
             return None
@@ -905,14 +905,14 @@ class PointerGenerator(Generator):
         memo[id(self)].target = self.target._namedschema(memo)
         return memo[id(self)]
 
-    def _findbynames(self, schematype, names, memo):
-        if schematype == "Pointer" and names.get("positions", None) == self.positions and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Pointer" and namespace == self.namespace and names.get("positions", None) == self.positions and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
             return self
         else:
             if id(self) in memo:
                 return None
             memo.add(id(self))
-            return self.target._findbynames(schematype, names, memo)
+            return self.target._findbynames(schematype, namespace, names, memo)
 
 class MaskedPointerGenerator(Masked, PointerGenerator):
     def __init__(self, mask, maskidx, positions, positionsidx, target, namespace, packing, name, derivedname, schema):
@@ -986,8 +986,8 @@ class ExtendedGenerator(Generator):
     def _namedschema(self, memo):
         return self.generic._namedschema(memo)
 
-    def _findbynames(self, schematype, names, memo):
-        return self.generic._findbynames(schematype, names, memo)
+    def _findbynames(self, schematype, namespace, names, memo):
+        return self.generic._findbynames(schematype, namespace, names, memo)
 
     @classmethod
     def matches(cls, schema):

@@ -245,53 +245,72 @@ def merge(data, container, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
 
+        constructed = False
         try:
             nodes = schema.path(container, parents=True)
+
         except ValueError:
             try:
                 slash = container.rindex("/")
             except ValueError:
-                nodes = (data,)
+                nodes = (schema,)
+                tomake = container
             else:
                 tofind, tomake = container[:slash], container[slash + 1:]
                 nodes = schema.path(tofind, parents=True)
+                container = tofind
 
             while isinstance(nodes[0], oamap.schema.List):
                 nodes = (nodes[0].content,) + nodes
             if not isinstance(nodes[0], oamap.schema.Record):
-                raise TypeError("container parent {0} is not a record".format(repr(tofind)))
-            nodes[0][tomake] = oamap.schema.Record({})
-            nodes = (nodes[0][tomake],) + nodes
+                raise TypeError("container parent {0} is not a record".format(repr(container)))
+            nodes[0][tomake] = oamap.schema.List(oamap.schema.Record({}))
+            nodes = (nodes[0][tomake].content, nodes[0][tomake]) + nodes
+            constructed = True
 
+        else:
+            while isinstance(nodes[0], oamap.schema.List):
+                nodes = (nodes[0].content,) + nodes
+            
         if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.Record) or not isinstance(nodes[1], oamap.schema.List):
             raise TypeError("container must be a List(Record(...))")
         
         containerrecord, containerlist = nodes[0], nodes[1]
         parents = nodes[2:]
         listnodes = []
+        if not constructed:
+            listnodes.append(containerlist)
 
         for path in paths:
             for nodes in schema.paths(path, parents=True):
-                if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.List) or not isinstance(nodes[1], oamap.schema.Record) or nodes[2:] != parents:
+                if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.List) or nodes[1:] != parents:
                     raise TypeError("".format(repr(path)))
 
                 listnode, outernode = nodes[0], nodes[1]
                 listnodes.append(listnode)
-
+                
                 for n, x in outernode.fields.items():
                     if x is listnode:
                         outername = n
                         break
 
                 del outernode[outername]
-                containerrecord[outername] = listnode.contents
+                containerrecord[outername] = listnode.content
 
-        containerstarts, containerstops = data._generator.findbynames("List", starts=containerlist.starts, stops=containerlist.stops)._getstartsstops(data._arrays, data._cache)
+        if len(listnodes) == 0:
+            raise TypeError("at least one path must match schema elements")
 
-        for listnode in listnodes:
-            liststarts, liststops = data._generator.findbynames("List", starts=listnode.starts, stops=listnode.stops)._getstartsstops(data._arrays, data._cache)
-            if not (liststarts is containerstarts or numpy.array_equal(liststarts, containerstarts)) and (liststops is containerstops or numpy.array_equal(liststops, containerstops)):
-                raise ValueError("")
+        if not all(x.namespace == listnodes[0].namespace and x.starts == listnodes[0].starts and x.stops == listnodes[0].stops for x in listnodes[1:]):
+            starts1, stops1 = data._generator.findbynames("List", listnodes[0].namespace, starts=listnodes[0].starts, stops=listnodes[0].stops)._getstartsstops(data._arrays, data._cache)
+            for x in listnodes[1:]:
+                starts2, stops2 = data._generator.findbynames("List", x.namespace, starts=x.starts, stops=x.stops)._getstartsstops(data._arrays, data._cache)
+                if not (starts1 is starts2 or numpy.array_equal(starts1, starts2)) and not (stops1 is stops2 or numpy.array_equal(stops1, stops2)):
+                    raise ValueError("some of the paths refer to lists of different lengths")
+
+        if constructed:
+            containerlist.namespace = listnodes[0].namespace
+            containerlist.starts = listnodes[0].starts
+            containerlist.stops = listnodes[0].stops
 
         return schema(data._arrays)
 
@@ -311,7 +330,7 @@ def mask(data, path, low, high=None):
         arrays = DualSource(data._arrays, data._generator.namespaces())
 
         if isinstance(node, oamap.schema.Primitive):
-            generator = data._generator.findbynames("Primitive", data=node.data, mask=node.mask)
+            generator = data._generator.findbynames("Primitive", node.namespace, data=node.data, mask=node.mask)
 
             primitive = generator._getdata(data._arrays, data._cache).copy()
             if node.nullable:
@@ -386,7 +405,7 @@ def filter(data, fcn, args=(), at="", numba=True):
         if listnode.nullable:
             raise NotImplementedError("nullable; need to merge masks")
 
-        listgenerator = data._generator.findbynames("List", starts=listnode.starts, stops=listnode.stops)
+        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
         viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
         viewschema = listgenerator.namedschema()
         viewarrays = DualSource(data._arrays, data._generator.namespaces())
@@ -478,7 +497,7 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
 
         recordnode[fieldname] = fieldtype.deepcopy()
 
-        listgenerator = data._generator.findbynames("List", starts=listnode.starts, stops=listnode.stops)
+        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
         viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
         viewschema = listgenerator.namedschema()
         viewarrays = DualSource(data._arrays, data._generator.namespaces())
@@ -565,6 +584,11 @@ def {fill}({view}, {primitive}, {mask}{params}):
 ################################################################ quick test
 
 # from oamap.schema import *
+
+# dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
+
+# dataset = List(Record({"muons": List(Record({"px": "double"})), "py": List("double")})).fromdata([{"muons": [{"px": 100.1}, {"px": 100.2}, {"px": 100.3}], "py": [1.1, 2.2, 3.3]}])
+# q = merge(dataset, "muons", "py")
 
 # dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
