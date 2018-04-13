@@ -671,15 +671,136 @@ def {fill}({view}, {primitive}, {mask}{params}):
 
 ################################################################ map
 
-def map(data, fcn, args=(), at="", outputtype="recarray", numba=True):
-    raise NotImplementedError
+def map(data, fcn, args=(), at="", names=None, numba=True):
+    if not isinstance(args, tuple):
+        try:
+            args = tuple(args)
+        except TypeError:
+            args = (args,)
 
-def reduce(data, init, fcn, args=(), at="", numba=True):
+    if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
+        listnode = data._generator.schema.path(at)
+        if not isinstance(lsitnode, oamap.schema.List):
+            raise TypeError("path {0} does not refer to a list:\n\n    {1}".format(repr(at), listnode.__repr__(indent="    ")))
+        if listnode.nullable:
+            raise NotImplementedError("nullable; need to merge masks")
+
+        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
+        viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+        viewschema = listgenerator.namedschema()
+        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
+        viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
+        view = viewschema(viewarrays)
+
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        avoid = set(params)
+        fcnname = _newvar(avoid, "fcn")
+        fillname = _newvar(avoid, "fill")
+
+        ptypes = paramtypes(args)
+        if ptypes is not None:
+            import numba as nb
+            from oamap.compiler import typeof_generator
+            ptypes = (typeof_generator(view._generator.content),) + ptypes
+        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = returntype(fcn, ptypes)
+
+        if rtype is None:
+            first = fcn(*((view[0],) + args))
+
+            if isinstance(first, numbers.Real):
+                out = numpy.empty(len(view), dtype=(numpy.int64 if isinstance(first, numbers.Integral) else numpy.float64))
+
+            elif isinstance(first, tuple) and len(first) > 0 and all(isinstance(x, numbers.Real) for x in first):
+                if names is None:
+                    names = ["f%d" % i for i in range(len(first))]
+                if len(names) != len(first):
+                    raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(first)))
+
+                out = numpy.empty(len(view), dtype=zip(names, [numpy.int64 if isinstance(x, numbers.Integral) else numpy.float64 for x in first]))
+
+            else:
+                raise TypeError("function must return tuples of numbers (rows of a table)")
+
+            out[0] = first
+            i = 1
+            if args == ():
+                for datum in view[1:]:
+                    out[i] = fcn(datum)
+                    i += 1
+            else:
+                for datum in view[1:]:
+                    out[i] = fcn(*((datum,) + args))
+                    i += 1
+                        
+        elif isinstance(rtype, (numba.types.Integer, numba.types.Float)):
+            out = numpy.empty(len(view), dtype=numpy.dtype(rtype.name))
+            env = {fcnname: fcn}
+            exec("""
+def {fill}({view}, {out}{params}):
+    {i} = 0
+    for {datum} in {view}:
+        {out}[{i}] = {fcn}({datum}{params})
+        {i} += 1
+""".format(fill=fillname,
+           view=_newvar(avoid, "view"),
+           out=_newvar(avoid, "out"),
+           params="".join("," + x for x in params[1:]),
+           i=_newvar(avoid, "i"),
+           datum=_newvar(avoid, "datum"),
+           fcn=fcnname), env)
+            fill = trycompile(env[fillname], numba=numba)
+            fill(*((view, out) + args))
+
+        elif isinstance(rtype, numba.types.Tuple) and len(rtype.types) > 0 and all(isinstance(x, (numba.types.Integer, numba.types.Float)) for x in rtype.types):
+            if names is None:
+                names = ["f%d" % i for i in range(len(rtype.types))]
+            if len(names) != len(rtype.types):
+                raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(rtype.types)))
+
+            out = numpy.empty(len(view), dtype=zip(names, [numpy.dtype(x.name) for x in rtype.types]))
+            outs = [out[n] for n in names]
+
+            outnames = [_newvar(avoid, "out" + i) for i in len(names)]
+            iname = _newvar(avoid, "i")
+            tmpname = _newvar(avoid, "tmp")
+            env = {fcnname: fcn}
+            exec("""
+def {fill}({view}, {outs}{params}):
+    {i} = 0
+    for {datum} in {view}:
+        {tmp} = {fcn}({datum}{params})
+        {assignments}
+        {i} += 1
+""".format(fill=fillname,
+           view=_newvar(avoid, "view"),
+           outs=",".join(outnames),
+           params="".join("," + x for x in params[1:]),
+           i=iname,
+           datum=_newvar(avoid, "datum"),
+           tmp=tmpname,
+           fcn=fcnname,
+           assignments="\n        ".join("{out}[{i}] = {tmp}[{j}]".format(out=out, i=iname, tmp=tmpname, j=j) for j, out in enumerate(outnames))), env)
+            fill = trycompile(env[fillname], numba=numba)
+            fill(*((view,) + outs + params))
+
+        else:
+            raise TypeError("function must return tuples of numbers (rows of a table)")
+
+        return out
+
+    else:
+        raise TypeError("map can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+################################################################ reduce
+
+def reduce(data, tally, fcn, args=(), at="", numba=True):
     raise NotImplementedError
 
 ################################################################ quick test
 
-from oamap.schema import *
+# from oamap.schema import *
 
 # dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
 
@@ -690,7 +811,7 @@ from oamap.schema import *
 
 # dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
 
-dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
+# dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
 
 # dataset = List(Record(dict(x=List(Record({"xx": "int", "yy": "double"})), y="double"))).fromdata([{"x": [{"xx": 1, "yy": 1.1}, {"xx": 2, "yy": 2.2}], "y": 1.1}, {"x": [], "y": 2.2}, {"x": [{"xx": 3, "yy": 3.3}], "y": 3.3}])
 
