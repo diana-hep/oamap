@@ -40,26 +40,54 @@ import oamap.proxy
 
 ################################################################ utilities
 
-def newvar(avoid, trial=None):
+def _newvar(avoid, trial=None):
     while trial is None or trial in avoid:
         trial = "v" + str(len(avoid))
     avoid.add(trial)
     return trial
 
-def trycompile(numba):
-    if numba is None or numba is False:
-        return lambda fcn: fcn
+def paramtypes(*args):
+    try:
+        import numba as nb
+    except ImportError:
+        return None
     else:
-        try:
-            import numba as nb
-        except ImportError:
-            return lambda fcn: fcn
+        return tuple(nb.typeof(x) for x in args)
+
+def trycompile(fcn, paramtypes=None, numba=True):
+    if numba is None or numba is False:
+        return fcn
+
+    try:
+        import numba as nb
+    except ImportError:
+        return fcn
+
+    if numba is True:
+        numbaopts = {}
+    else:
+        numbaopts = numba
+
+    if isinstance(fcn, nb.dispatcher.Dispatcher):
+        fcn = fcn.py_fcn
+
+    if paramtypes is None:
+        return nb.jit(**numbaopts)(fcn)
+    else:
+        return nb.jit(paramtypes, **numbaopts)(fcn)
+
+def returntype(fcn, paramtypes):
+    try:
+        import numba as nb
+    except ImportError:
+        return None
+
+    if isinstance(fcn, nb.dispatcher.Dispatcher):
+        overload = fcn.overloads.get(paramtypes, None)
+        if overload is None:
+            return None
         else:
-            if numba is True:
-                numbaopts = {}
-            else:
-                numbaopts = numba
-            return lambda fcn: fcn if isinstance(fcn, nb.dispatcher.Dispatcher) else nb.jit(**numbaopts)(fcn)
+            return overload.signature.return_type
 
 class DualSource(object):
     def __init__(self, old, oldns):
@@ -449,10 +477,10 @@ def filter(data, fcn, args=(), at="", numba=True):
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = newvar(avoid, "fcn")
-        fillname = newvar(avoid, "fill")
-        lenname = newvar(avoid, "len")
-        rangename = newvar(avoid, "range")
+        fcnname = _newvar(avoid, "fcn")
+        fillname = _newvar(avoid, "fill")
+        lenname = _newvar(avoid, "len")
+        rangename = _newvar(avoid, "range")
 
         fcn = trycompile(numba)(fcn)
         env = {fcnname: fcn, lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
@@ -468,18 +496,18 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         {stops}[{i}] = {numitems}
     return {numitems}
 """.format(fill=fillname,
-           view=newvar(avoid, "view"),
-           viewstarts=newvar(avoid, "viewstarts"),
-           viewstops=newvar(avoid, "viewstops"),
-           stops=newvar(avoid, "stops"),
-           pointers=newvar(avoid, "pointers"),
+           view=_newvar(avoid, "view"),
+           viewstarts=_newvar(avoid, "viewstarts"),
+           viewstops=_newvar(avoid, "viewstops"),
+           stops=_newvar(avoid, "stops"),
+           pointers=_newvar(avoid, "pointers"),
            params="".join("," + x for x in params[1:]),
-           numitems=newvar(avoid, "numitems"),
-           i=newvar(avoid, "i"),
+           numitems=_newvar(avoid, "numitems"),
+           i=_newvar(avoid, "i"),
            range=rangename,
            len=lenname,
-           j=newvar(avoid, "j"),
-           datum=newvar(avoid, "datum"),
+           j=_newvar(avoid, "j"),
+           datum=_newvar(avoid, "datum"),
            fcn=fcnname), env)
         fill = trycompile(numba)(env[fillname])
 
@@ -543,11 +571,12 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = newvar(avoid, "fcn")
-        fillname = newvar(avoid, "fill")
+        fcnname = _newvar(avoid, "fcn")
+        fillname = _newvar(avoid, "fill")
+
+        fcn = trycompile(numba)(fcn)
 
         if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
-            fcn = trycompile(numba)(fcn)
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {primitive}{params}):
@@ -556,11 +585,11 @@ def {fill}({view}, {primitive}{params}):
         {primitive}[{i}] = {fcn}({datum}{params})
         {i} += 1
 """.format(fill=fillname,
-           view=newvar(avoid, "view"),
-           primitive=newvar(avoid, "primitive"),
+           view=_newvar(avoid, "view"),
+           primitive=_newvar(avoid, "primitive"),
            params="".join("," + x for x in params[1:]),
-           i=newvar(avoid, "i"),
-           datum=newvar(avoid, "datum"),
+           i=_newvar(avoid, "i"),
+           datum=_newvar(avoid, "datum"),
            fcn=fcnname), env)
             fill = trycompile(numba)(env[fillname])
 
@@ -572,7 +601,6 @@ def {fill}({view}, {primitive}{params}):
             return schema(arrays)
 
         elif isinstance(fieldtype, oamap.schema.Primitive):
-            fcn = trycompile(numba)(fcn)
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {primitive}, {mask}{params}):
@@ -589,14 +617,14 @@ def {fill}({view}, {primitive}, {mask}{params}):
         {i} += 1
     return {numitems}
 """.format(fill=fillname,
-           view=newvar(avoid, "view"),
-           primitive=newvar(avoid, "primitive"),
-           mask=newvar(avoid, "mask"),
+           view=_newvar(avoid, "view"),
+           primitive=_newvar(avoid, "primitive"),
+           mask=_newvar(avoid, "mask"),
            params="".join("," + x for x in params[1:]),
-           i=newvar(avoid, "i"),
-           numitems=newvar(avoid, "numitems"),
-           datum=newvar(avoid, "datum"),
-           tmp=newvar(avoid, "tmp"),
+           i=_newvar(avoid, "i"),
+           numitems=_newvar(avoid, "numitems"),
+           datum=_newvar(avoid, "datum"),
+           tmp=_newvar(avoid, "tmp"),
            fcn=fcnname,
            maskedvalue=oamap.generator.Masked.maskedvalue), env)
             fill = trycompile(numba)(env[fillname])
@@ -615,15 +643,23 @@ def {fill}({view}, {primitive}, {mask}{params}):
     else:
         raise TypeError("define can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
 
+################################################################ map
+
+def map(data, fcn, args=(), at="", outputtype="recarray", numba=True):
+    raise NotImplementedError
+
+def reduce(data, init, fcn, args=(), at="", numba=True):
+    raise NotImplementedError
+
 ################################################################ quick test
 
 from oamap.schema import *
 
-# dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
+dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
 
 # dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
 
-dataset = List(Record({"muons": List(Record({"px": "double"})), "py": List("double")})).fromdata([{"muons": [{"px": 100.1}, {"px": 100.2}, {"px": 100.3}], "py": [1.1, 2.2, 3.3]}])
+# dataset = List(Record({"muons": List(Record({"px": "double"})), "py": List("double")})).fromdata([{"muons": [{"px": 100.1}, {"px": 100.2}, {"px": 100.3}], "py": [1.1, 2.2, 3.3]}])
 # q = merge(dataset, "muons", "py")
 
 # dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
