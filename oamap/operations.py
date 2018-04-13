@@ -796,7 +796,61 @@ def {fill}({view}, {outs}{params}):
 ################################################################ reduce
 
 def reduce(data, tally, fcn, args=(), at="", numba=True):
-    raise NotImplementedError
+    if not isinstance(args, tuple):
+        try:
+            args = tuple(args)
+        except TypeError:
+            args = (args,)
+
+    if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
+        listnode = data._generator.schema.path(at)
+        if not isinstance(lsitnode, oamap.schema.List):
+            raise TypeError("path {0} does not refer to a list:\n\n    {1}".format(repr(at), listnode.__repr__(indent="    ")))
+        if listnode.nullable:
+            raise NotImplementedError("nullable; need to merge masks")
+
+        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
+        viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+        viewschema = listgenerator.namedschema()
+        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
+        viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
+        view = viewschema(viewarrays)
+
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        avoid = set(params)
+        fcnname = _newvar(avoid, "fcn")
+        fillname = _newvar(avoid, "fill")
+
+        ptypes = paramtypes(args)
+        if ptypes is not None:
+            import numba as nb
+            from oamap.compiler import typeof_generator
+            ptypes = (typeof_generator(view._generator.content), numba.typeof(tally)) + ptypes
+        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = returntype(fcn, ptypes)
+
+        if rtype is not None:
+            if numba.typeof(tally) != rtype:
+                raise TypeError("function should return the same type as tally")
+
+        env = {fcnname: fcn}
+        exec("""
+def {fill}({view}, {tally}{params}):
+    for {datum} in {view}:
+        {tally} = {fcn}({datum}, {tally}{params})
+    return {tally}
+""".format(fill=fillname,
+           view=_newvar(avoid, "view"),
+           tally=_newvar(avoid, "tally"),
+           params="".join("," + x for x in params[1:]),
+           datum=_newvar(avoid, "datum"),
+           fcn=fcnname), env)
+            fill = trycompile(env[fillname], numba=numba)
+            return fill(*((view, tally) + args))
+
+    else:
+        raise TypeError("reduce can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
 
 ################################################################ quick test
 
