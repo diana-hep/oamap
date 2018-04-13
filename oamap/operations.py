@@ -170,7 +170,7 @@ def _setindexes(input, output):
         raise AssertionError(type(input))
     return output
     
-################################################################ rename
+################################################################ fieldname/recordname
 
 def fieldname(data, path, newname):
     if isinstance(data, oamap.proxy.Proxy):
@@ -186,6 +186,21 @@ def fieldname(data, path, newname):
 
         del nodes[1][oldname]
         nodes[1][newname] = nodes[0]
+        return _setindexes(data, schema(data._arrays))
+        
+    else:
+        raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+def recordname(data, path, newname):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+        nodes = schema.path(path, parents=True)
+        while isinstance(nodes[0], oamap.schema.List):
+            nodes = (nodes[0].content,) + nodes
+        if not isinstance(nodes[0], oamap.schema.Record):
+            raise TypeError("path {0} did not match a record".format(repr(path)))
+
+        nodes[0].name = newname
         return _setindexes(data, schema(data._arrays))
         
     else:
@@ -604,12 +619,11 @@ def {fill}({view}, {primitive}, {mask}{params}):
 
 from oamap.schema import *
 
-dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
-
+# dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
 
 # dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
 
-# dataset = List(Record({"muons": List(Record({"px": "double"})), "py": List("double")})).fromdata([{"muons": [{"px": 100.1}, {"px": 100.2}, {"px": 100.3}], "py": [1.1, 2.2, 3.3]}])
+dataset = List(Record({"muons": List(Record({"px": "double"})), "py": List("double")})).fromdata([{"muons": [{"px": 100.1}, {"px": 100.2}, {"px": 100.3}], "py": [1.1, 2.2, 3.3]}])
 # q = merge(dataset, "muons", "py")
 
 # dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
