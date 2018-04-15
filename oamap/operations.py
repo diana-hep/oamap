@@ -375,10 +375,10 @@ def merge(data, container, *paths):
 
 ################################################################ mask
 
-def mask(data, path, low, high=None):
+def mask(data, at, low, high=None):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
-        nodes = schema.path(path, parents=True)
+        nodes = schema.path(at, parents=True)
         while isinstance(nodes[0], oamap.schema.List):
             nodes = (nodes[0].content,) + nodes
         node = nodes[0]
@@ -411,7 +411,7 @@ def mask(data, path, low, high=None):
             arrays.put(node, primitive, mask)
 
         else:
-            raise NotImplementedError("mask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(path), node.__repr__(indent="    ")))
+            raise NotImplementedError("mask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(at), node.__repr__(indent="    ")))
 
         return _setindexes(data, schema(arrays))
 
@@ -846,36 +846,8 @@ def {fill}({view}, {tally}{params}):
            params="".join("," + x for x in params[1:]),
            datum=_newvar(avoid, "datum"),
            fcn=fcnname), env)
-            fill = trycompile(env[fillname], numba=numba)
-            return fill(*((view, tally) + args))
+        fill = trycompile(env[fillname], numba=numba)
+        return fill(*((view, tally) + args))
 
     else:
         raise TypeError("reduce can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
-
-################################################################ quick test
-
-# from oamap.schema import *
-
-# dataset = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": [[1, 2, 3], [], [4, 5]]}])
-
-# dataset = List(Record({"x": List("int"), "y": List("double")})).fromdata([{"x": [1, 2, 3], "y": [1.1, 2.2, 3.3]}])
-
-# dataset = List(Record({"muons": List(Record({"px": "double"})), "py": List("double")})).fromdata([{"muons": [{"px": 100.1}, {"px": 100.2}, {"px": 100.3}], "py": [1.1, 2.2, 3.3]}])
-# q = merge(dataset, "muons", "py")
-
-# dataset = List(Record(dict(x=List("int"), y=List("double")))).fromdata([{"x": [1, 2, 3], "y": [1.1, numpy.nan]}, {"x": [], "y": []}, {"x": [4, 5], "y": [3.3]}])
-
-# dataset = List(Record(dict(x="int", y="double"))).fromdata([{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}])
-
-# dataset = List(Record(dict(x=List(Record({"xx": "int", "yy": "double"})), y="double"))).fromdata([{"x": [{"xx": 1, "yy": 1.1}, {"xx": 2, "yy": 2.2}], "y": 1.1}, {"x": [], "y": 2.2}, {"x": [{"xx": 3, "yy": 3.3}], "y": 3.3}])
-
-# dataset = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
-
-# dataset = List("int").fromdata([1, 2, 3, 4, 5])
-
-# dataset = List(List(List("int"))).fromdata([[[1, 2, 3], [4, 5], []], [], [[6], [7, 8]]])
-
-# def f(x, y):
-#   return len(x) == y
-
-# filter(dataset, f, (0,), numba=False)
