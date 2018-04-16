@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import ast
 import math
 import numbers
 import sys
@@ -38,9 +39,13 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 
+if sys.version_info[0] > 2:
+    basestring = str
+    unicode = str
+
 ################################################################ utilities
 
-def _newvar(avoid, trial=None):
+def varname(avoid, trial=None):
     while trial is None or trial in avoid:
         trial = "v" + str(len(avoid))
     avoid.add(trial)
@@ -55,6 +60,43 @@ def paramtypes(args):
         return tuple(nb.typeof(x) for x in args)
 
 def trycompile(fcn, paramtypes=None, numba=True):
+    if isinstance(fcn, basestring):
+        parsed = ast.parse(fcn).body
+        if isinstance(parsed[-1], ast.Expr):
+            parsed[-1] = ast.Return(parsed[-1].value)
+            parsed[-1].lineno = parsed[-1].value.lineno
+            parsed[-1].col_offset = parsed[-1].value.col_offset
+
+        free = set()
+        defined = set(["None", "False", "True"])
+        def recurse(node):
+            if isinstance(node, ast.Name):
+                if isinstance(node.ctx, ast.Store):
+                    defined.add(node.id)
+                elif isinstance(node.ctx, ast.Load) and node.id not in defined:
+                    free.add(node.id)
+            elif isinstance(node, ast.AST):
+                for n in node._fields:
+                    recurse(getattr(node, n))
+            elif isinstance(node, list):
+                for x in node:
+                    recurse(x)
+        recurse(parsed)
+
+        avoid = free.union(defined)
+        fcnname = varname(avoid, "fcn")
+
+        module = ast.parse("""
+def {fcn}({params}):
+    REPLACEME
+""".format(fcn=fcnname, params=",".join(free)))
+        module.body[0].body = parsed
+        module = compile(module, "<fcn string>", "exec")
+
+        env = dict(globals())
+        exec(module, env)
+        fcn = env[fcnname]
+
     if numba is None or numba is False:
         return fcn
 
@@ -477,10 +519,10 @@ def filter(data, fcn, args=(), at="", numba=True):
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = _newvar(avoid, "fcn")
-        fillname = _newvar(avoid, "fill")
-        lenname = _newvar(avoid, "len")
-        rangename = _newvar(avoid, "range")
+        fcnname = varname(avoid, "fcn")
+        fillname = varname(avoid, "fill")
+        lenname = varname(avoid, "len")
+        rangename = varname(avoid, "range")
 
         ptypes = paramtypes(args)
         if ptypes is not None:
@@ -506,18 +548,18 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         {stops}[{i}] = {numitems}
     return {numitems}
 """.format(fill=fillname,
-           view=_newvar(avoid, "view"),
-           viewstarts=_newvar(avoid, "viewstarts"),
-           viewstops=_newvar(avoid, "viewstops"),
-           stops=_newvar(avoid, "stops"),
-           pointers=_newvar(avoid, "pointers"),
+           view=varname(avoid, "view"),
+           viewstarts=varname(avoid, "viewstarts"),
+           viewstops=varname(avoid, "viewstops"),
+           stops=varname(avoid, "stops"),
+           pointers=varname(avoid, "pointers"),
            params="".join("," + x for x in params[1:]),
-           numitems=_newvar(avoid, "numitems"),
-           i=_newvar(avoid, "i"),
+           numitems=varname(avoid, "numitems"),
+           i=varname(avoid, "i"),
            range=rangename,
            len=lenname,
-           j=_newvar(avoid, "j"),
-           datum=_newvar(avoid, "datum"),
+           j=varname(avoid, "j"),
+           datum=varname(avoid, "datum"),
            fcn=fcnname), env)
         fill = trycompile(env[fillname], numba=numba)
 
@@ -581,8 +623,8 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = _newvar(avoid, "fcn")
-        fillname = _newvar(avoid, "fill")
+        fcnname = varname(avoid, "fcn")
+        fillname = varname(avoid, "fill")
 
         ptypes = paramtypes(args)
         if ptypes is not None:
@@ -607,11 +649,11 @@ def {fill}({view}, {primitive}{params}):
         {primitive}[{i}] = {fcn}({datum}{params})
         {i} += 1
 """.format(fill=fillname,
-           view=_newvar(avoid, "view"),
-           primitive=_newvar(avoid, "primitive"),
+           view=varname(avoid, "view"),
+           primitive=varname(avoid, "primitive"),
            params="".join("," + x for x in params[1:]),
-           i=_newvar(avoid, "i"),
-           datum=_newvar(avoid, "datum"),
+           i=varname(avoid, "i"),
+           datum=varname(avoid, "datum"),
            fcn=fcnname), env)
             fill = trycompile(env[fillname], numba=numba)
 
@@ -643,14 +685,14 @@ def {fill}({view}, {primitive}, {mask}{params}):
         {i} += 1
     return {numitems}
 """.format(fill=fillname,
-           view=_newvar(avoid, "view"),
-           primitive=_newvar(avoid, "primitive"),
-           mask=_newvar(avoid, "mask"),
+           view=varname(avoid, "view"),
+           primitive=varname(avoid, "primitive"),
+           mask=varname(avoid, "mask"),
            params="".join("," + x for x in params[1:]),
-           i=_newvar(avoid, "i"),
-           numitems=_newvar(avoid, "numitems"),
-           datum=_newvar(avoid, "datum"),
-           tmp=_newvar(avoid, "tmp"),
+           i=varname(avoid, "i"),
+           numitems=varname(avoid, "numitems"),
+           datum=varname(avoid, "datum"),
+           tmp=varname(avoid, "tmp"),
            fcn=fcnname,
            maskedvalue=oamap.generator.Masked.maskedvalue), env)
             fill = trycompile(env[fillname], numba=numba)
@@ -696,8 +738,8 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = _newvar(avoid, "fcn")
-        fillname = _newvar(avoid, "fill")
+        fcnname = varname(avoid, "fcn")
+        fillname = varname(avoid, "fill")
 
         ptypes = paramtypes(args)
         if ptypes is not None:
@@ -745,11 +787,11 @@ def {fill}({view}, {out}{params}):
         {out}[{i}] = {fcn}({datum}{params})
         {i} += 1
 """.format(fill=fillname,
-           view=_newvar(avoid, "view"),
-           out=_newvar(avoid, "out"),
+           view=varname(avoid, "view"),
+           out=varname(avoid, "out"),
            params="".join("," + x for x in params[1:]),
-           i=_newvar(avoid, "i"),
-           datum=_newvar(avoid, "datum"),
+           i=varname(avoid, "i"),
+           datum=varname(avoid, "datum"),
            fcn=fcnname), env)
             fill = trycompile(env[fillname], numba=numba)
             fill(*((view, out) + args))
@@ -763,9 +805,9 @@ def {fill}({view}, {out}{params}):
             out = numpy.empty(len(view), dtype=zip(names, [numpy.dtype(x.name) for x in rtype.types]))
             outs = tuple(out[n] for n in names)
 
-            outnames = [_newvar(avoid, "out" + str(i)) for i in range(len(names))]
-            iname = _newvar(avoid, "i")
-            tmpname = _newvar(avoid, "tmp")
+            outnames = [varname(avoid, "out" + str(i)) for i in range(len(names))]
+            iname = varname(avoid, "i")
+            tmpname = varname(avoid, "tmp")
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {outs}{params}):
@@ -775,11 +817,11 @@ def {fill}({view}, {outs}{params}):
         {assignments}
         {i} += 1
 """.format(fill=fillname,
-           view=_newvar(avoid, "view"),
+           view=varname(avoid, "view"),
            outs=",".join(outnames),
            params="".join("," + x for x in params[1:]),
            i=iname,
-           datum=_newvar(avoid, "datum"),
+           datum=varname(avoid, "datum"),
            tmp=tmpname,
            fcn=fcnname,
            assignments="\n        ".join("{out}[{i}] = {tmp}[{j}]".format(out=out, i=iname, tmp=tmpname, j=j) for j, out in enumerate(outnames))), env)
@@ -823,8 +865,8 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = _newvar(avoid, "fcn")
-        fillname = _newvar(avoid, "fill")
+        fcnname = varname(avoid, "fcn")
+        fillname = varname(avoid, "fill")
         tallyname = params[1]
 
         ptypes = paramtypes(args)
@@ -846,10 +888,10 @@ def {fill}({view}, {tally}{params}):
         {tally} = {fcn}({datum}, {tally}{params})
     return {tally}
 """.format(fill=fillname,
-           view=_newvar(avoid, "view"),
+           view=varname(avoid, "view"),
            tally=tallyname,
            params="".join("," + x for x in params[2:]),
-           datum=_newvar(avoid, "datum"),
+           datum=varname(avoid, "datum"),
            fcn=fcnname), env)
         fill = trycompile(env[fillname], numba=numba)
 
