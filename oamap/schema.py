@@ -255,6 +255,9 @@ class Schema(object):
         else:
             raise TypeError("unrecognized type for Schema from JSON: {0}".format(repr(data)))
 
+    def replace(self, fcn, *args, **kwds):
+        return self._replace(fcn, args, kwds, {})
+
     def deepcopy(self, **replacements):
         return self.replace(lambda x: x, **replacements)
 
@@ -586,7 +589,7 @@ class Primitive(Schema):
             replacements["metadata"] = self._metadata
         return Primitive(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
+    def _replace(self, fcn, args, kwds, memo):
         return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _keep(self, loc, paths, project, memo):
@@ -875,8 +878,8 @@ class List(Schema):
             replacements["metadata"] = self._metadata
         return List(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(List(self._content._replace(fcn, args, kwds, memo), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
         nodes = None
@@ -1227,8 +1230,8 @@ class Union(Schema):
             replacements["metadata"] = self._metadata
         return Union(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Union([x._replace(fcn, args, kwds, memo) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
         nodes = None
@@ -1399,21 +1402,6 @@ class Record(Schema):
     def __delitem__(self, index):
         del self._fields[index]
 
-    def rename(self, fromfield, tofield):
-        if not self.hasarraynames:
-            raise ValueError("cannot rename a field in a schema without fixed array names; try calling defaultnames() to assign fixed array names")
-        renamed = []    # but maintain order
-        found = False
-        for n, x in self._fields.items():
-            if n == fromfield:
-                renamed.append((tofield, x))
-                found = True
-            else:
-                renamed.append((n, x))
-        if not found:
-            raise KeyError("field not found: {0}".format(repr(fromfield)))
-        self._fields = OrderedDict(renamed)
-
     def _hasarraynames(self, memo):
         if id(self) in memo:
             return True
@@ -1549,8 +1537,8 @@ class Record(Schema):
             replacements["metadata"] = self._metadata
         return Record(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Record(OrderedDict((n, x._replace(fcn, args, kwds, memo)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
         nodes = None
@@ -1861,8 +1849,8 @@ class Tuple(Schema):
             replacements["metadata"] = self._metadata
         return Tuple(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Tuple([x._replace(fcn, args, kwds, memo) for x in self._types], nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
         nodes = None
@@ -2158,8 +2146,12 @@ class Pointer(Schema):
             replacements["metadata"] = self._metadata
         return Pointer(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        if id(self) in memo:
+            return fcn(memo[id(self)], *args, **kwds)
+        memo[id(self)] = Pointer(None, nullable=self._nullable, positions=self._positions, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata))
+        memo[id(self)]._target = self._target._replace(fcn, args, kwds, memo)
+        return fcn(memo[id(self)], *args, **kwds)
 
     def _path(self, loc, path, parents, memo):
         nodes = None

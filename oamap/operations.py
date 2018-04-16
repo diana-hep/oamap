@@ -33,6 +33,7 @@ import math
 import numbers
 import sys
 import types
+import uuid
 
 import numpy
 
@@ -44,6 +45,8 @@ from oamap.util import varname
 from oamap.util import paramtypes
 from oamap.util import trycompile
 from oamap.util import returntype
+
+################################################################ general utilities
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -157,6 +160,61 @@ class DualSource(object):
             self.old.close()
         if hasattr(self.new, "close"):
             self.new.close()
+
+    @staticmethod
+    def collect(data, namespace="", arrayname=lambda: str(uuid.uuid4())):
+        arrays = {}
+        newname = {}
+        def recurse(node):
+            if isinstance(node, DualSource):
+                recurse(node.old)
+                for n, x in node.new.items():
+                    name = arrayname()
+                    arrays[name] = x
+                    newname[node.namespace, n] = name
+        recurse(data._arrays)
+
+        def transform(schema):
+            ns = schema.namespace
+            if isinstance(schema, oamap.schema.Primitive):
+                if (ns, schema.data) in newname:
+                    schema.namespace = namespace
+                    schema.data = newname[ns, schema.data]
+                    if schema.nullable:
+                        schema.mask = newname[ns, schema.mask]
+            elif isinstance(schema, oamap.schema.List):
+                if (ns, schema.starts) in newname:
+                    schema.namespace = namespace
+                    schema.starts = newname[ns, schema.starts]
+                    schema.stops = newname[ns, schema.stops]
+                    if schema.nullable:
+                        schema.mask = newname[ns, schema.mask]
+            elif isinstance(schema, oamap.schema.Union):
+                if (ns, schema.tags) in newname:
+                    schema.namespace = namespace
+                    schema.tags = newname[ns, schema.tags]
+                    schema.offsets = newname[ns, schema.offsets]
+                    if schema.nullable:
+                        schema.mask = newname[ns, schema.mask]
+            elif isinstance(schema, oamap.schema.Record):
+                if schema.nullable and (ns, schema.mask) in newname:
+                    schema.namespace = namespace
+                    schema.mask = newname[ns, schema.mask]
+            elif isinstance(schema, oamap.schema.Tuple):
+                if schema.nullable and (ns, schema.mask) in newname:
+                    schema.namespace = namespace
+                    schema.mask = newname[ns, schema.mask]
+            elif isinstance(schema, oamap.schema.Pointer):
+                if (ns, schema.positions) in newname:
+                    schema.namespace = namespace
+                    schema.positions = newname[ns, schema.positions]
+                    if schema.nullable:
+                        schema.mask = newname[ns, schema.mask]
+            else:
+                raise AssertionError(schema)
+            return schema
+
+        return data._generator.schema.replace(transform), arrays
 
 ################################################################ fieldname/recordname
 
