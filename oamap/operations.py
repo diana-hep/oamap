@@ -707,8 +707,6 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
         fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
         rtype = returntype(fcn, ptypes)
 
-        print "rtype", rtype, type(rtype)
-
         if rtype is None:
             first = fcn(*((view[0],) + args))
 
@@ -806,8 +804,8 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
             args = (args,)
 
     if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
-        listnode = data._generator.schema.path(at)
-        if not isinstance(lsitnode, oamap.schema.List):
+        listnode = data._generator.namedschema().path(at)
+        if not isinstance(listnode, oamap.schema.List):
             raise TypeError("path {0} does not refer to a list:\n\n    {1}".format(repr(at), listnode.__repr__(indent="    ")))
         if listnode.nullable:
             raise NotImplementedError("nullable; need to merge masks")
@@ -820,21 +818,25 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
+        if fcn.__code__.co_argcount < 2:
+            raise TypeError("function must have at least two parameters (data and tally)")
+
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = _newvar(avoid, "fcn")
         fillname = _newvar(avoid, "fill")
+        tallyname = params[1]
 
         ptypes = paramtypes(args)
         if ptypes is not None:
             import numba as nb
             from oamap.compiler import typeof_generator
-            ptypes = (typeof_generator(view._generator.content), numba.typeof(tally)) + ptypes
+            ptypes = (typeof_generator(view._generator.content), nb.typeof(tally)) + ptypes
         fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
         rtype = returntype(fcn, ptypes)
 
         if rtype is not None:
-            if numba.typeof(tally) != rtype:
+            if nb.typeof(tally) != rtype:
                 raise TypeError("function should return the same type as tally")
 
         env = {fcnname: fcn}
@@ -845,11 +847,12 @@ def {fill}({view}, {tally}{params}):
     return {tally}
 """.format(fill=fillname,
            view=_newvar(avoid, "view"),
-           tally=_newvar(avoid, "tally"),
-           params="".join("," + x for x in params[1:]),
+           tally=tallyname,
+           params="".join("," + x for x in params[2:]),
            datum=_newvar(avoid, "datum"),
            fcn=fcnname), env)
         fill = trycompile(env[fillname], numba=numba)
+
         return fill(*((view, tally) + args))
 
     else:
