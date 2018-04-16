@@ -185,3 +185,187 @@ def python2hashable(value):
         else:
             return value
     return recurse(python2json(value))
+
+def varname(avoid, trial=None):
+    while trial is None or trial in avoid:
+        trial = "v" + str(len(avoid))
+    avoid.add(trial)
+    return trial
+
+def paramtypes(args):
+    try:
+        import numba as nb
+    except ImportError:
+        return None
+    else:
+        return tuple(nb.typeof(x) for x in args)
+
+def trycompile(fcn, paramtypes=None, numba=True):
+    if isinstance(fcn, basestring):
+        parsed = ast.parse(fcn).body
+        if isinstance(parsed[-1], ast.Expr):
+            parsed[-1] = ast.Return(parsed[-1].value)
+            parsed[-1].lineno = parsed[-1].value.lineno
+            parsed[-1].col_offset = parsed[-1].value.col_offset
+
+        free = set()
+        defined = set(["None", "False", "True"])
+        def recurse(node):
+            if isinstance(node, ast.Name):
+                if isinstance(node.ctx, ast.Store):
+                    defined.add(node.id)
+                elif isinstance(node.ctx, ast.Load) and node.id not in defined:
+                    free.add(node.id)
+            elif isinstance(node, ast.AST):
+                for n in node._fields:
+                    recurse(getattr(node, n))
+            elif isinstance(node, list):
+                for x in node:
+                    recurse(x)
+        recurse(parsed)
+
+        avoid = free.union(defined)
+        fcnname = varname(avoid, "fcn")
+
+        module = ast.parse("""
+def {fcn}({params}):
+    REPLACEME
+""".format(fcn=fcnname, params=",".join(free)))
+        module.body[0].body = parsed
+        module = compile(module, "<fcn string>", "exec")
+
+        env = dict(globals())
+        exec(module, env)
+        fcn = env[fcnname]
+
+    if numba is None or numba is False:
+        return fcn
+
+    try:
+        import numba as nb
+    except ImportError:
+        return fcn
+
+    if numba is True:
+        numbaopts = {}
+    else:
+        numbaopts = numba
+
+    if isinstance(fcn, nb.dispatcher.Dispatcher):
+        fcn = fcn.py_fcn
+
+    if paramtypes is None:
+        return nb.jit(**numbaopts)(fcn)
+    else:
+        return nb.jit(paramtypes, **numbaopts)(fcn)
+
+def returntype(fcn, paramtypes):
+    try:
+        import numba as nb
+    except ImportError:
+        return None
+
+    if isinstance(fcn, nb.dispatcher.Dispatcher):
+        overload = fcn.overloads.get(paramtypes, None)
+        if overload is None:
+            return None
+        else:
+            return overload.signature.return_type
+
+class DualSource(object):
+    def __init__(self, old, oldns):
+        self.old = old
+        self.new = {}
+
+        i = 0
+        self.namespace = None
+        while self.namespace is None or self.namespace in oldns:
+            self.namespace = "namespace-" + str(i)
+            i += 1
+
+        self._arraynum = 0
+
+    def arrayname(self):
+        trial = None
+        while trial is None or trial in self.new:
+            trial = "array-" + str(self._arraynum)
+            self._arraynum += 1
+        return trial
+
+    def getall(self, roles):
+        out = {}
+
+        if hasattr(self.old, "getall"):
+            out.update(self.old.getall([x for x in roles if x.namespace != self.namespace]))
+        else:
+            for x in roles:
+                if x.namespace != self.namespace:
+                    out[x] = self.old[str(x)]
+
+        if hasattr(self.new, "getall"):
+            out.update(self.new.getall([x for x in roles if x.namespace == self.namespace]))
+        else:
+            for x in roles:
+                if x.namespace == self.namespace:
+                    out[x] = self.new[str(x)]
+
+        return out
+
+    def put(self, schemanode, *arrays):
+        if isinstance(schemanode, oamap.schema.Primitive):
+            datarole = oamap.generator.DataRole(self.arrayname(), self.namespace)
+            roles2arrays = {datarole: arrays[0]}
+            schemanode.data = str(datarole)
+
+        elif isinstance(schemanode, oamap.schema.List):
+            startsrole = oamap.generator.StartsRole(self.arrayname(), self.namespace, None)
+            stopsrole = oamap.generator.StopsRole(self.arrayname(), self.namespace, None)
+            startsrole.stops = stopsrole
+            stopsrole.starts = startsrole
+            roles2arrays = {startsrole: arrays[0], stopsrole: arrays[1]}
+            schemanode.starts = str(startsrole)
+            schemanode.stops = str(stopsrole)
+
+        elif isinstance(schemanode, oamap.schema.Union):
+            tagsrole = oamap.generator.TagsRole(self.arrayname(), self.namespace, None)
+            offsetsrole = oamap.generator.OffsetsRole(self.arrayname(), self.namespace, None)
+            tagsrole.offsets = offsetsrole
+            offsetsrole.tags = tagsrole
+            roles2arrays = {tagsrole: arrays[0], offsetsrole: arrays[1]}
+            schemanode.tags = str(tagsrole)
+            schemanode.offsets = str(offsetsrole)
+
+        elif isinstance(schemanode, oamap.schema.Record):
+            pass
+
+        elif isinstance(schemanode, oamap.schema.Tuple):
+            pass
+
+        elif isinstance(schemanode, oamap.schema.Pointer):
+            positionsrole = oamap.generator.PositionsRole(self.arrayname(), self.namespace)
+            roles2arrays = {positionsrole: arrays[0]}
+            schemanode.positions = str(positionsrole)
+
+        else:
+            raise AssertionError(schemanode)
+
+        if schemanode.nullable:
+            maskrole = oamap.generator.MaskRole(self.arrayname(), self.namespace, roles2arrays)
+            roles2arrays = dict(list(roles2arrays.items()) + [(maskrole, arrays[-1])])
+            schemanode.mask = str(maskrole)
+
+        schemanode.namespace = self.namespace
+        self.putall(roles2arrays)
+
+    def putall(self, roles2arrays):
+        if hasattr(self.new, "putall"):
+            self.new.putall(roles2arrays)
+        else:
+            for n, x in roles2arrays.items():
+                self.new[str(n)] = x
+
+    def close(self):
+        if hasattr(self.old, "close"):
+            self.old.close()
+        if hasattr(self.new, "close"):
+            self.new.close()
