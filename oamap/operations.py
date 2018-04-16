@@ -32,6 +32,7 @@ import ast
 import math
 import numbers
 import sys
+import types
 
 import numpy
 
@@ -43,7 +44,6 @@ from oamap.util import varname
 from oamap.util import paramtypes
 from oamap.util import trycompile
 from oamap.util import returntype
-from oamap.util import DualSource
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -60,14 +60,112 @@ def _setindexes(input, output):
         raise AssertionError(type(input))
     return output
     
+class DualSource(object):
+    def __init__(self, old, oldns):
+        self.old = old
+        self.new = {}
+
+        i = 0
+        self.namespace = None
+        while self.namespace is None or self.namespace in oldns:
+            self.namespace = "namespace-" + str(i)
+            i += 1
+
+        self._arraynum = 0
+
+    def arrayname(self):
+        trial = None
+        while trial is None or trial in self.new:
+            trial = "array-" + str(self._arraynum)
+            self._arraynum += 1
+        return trial
+
+    def getall(self, roles):
+        out = {}
+
+        if hasattr(self.old, "getall"):
+            out.update(self.old.getall([x for x in roles if x.namespace != self.namespace]))
+        else:
+            for x in roles:
+                if x.namespace != self.namespace:
+                    out[x] = self.old[str(x)]
+
+        if hasattr(self.new, "getall"):
+            out.update(self.new.getall([x for x in roles if x.namespace == self.namespace]))
+        else:
+            for x in roles:
+                if x.namespace == self.namespace:
+                    out[x] = self.new[str(x)]
+
+        return out
+
+    def put(self, schemanode, *arrays):
+        if isinstance(schemanode, oamap.schema.Primitive):
+            datarole = oamap.generator.DataRole(self.arrayname(), self.namespace)
+            roles2arrays = {datarole: arrays[0]}
+            schemanode.data = str(datarole)
+
+        elif isinstance(schemanode, oamap.schema.List):
+            startsrole = oamap.generator.StartsRole(self.arrayname(), self.namespace, None)
+            stopsrole = oamap.generator.StopsRole(self.arrayname(), self.namespace, None)
+            startsrole.stops = stopsrole
+            stopsrole.starts = startsrole
+            roles2arrays = {startsrole: arrays[0], stopsrole: arrays[1]}
+            schemanode.starts = str(startsrole)
+            schemanode.stops = str(stopsrole)
+
+        elif isinstance(schemanode, oamap.schema.Union):
+            tagsrole = oamap.generator.TagsRole(self.arrayname(), self.namespace, None)
+            offsetsrole = oamap.generator.OffsetsRole(self.arrayname(), self.namespace, None)
+            tagsrole.offsets = offsetsrole
+            offsetsrole.tags = tagsrole
+            roles2arrays = {tagsrole: arrays[0], offsetsrole: arrays[1]}
+            schemanode.tags = str(tagsrole)
+            schemanode.offsets = str(offsetsrole)
+
+        elif isinstance(schemanode, oamap.schema.Record):
+            pass
+
+        elif isinstance(schemanode, oamap.schema.Tuple):
+            pass
+
+        elif isinstance(schemanode, oamap.schema.Pointer):
+            positionsrole = oamap.generator.PositionsRole(self.arrayname(), self.namespace)
+            roles2arrays = {positionsrole: arrays[0]}
+            schemanode.positions = str(positionsrole)
+
+        else:
+            raise AssertionError(schemanode)
+
+        if schemanode.nullable:
+            maskrole = oamap.generator.MaskRole(self.arrayname(), self.namespace, roles2arrays)
+            roles2arrays = dict(list(roles2arrays.items()) + [(maskrole, arrays[-1])])
+            schemanode.mask = str(maskrole)
+
+        schemanode.namespace = self.namespace
+        self.putall(roles2arrays)
+
+    def putall(self, roles2arrays):
+        if hasattr(self.new, "putall"):
+            self.new.putall(roles2arrays)
+        else:
+            for n, x in roles2arrays.items():
+                self.new[str(n)] = x
+
+    def close(self):
+        if hasattr(self.old, "close"):
+            self.old.close()
+        if hasattr(self.new, "close"):
+            self.new.close()
+
 ################################################################ fieldname/recordname
 
-def fieldname(data, path, newname):
+def fieldname(data, at, newname):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
-        nodes = schema.path(path, parents=True)
+        nodes = schema.path(at, parents=True)
         if len(nodes) < 2:
-            raise TypeError("path {0} did not match a field in a record".format(repr(path)))
+            raise TypeError("path {0} did not match a field in a record".format(repr(at)))
 
         for n, x in nodes[1].fields.items():
             if x is nodes[0]:
@@ -81,14 +179,14 @@ def fieldname(data, path, newname):
     else:
         raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
 
-def recordname(data, path, newname):
+def recordname(data, at, newname):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
-        nodes = schema.path(path, parents=True)
+        nodes = schema.path(at, parents=True)
         while isinstance(nodes[0], oamap.schema.List):
             nodes = (nodes[0].content,) + nodes
         if not isinstance(nodes[0], oamap.schema.Record):
-            raise TypeError("path {0} did not match a record".format(repr(path)))
+            raise TypeError("path {0} did not match a record".format(repr(at)))
 
         nodes[0].name = newname
         return _setindexes(data, schema(data._arrays))
@@ -98,9 +196,9 @@ def recordname(data, path, newname):
 
 ################################################################ project/keep/drop
 
-def project(data, path):
+def project(data, at):
     if isinstance(data, oamap.proxy.Proxy):
-        schema = data._generator.namedschema().project(path)
+        schema = data._generator.namedschema().project(at)
         if schema is None:
             raise TypeError("projection resulted in no schema")
         return _setindexes(data, schema(data._arrays))
@@ -235,9 +333,66 @@ def merge(data, container, *paths):
     else:
         raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
 
-################################################################ mask
+################################################################ parent
 
-def mask(data, at, low, high=None):
+def parent(data, fieldname, at):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+        nodes = schema.path(at, parents=True)
+        if len(nodes) < 2:
+            raise TypeError("parent operation must be applied to a field of a record")
+
+        parentnode = nodes[1]
+        listnode = nodes[0]
+        if not isinstance(listnode, oamap.schema.List):
+            raise TypeError("parent operation must be applied to a field with list type")
+        childnode = listnode.content
+
+        if not isinstance(childnode, oamap.schema.Record):
+            raise TypeError("parent operation must be applied to a field with list of records type")
+
+        if listnode.nullable or childnode.nullable:
+            raise NotImplementedError("nullable; need to merge masks")
+
+        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
+        starts, stops = listgenerator._getstartsstops(data._arrays, data._cache)
+
+        if isinstance(parent.fill, types.FunctionType):
+            try:
+                import numba as nb
+            except ImportError:
+                pass
+            else:
+                parent.fill = nb.jit(nopython=True, nogil=True)(parent.fill)
+
+        pointers = numpy.empty(stops.max() - starts.min(), dtype=oamap.generator.PointerGenerator.posdtype)
+        parent.fill(starts, stops, pointers)
+
+        childnode[fieldname] = oamap.schema.Pointer(parentnode)
+
+        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays.put(childnode[fieldname], pointers)
+
+        return _setindexes(data, schema(arrays))
+            
+def _parent_fill(starts, stops, pointers):
+    for i in range(len(starts)):
+        pointers[starts[i]:stops[i]] = i
+
+parent.fill = _parent_fill
+del _parent_fill
+
+################################################################ index
+
+
+
+################################################################ topointer
+
+
+
+################################################################ tomask
+
+def tomask(data, at, low, high=None):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
         nodes = schema.path(at, parents=True)
@@ -273,12 +428,12 @@ def mask(data, at, low, high=None):
             arrays.put(node, primitive, mask)
 
         else:
-            raise NotImplementedError("mask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(at), node.__repr__(indent="    ")))
+            raise NotImplementedError("tomask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(at), node.__repr__(indent="    ")))
 
         return _setindexes(data, schema(arrays))
 
     else:
-        raise TypeError("mask can only be applied to an OAMap proxy (List, Record, Tuple)")
+        raise TypeError("tomask can only be applied to an OAMap proxy (List, Record, Tuple)")
 
 ################################################################ flatten
 
