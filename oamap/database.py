@@ -30,6 +30,7 @@
 
 import sys
 
+import oamap.schema
 import oamap.dataset
 
 if sys.version_info[0] > 2:
@@ -103,14 +104,27 @@ class Database(object):
 class InMemoryDatabase(Database):
     def __init__(self, backends={}, namespace="", datasets={}, refcounts={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
-        self._datasets = dict((n, oamap.dataset.Dataset(x, self._backends)) for n, x in datasets.items())
+        self._datasets = dict(datasets)
         self._refcounts = dict(refcounts)
 
     def list(self):
         return list(self._datasets)
 
     def get(self, dataset):
-        return self._datasets[dataset]
+        ds = self._datasets.get(dataset, None)
+        if ds is None:
+            raise KeyError("no dataset named {0}".format(repr(dataset)))
+        return oamap.dataset.Dataset(dataset,
+                                     oamap.schema.Schema.fromjson(ds["schema"]),
+                                     dict(self._backends),
+                                     starts=ds.get("starts", None),
+                                     stops=ds.get("stops", None),
+                                     packing=oamap.schema.Schema._packingfromjson(ds.get("packing", None)),
+                                     extension=ds.get("extension", None),
+                                     doc=ds.get("doc", None),
+                                     metadata=ds.get("metadata", None),
+                                     prefix=ds.get("prefix", "object"),
+                                     delimiter=ds.get("delimiter", "-"))
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)

@@ -180,20 +180,6 @@ class Schema(object):
             stream.write(out)
             stream.write("\n")
 
-    def defaultnames(self, prefix="object", delimiter="-"):
-        memo = {}
-        pointers = []
-        self._defaultnames(prefix, delimiter, memo, pointers, set())
-
-        for pointer in pointers:
-            if id(pointer.target) in memo:
-                # internal
-                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter) + delimiter + memo[id(pointer.target)]
-            else:
-                # external
-                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter)
-                pointer._target.defaultnames(pointer._get_external(memo[id(pointer)], delimiter), delimiter)
-
     @property
     def hasarraynames(self):
         return self._hasarraynames(set())
@@ -650,14 +636,6 @@ class Primitive(Schema):
         else:
             return self._data
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        self._data = self._get_data(prefix, delimiter)
-        memo[id(self)] = prefix
-
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
@@ -952,16 +930,6 @@ class List(Schema):
 
     def _get_content(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "L"
-
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        self._starts = self._get_starts(prefix, delimiter)
-        self._stops = self._get_stops(prefix, delimiter)
-        self._content._defaultnames(self._get_content(prefix, delimiter), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
 
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
@@ -1303,17 +1271,6 @@ class Union(Schema):
     def _get_possibility(self, prefix, delimiter, i):
         return self._get_name(prefix, delimiter) + delimiter + "U" + repr(i)
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        self._tags = self._get_tags(prefix, delimiter)
-        self._offsets = self._get_offsets(prefix, delimiter)
-        for i, x in enumerate(self._possibilities):
-            x._defaultnames(self._get_possibility(prefix, delimiter, i), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
-
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
@@ -1613,15 +1570,6 @@ class Record(Schema):
 
     def _get_field(self, prefix, delimiter, n):
         return self._get_name(prefix, delimiter) + delimiter + "F" + n
-
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        for n, x in self._fields.items():
-            x._defaultnames(self._get_field(prefix, delimiter, n), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
 
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._fields) == 0:
@@ -1924,15 +1872,6 @@ class Tuple(Schema):
     def _get_field(self, prefix, delimiter, i):
         return self._get_name(prefix, delimiter) + delimiter + "F" + repr(i)
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        for i, x in enumerate(self._types):
-            x._defaultnames(self._get_field(prefix, delimiter, i), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
-
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
@@ -2226,13 +2165,6 @@ class Pointer(Schema):
     def _get_external(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "X"
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        # not done: see Schema.defaultnames
-        memo[id(self)] = prefix
-        pointers.append(self)
-        
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
