@@ -384,11 +384,57 @@ del _parent_fill
 
 ################################################################ index
 
+def index(data, fieldname, at):
+    if isinstance(data, oamap.proxy.Proxy):
+        schema = data._generator.namedschema()
+        listnode = schema.path(at)
+        if not isinstance(listnode, oamap.schema.List):
+            raise TypeError("index operation must be applied to a field with list type")
+        childnode = listnode.content
 
+        if not isinstance(childnode, oamap.schema.Record):
+            raise TypeError("index operation must be applied to a field with list of records type")
 
-################################################################ topointer
+        if listnode.nullable or childnode.nullable:
+            raise NotImplementedError("nullable; need to merge masks")
 
+        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
+        starts, stops = listgenerator._getstartsstops(data._arrays, data._cache)
 
+        if isinstance(index.fill, types.FunctionType):
+            try:
+                import numba as nb
+            except ImportError:
+                pass
+            else:
+                index.fill = nb.jit(nopython=True, nogil=True)(index.fill)
+
+        values = numpy.empty(stops.max() - starts.min(), dtype=numpy.int32)   # int32
+        index.fill(starts, stops, values)
+
+        childnode[fieldname] = oamap.schema.Primitive(values.dtype)
+
+        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays.put(childnode[fieldname], values)
+
+        return _setindexes(data, schema(arrays))
+            
+def _index_fill(starts, stops, pointers):
+    for i in range(len(starts)):
+        start = starts[i]
+        stop = stops[i]
+        pointers[start:stop] = numpy.arange(stop - start)
+
+index.fill = _index_fill
+del _index_fill
+
+from oamap.schema import *
+data = List(Record({"muons": List(Record({"pt": "float"}))})).fromdata([
+    {"muons": [{"pt": 1.1}, {"pt": 2.2}, {"pt": 3.3}]},
+    {"muons": []},
+    {"muons": [{"pt": 4.4}, {"pt": 5.5}]}])
+
+new = index(data, "i", "muons")
 
 ################################################################ tomask
 
