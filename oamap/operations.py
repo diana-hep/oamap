@@ -176,38 +176,30 @@ class _DualSource(object):
                 if (ns, schema.data) in newname:
                     schema.namespace = namespace
                     schema.data = newname[ns, schema.data]
-                    if schema.nullable:
-                        schema.mask = newname[ns, schema.mask]
             elif isinstance(schema, oamap.schema.List):
                 if (ns, schema.starts) in newname:
                     schema.namespace = namespace
                     schema.starts = newname[ns, schema.starts]
                     schema.stops = newname[ns, schema.stops]
-                    if schema.nullable:
-                        schema.mask = newname[ns, schema.mask]
             elif isinstance(schema, oamap.schema.Union):
                 if (ns, schema.tags) in newname:
                     schema.namespace = namespace
                     schema.tags = newname[ns, schema.tags]
                     schema.offsets = newname[ns, schema.offsets]
-                    if schema.nullable:
-                        schema.mask = newname[ns, schema.mask]
             elif isinstance(schema, oamap.schema.Record):
                 if schema.nullable and (ns, schema.mask) in newname:
                     schema.namespace = namespace
-                    schema.mask = newname[ns, schema.mask]
             elif isinstance(schema, oamap.schema.Tuple):
                 if schema.nullable and (ns, schema.mask) in newname:
                     schema.namespace = namespace
-                    schema.mask = newname[ns, schema.mask]
             elif isinstance(schema, oamap.schema.Pointer):
                 if (ns, schema.positions) in newname:
                     schema.namespace = namespace
                     schema.positions = newname[ns, schema.positions]
-                    if schema.nullable:
-                        schema.mask = newname[ns, schema.mask]
             else:
                 raise AssertionError(schema)
+            if schema.nullable:
+                schema.mask = newname[ns, schema.mask]
             return schema
 
         return data._generator.schema.replace(transform), arrays

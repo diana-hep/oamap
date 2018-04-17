@@ -33,10 +33,22 @@ import types
 
 import numpy
 
-import oamap.schema
 import oamap.generator
-import oamap.util
 import oamap.operations
+import oamap.proxy
+import oamap.schema
+import oamap.util
+        
+class SingleThreadExecutor(object):
+    class PseudoFuture(object):
+        def __init__(self, result):
+            self._result = result
+        def result(self, timeout=None):
+            return self._result
+    def submit(self, fcn, *args, **kwargs):
+        args = tuple(x.result() if isinstance(x, self.PseudoFuture) else x for x in args)
+        kwargs = dict((n, x.result() if isinstance(x, self.PseudoFuture) else x) for n, x in kwargs.items())
+        return self.PseudoFuture(fcn(*args, **kwargs))
 
 class Operation(object):
     def __init__(self, name, args, kwargs, function):
@@ -66,6 +78,9 @@ class Operation(object):
     @property
     def function(self):
         return self._function
+
+    def apply(self, data):
+        return self._function(*((data,) + self._args), **self._kwargs)
 
 class Recasting(Operation): pass
 class Transformation(Operation): pass
@@ -119,11 +134,12 @@ class Operable(object):
 Operable.update_operations()
 
 class Data(Operable):
-    def __init__(self, name, schema, backends, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+    def __init__(self, name, schema, backends, executor, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
         super(Data, self).__init__()
         self._name = name
         self._schema = schema
         self._backends = backends
+        self._executor = executor
         self._packing = packing
         self._extension = extension
         self._doc = doc
@@ -162,10 +178,43 @@ class Data(Operable):
         return self._metadata
 
     def __call__(self):
+        # FIXME: packing, extension, prefix, delimiter
         return self._schema(self.arrays())
 
     def arrays(self):
         return DataArrays(self._backends)
+
+    def apply(self, namespace, backend, refcount):
+        if all(isinstance(x, Recasting) for x in self._operations):
+            result = self()
+            for operation in self._operations:
+                result = operation.apply(result)
+            return SingleThreadExecutor.PseudoFuture(Data(None, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter))
+            
+        else:
+            def task(dataset, namespace, backend):
+                result = dataset()
+                for operation in self._operations:
+                    result = operation.apply(result)
+
+                active = backend.instantiate(None)
+                opts = {"namespace": namespace}
+                if hasattr(active, "arrayname"):
+                    opts["arrayname"] = active.arrayname
+                schema, arrays = oamap.operations._DualSource.collect(result, **opts)
+
+                if hasattr(active, "putall"):
+                    active.putall(arrays)
+                    for n, x in arrays.items():
+                        refcount.increment(n)
+                else:
+                    for n, x in arrays.items():
+                        active[str(n)] = x
+                        refcount.increment(n)
+
+                return Data(None, schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+
+            return self._executor.submit(task, self, namespace, backend)
 
 class DataArrays(object):
     def __init__(self, backends):
@@ -201,11 +250,11 @@ class DataArrays(object):
             self._active[namespace] = None
                 
 class Dataset(Data):
-    def __init__(self, name, schema, backends, offsets=None, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+    def __init__(self, name, schema, backends, executor, offsets=None, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
         if not isinstance(schema, oamap.schema.List):
             raise TypeError("Dataset must have a list schema, not\n\n    {0}".format(schema.__repr__(indent="    ")))
 
-        super(Dataset, self).__init__(name, schema, backends, packing=packing, extension=extension, doc=doc, metadata=metadata, prefix=prefix, delimiter=delimiter)
+        super(Dataset, self).__init__(name, schema, backends, executor, packing=packing, extension=extension, doc=doc, metadata=metadata, prefix=prefix, delimiter=delimiter)
 
         if not isinstance(offsets, numpy.ndarray):
             try:
@@ -253,6 +302,7 @@ class Dataset(Data):
         return int(self._offsets[-1])
 
     def partition(self, partitionid):
+        # FIXME: packing, extension, prefix, delimiter
         return self._schema(self.arrays(partitionid))
         
     def __getitem__(self, index):

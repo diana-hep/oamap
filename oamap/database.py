@@ -54,10 +54,11 @@ class DictBackend(Backend):
         return out
 
 class Database(object):
-    def __init__(self, connection, backends={}, namespace=""):
+    def __init__(self, connection, backends={}, namespace="", executor=oamap.dataset.SingleThreadExecutor()):
         self._connection = connection
         self._backends = dict(backends)
         self._namespace = namespace
+        self._executor = executor
 
     @property
     def connection(self):
@@ -104,14 +105,24 @@ class Database(object):
     def put(self, dataset, value, namespace=None):
         return NotImplementedError("missing implementation for {0}.put".format(self.__class__))
 
-    def delete(self, dataset, namespace=None):
+    def delete(self, dataset):
         return NotImplementedError("missing implementation for {0}.delete".format(self.__class__))
 
 class InMemoryDatabase(Database):
+    class RefCounts(dict):
+        def increment(self, n):
+            self[n] = self.get(n, 0) + 1
+        def decrement(self, n):
+            value = max(0, self.get(n, 0) - 1)
+            if value == 0 and n in self:
+                del self[n]
+            else:
+                self[n] = value
+
     def __init__(self, backends={}, namespace="", datasets={}, refcounts={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
         self._datasets = dict(datasets)
-        self._refcounts = dict(refcounts)
+        self._refcounts = dict((n, self.RefCounts(x)) for n, x in refcounts.items())
 
     def list(self):
         return list(self._datasets)
@@ -128,6 +139,7 @@ class InMemoryDatabase(Database):
             return oamap.dataset.Dataset(dataset,
                                          schema,
                                          dict(self._backends),
+                                         self._executor,
                                          ds.get("offsets", None),
                                          packing=packing,
                                          extension=ds.get("extension", None),
@@ -139,6 +151,7 @@ class InMemoryDatabase(Database):
             return oamap.dataset.Data(dataset,
                                       schema,
                                       dict(self._backends),
+                                      self._executor,
                                       packing=packing,
                                       extension=ds.get("extension", None),
                                       doc=ds.get("doc", None),
@@ -150,21 +163,33 @@ class InMemoryDatabase(Database):
         namespace = self._normalize_namespace(namespace)
         if not isinstance(value, oamap.dataset.Dataset):
             raise TypeError("can only put Datasets in Database")
-        if namespace not in self._refcounts:
-            self._refcounts[namespace] = {}
-        self._datasets[dataset] = value.apply(namespace, self._backends[namespace], self._refcounts[namespace])
 
-    def delete(self, dataset, namespace=None):
+        refcounts = self._refcounts[namespace] = self._refcounts.get(namespace, self.RefCounts())
+
+        self._datasets[dataset] = value.apply(namespace, self._backends[namespace], refcounts)
+
+    def delete(self, dataset):
         ds = self._datasets.get(dataset, None)
         if ds is None:
             raise KeyError("no dataset named {0}".format(repr(dataset)))
 
-        namespace = self._normalize_namespace(namespace)        
-        refcounts = self._refcounts.get(namespace, {})
-
         def transform(schema):
-            refcounts[schema.namespace] = max(refcounts.get(schema.namespace, 0) - 1, 0)
+            refcounts = self._refcounts.get(schema.namespace, self.RefCounts())
+            if isinstance(schema, oamap.schema.Primitive):
+                refcounts.decrement(schema.data)
+            elif isinstance(schema, oamap.schema.List):
+                refcounts.decrement(schema.starts)
+                refcounts.decrement(schema.stops)
+            elif isinstance(schema, oamap.schema.Union):
+                refcounts.decrement(schema.tags)
+                refcounts.decrement(schema.offsets)
+            elif isinstance(schema, oamap.schema.Pointer):
+                refcounts.decrement(schema.positions)
+            else:
+                raise AssertionError(schema)
+            if schema.nullable:
+                refcounts.decrement(schema.mask)
             return schema
-        ds.schema.replace(transform)
         
+        ds.schema.replace(transform)
         del self._datasets[dataset]

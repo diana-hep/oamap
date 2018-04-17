@@ -146,7 +146,7 @@ class MaskBitPack(PackedSource):
             del out[suffixedname]
         return out
 
-    def putall(self, roles2arrays, roles):
+    def putall(self, roles2arrays):
         out = {}
         for n, x in roles2arrays.items():
             if isinstance(n, oamap.generator.MaskRole):
