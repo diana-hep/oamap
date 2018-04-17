@@ -158,7 +158,83 @@ class _DualSource(object):
             self.new.close()
 
     @staticmethod
-    def collect(data, namespace="", arrayname=lambda: str(uuid.uuid4())):
+    def collect(data, namespace="", prefix="object", delimiter="-"):
+        arrays = {}
+        def getarrays(node):
+            if isinstance(node, _DualSource):
+                recurse(node.old)
+                for n, x in node.new.items():
+                    arrays[node.namespace, n] = x
+        getarrays(data._arrays)
+
+        schema = data._generator.namedschema()
+        nodes = {}
+        def recurse(node, memo):
+            if isinstance(node, oamap.schema.Primitive):
+                if (node.namespace, node.data) in arrays:
+                    nodes[node.namespace, node.data] = node
+                    node.namespace = namespace
+                    node.data = None
+                    if node.nullable:
+                        node.mask = None
+            elif isinstance(node, oamap.schema.List):
+                if (node.namespace, node.starts) in arrays:
+                    nodes[node.namespace, schema.starts] = node
+                    node.namespace = namespace
+                    node.starts = None
+                    node.stops = None
+                    if node.nullable:
+                        node.mask = None
+                recurse(node.content, memo)
+            elif isinstance(node, oamap.schema.Union):
+                if (node.namespace, node.tags) in arrays:
+                    nodes[node.namespace, node.tags] = node
+                    node.namespace = namespace
+                    node.tags = None
+                    node.offsets = None
+                for possibility in node.possibilities:
+                    recurse(possibility, memo)
+            elif isinstance(node, oamap.schema.Record):
+                if node.nullable and (node.namespace, node.mask) in arrays:
+                    nodes[node.namespace, node.mask] = node
+                    node.namespace = namespace
+                    node.mask = None
+                for field in node.fields.values():
+                    recurse(field, memo)
+            elif isinstance(node, oamap.schema.Tuple):
+                if node.nullable and (node.namespace, node.mask) in arrays:
+                    nodes[node.namespace, node.mask] = node
+                    node.namespace = namespace
+                    node.mask = None
+                for field in node.types:
+                    recurse(field, memo)
+            elif isinstance(node, oamap.schema.Pointer):
+                if id(node) not in memo:
+                    memo.add(id(node))
+                    if (node.namespace, node.positions) in arrays:
+                        nodes[node.namespace, node.positions] = node
+                        node.namespace = namespace
+                        node.positions = None
+                        if node.nullable:
+                            node.mask = None
+                    recurse(node.target, memo)
+            else:
+                raise AssertionError(node)
+
+        recurse(schema, set())
+
+        newgenerator = schema.generator(prefix=prefix, delimiter=delimiter)
+        newschema = newgenerator.namedschema()
+
+        def recurse2(oldnode, newnode):
+            HERE
+
+
+
+
+
+
+
         arrays = {}
         newname = {}
         def recurse(node):

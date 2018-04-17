@@ -141,7 +141,7 @@ class Operable(object):
 Operable.update_operations()
 
 class _Data(Operable):
-    def __init__(self, name, schema, backends, executor, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+    def __init__(self, name, schema, backends, executor, packing=None, extension=None, doc=None, metadata=None, delimiter="-"):
         super(_Data, self).__init__()
         self._name = name
         self._schema = schema
@@ -151,7 +151,6 @@ class _Data(Operable):
         self._extension = extension
         self._doc = doc
         self._metadata = metadata
-        self._prefix = prefix
         self._delimiter = delimiter
 
     def __repr__(self):
@@ -188,7 +187,7 @@ class _Data(Operable):
         return DataArrays(self._backends)
 
     def _serializable(self):
-        out = Data(self._name, self._schema, self._backends, None, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+        out = Data(self._name, self._schema, self._backends, None, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
         out._operations = self._operations
         return out
 
@@ -198,7 +197,7 @@ class _Data(Operable):
             for operation in self._operations:
                 result = operation.apply(result)
 
-            out = Data(name, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+            out = Data(name, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
             return [SingleThreadExecutor.PseudoFuture(update(name, out))]
 
         else:
@@ -222,7 +221,7 @@ class _Data(Operable):
                         active[str(n)] = x
                         refcount.increment(str(n))
 
-                out = Data(name, schema, dataset._backends, dataset._executor, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, prefix=dataset._prefix, delimiter=dataset._delimiter)
+                out = Data(name, schema, dataset._backends, dataset._executor, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
                 return update(name, out)
 
             return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
@@ -266,11 +265,11 @@ class DataArrays(object):
             self._active[namespace] = None
                 
 class Dataset(_Data):
-    def __init__(self, name, schema, backends, executor, offsets, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+    def __init__(self, name, schema, backends, executor, offsets, packing=None, extension=None, doc=None, metadata=None, delimiter="-"):
         if not isinstance(schema, oamap.schema.List):
             raise TypeError("Dataset must have a list schema, not\n\n    {0}".format(schema.__repr__(indent="    ")))
 
-        super(Dataset, self).__init__(name, schema, backends, executor, packing=packing, extension=extension, doc=doc, metadata=metadata, prefix=prefix, delimiter=delimiter)
+        super(Dataset, self).__init__(name, schema, backends, executor, packing=packing, extension=extension, doc=doc, metadata=metadata, delimiter=delimiter)
 
         if not isinstance(offsets, numpy.ndarray):
             try:
@@ -352,14 +351,14 @@ class Dataset(_Data):
         if not 0 <= normid < self.numpartitions:
             raise IndexError("partitionid {0} out of range for {1} partitions".format(partitionid, self.numpartitions))
 
-        startsrole = oamap.generator.StartsRole(self._schema._get_starts(self._prefix, self._delimiter), self._schema.namespace, None)
-        stopsrole = oamap.generator.StopsRole(self._schema._get_stops(self._prefix, self._delimiter), self._schema.namespace, None)
+        startsrole = oamap.generator.StartsRole(self._schema._get_starts(self._name, self._delimiter), self._schema.namespace, None)
+        stopsrole = oamap.generator.StopsRole(self._schema._get_stops(self._name, self._delimiter), self._schema.namespace, None)
         startsrole.stops = stopsrole
         stopsrole.starts = startsrole
         return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
     def _serializable(self):
-        out = Dataset(self._name, self._schema, self._backends, None, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+        out = Dataset(self._name, self._schema, self._backends, None, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
         out._operations = self._operations
         return out
 
@@ -369,7 +368,7 @@ class Dataset(_Data):
             for operation in self._operations:
                 result = operation.apply(result)
 
-            out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+            out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
             return [SingleThreadExecutor.PseudoFuture(update(name, out))]
 
         else:
@@ -405,7 +404,7 @@ class Dataset(_Data):
                     offsets = numpy.cumsum([0] + [x.result()[1] for x in results], dtype=numpy.int64)
                     schema = results[0].result()[0]
 
-                out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, prefix=dataset._prefix, delimiter=dataset._delimiter)
+                out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
                 return update(name, out)
 
             tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))
