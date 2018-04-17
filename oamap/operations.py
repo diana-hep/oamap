@@ -40,17 +40,13 @@ import numpy
 import oamap.schema
 import oamap.generator
 import oamap.proxy
+import oamap.util
 
-from oamap.util import varname
-from oamap.util import paramtypes
-from oamap.util import trycompile
-from oamap.util import returntype
+recastings = {}
+transformations = {}
+actions = {}
 
 ################################################################ general utilities
-
-if sys.version_info[0] > 2:
-    basestring = str
-    unicode = str
 
 def _setindexes(input, output):
     if isinstance(input, oamap.proxy.ListProxy):
@@ -63,7 +59,7 @@ def _setindexes(input, output):
         raise AssertionError(type(input))
     return output
     
-class DualSource(object):
+class _DualSource(object):
     def __init__(self, old, oldns):
         self.old = old
         self.new = {}
@@ -166,7 +162,7 @@ class DualSource(object):
         arrays = {}
         newname = {}
         def recurse(node):
-            if isinstance(node, DualSource):
+            if isinstance(node, _DualSource):
                 recurse(node.old)
                 for n, x in node.new.items():
                     name = arrayname()
@@ -237,6 +233,8 @@ def fieldname(data, at, newname):
     else:
         raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+recastings["fieldname"] = fieldname
+
 def recordname(data, at, newname):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
@@ -252,6 +250,8 @@ def recordname(data, at, newname):
     else:
         raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+recastings["recordname"] = recordname
+
 ################################################################ project/keep/drop
 
 def project(data, at):
@@ -263,6 +263,8 @@ def project(data, at):
     else:
         raise TypeError("project can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+recastings["project"] = project
+
 def keep(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema().keep(*paths)
@@ -272,6 +274,8 @@ def keep(data, *paths):
     else:
         raise TypeError("keep can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+recastings["keep"] = keep
+
 def drop(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema().drop(*paths)
@@ -280,6 +284,8 @@ def drop(data, *paths):
         return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("drop can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+recastings["drop"] = drop
 
 ################################################################ split
 
@@ -312,6 +318,8 @@ def split(data, *paths):
 
     else:
         raise TypeError("split can only be applied to an OAMap proxy (List, Record, Tuple)")
+
+recastings["split"] = split
 
 ################################################################ merge
 
@@ -391,6 +399,8 @@ def merge(data, container, *paths):
     else:
         raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+recastings["merge"] = merge
+
 ################################################################ parent
 
 def parent(data, fieldname, at):
@@ -428,7 +438,7 @@ def parent(data, fieldname, at):
 
         childnode[fieldname] = oamap.schema.Pointer(parentnode)
 
-        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(childnode[fieldname], pointers)
 
         return _setindexes(data, schema(arrays))
@@ -439,6 +449,8 @@ def _parent_fill(starts, stops, pointers):
 
 parent.fill = _parent_fill
 del _parent_fill
+
+transformations["parent"] = parent
 
 ################################################################ index
 
@@ -472,7 +484,7 @@ def index(data, fieldname, at):
 
         childnode[fieldname] = oamap.schema.Primitive(values.dtype)
 
-        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(childnode[fieldname], values)
 
         return _setindexes(data, schema(arrays))
@@ -486,13 +498,7 @@ def _index_fill(starts, stops, pointers):
 index.fill = _index_fill
 del _index_fill
 
-from oamap.schema import *
-data = List(Record({"muons": List(Record({"pt": "float"}))})).fromdata([
-    {"muons": [{"pt": 1.1}, {"pt": 2.2}, {"pt": 3.3}]},
-    {"muons": []},
-    {"muons": [{"pt": 4.4}, {"pt": 5.5}]}])
-
-new = index(data, "i", "muons")
+transformations["index"] = index
 
 ################################################################ tomask
 
@@ -504,7 +510,7 @@ def tomask(data, at, low, high=None):
             nodes = (nodes[0].content,) + nodes
         node = nodes[0]
 
-        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays = _DualSource(data._arrays, data._generator.namespaces())
 
         if isinstance(node, oamap.schema.Primitive):
             generator = data._generator.findbynames("Primitive", node.namespace, data=node.data, mask=node.mask)
@@ -539,6 +545,8 @@ def tomask(data, at, low, high=None):
     else:
         raise TypeError("tomask can only be applied to an OAMap proxy (List, Record, Tuple)")
 
+transformations["tomask"] = tomask
+
 ################################################################ flatten
 
 def flatten(data, at=""):
@@ -564,12 +572,14 @@ def flatten(data, at=""):
 
         outernode.content = innernode.content
 
-        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(outernode, starts, stops)
         return schema(arrays)
 
     else:
         raise TypeError("flatten can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+transformations["flatten"] = flatten
 
 ################################################################ filter
 
@@ -591,25 +601,25 @@ def filter(data, fcn, args=(), at="", numba=True):
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
         viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
         viewschema = listgenerator.namedschema()
-        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewarrays = _DualSource(data._arrays, data._generator.namespaces())
         viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
-        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = varname(avoid, "fcn")
-        fillname = varname(avoid, "fill")
-        lenname = varname(avoid, "len")
-        rangename = varname(avoid, "range")
+        fcnname = oamap.util.varname(avoid, "fcn")
+        fillname = oamap.util.varname(avoid, "fill")
+        lenname = oamap.util.varname(avoid, "len")
+        rangename = oamap.util.varname(avoid, "range")
 
-        ptypes = paramtypes(args)
+        ptypes = oamap.util.paramtypes(args)
         if ptypes is not None:
             import numba as nb
             from oamap.compiler import typeof_generator
             ptypes = (typeof_generator(view._generator.content),) + ptypes
-        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
-        rtype = returntype(fcn, ptypes)
+        fcn = oamap.util.trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = oamap.util.returntype(fcn, ptypes)
         if rtype is not None:
             if rtype != nb.types.boolean:
                 raise TypeError("filter function must return boolean, not {0}".format(rtype))
@@ -627,20 +637,20 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         {stops}[{i}] = {numitems}
     return {numitems}
 """.format(fill=fillname,
-           view=varname(avoid, "view"),
-           viewstarts=varname(avoid, "viewstarts"),
-           viewstops=varname(avoid, "viewstops"),
-           stops=varname(avoid, "stops"),
-           pointers=varname(avoid, "pointers"),
+           view=oamap.util.varname(avoid, "view"),
+           viewstarts=oamap.util.varname(avoid, "viewstarts"),
+           viewstops=oamap.util.varname(avoid, "viewstops"),
+           stops=oamap.util.varname(avoid, "stops"),
+           pointers=oamap.util.varname(avoid, "pointers"),
            params="".join("," + x for x in params[1:]),
-           numitems=varname(avoid, "numitems"),
-           i=varname(avoid, "i"),
+           numitems=oamap.util.varname(avoid, "numitems"),
+           i=oamap.util.varname(avoid, "i"),
            range=rangename,
            len=lenname,
-           j=varname(avoid, "j"),
-           datum=varname(avoid, "datum"),
+           j=oamap.util.varname(avoid, "j"),
+           datum=oamap.util.varname(avoid, "datum"),
            fcn=fcnname), env)
-        fill = trycompile(env[fillname], numba=numba)
+        fill = oamap.util.trycompile(env[fillname], numba=numba)
 
         offsets = numpy.empty(len(viewstarts) + 1, dtype=oamap.generator.ListGenerator.posdtype)
         offsets[0] = 0
@@ -657,13 +667,15 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
             pointers = innerpointers[pointers]
             listnode.content.target = listnode.content.target.target
 
-        arrays = DualSource(data._arrays, data._generator.namespaces())
+        arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(listnode, offsets[:-1], offsets[1:])
         arrays.put(listnode.content, pointers)
         return schema(arrays)
 
     else:
         raise TypeError("filter can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+transformations["filter"] = filter
 
 ################################################################ define
 
@@ -693,25 +705,25 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
         viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
         viewschema = listgenerator.namedschema()
-        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewarrays = _DualSource(data._arrays, data._generator.namespaces())
         if numpy.array_equal(viewstarts[1:], viewstops[:-1]):
             viewarrays.put(viewschema, viewstarts[:1], viewstops[-1:])
         else:
             raise NotImplementedError("non-contiguous arrays: have to do some sort of concatenation")
         view = viewschema(viewarrays)
 
-        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = varname(avoid, "fcn")
-        fillname = varname(avoid, "fill")
+        fcnname = oamap.util.varname(avoid, "fcn")
+        fillname = oamap.util.varname(avoid, "fill")
 
-        ptypes = paramtypes(args)
+        ptypes = oamap.util.paramtypes(args)
         if ptypes is not None:
             import numba as nb
             from oamap.compiler import typeof_generator
             ptypes = (typeof_generator(view._generator.content),) + ptypes
-        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
-        rtype = returntype(fcn, ptypes)
+        fcn = oamap.util.trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = oamap.util.returntype(fcn, ptypes)
 
         if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
             if rtype is not None:
@@ -728,18 +740,18 @@ def {fill}({view}, {primitive}{params}):
         {primitive}[{i}] = {fcn}({datum}{params})
         {i} += 1
 """.format(fill=fillname,
-           view=varname(avoid, "view"),
-           primitive=varname(avoid, "primitive"),
+           view=oamap.util.varname(avoid, "view"),
+           primitive=oamap.util.varname(avoid, "primitive"),
            params="".join("," + x for x in params[1:]),
-           i=varname(avoid, "i"),
-           datum=varname(avoid, "datum"),
+           i=oamap.util.varname(avoid, "i"),
+           datum=oamap.util.varname(avoid, "datum"),
            fcn=fcnname), env)
-            fill = trycompile(env[fillname], numba=numba)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
 
             primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
             fill(*((view, primitive) + args))
 
-            arrays = DualSource(data._arrays, data._generator.namespaces())
+            arrays = _DualSource(data._arrays, data._generator.namespaces())
             arrays.put(recordnode[fieldname], primitive)
             return schema(arrays)
 
@@ -764,23 +776,23 @@ def {fill}({view}, {primitive}, {mask}{params}):
         {i} += 1
     return {numitems}
 """.format(fill=fillname,
-           view=varname(avoid, "view"),
-           primitive=varname(avoid, "primitive"),
-           mask=varname(avoid, "mask"),
+           view=oamap.util.varname(avoid, "view"),
+           primitive=oamap.util.varname(avoid, "primitive"),
+           mask=oamap.util.varname(avoid, "mask"),
            params="".join("," + x for x in params[1:]),
-           i=varname(avoid, "i"),
-           numitems=varname(avoid, "numitems"),
-           datum=varname(avoid, "datum"),
-           tmp=varname(avoid, "tmp"),
+           i=oamap.util.varname(avoid, "i"),
+           numitems=oamap.util.varname(avoid, "numitems"),
+           datum=oamap.util.varname(avoid, "datum"),
+           tmp=oamap.util.varname(avoid, "tmp"),
            fcn=fcnname,
            maskedvalue=oamap.generator.Masked.maskedvalue), env)
-            fill = trycompile(env[fillname], numba=numba)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
             
             primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
             mask = numpy.empty(len(view), dtype=oamap.generator.Masked.maskdtype)
             fill(*((view, primitive, mask) + args))
 
-            arrays = DualSource(data._arrays, data._generator.namespaces())
+            arrays = _DualSource(data._arrays, data._generator.namespaces())
             arrays.put(recordnode[fieldname], primitive, mask)
             return schema(arrays)
 
@@ -789,6 +801,8 @@ def {fill}({view}, {primitive}, {mask}{params}):
 
     else:
         raise TypeError("define can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+transformations["define"] = define
 
 ################################################################ map
 
@@ -810,23 +824,23 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
 
         viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
         viewschema = listgenerator.namedschema()
-        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewarrays = _DualSource(data._arrays, data._generator.namespaces())
         viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
-        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = varname(avoid, "fcn")
-        fillname = varname(avoid, "fill")
+        fcnname = oamap.util.varname(avoid, "fcn")
+        fillname = oamap.util.varname(avoid, "fill")
 
-        ptypes = paramtypes(args)
+        ptypes = oamap.util.paramtypes(args)
         if ptypes is not None:
             import numba as nb
             from oamap.compiler import typeof_generator
             ptypes = (typeof_generator(view._generator.content),) + ptypes
-        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
-        rtype = returntype(fcn, ptypes)
+        fcn = oamap.util.trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = oamap.util.returntype(fcn, ptypes)
 
         if rtype is None:
             first = fcn(*((view[0],) + args))
@@ -866,13 +880,13 @@ def {fill}({view}, {out}{params}):
         {out}[{i}] = {fcn}({datum}{params})
         {i} += 1
 """.format(fill=fillname,
-           view=varname(avoid, "view"),
-           out=varname(avoid, "out"),
+           view=oamap.util.varname(avoid, "view"),
+           out=oamap.util.varname(avoid, "out"),
            params="".join("," + x for x in params[1:]),
-           i=varname(avoid, "i"),
-           datum=varname(avoid, "datum"),
+           i=oamap.util.varname(avoid, "i"),
+           datum=oamap.util.varname(avoid, "datum"),
            fcn=fcnname), env)
-            fill = trycompile(env[fillname], numba=numba)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
             fill(*((view, out) + args))
 
         elif isinstance(rtype, (nb.types.Tuple, nb.types.UniTuple)) and len(rtype.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.types):
@@ -884,9 +898,9 @@ def {fill}({view}, {out}{params}):
             out = numpy.empty(len(view), dtype=zip(names, [numpy.dtype(x.name) for x in rtype.types]))
             outs = tuple(out[n] for n in names)
 
-            outnames = [varname(avoid, "out" + str(i)) for i in range(len(names))]
-            iname = varname(avoid, "i")
-            tmpname = varname(avoid, "tmp")
+            outnames = [oamap.util.varname(avoid, "out" + str(i)) for i in range(len(names))]
+            iname = oamap.util.varname(avoid, "i")
+            tmpname = oamap.util.varname(avoid, "tmp")
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {outs}{params}):
@@ -896,15 +910,15 @@ def {fill}({view}, {outs}{params}):
         {assignments}
         {i} += 1
 """.format(fill=fillname,
-           view=varname(avoid, "view"),
+           view=oamap.util.varname(avoid, "view"),
            outs=",".join(outnames),
            params="".join("," + x for x in params[1:]),
            i=iname,
-           datum=varname(avoid, "datum"),
+           datum=oamap.util.varname(avoid, "datum"),
            tmp=tmpname,
            fcn=fcnname,
            assignments="\n        ".join("{out}[{i}] = {tmp}[{j}]".format(out=out, i=iname, tmp=tmpname, j=j) for j, out in enumerate(outnames))), env)
-            fill = trycompile(env[fillname], numba=numba)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
             fill(*((view,) + outs + args))
 
         else:
@@ -914,6 +928,8 @@ def {fill}({view}, {outs}{params}):
 
     else:
         raise TypeError("map can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+actions["map"] = map
 
 ################################################################ reduce
 
@@ -934,7 +950,7 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
         viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
         viewschema = listgenerator.namedschema()
-        viewarrays = DualSource(data._arrays, data._generator.namespaces())
+        viewarrays = _DualSource(data._arrays, data._generator.namespaces())
         viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
@@ -942,19 +958,19 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
         if fcn.__code__.co_argcount < 2:
             raise TypeError("function must have at least two parameters (data and tally)")
 
-        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
-        fcnname = varname(avoid, "fcn")
-        fillname = varname(avoid, "fill")
+        fcnname = oamap.util.varname(avoid, "fcn")
+        fillname = oamap.util.varname(avoid, "fill")
         tallyname = params[1]
 
-        ptypes = paramtypes(args)
+        ptypes = oamap.util.paramtypes(args)
         if ptypes is not None:
             import numba as nb
             from oamap.compiler import typeof_generator
             ptypes = (typeof_generator(view._generator.content), nb.typeof(tally)) + ptypes
-        fcn = trycompile(fcn, paramtypes=ptypes, numba=numba)
-        rtype = returntype(fcn, ptypes)
+        fcn = oamap.util.trycompile(fcn, paramtypes=ptypes, numba=numba)
+        rtype = oamap.util.returntype(fcn, ptypes)
 
         if rtype is not None:
             if nb.typeof(tally) != rtype:
@@ -967,14 +983,16 @@ def {fill}({view}, {tally}{params}):
         {tally} = {fcn}({datum}, {tally}{params})
     return {tally}
 """.format(fill=fillname,
-           view=varname(avoid, "view"),
+           view=oamap.util.varname(avoid, "view"),
            tally=tallyname,
            params="".join("," + x for x in params[2:]),
-           datum=varname(avoid, "datum"),
+           datum=oamap.util.varname(avoid, "datum"),
            fcn=fcnname), env)
-        fill = trycompile(env[fillname], numba=numba)
+        fill = oamap.util.trycompile(env[fillname], numba=numba)
 
         return fill(*((view, tally) + args))
 
     else:
         raise TypeError("reduce can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+actions["reduce"] = reduce

@@ -46,7 +46,7 @@ class Backend(object):
         return self._args
 
     def instantiate(self, partitionid):
-        raise NotImplementedError("subclasses define how to instantiate from args and partitionid")
+        raise NotImplementedError("missing implementation for {0}.implementation".format(self.__class__))
 
 class DictBackend(Backend):
     def instantiate(self, partitionid):
@@ -89,10 +89,10 @@ class Database(object):
         del self._backends[namespace]
 
     def list(self):
-        return NotImplementedError
+        return NotImplementedError("missing implementation for {0}.list".format(self.__class__))
 
     def get(self, dataset):
-        return NotImplementedError
+        return NotImplementedError("missing implementation for {0}.get".format(self.__class__))
 
     def _normalize_namespace(self, namespace):
         if namespace is None:
@@ -102,10 +102,10 @@ class Database(object):
         return namespace
 
     def put(self, dataset, value, namespace=None):
-        return NotImplementedError
+        return NotImplementedError("missing implementation for {0}.put".format(self.__class__))
 
     def delete(self, dataset, namespace=None):
-        return NotImplementedError
+        return NotImplementedError("missing implementation for {0}.delete".format(self.__class__))
 
 class InMemoryDatabase(Database):
     def __init__(self, backends={}, namespace="", datasets={}, refcounts={}):

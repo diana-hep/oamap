@@ -29,15 +29,98 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numbers
+import types
 
 import numpy
 
 import oamap.schema
 import oamap.generator
 import oamap.util
+import oamap.operations
 
-class Data(object):
+class Operation(object):
+    def __init__(self, name, args, kwargs, function):
+        self._name = name
+        self._args = args
+        self._kwargs = kwargs
+        self._function = function
+
+    def __repr__(self):
+        return "<{0} {1} {2} {3}>".format(self.__class__.__name__, self._name, repr(self._args), repr(self._kwargs))
+
+    def __str__(self):
+        return ".{0}({1}{2})".format(self._name, ", ".join(repr(x) for x in self._args), "".join(", {0}={1}".format(n, repr(x)) for n, x in self._kwargs.items()))
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def args(self):
+        return self._args
+
+    @property
+    def kwargs(self):
+        return self._kwargs
+
+    @property
+    def function(self):
+        return self._function
+
+class Recasting(Operation): pass
+class Transformation(Operation): pass
+class Action(Operation): pass
+
+class Operable(object):
+    def __init__(self):
+        self._operations = ()
+
+    @staticmethod
+    def update_operations():
+        def newrecasting(name, function):
+            def recasting(self, *args, **kwds):
+                out = self.__class__.__new__(self.__class__)
+                Operable.__init__(out)
+                out.__dict__ = self.__dict__.copy()
+                out._operations = self._operations + (Recasting(name, args, kwds, function),)
+                return out
+            recasting.__name__ = name
+            return recasting
+
+        def newtransformation(name, function):
+            def transformation(self, *args, **kwds):
+                out = self.__class__.__new__(self.__class__)
+                Operable.__init__(out)
+                out.__dict__ = self.__dict__.copy()
+                out._operations = self._operations + (Transformation(name, args, kwds, function),)
+                return out
+            transformation.__name__ = name
+            return transformation
+
+        def newaction(name, function):
+            def action(self, *args, **kwds):
+                out = self.__class__.__new__(self.__class__)
+                Operable.__init__(out)
+                out.__dict__ = self.__dict__.copy()
+                out._operations = self._operations + (Action(name, args, kwds, function),)
+                return out.apply()
+            action.__name__ = name
+            return action
+
+        for n, x in oamap.operations.recastings.items():
+            setattr(Operable, n, types.MethodType(newrecasting(n, x), None, Operable))
+
+        for n, x in oamap.operations.transformations.items():
+            setattr(Operable, n, types.MethodType(newtransformation(n, x), None, Operable))
+
+        for n, x in oamap.operations.actions.items():
+            setattr(Operable, n, types.MethodType(newaction(n, x), None, Operable))
+
+Operable.update_operations()
+
+class Data(Operable):
     def __init__(self, name, schema, backends, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+        super(Data, self).__init__()
         self._name = name
         self._schema = schema
         self._backends = backends
@@ -49,8 +132,11 @@ class Data(object):
         self._delimiter = delimiter
 
     def __repr__(self):
-        return "<Data {0}>".format(repr(self._name))
+        return "<Data {0}>{1}".format(repr(self._name), "".join(str(x) for x in self._operations))
 
+    def __str__(self):
+        return "<Data {0}>{1}".format(repr(self._name), "".join("\n    " + str(x) for x in self._operations))
+    
     @property
     def name(self):
         return self._name
@@ -137,7 +223,10 @@ class Dataset(Data):
         self._offsets = offsets
 
     def __repr__(self):
-        return "<Dataset {0} {1} partitions {2} entries>".format(repr(self._name), self.numpartitions, self.numentries)
+        return "<Dataset {0} {1} partitions {2} entries>{3}".format(repr(self._name), self.numpartitions, self.numentries, "".join(str(x) for x in self._operations))
+
+    def __str__(self):
+        return "<Dataset {0} {1} partitions {2} entries>{3}".format(repr(self._name), self.numpartitions, self.numentries, "".join("\n    " + str(x) for x in self._operations))
 
     @property
     def offsets(self):
@@ -167,15 +256,7 @@ class Dataset(Data):
         return self._schema(self.arrays(partitionid))
         
     def __getitem__(self, index):
-        if isinstance(index, numbers.Integral):
-            normindex = index if index >= 0 else index + self.numentries
-            if not 0 <= normindex < self.numentries:
-                raise IndexError("index {0} out of range for {1} entries".format(index, self.numentries))
-            partitionid = numpy.searchsorted(self._offsets, normindex, side="right") - 1
-            localindex = normindex - self._offsets[partitionid]
-            return self.partition(partitionid)[localindex]
-
-        elif isinstance(index, slice):
+        if isinstance(index, slice):
             start, stop, step = oamap.util.slice2sss(index, self.numentries)
             partitionid = max(0, min(numpy.searchsorted(self._offsets, start, side="right") - 1, self.numpartitions - 1))
             localstart = start - self._offsets[partitionid]
@@ -191,6 +272,14 @@ class Dataset(Data):
             d, m = divmod(abs(localstart - localstop), abs(step))
             out._length = d + (1 if m != 0 else 0)
             return out
+
+        else:
+            normindex = index if index >= 0 else index + self.numentries
+            if not 0 <= normindex < self.numentries:
+                raise IndexError("index {0} out of range for {1} entries".format(index, self.numentries))
+            partitionid = numpy.searchsorted(self._offsets, normindex, side="right") - 1
+            localindex = normindex - self._offsets[partitionid]
+            return self.partition(partitionid)[localindex]
 
     def arrays(self, partitionid):
         normid = partitionid if partitionid >= 0 else partitionid + self.numpartitions
@@ -229,3 +318,4 @@ class DatasetArrays(DataArrays):
             out[self._stopsrole] = numpy.array([self._numentries], dtype=oamap.generator.ListGenerator.posdtype)
 
         return filtered
+    
