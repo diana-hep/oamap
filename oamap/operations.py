@@ -137,8 +137,8 @@ class _DualSource(object):
             raise AssertionError(schemanode)
 
         if schemanode.nullable:
-            maskrole = oamap.generator.MaskRole(self.arrayname(), self.namespace, roles2arrays)
-            roles2arrays = dict(list(roles2arrays.items()) + [(maskrole, arrays[-1])])
+            maskrole = oamap.generator.MaskRole(self.arrayname(), self.namespace, dict(roles2arrays))
+            roles2arrays[maskrole] = arrays[-1]
             schemanode.mask = str(maskrole)
 
         schemanode.namespace = self.namespace
@@ -170,22 +170,39 @@ class _DualSource(object):
                     newname[node.namespace, n] = name
         recurse(data._arrays)
 
+        roles2arrays = {}
+
         def transform(schema):
+            r2a = {}
             ns = schema.namespace
             if isinstance(schema, oamap.schema.Primitive):
                 if (ns, schema.data) in newname:
                     schema.namespace = namespace
                     schema.data = newname[ns, schema.data]
+                    datarole = oamap.generator.DataRole(schema.data, namespace)
+                    r2a[datarole] = arrays[schema.data]
             elif isinstance(schema, oamap.schema.List):
                 if (ns, schema.starts) in newname:
                     schema.namespace = namespace
                     schema.starts = newname[ns, schema.starts]
                     schema.stops = newname[ns, schema.stops]
+                    startsrole = oamap.generator.StartsRole(schema.starts, namespace, None)
+                    stopsrole = oamap.generator.StopsRole(schema.stops, namespace, None)
+                    startsrole.stops = stopsrole
+                    stopsrole.starts = startsrole
+                    r2a[startsrole] = arrays[schema.starts]
+                    r2a[stopsrole] = arrays[schema.stops]
             elif isinstance(schema, oamap.schema.Union):
                 if (ns, schema.tags) in newname:
                     schema.namespace = namespace
                     schema.tags = newname[ns, schema.tags]
                     schema.offsets = newname[ns, schema.offsets]
+                    tagsrole = oamap.generator.TagsRole(schema.tags, namespace, None)
+                    offsetsrole = oamap.generator.OffsetsRole(schema.offsets, namespace, None)
+                    tagsrole.offsets = offsetsrole
+                    offsetsrole.tags = tagsrole
+                    r2a[tagsrole] = arrays[schema.tags]
+                    r2a[offsetsrole] = arrays[schema.offsets]
             elif isinstance(schema, oamap.schema.Record):
                 if schema.nullable and (ns, schema.mask) in newname:
                     schema.namespace = namespace
@@ -196,10 +213,17 @@ class _DualSource(object):
                 if (ns, schema.positions) in newname:
                     schema.namespace = namespace
                     schema.positions = newname[ns, schema.positions]
+                    positionsrole = oamap.generator.PositionsRole(schema.positions, namespace)
+                    r2a[positionsrole] = arrays[schema.positions]
             else:
                 raise AssertionError(schema)
+
             if schema.nullable:
                 schema.mask = newname[ns, schema.mask]
+                maskrole = oamap.generator.MaskRole(schema.mask, namespace, dict(r2a))
+                r2a[maskrole] = arrays[schema.mask]
+
+            roles2arrays.update(r2a)
             return schema
 
         return data._generator.schema.replace(transform), arrays
