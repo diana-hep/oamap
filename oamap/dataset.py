@@ -374,7 +374,7 @@ class Dataset(Data):
         else:
             def task(dataset, namespace, backend, partitionid):
                 result = dataset.partition(partitionid)
-                for operation in self._operations:
+                for operation in dataset._operations:
                     result = operation.apply(result)
 
                 active = backend.instantiate(partitionid)
@@ -392,12 +392,19 @@ class Dataset(Data):
                         active[str(n)] = x
                         refcount.increment(str(n))
 
-                return schema
+                return schema, len(result)
 
             tasks = [self._executor.submit(task, self._serializable(), namespace, backend, i) for i in range(self.numpartitions)]
 
-            def collect(name, dataset, schemas, update):
-                out = Dataset(name, schemas[0], dataset._backends, dataset._executor, dataset._offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, prefix=dataset._prefix, delimiter=dataset._delimiter)
+            def collect(name, dataset, results, update):
+                if isinstance(results[0], tuple) and len(results[0]) == 2 and isinstance(results[0][0], oamap.schema.Schema):
+                    offsets = numpy.cumsum([0] + [numentries for schema, numentries in results], dtype=numpy.int64)
+                    schema = results[0][0]
+                else:
+                    offsets = numpy.cumsum([0] + [x.result()[1] for x in results], dtype=numpy.int64)
+                    schema = results[0].result()[0]
+
+                out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, prefix=dataset._prefix, delimiter=dataset._delimiter)
                 return update(name, out)
 
             tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))

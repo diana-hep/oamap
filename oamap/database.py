@@ -149,17 +149,17 @@ class Database(object):
                                       delimiter=obj.get("delimiter", "-"))
 
     def _dataset2json(self, data):
-        obj = {"schema": data.schema.tojson()}
-        if isinstance(data.schema, oamap.schema.List):
-            obj["offsets"] = data.offsets.tolist()
-        if data.packing is not None:
-            obj["packing"] = data.packing.tojson()
-        if data.extension is not None:
-            obj["extension"] = data.extension
-        if data.doc is not None:
-            obj["doc"] = data.doc
-        if data.metadata is not None:
-            obj["metadata"] = data.metadata
+        obj = {"schema": data._schema.tojson()}
+        if isinstance(data._schema, oamap.schema.List):
+            obj["offsets"] = data._offsets.tolist()
+        if data._packing is not None:
+            obj["packing"] = data._packing.tojson()
+        if data._extension is not None:
+            obj["extension"] = data._extension
+        if data._doc is not None:
+            obj["doc"] = data._doc
+        if data._metadata is not None:
+            obj["metadata"] = data._metadata
         if data._prefix != "object":
             obj["prefix"] = data._prefix
         if data._delimiter != "-":
