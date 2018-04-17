@@ -140,9 +140,9 @@ class Operable(object):
 
 Operable.update_operations()
 
-class Data(Operable):
+class _Data(Operable):
     def __init__(self, name, schema, backends, executor, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
-        super(Data, self).__init__()
+        super(_Data, self).__init__()
         self._name = name
         self._schema = schema
         self._backends = backends
@@ -183,10 +183,6 @@ class Data(Operable):
     @property
     def metadata(self):
         return self._metadata
-
-    def __call__(self):
-        # FIXME: packing, extension, prefix, delimiter
-        return self._schema(self.arrays())
 
     def arrays(self):
         return DataArrays(self._backends)
@@ -231,6 +227,11 @@ class Data(Operable):
 
             return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
 
+class Data(_Data):
+    def __call__(self):
+        # FIXME: packing, extension, prefix, delimiter
+        return self._schema(self.arrays())
+
 class DataArrays(object):
     def __init__(self, backends):
         self._backends = backends
@@ -264,7 +265,7 @@ class DataArrays(object):
                 active.close()
             self._active[namespace] = None
                 
-class Dataset(Data):
+class Dataset(_Data):
     def __init__(self, name, schema, backends, executor, offsets, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
         if not isinstance(schema, oamap.schema.List):
             raise TypeError("Dataset must have a list schema, not\n\n    {0}".format(schema.__repr__(indent="    ")))
@@ -369,7 +370,7 @@ class Dataset(Data):
                 result = operation.apply(result)
 
             out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
-            return SingleThreadExecutor.PseudoFuture(update(name, out))
+            return [SingleThreadExecutor.PseudoFuture(update(name, out))]
 
         else:
             def task(dataset, namespace, backend, partitionid):

@@ -205,7 +205,7 @@ class InMemoryDatabase(Database):
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
-        if not isinstance(value, oamap.dataset.Data):
+        if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
 
         refcounts = self._refcounts[namespace] = self._refcounts.get(namespace, self.RefCounts())
