@@ -83,51 +83,67 @@ class Data(object):
 class DataArrays(object):
     def __init__(self, backends):
         self._backends = backends
+        self._active = {}
+        self._partitionid = None
+
+    def _toplevel(self, out, filtered):
+        return filtered
 
     def getall(self, roles):
-        raise NotImplementedError
+        out = {}
+        for namespace, backend in self._backends.items():
+            filtered = self._toplevel(out, [x for x in roles if x.namespace == namespace])
+
+            if len(filtered) > 0:
+                active = self._active.get(namespace, None)
+                if active is None:
+                    active = self._active[namespace] = backend.instantiate(self._partitionid)
+
+                if hasattr(active, "getall"):
+                    out.update(active.getall(filtered))
+                else:
+                    for x in roles:
+                        out[x] = active[str(x)]
+
+        return out
 
     def close(self):
-        raise NotImplementedError
-
+        for namespace, active in self._active.items():
+            if hasattr(active, "close"):
+                active.close()
+            self._active[namespace] = None
+                
 class Dataset(Data):
-    def __init__(self, name, schema, backends, starts=None, stops=None, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+    def __init__(self, name, schema, backends, offsets=None, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
         if not isinstance(schema, oamap.schema.List):
             raise TypeError("Dataset must have a list schema, not\n\n    {0}".format(schema.__repr__(indent="    ")))
 
         super(Dataset, self).__init__(name, schema, backends, packing=packing, extension=extension, doc=doc, metadata=metadata, prefix=prefix, delimiter=delimiter)
 
-        if not isinstance(starts, numpy.ndarray):
+        if not isinstance(offsets, numpy.ndarray):
             try:
-                if len(x) == 0 or not all(isinstance(x, numbers.Integral) and x >= 0 for x in starts):
+                if not all(isinstnace(x, numbers.Integral) and x >= 0 for x in offests):
                     raise TypeError
             except TypeError:
-                raise TypeError("starts must be a non-empty iterable of non-negative integers")
-            starts = numpy.array(starts, dtype=numpy.int64)
-        if not isinstance(stops, numpy.ndarray):
-            try:
-                if len(x) == 0 or not all(isinstance(x, numbers.Integral) and x >= 0 for x in stops):
-                    raise TypeError
-            except TypeError:
-                raise TypeError("stops must be a non-empty iterable of non-negative integers")
-            stops = numpy.array(stops, dtype=numpy.int64)
-        if len(starts.shape) != 1 or len(stops.shape) != 1:
-            raise ValueError("starts and stops must be one-dimensional")
-        if len(starts) != len(stops) or not numpy.all(starts <= stops):
-            raise ValueError("starts have the same length as stops and must all be less than or equal to stops")
-        self._starts = starts
-        self._stops = stops
+                raise TypeError("offsets must be an iterable of non-negative integers")
+            offsets = numpy.array(offsets, dtype=numpy.int64)
+        if len(offsets.shape) != 1:
+            raise ValueError("offsets must be one-dimensional")
+        if len(offsets) < 2 or offsets[0] != 0:
+            raise ValueError("offsets must have at least two items, and the first one must be zero")
+        if not numpy.all(offsets[:-1] <= offsets[1:]):
+            raise ValueError("offsets must be monotonically increasing")
 
     def __repr__(self):
         return "<Dataset {0} {1} partitions {2} entries>".format(repr(self._name), self.numpartitions, self.numentries)
 
     @property
     def numpartitions(self):
-        return len(self._starts)
+        return len(self._offsets) - 1
 
     @property
     def numentries(self):
-        return int((self._stops - self._starts).sum())
+        return int(self._offsets[-1])
 
     def partition(self, partitionid):
         return self._schema(self.arrays(partitionid))
@@ -148,19 +164,31 @@ class Dataset(Data):
         stopsrole = oamap.generator.StopsRole(self._schema._get_stops(self._prefix, self._delimiter), self._schema.namespace, None)
         startsrole.stops = stopsrole
         stopsrole.starts = startsrole
-        return DatasetArrays(normid, startsrole, stopsrole, self._starts[normid], self._stops[normid], self._backends)
+        return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
 class DatasetArrays(DataArrays):
-    def __init__(self, partitionid, startsrole, stopsrole, start, stop, backends):
+    def __init__(self, partitionid, startsrole, stopsrole, numentries, backends):
         super(DatasetArrays, self).__init__(backends)
         self._partitionid = partitionid
         self._startsrole = startsrole
         self._stopsrole = stopsrole
-        self._start = start
-        self._stop = stop
+        self._numentries = numentries
 
-    def getall(self, roles):
-        raise NotImplementedError
+    def _toplevel(self, out, filtered):
+        try:
+            index = filtered.index(self._startsrole)
+        except ValueError:
+            pass
+        else:
+            del filtered[index]
+            out[self._startsrole] = numpy.array([0], dtype=oamap.generator.ListGenerator.posdtype)
 
-    def close(self):
-        raise NotImplementedError
+        try:
+            index = filtered.index(self._stopsrole)
+        except ValueError:
+            pass
+        else:
+            del filtered[index]
+            out[self._stopsrole] = numpy.array([self._numentries], dtype=oamap.generator.ListGenerator.posdtype)
+
+        return filtered

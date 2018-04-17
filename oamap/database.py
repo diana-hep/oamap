@@ -38,14 +38,20 @@ if sys.version_info[0] > 2:
     unicode = str
 
 class Backend(object):
-    def __init__(self, namespace):
-        self._namespace = namespace
+    def __init__(self, args):
+        self._args = args
 
-    def qualify(self, unqualified, partition):
-        return "{0}-{1}".format(unqualified, partition)
+    @property
+    def args(self):
+        return self._args
 
     def instantiate(self, partitionid):
-        raise NotImplementedError
+        raise NotImplementedError("subclasses define how to instantiate from args and partitionid")
+
+class DictBackend(Backend):
+    def instantiate(self, partitionid):
+        out = self._args[partitionid] = self._args.get(partitionid, {})
+        return out
 
 class Database(object):
     def __init__(self, connection, backends={}, namespace=""):
@@ -117,8 +123,7 @@ class InMemoryDatabase(Database):
         return oamap.dataset.Dataset(dataset,
                                      oamap.schema.Schema.fromjson(ds["schema"]),
                                      dict(self._backends),
-                                     starts=ds.get("starts", None),
-                                     stops=ds.get("stops", None),
+                                     offsets=ds.get("offsets", None),
                                      packing=oamap.schema.Schema._packingfromjson(ds.get("packing", None)),
                                      extension=ds.get("extension", None),
                                      doc=ds.get("doc", None),
