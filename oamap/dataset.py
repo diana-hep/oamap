@@ -41,9 +41,9 @@ class Data(object):
         self._schema = schema
         self._backends = backends
         self._packing = packing
-        self._extension = spec["extension"]
-        self._doc = spec["doc"]
-        self._metadata = spec["metadata"]
+        self._extension = extension
+        self._doc = doc
+        self._metadata = metadata
         self._prefix = prefix
         self._delimiter = delimiter
 
@@ -122,7 +122,7 @@ class Dataset(Data):
 
         if not isinstance(offsets, numpy.ndarray):
             try:
-                if not all(isinstnace(x, numbers.Integral) and x >= 0 for x in offests):
+                if not all(isinstance(x, numbers.Integral) and x >= 0 for x in offsets):
                     raise TypeError
             except TypeError:
                 raise TypeError("offsets must be an iterable of non-negative integers")
@@ -133,6 +133,7 @@ class Dataset(Data):
             raise ValueError("offsets must have at least two items, and the first one must be zero")
         if not numpy.all(offsets[:-1] <= offsets[1:]):
             raise ValueError("offsets must be monotonically increasing")
+        self._offsets = offsets
 
     def __repr__(self):
         return "<Dataset {0} {1} partitions {2} entries>".format(repr(self._name), self.numpartitions, self.numentries)

@@ -120,16 +120,31 @@ class InMemoryDatabase(Database):
         ds = self._datasets.get(dataset, None)
         if ds is None:
             raise KeyError("no dataset named {0}".format(repr(dataset)))
-        return oamap.dataset.Dataset(dataset,
-                                     oamap.schema.Schema.fromjson(ds["schema"]),
-                                     dict(self._backends),
-                                     offsets=ds.get("offsets", None),
-                                     packing=oamap.schema.Schema._packingfromjson(ds.get("packing", None)),
-                                     extension=ds.get("extension", None),
-                                     doc=ds.get("doc", None),
-                                     metadata=ds.get("metadata", None),
-                                     prefix=ds.get("prefix", "object"),
-                                     delimiter=ds.get("delimiter", "-"))
+
+        schema = oamap.schema.Schema.fromjson(ds["schema"])
+        packing = oamap.schema.Schema._packingfromjson(ds.get("packing", None))
+
+        if isinstance(schema, oamap.schema.List):
+            return oamap.dataset.Dataset(dataset,
+                                         schema,
+                                         dict(self._backends),
+                                         ds.get("offsets", None),
+                                         packing=packing,
+                                         extension=ds.get("extension", None),
+                                         doc=ds.get("doc", None),
+                                         metadata=ds.get("metadata", None),
+                                         prefix=ds.get("prefix", "object"),
+                                         delimiter=ds.get("delimiter", "-"))
+        else:
+            return oamap.dataset.Data(dataset,
+                                      schema,
+                                      dict(self._backends),
+                                      packing=packing,
+                                      extension=ds.get("extension", None),
+                                      doc=ds.get("doc", None),
+                                      metadata=ds.get("metadata", None),
+                                      prefix=ds.get("prefix", "object"),
+                                      delimiter=ds.get("delimiter", "-"))
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
