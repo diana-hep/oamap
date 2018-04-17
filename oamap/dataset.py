@@ -118,7 +118,7 @@ class Operable(object):
                 Operable.__init__(out)
                 out.__dict__ = self.__dict__.copy()
                 out._operations = self._operations + (Action(name, args, kwds, function),)
-                return out.apply()
+                return out.act()
             action.__name__ = name
             return action
 
@@ -184,15 +184,18 @@ class Data(Operable):
     def arrays(self):
         return DataArrays(self._backends)
 
-    def apply(self, namespace, backend, refcount):
+    def transform(self, name, namespace, backend, refcount, update):
         if all(isinstance(x, Recasting) for x in self._operations):
             result = self()
             for operation in self._operations:
                 result = operation.apply(result)
-            return SingleThreadExecutor.PseudoFuture(Data(None, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter))
+
+            out = Data(name, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+            update(name, out)
+            return SingleThreadExecutor.PseudoFuture(out)
             
         else:
-            def task(dataset, namespace, backend):
+            def task(dataset, namespace, backend, update):
                 result = dataset()
                 for operation in self._operations:
                     result = operation.apply(result)
@@ -212,7 +215,9 @@ class Data(Operable):
                         active[str(n)] = x
                         refcount.increment(n)
 
-                return Data(None, schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+                out = Data(name, schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+                update(name, out)
+                return out
 
             return self._executor.submit(task, self, namespace, backend)
 

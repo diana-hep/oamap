@@ -127,46 +127,69 @@ class InMemoryDatabase(Database):
     def list(self):
         return list(self._datasets)
 
-    def get(self, dataset):
-        ds = self._datasets.get(dataset, None)
-        if ds is None:
-            raise KeyError("no dataset named {0}".format(repr(dataset)))
-
-        schema = oamap.schema.Schema.fromjson(ds["schema"])
-        packing = oamap.schema.Schema._packingfromjson(ds.get("packing", None))
+    def _json2dataset(self, name, obj):
+        schema = oamap.schema.Schema.fromjson(obj["schema"])
+        packing = oamap.schema.Schema._packingfromjson(obj.get("packing", None))
 
         if isinstance(schema, oamap.schema.List):
-            return oamap.dataset.Dataset(dataset,
+            return oamap.dataset.Dataset(name,
                                          schema,
                                          dict(self._backends),
                                          self._executor,
-                                         ds.get("offsets", None),
+                                         obj.get("offsets", None),
                                          packing=packing,
-                                         extension=ds.get("extension", None),
-                                         doc=ds.get("doc", None),
-                                         metadata=ds.get("metadata", None),
-                                         prefix=ds.get("prefix", "object"),
-                                         delimiter=ds.get("delimiter", "-"))
+                                         extension=obj.get("extension", None),
+                                         doc=obj.get("doc", None),
+                                         metadata=obj.get("metadata", None),
+                                         prefix=obj.get("prefix", "object"),
+                                         delimiter=obj.get("delimiter", "-"))
         else:
-            return oamap.dataset.Data(dataset,
+            return oamap.dataset.Data(name,
                                       schema,
                                       dict(self._backends),
                                       self._executor,
                                       packing=packing,
-                                      extension=ds.get("extension", None),
-                                      doc=ds.get("doc", None),
-                                      metadata=ds.get("metadata", None),
-                                      prefix=ds.get("prefix", "object"),
-                                      delimiter=ds.get("delimiter", "-"))
+                                      extension=obj.get("extension", None),
+                                      doc=obj.get("doc", None),
+                                      metadata=obj.get("metadata", None),
+                                      prefix=obj.get("prefix", "object"),
+                                      delimiter=obj.get("delimiter", "-"))
+
+    def _dataset2json(self, data):
+        obj = {"schema": data.schema.tojson()}
+        if isinstance(data.schema, oamap.schema.List):
+            obj["offsets"] = data.offsets.tolist()
+        if data.packing is not None:
+            obj["packing"] = data.packing.tojson()
+        if data.extension is not None:
+            obj["extension"] = data.extension
+        if data.doc is not None:
+            obj["doc"] = data.doc
+        if data.metadata is not None:
+            obj["metadata"] = data.metadata
+        if data._prefix != "object":
+            obj["prefix"] = data._prefix
+        if data._delimiter != "-":
+            obj["delimiter"] = data._delimiter
+        return obj
+
+    def get(self, dataset):
+        ds = self._datasets.get(dataset, None)
+        if ds is None:
+            raise KeyError("no dataset named {0}".format(repr(dataset)))
+        return self._json2dataset(dataset, ds)
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
-        if not isinstance(value, oamap.dataset.Dataset):
+        if not isinstance(value, oamap.dataset.Data):
             raise TypeError("can only put Datasets in Database")
 
         refcounts = self._refcounts[namespace] = self._refcounts.get(namespace, self.RefCounts())
 
-        self._datasets[dataset] = value.apply(namespace, self._backends[namespace], refcounts)
+        def update(name, data):
+            self._datasets[name] = self._dataset2json(data)
+
+        value.transform(dataset, namespace, self._backends[namespace], refcounts, update)
 
     def delete(self, dataset):
         ds = self._datasets.get(dataset, None)
