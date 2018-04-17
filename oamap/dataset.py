@@ -34,6 +34,7 @@ import numpy
 
 import oamap.schema
 import oamap.generator
+import oamap.util
 
 class Data(object):
     def __init__(self, name, schema, backends, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
@@ -139,6 +140,22 @@ class Dataset(Data):
         return "<Dataset {0} {1} partitions {2} entries>".format(repr(self._name), self.numpartitions, self.numentries)
 
     @property
+    def offsets(self):
+        return self._offsets.tolist()
+
+    @property
+    def starts(self):
+        return self._offsets[:-1].tolist()
+
+    @property
+    def stops(self):
+        return self._offsets[1:].tolist()
+
+    @property
+    def partitions(self):
+        return zip(self.start, self.stop)
+
+    @property
     def numpartitions(self):
         return len(self._offsets) - 1
 
@@ -151,10 +168,29 @@ class Dataset(Data):
         
     def __getitem__(self, index):
         if isinstance(index, numbers.Integral):
-            raise NotImplementedError("return an entry (global indexing)")
+            normindex = index if index >= 0 else index + self.numentries
+            if not 0 <= normindex < self.numentries:
+                raise IndexError("index {0} out of range for {1} entries".format(index, self.numentries))
+            partitionid = numpy.searchsorted(self._offsets, normindex, side="right") - 1
+            localindex = normindex - self._offsets[partitionid]
+            return self.partition(partitionid)[localindex]
 
         elif isinstance(index, slice):
-            raise NotImplementedError("return a ListProxy if it fits within one partition (global indexing)")
+            start, stop, step = oamap.util.slice2sss(index, self.numentries)
+            partitionid = max(0, min(numpy.searchsorted(self._offsets, start, side="right") - 1, self.numpartitions - 1))
+            localstart = start - self._offsets[partitionid]
+            localstop = stop - self._offsets[partitionid]
+            if localstop < -1 or localstop > (self._offsets[partitionid + 1] - self._offsets[partitionid]):
+                raise IndexError("slice spans multiple partitions")
+
+            out = self.partition(partitionid)
+            out._whence = localstart
+            out._stride = step
+
+            # out._length = int(math.ceil(float(abs(localstop - localstart)) / abs(step)))
+            d, m = divmod(abs(localstart - localstop), abs(step))
+            out._length = d + (1 if m != 0 else 0)
+            return out
 
     def arrays(self, partitionid):
         normid = partitionid if partitionid >= 0 else partitionid + self.numpartitions
