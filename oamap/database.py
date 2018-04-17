@@ -54,6 +54,18 @@ class DictBackend(Backend):
         return out
 
 class Database(object):
+    class Data(object):
+        def __init__(self, database):
+            self.__dict__["_database"] = database
+        def __repr__(self):
+            return "<Data: {0}>".format(self._database.list())
+        def __getattr__(self, name):
+            return self.__dict__["_database"].get(name)
+        def __setattr__(self, name, value):
+            self.__dict__["_database"].put(name, value)
+        def __delattr__(self, name):
+            self.__dict__["_database"].delete(name)
+
     def __init__(self, connection, backends={}, namespace="", executor=oamap.dataset.SingleThreadExecutor()):
         self._connection = connection
         self._backends = dict(backends)
@@ -78,22 +90,28 @@ class Database(object):
             raise TypeError("namespace must be a string")
         self._namespace = namespace
 
+    # get/set backends as items
     def __getitem__(self, namespace):
         return self._backends[namespace]
-
     def __setitem__(self, namespace, value):
         if not isinstance(value, Backend):
             raise TypeError("can only assign Backends to Database")
         self._backends[namespace] = value
-
     def __delitem__(self, namespace):
         del self._backends[namespace]
 
+    # get/set datasets as attributes of .data
+    @property
+    def data(self):
+        return self.Data(self)
     def list(self):
         return NotImplementedError("missing implementation for {0}.list".format(self.__class__))
-
     def get(self, dataset):
         return NotImplementedError("missing implementation for {0}.get".format(self.__class__))
+    def put(self, dataset, value, namespace=None):
+        return NotImplementedError("missing implementation for {0}.put".format(self.__class__))
+    def delete(self, dataset):
+        return NotImplementedError("missing implementation for {0}.delete".format(self.__class__))
 
     def _normalize_namespace(self, namespace):
         if namespace is None:
@@ -101,31 +119,6 @@ class Database(object):
         if namespace not in self._backends:
             raise ValueError("no backend associated with namespace {0}".format(repr(namespace)))
         return namespace
-
-    def put(self, dataset, value, namespace=None):
-        return NotImplementedError("missing implementation for {0}.put".format(self.__class__))
-
-    def delete(self, dataset):
-        return NotImplementedError("missing implementation for {0}.delete".format(self.__class__))
-
-class InMemoryDatabase(Database):
-    class RefCounts(dict):
-        def increment(self, n):
-            self[n] = self.get(n, 0) + 1
-        def decrement(self, n):
-            value = max(0, self.get(n, 0) - 1)
-            if value == 0 and n in self:
-                del self[n]
-            else:
-                self[n] = value
-
-    def __init__(self, backends={}, namespace="", datasets={}, refcounts={}):
-        super(InMemoryDatabase, self).__init__(None, backends, namespace)
-        self._datasets = dict(datasets)
-        self._refcounts = dict((n, self.RefCounts(x)) for n, x in refcounts.items())
-
-    def list(self):
-        return list(self._datasets)
 
     def _json2dataset(self, name, obj):
         schema = oamap.schema.Schema.fromjson(obj["schema"])
@@ -173,11 +166,42 @@ class InMemoryDatabase(Database):
             obj["delimiter"] = data._delimiter
         return obj
 
+class InMemoryDatabase(Database):
+    class RefCounts(dict):
+        def increment(self, n):
+            self[n] = self.get(n, 0) + 1
+        def decrement(self, n):
+            value = self.get(n, 0) - 1
+            if value <= 0 and n in self:
+                del self[n]
+            else:
+                self[n] = value
+
+    def __init__(self, backends={}, namespace="", datasets={}, refcounts={}):
+        super(InMemoryDatabase, self).__init__(None, backends, namespace)
+        self._datasets = dict(datasets)
+        self._refcounts = dict((n, self.RefCounts(x)) for n, x in refcounts.items())
+
+    def list(self):
+        return list(self._datasets)
+
     def get(self, dataset):
         ds = self._datasets.get(dataset, None)
+
         if ds is None:
             raise KeyError("no dataset named {0}".format(repr(dataset)))
-        return self._json2dataset(dataset, ds)
+
+        elif isinstance(ds, list):
+            task = ds[-1]
+            if task.done():
+                out = task.result()
+                self._datasets[dataset] = self._dataset2json(out)
+                return out
+            else:
+                raise NotImplementedError("deal with failed and incomplete tasks")
+
+        else:
+            return self._json2dataset(dataset, ds)
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
@@ -185,12 +209,8 @@ class InMemoryDatabase(Database):
             raise TypeError("can only put Datasets in Database")
 
         refcounts = self._refcounts[namespace] = self._refcounts.get(namespace, self.RefCounts())
-
-        def update(name, data):
-            self._datasets[name] = self._dataset2json(data)
-
-        value.transform(dataset, namespace, self._backends[namespace], refcounts, update)
-
+        self._datasets[dataset] = value.transform(dataset, namespace, self._backends[namespace], refcounts, lambda name, data: data)
+            
     def delete(self, dataset):
         ds = self._datasets.get(dataset, None)
         if ds is None:

@@ -45,6 +45,13 @@ class SingleThreadExecutor(object):
             self._result = result
         def result(self, timeout=None):
             return self._result
+        def done(self):
+            return True
+        def exception(self, timeout=None):
+            raise NotImplementedError
+        def traceback(self, timeout=None):
+            raise NotImplementedError
+
     def submit(self, fcn, *args, **kwargs):
         args = tuple(x.result() if isinstance(x, self.PseudoFuture) else x for x in args)
         kwargs = dict((n, x.result() if isinstance(x, self.PseudoFuture) else x) for n, x in kwargs.items())
@@ -184,6 +191,11 @@ class Data(Operable):
     def arrays(self):
         return DataArrays(self._backends)
 
+    def _serializable(self):
+        out = Data(self._name, self._schema, self._backends, None, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+        out._operations = self._operations
+        return out
+
     def transform(self, name, namespace, backend, refcount, update):
         if all(isinstance(x, Recasting) for x in self._operations):
             result = self()
@@ -191,35 +203,33 @@ class Data(Operable):
                 result = operation.apply(result)
 
             out = Data(name, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
-            update(name, out)
-            return SingleThreadExecutor.PseudoFuture(out)
-            
+            return [SingleThreadExecutor.PseudoFuture(update(name, out))]
+
         else:
-            def task(dataset, namespace, backend, update):
+            def task(name, dataset, namespace, backend, update):
                 result = dataset()
-                for operation in self._operations:
+                for operation in dataset._operations:
                     result = operation.apply(result)
 
                 active = backend.instantiate(None)
                 opts = {"namespace": namespace}
                 if hasattr(active, "arrayname"):
                     opts["arrayname"] = active.arrayname
-                schema, arrays = oamap.operations._DualSource.collect(result, **opts)
+                schema, roles2arrays = oamap.operations._DualSource.collect(result, **opts)
 
                 if hasattr(active, "putall"):
-                    active.putall(arrays)
-                    for n, x in arrays.items():
-                        refcount.increment(n)
+                    active.putall(roles2arrays)
+                    for n, x in roles2arrays.items():
+                        refcount.increment(str(n))
                 else:
-                    for n, x in arrays.items():
+                    for n, x in roles2arrays.items():
                         active[str(n)] = x
-                        refcount.increment(n)
+                        refcount.increment(str(n))
 
-                out = Data(name, schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
-                update(name, out)
-                return out
+                out = Data(name, schema, dataset._backends, dataset._executor, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, prefix=dataset._prefix, delimiter=dataset._delimiter)
+                return update(name, out)
 
-            return self._executor.submit(task, self, namespace, backend, update)
+            return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
 
 class DataArrays(object):
     def __init__(self, backends):
@@ -255,7 +265,7 @@ class DataArrays(object):
             self._active[namespace] = None
                 
 class Dataset(Data):
-    def __init__(self, name, schema, backends, executor, offsets=None, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
+    def __init__(self, name, schema, backends, executor, offsets, packing=None, extension=None, doc=None, metadata=None, prefix="object", delimiter="-"):
         if not isinstance(schema, oamap.schema.List):
             raise TypeError("Dataset must have a list schema, not\n\n    {0}".format(schema.__repr__(indent="    ")))
 
@@ -347,6 +357,52 @@ class Dataset(Data):
         stopsrole.starts = startsrole
         return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
+    def _serializable(self):
+        out = Dataset(self._name, self._schema, self._backends, None, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+        out._operations = self._operations
+        return out
+
+    def transform(self, name, namespace, backend, refcount, update):
+        if all(isinstance(x, Recasting) for x in self._operations):
+            result = self.partition(0)
+            for operation in self._operations:
+                result = operation.apply(result)
+
+            out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, prefix=self._prefix, delimiter=self._delimiter)
+            return SingleThreadExecutor.PseudoFuture(update(name, out))
+
+        else:
+            def task(dataset, namespace, backend, partitionid):
+                result = dataset.partition(partitionid)
+                for operation in self._operations:
+                    result = operation.apply(result)
+
+                active = backend.instantiate(partitionid)
+                opts = {"namespace": namespace}
+                if hasattr(active, "arrayname"):
+                    opts["arrayname"] = active.arrayname
+                schema, roles2arrays = oamap.operations._DualSource.collect(result, **opts)
+
+                if hasattr(active, "putall"):
+                    active.putall(roles2arrays)
+                    for n, x in roles2arrays.items():
+                        refcount.increment(str(n))
+                else:
+                    for n, x in roles2arrays.items():
+                        active[str(n)] = x
+                        refcount.increment(str(n))
+
+                return schema
+
+            tasks = [self._executor.submit(task, self._serializable(), namespace, backend, i) for i in range(self.numpartitions)]
+
+            def collect(name, dataset, schemas, update):
+                out = Dataset(name, schemas[0], dataset._backends, dataset._executor, dataset._offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, prefix=dataset._prefix, delimiter=dataset._delimiter)
+                return update(name, out)
+
+            tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))
+            return tasks
+            
 class DatasetArrays(DataArrays):
     def __init__(self, partitionid, startsrole, stopsrole, numentries, backends):
         super(DatasetArrays, self).__init__(backends)
