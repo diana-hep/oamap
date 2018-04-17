@@ -240,6 +240,8 @@ class Masked(object):
         if mask is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             mask = cache[self.maskidx]
+            if not isinstance(mask, numpy.ndarray):
+                mask = numpy.array(mask, dtype=self.maskdtype)
         return mask
 
     def _generate(self, arrays, index, cache):
@@ -309,6 +311,8 @@ class PrimitiveGenerator(Generator):
         if data is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             data = cache[self.dataidx]
+            if not isinstance(data, numpy.ndarray):
+                data = numpy.array(data, dtype=self.dtype)
         return data
 
     def _generate(self, arrays, index, cache):
@@ -413,6 +417,10 @@ class ListGenerator(Generator):
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             starts = cache[self.startsidx]
             stops = cache[self.stopsidx]
+            if not isinstance(starts, numpy.ndarray):
+                starts = numpy.array(starts, dtype=self.posdtype)
+            if not isinstance(stops, numpy.ndarray):
+                stops = numpy.array(stops, dtype=self.posdtype)
         return starts, stops
 
     def _generate(self, arrays, index, cache):
@@ -543,6 +551,10 @@ class UnionGenerator(Generator):
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             tags = cache[self.tagsidx]
             offsets = cache[self.offsetsidx]
+            if not isinstance(tags, numpy.ndarray):
+                tags = numpy.array(tags, dtype=self.tagdtype)
+            if not isinstance(offsets, numpy.ndarray):
+                offsets = numpy.array(offsets, dtype=self.offsetdtype)
         return tags, offsets
 
     def _generate(self, arrays, index, cache):
@@ -848,6 +860,8 @@ class PointerGenerator(Generator):
         if positions is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             positions = cache[self.positionsidx]
+            if not isinstance(positions, numpy.ndarray):
+                positions = numpy.array(positions, dtype=self.posdtype)
         return positions
 
     def _generate(self, arrays, index, cache):

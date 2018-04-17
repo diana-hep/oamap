@@ -686,7 +686,7 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
         if not isinstance(nodes[0], oamap.schema.Record):
             raise TypeError("path {0} does not refer to a record:\n\n    {1}".format(repr(at), nodes[0].__repr__(indent="    ")))
         if len(nodes) < 2 or not isinstance(nodes[1], oamap.schema.List):
-            raise TypeError("path {0} does not refer to a record in a list:\n\n    {1}".format(repr(at), nodes[1].__repr__(indent="    ")))
+            raise TypeError("path {0} does not refer to a record in a list:\n\n    {1}".format(repr(at), nodes[-1].__repr__(indent="    ")))
         recordnode = nodes[0]
         listnode = nodes[1]
         if recordnode.nullable or listnode.nullable:

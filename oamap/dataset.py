@@ -219,7 +219,7 @@ class Data(Operable):
                 update(name, out)
                 return out
 
-            return self._executor.submit(task, self, namespace, backend)
+            return self._executor.submit(task, self, namespace, backend, update)
 
 class DataArrays(object):
     def __init__(self, backends):
