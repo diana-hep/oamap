@@ -380,8 +380,11 @@ def split(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
 
+        found = False
         for path in paths:
             for nodes in schema.paths(path, parents=True):
+                found = True
+
                 if len(nodes) < 4 or not isinstance(nodes[1], oamap.schema.Record) or not isinstance(nodes[2], oamap.schema.List) or not isinstance(nodes[3], oamap.schema.Record):
                     raise TypeError("path {0} matches a field that is not in a Record(List(Record({{field: ...}})))".format(repr(path)))
 
@@ -400,6 +403,9 @@ def split(data, *paths):
                     del outernode[outername]
 
                 outernode[innername] = listnode.copy(content=datanode)
+
+        if not found:
+            raise TypeError("none of the paths matched a field")
 
         return schema(data._arrays)
 
@@ -470,11 +476,14 @@ def merge(data, container, *paths):
             raise TypeError("at least one path must match schema elements")
 
         if not all(x.namespace == listnodes[0].namespace and x.starts == listnodes[0].starts and x.stops == listnodes[0].stops for x in listnodes[1:]):
-            starts1, stops1 = data._generator.findbynames("List", listnodes[0].namespace, starts=listnodes[0].starts, stops=listnodes[0].stops)._getstartsstops(data._arrays, data._cache)
-            for x in listnodes[1:]:
-                starts2, stops2 = data._generator.findbynames("List", x.namespace, starts=x.starts, stops=x.stops)._getstartsstops(data._arrays, data._cache)
-                if not (starts1 is starts2 or numpy.array_equal(starts1, starts2)) and not (stops1 is stops2 or numpy.array_equal(stops1, stops2)):
-                    raise ValueError("some of the paths refer to lists of different lengths")
+            ### RECONSIDER: without this fallback, merge is a pure recasting (like split) and is easy to decide whether to parallelize
+            #
+            # starts1, stops1 = data._generator.findbynames("List", listnodes[0].namespace, starts=listnodes[0].starts, stops=listnodes[0].stops)._getstartsstops(data._arrays, data._cache)
+            # for x in listnodes[1:]:
+            #     starts2, stops2 = data._generator.findbynames("List", x.namespace, starts=x.starts, stops=x.stops)._getstartsstops(data._arrays, data._cache)
+            #     if not (starts1 is starts2 or numpy.array_equal(starts1, starts2)) and not (stops1 is stops2 or numpy.array_equal(stops1, stops2)):
+            #         raise ValueError("some of the paths refer to lists of different lengths")
+            raise ValueError("some of the paths refer to lists of different names")
 
         if constructed:
             containerlist.namespace = listnodes[0].namespace
