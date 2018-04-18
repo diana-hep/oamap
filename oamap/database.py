@@ -125,7 +125,7 @@ class Database(object):
         packing = oamap.schema.Schema._packingfromjson(obj.get("packing", None))
 
         if isinstance(schema, oamap.schema.List):
-            return oamap.dataset.Dataset(name,
+            return oamap.dataset.Dataset(obj["name"],
                                          schema,
                                          dict(self._backends),
                                          self._executor,
@@ -134,10 +134,9 @@ class Database(object):
                                          extension=obj.get("extension", None),
                                          doc=obj.get("doc", None),
                                          metadata=obj.get("metadata", None),
-                                         prefix=obj.get("prefix", "object"),
                                          delimiter=obj.get("delimiter", "-"))
         else:
-            return oamap.dataset.Data(name,
+            return oamap.dataset.Data(obj["name"],
                                       schema,
                                       dict(self._backends),
                                       self._executor,
@@ -145,11 +144,10 @@ class Database(object):
                                       extension=obj.get("extension", None),
                                       doc=obj.get("doc", None),
                                       metadata=obj.get("metadata", None),
-                                      prefix=obj.get("prefix", "object"),
                                       delimiter=obj.get("delimiter", "-"))
 
     def _dataset2json(self, data):
-        obj = {"schema": data._schema.tojson()}
+        obj = {"name": data._name, "schema": data._schema.tojson()}
         if isinstance(data._schema, oamap.schema.List):
             obj["offsets"] = data._offsets.tolist()
         if data._packing is not None:
@@ -160,8 +158,6 @@ class Database(object):
             obj["doc"] = data._doc
         if data._metadata is not None:
             obj["metadata"] = data._metadata
-        if data._prefix != "object":
-            obj["prefix"] = data._prefix
         if data._delimiter != "-":
             obj["delimiter"] = data._delimiter
         return obj

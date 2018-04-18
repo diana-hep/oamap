@@ -206,12 +206,9 @@ class _Data(Operable):
                 for operation in dataset._operations:
                     result = operation.apply(result)
 
-                active = backend.instantiate(None)
-                opts = {"namespace": namespace}
-                if hasattr(active, "arrayname"):
-                    opts["arrayname"] = active.arrayname
-                schema, roles2arrays = oamap.operations._DualSource.collect(result, **opts)
+                schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, name, dataset._delimiter)
 
+                active = backend.instantiate(None)
                 if hasattr(active, "putall"):
                     active.putall(roles2arrays)
                     for n, x in roles2arrays.items():
@@ -372,17 +369,14 @@ class Dataset(_Data):
             return [SingleThreadExecutor.PseudoFuture(update(name, out))]
 
         else:
-            def task(dataset, namespace, backend, partitionid):
+            def task(name, dataset, namespace, backend, partitionid):
                 result = dataset.partition(partitionid)
                 for operation in dataset._operations:
                     result = operation.apply(result)
 
-                active = backend.instantiate(partitionid)
-                opts = {"namespace": namespace}
-                if hasattr(active, "arrayname"):
-                    opts["arrayname"] = active.arrayname
-                schema, roles2arrays = oamap.operations._DualSource.collect(result, **opts)
+                schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, name, dataset._delimiter)
 
+                active = backend.instantiate(partitionid)
                 if hasattr(active, "putall"):
                     active.putall(roles2arrays)
                     for n, x in roles2arrays.items():
@@ -394,7 +388,7 @@ class Dataset(_Data):
 
                 return schema, len(result)
 
-            tasks = [self._executor.submit(task, self._serializable(), namespace, backend, i) for i in range(self.numpartitions)]
+            tasks = [self._executor.submit(task, name, self._serializable(), namespace, backend, i) for i in range(self.numpartitions)]
 
             def collect(name, dataset, results, update):
                 if isinstance(results[0], tuple) and len(results[0]) == 2 and isinstance(results[0][0], oamap.schema.Schema):

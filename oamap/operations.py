@@ -158,151 +158,137 @@ class _DualSource(object):
             self.new.close()
 
     @staticmethod
-    def collect(data, namespace="", prefix="object", delimiter="-"):
-        arrays = {}
+    def collect(schema, arrays, namespace, prefix, delimiter):
+        newarrays = {}
         def getarrays(node):
             if isinstance(node, _DualSource):
-                recurse(node.old)
+                getarrays(node.old)
                 for n, x in node.new.items():
-                    arrays[node.namespace, n] = x
-        getarrays(data._arrays)
+                    newarrays[node.namespace, n] = x
+        getarrays(arrays)
 
-        schema = data._generator.namedschema()
-        nodes = {}
-        def recurse(node, memo):
-            if isinstance(node, oamap.schema.Primitive):
-                if (node.namespace, node.data) in arrays:
-                    nodes[node.namespace, node.data] = node
-                    node.namespace = namespace
-                    node.data = None
-                    if node.nullable:
-                        node.mask = None
-            elif isinstance(node, oamap.schema.List):
-                if (node.namespace, node.starts) in arrays:
-                    nodes[node.namespace, schema.starts] = node
-                    node.namespace = namespace
-                    node.starts = None
-                    node.stops = None
-                    if node.nullable:
-                        node.mask = None
-                recurse(node.content, memo)
-            elif isinstance(node, oamap.schema.Union):
-                if (node.namespace, node.tags) in arrays:
-                    nodes[node.namespace, node.tags] = node
-                    node.namespace = namespace
-                    node.tags = None
-                    node.offsets = None
-                for possibility in node.possibilities:
-                    recurse(possibility, memo)
-            elif isinstance(node, oamap.schema.Record):
-                if node.nullable and (node.namespace, node.mask) in arrays:
-                    nodes[node.namespace, node.mask] = node
-                    node.namespace = namespace
-                    node.mask = None
-                for field in node.fields.values():
-                    recurse(field, memo)
-            elif isinstance(node, oamap.schema.Tuple):
-                if node.nullable and (node.namespace, node.mask) in arrays:
-                    nodes[node.namespace, node.mask] = node
-                    node.namespace = namespace
-                    node.mask = None
-                for field in node.types:
-                    recurse(field, memo)
-            elif isinstance(node, oamap.schema.Pointer):
-                if id(node) not in memo:
-                    memo.add(id(node))
-                    if (node.namespace, node.positions) in arrays:
-                        nodes[node.namespace, node.positions] = node
-                        node.namespace = namespace
-                        node.positions = None
-                        if node.nullable:
-                            node.mask = None
-                    recurse(node.target, memo)
-            else:
-                raise AssertionError(node)
-
-        recurse(schema, set())
-
-        newgenerator = schema.generator(prefix=prefix, delimiter=delimiter)
-        newschema = newgenerator.namedschema()
-
-        def recurse2(oldnode, newnode):
-            HERE
-
-
-
-
-
-
-
-        arrays = {}
-        newname = {}
-        def recurse(node):
-            if isinstance(node, _DualSource):
-                recurse(node.old)
-                for n, x in node.new.items():
-                    name = arrayname()
-                    arrays[name] = x
-                    newname[node.namespace, n] = name
-        recurse(data._arrays)
-
-        roles2arrays = {}
-
-        def transform(schema):
-            r2a = {}
-            ns = schema.namespace
+        oldnames = {}
+        def recurse(schema, memo):
             if isinstance(schema, oamap.schema.Primitive):
-                if (ns, schema.data) in newname:
+                if (schema.namespace, schema.data) in newarrays:
+                    oldnames[id(schema)] = (schema.namespace, schema.data, schema.mask)
                     schema.namespace = namespace
-                    schema.data = newname[ns, schema.data]
-                    datarole = oamap.generator.DataRole(schema.data, namespace)
-                    r2a[datarole] = arrays[schema.data]
+                    schema.data = None
+                    if schema.nullable:
+                        schema.mask = None
             elif isinstance(schema, oamap.schema.List):
-                if (ns, schema.starts) in newname:
+                if (schema.namespace, schema.starts) in newarrays:
+                    oldnames[id(schema)] = (schema.namespace, schema.starts, schema.stops, schema.mask)
                     schema.namespace = namespace
-                    schema.starts = newname[ns, schema.starts]
-                    schema.stops = newname[ns, schema.stops]
-                    startsrole = oamap.generator.StartsRole(schema.starts, namespace, None)
-                    stopsrole = oamap.generator.StopsRole(schema.stops, namespace, None)
-                    startsrole.stops = stopsrole
-                    stopsrole.starts = startsrole
-                    r2a[startsrole] = arrays[schema.starts]
-                    r2a[stopsrole] = arrays[schema.stops]
+                    schema.starts = None
+                    schema.stops = None
+                    if schema.nullable:
+                        schema.mask = None
+                recurse(schema.content, memo)
             elif isinstance(schema, oamap.schema.Union):
-                if (ns, schema.tags) in newname:
+                if (schema.namespace, schema.tags) in newarrays:
+                    oldnames[id(schema)] = (schema.namespace, schema.tags, schema.offsets, schema.mask)
                     schema.namespace = namespace
-                    schema.tags = newname[ns, schema.tags]
-                    schema.offsets = newname[ns, schema.offsets]
-                    tagsrole = oamap.generator.TagsRole(schema.tags, namespace, None)
-                    offsetsrole = oamap.generator.OffsetsRole(schema.offsets, namespace, None)
-                    tagsrole.offsets = offsetsrole
-                    offsetsrole.tags = tagsrole
-                    r2a[tagsrole] = arrays[schema.tags]
-                    r2a[offsetsrole] = arrays[schema.offsets]
-            elif isinstance(schema, oamap.schema.Record):
-                if schema.nullable and (ns, schema.mask) in newname:
+                    schema.tags = None
+                    schema.offsets = None
+                for possibility in schema.possibilities:
+                    recurse(possibility, memo)
+            elif isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
+                if schema.nullable and (schema.namespace, schema.mask) in newarrays:
+                    oldnames[id(schema)] = (schema.namespace, schema.mask)
                     schema.namespace = namespace
-            elif isinstance(schema, oamap.schema.Tuple):
-                if schema.nullable and (ns, schema.mask) in newname:
-                    schema.namespace = namespace
+                    schema.mask = None
+                for field in schema.fields.values():
+                    recurse(field, memo)
             elif isinstance(schema, oamap.schema.Pointer):
-                if (ns, schema.positions) in newname:
-                    schema.namespace = namespace
-                    schema.positions = newname[ns, schema.positions]
-                    positionsrole = oamap.generator.PositionsRole(schema.positions, namespace)
-                    r2a[positionsrole] = arrays[schema.positions]
+                if id(schema) not in memo:
+                    memo.add(id(schema))
+                    if (schema.namespace, schema.positions) in newarrays:
+                        oldnames[id(schema)] = (schema.namespace, schema.positions, schema.mask)
+                        schema.namespace = namespace
+                        schema.positions = None
+                        if schema.nullable:
+                            schema.mask = None
+                    recurse(schema.target, memo)
             else:
                 raise AssertionError(schema)
 
-            if schema.nullable:
-                schema.mask = newname[ns, schema.mask]
-                maskrole = oamap.generator.MaskRole(schema.mask, namespace, dict(r2a))
-                r2a[maskrole] = arrays[schema.mask]
+        recurse(schema, set())
+
+        generator = schema.generator(prefix=prefix, delimiter=delimiter)
+
+        roles2arrays = {}
+        def recurse2(schema, generator, memo):
+            if isinstance(generator, oamap.generator.ExtendedGenerator):
+                generator = generator.generic
+
+            r2a = {}
+            if isinstance(schema, oamap.schema.Primitive):
+                if id(schema) in oldnames:
+                    oldns, olddata, oldmask = oldnames[id(schema)]
+                    datarole = oamap.generator.DataRole(generator.data, generator.namespace)
+                    r2a[datarole] = newarrays[oldns, olddata]
+                    if schema.nullable:
+                        maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, dict(r2a))
+                        r2a[maskrole] = newarrays[oldns, oldmask]
+
+            elif isinstance(schema, oamap.schema.List):
+                if id(schema) in oldnames:
+                    oldns, oldstarts, oldstops, oldmask = oldnames[id(schema)]
+                    startsrole = oamap.generator.StartsRole(generator.starts, generator.namespace, None)
+                    stopsrole = oamap.generator.StopsRole(generator.stops, generator.namespace, None)
+                    startsrole.stops = stopsrole
+                    stopsrole.starts = startsrole
+                    r2a[startsrole] = newarrays[oldns, oldstarts]
+                    r2a[stopsrole] = newarrays[oldns, oldstops]
+                    if schema.nullable:
+                        maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, dict(r2a))
+                        r2a[maskrole] = newarrays[oldns, oldmask]
+                recurse2(schema.content, generator.content, memo)
+
+            elif isinstance(schema, oamap.schema.Union):
+                if id(schema) in oldnames:
+                    oldns, oldtags, oldoffsets, oldmask = oldnames[id(schema)]
+                    tagsrole = oamap.generator.TagsRole(generator.tags, generator.namespace, None)
+                    offsetsrole = oamap.generator.OffsetsRole(generator.offsets, generator.namespace, None)
+                    tagsrole.offsets = offsetsrole
+                    offsetsrole.tags = tagsrole
+                    r2a[tagsrole] = newarrays[oldns, oldtags]
+                    r2a[offsetsrole] = newarrays[oldns, oldoffsets]
+                    if schema.nullable:
+                        maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, dict(r2a))
+                        r2a[maskrole] = newarrays[oldns, oldmask]
+                for pschema, pgenerator in zip(schema.possibilities, generator.possibilities):
+                    recurse2(pschema, pgenerator, memo)
+
+            elif isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
+                if schema.nullable and id(schema) in oldnames:
+                    oldns, oldmask = oldnames[id(schema)]
+                    maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, {})
+                    r2a[maskrole] = newarrays[oldns, oldmask]
+                for n in schema.fields:
+                    recurse2(schema[n], generator.fields[n], memo)
+
+            elif isinstance(schema, oamap.schema.Pointer):
+                if id(schema) not in memo:
+                    memo.add(id(schema))
+                    if id(schema) in oldnames:
+                        oldns, oldpositions, oldmask = oldnames[id(schema)]
+                        positionsrole = oamap.generator.PositionsRole(generator.positions, generator.namespace)
+                        r2a[positionsrole] = newarrays[oldns, oldpositions]
+                        if schema.nullable:
+                            maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, dict(r2a))
+                            r2a[maskrole] = newarrays[oldns, oldmask]
+                    recurse2(schema.target, generator.target, memo)
+
+            else:
+                raise AssertionError(schema)
 
             roles2arrays.update(r2a)
-            return schema
 
-        return data._generator.schema.replace(transform), arrays
+        recurse2(schema, generator, set())
+
+        return generator.namedschema(), roles2arrays
 
 ################################################################ fieldname/recordname
 
