@@ -33,7 +33,7 @@ import math
 import numbers
 import sys
 import types
-import uuid
+import time
 
 import numpy
 
@@ -684,7 +684,7 @@ def filter(data, fcn, args=(), at="", numba=True):
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
-        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
         fillname = oamap.util.varname(avoid, "fill")
@@ -790,7 +790,7 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
             raise NotImplementedError("non-contiguous arrays: have to do some sort of concatenation")
         view = viewschema(viewarrays)
 
-        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
         fillname = oamap.util.varname(avoid, "fill")
@@ -907,7 +907,7 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
-        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
         fillname = oamap.util.varname(avoid, "fill")
@@ -1007,6 +1007,30 @@ def {fill}({view}, {outs}{params}):
     else:
         raise TypeError("map can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
 
+class MapCombiner(object):
+    def __init__(self, futures):
+        self._futures = futures
+        self._result = None
+    def result(self, timeout=None):
+        if self._result is None:
+            starttime = time.time()
+            results = []
+            for future in self._futures:
+                if timeout is not None:
+                    timeout = max(1e-6, timeout - (time.time() - starttime))
+                results.append(future.result(timeout))
+            self._result = numpy.concatenate(results)
+        return self._result
+    def done(self):
+        return all(x.done() for x in self._futures)
+    def exception(self, timeout=None):
+        raise NotImplementedError
+    def traceback(self, timeout=None):
+        raise NotImplementedError
+
+map.combiner = MapCombiner
+del MapCombiner
+
 actions["map"] = map
 
 ################################################################ reduce
@@ -1036,7 +1060,7 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
         if fcn.__code__.co_argcount < 2:
             raise TypeError("function must have at least two parameters (data and tally)")
 
-        params = fcn.__code__.co_oamap.util.varnames[:fcn.__code__.co_argcount]
+        params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
         fillname = oamap.util.varname(avoid, "fill")
@@ -1072,5 +1096,32 @@ def {fill}({view}, {tally}{params}):
 
     else:
         raise TypeError("reduce can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
+
+class ReduceCombiner(object):
+    def __init__(self, futures):
+        self._futures = futures
+        self._result = None
+    def result(self, timeout=None):
+        if self._result is None:
+            starttime = time.time()
+            result = None
+            for future in self._futures:
+                if timeout is not None:
+                    timeout = max(1e-6, timeout - (time.time() - starttime))
+                if result is None:
+                    result = future.result(timeout)
+                else:
+                    result = result + future.result(timeout)
+            self._result = result
+        return self._result
+    def done(self):
+        return all(x.done() for x in self._futures)
+    def exception(self, timeout=None):
+        raise NotImplementedError
+    def traceback(self, timeout=None):
+        raise NotImplementedError
+
+reduce.combiner = ReduceCombiner
+del ReduceCombiner
 
 actions["reduce"] = reduce

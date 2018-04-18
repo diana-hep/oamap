@@ -30,6 +30,7 @@
 
 import numbers
 import types
+import functools
 
 import numpy
 
@@ -100,33 +101,37 @@ class Operable(object):
     @staticmethod
     def update_operations():
         def newrecasting(name, function):
-            def recasting(self, *args, **kwds):
+            @functools.wraps(function)
+            def recasting(self, *args, **kwargs):
                 out = self.__class__.__new__(self.__class__)
                 Operable.__init__(out)
                 out.__dict__ = self.__dict__.copy()
-                out._operations = self._operations + (Recasting(name, args, kwds, function),)
+                out._operations = self._operations + (Recasting(name, args, kwargs, function),)
                 return out
-            recasting.__name__ = name
             return recasting
 
         def newtransformation(name, function):
-            def transformation(self, *args, **kwds):
+            @functools.wraps(function)
+            def transformation(self, *args, **kwargs):
                 out = self.__class__.__new__(self.__class__)
                 Operable.__init__(out)
                 out.__dict__ = self.__dict__.copy()
-                out._operations = self._operations + (Transformation(name, args, kwds, function),)
+                out._operations = self._operations + (Transformation(name, args, kwargs, function),)
                 return out
-            transformation.__name__ = name
             return transformation
 
         def newaction(name, function):
-            def action(self, *args, **kwds):
+            @functools.wraps(function)
+            def action(self, *args, **kwargs):
+                try:
+                    combiner = kwargs.pop("combiner")
+                except KeyError:
+                    combiner = function.combiner
                 out = self.__class__.__new__(self.__class__)
                 Operable.__init__(out)
                 out.__dict__ = self.__dict__.copy()
-                out._operations = self._operations + (Action(name, args, kwds, function),)
-                return out.act()
-            action.__name__ = name
+                out._operations = self._operations + (Action(name, args, kwargs, function),)
+                return out.act(combiner)
             return action
 
         for n, x in oamap.operations.recastings.items():
@@ -223,6 +228,15 @@ class _Data(Operable):
 
             return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
 
+    def act(self, combiner):
+        def task(dataset):
+            result = dataset()
+            for operation in dataset._operations:
+                result = operation.apply(result)
+            return result
+
+        return combiner([self._executor.submit(task, self._serializable())])
+            
 class Data(_Data):
     def __call__(self):
         # FIXME: packing, extension, prefix, delimiter
@@ -403,7 +417,16 @@ class Dataset(_Data):
 
             tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))
             return tasks
-            
+
+    def act(self, combiner):
+        def task(dataset, partitionid):
+            result = dataset.partition(partitionid)
+            for operation in dataset._operations:
+                result = operation.apply(result)
+            return result
+
+        return combiner([self._executor.submit(task, self._serializable(), i) for i in range(self.numpartitions)])
+
 class DatasetArrays(DataArrays):
     def __init__(self, partitionid, startsrole, stopsrole, numentries, backends):
         super(DatasetArrays, self).__init__(backends)
