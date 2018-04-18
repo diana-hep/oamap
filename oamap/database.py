@@ -38,7 +38,7 @@ if sys.version_info[0] > 2:
     unicode = str
 
 class Backend(object):
-    def __init__(self, args):
+    def __init__(self, *args):
         self._args = args
 
     @property
@@ -46,12 +46,42 @@ class Backend(object):
         return self._args
 
     def instantiate(self, partitionid):
-        raise NotImplementedError("missing implementation for {0}.implementation".format(self.__class__))
+        raise NotImplementedError("missing implementation for {0}.instantiate".format(self.__class__))
 
-class DictBackend(Backend):
+class WritableBackend(Backend):
+    def incref(self, dataset, partitionid, arrayname):
+        raise NotImplementedError("missing implementation for {0}.incref".format(self.__class__))
+
+    def decref(self, dataset, partitionid, arrayname):
+        raise NotImplementedError("missing implementation for {0}.decref".format(self.__class__))
+
+class DictBackend(WritableBackend):
+    def __init__(self, values=None, refcounts=None):
+        if values is None:
+            values = {}
+        if refcounts is None:
+            refcounts = {}
+        self._values = values
+        self._refcounts = refcounts
+        super(DictBackend, self).__init__(values, refcounts)
+
     def instantiate(self, partitionid):
-        out = self._args[partitionid] = self._args.get(partitionid, {})
+        out = self._values[partitionid] = self._values.get(partitionid, {})
         return out
+
+    def incref(self, dataset, partitionid, arrayname):
+        out = self._refcounts[partitionid] = self._refcounts.get(partitionid, {})
+        out[arrayname] = out.get(arrayname, 0) + 1
+
+    def decref(self, dataset, partitionid, arrayname):
+        out = self._refcounts[partitionid]
+        out[arrayname] -= 1
+        if out[arrayname] <= 0:
+            del out[arrayname]
+            try:
+                del self._values[partitionid][arrayname]
+            except KeyError:
+                pass
 
 class Database(object):
     class Data(object):
@@ -163,20 +193,9 @@ class Database(object):
         return obj
 
 class InMemoryDatabase(Database):
-    class RefCounts(dict):
-        def increment(self, n):
-            self[n] = self.get(n, 0) + 1
-        def decrement(self, n):
-            value = self.get(n, 0) - 1
-            if value <= 0 and n in self:
-                del self[n]
-            else:
-                self[n] = value
-
-    def __init__(self, backends={}, namespace="", datasets={}, refcounts={}):
+    def __init__(self, backends={}, namespace="", datasets={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
         self._datasets = dict(datasets)
-        self._refcounts = dict((n, self.RefCounts(x)) for n, x in refcounts.items())
 
     def list(self):
         return list(self._datasets)
@@ -190,45 +209,88 @@ class InMemoryDatabase(Database):
         elif isinstance(ds, list):
             task = ds[-1]
             if task.done():
-                out = task.result()
-                self._datasets[dataset] = self._dataset2json(out)
-                return out
+                ds = task.result()
+                self._datasets[dataset] = self._dataset2json(ds)
+                self._incref(ds)
+                return ds
             else:
-                raise NotImplementedError("deal with failed and incomplete tasks")
+                raise NotImplementedError("FIXME: deal with failed and incomplete tasks")
 
         else:
             return self._json2dataset(dataset, ds)
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
+        if namespace not in self._backends or not isinstance(self._backends[namespace], WritableBackend):
+            raise ValueError("namespace {0} does not point to a writable backend".format(repr(namespace)))
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
 
-        refcounts = self._refcounts[namespace] = self._refcounts.get(namespace, self.RefCounts())
-        self._datasets[dataset] = value.transform(dataset, namespace, self._backends[namespace], refcounts, lambda name, data: data)
-            
+        self._datasets[dataset] = value.transform(dataset, namespace, self._backends[namespace], lambda data: data)
+        
     def delete(self, dataset):
-        ds = self._datasets.get(dataset, None)
-        if ds is None:
-            raise KeyError("no dataset named {0}".format(repr(dataset)))
+        ds = self.get(dataset)
+        self._decref(ds)
+        del self._datasets[dataset]
+
+    def _incref(self, ds):
+        if isinstance(ds, oamap.dataset.Dataset):
+            partitions = range(ds.numpartitions)
+            startingpoint = ds.schema.generator().namedschema().content
+        else:
+            partitions = [None]
+            startingpoint = ds.schema.generator().namedschema()
 
         def transform(schema):
-            refcounts = self._refcounts.get(schema.namespace, self.RefCounts())
-            if isinstance(schema, oamap.schema.Primitive):
-                refcounts.decrement(schema.data)
-            elif isinstance(schema, oamap.schema.List):
-                refcounts.decrement(schema.starts)
-                refcounts.decrement(schema.stops)
-            elif isinstance(schema, oamap.schema.Union):
-                refcounts.decrement(schema.tags)
-                refcounts.decrement(schema.offsets)
-            elif isinstance(schema, oamap.schema.Pointer):
-                refcounts.decrement(schema.positions)
-            else:
-                raise AssertionError(schema)
-            if schema.nullable:
-                refcounts.decrement(schema.mask)
-            return schema
-        
-        ds.schema.replace(transform)
-        del self._datasets[dataset]
+            if schema.namespace in self._backends and isinstance(self._backends[schema.namespace], WritableBackend):
+                backend = self._backends[schema.namespace]
+                if isinstance(schema, oamap.schema.Primitive):
+                    for partitionid in partitions:
+                        backend.incref(ds.name, partitionid, schema.data)
+                elif isinstance(schema, oamap.schema.List):
+                    for partitionid in partitions:
+                        backend.incref(ds.name, partitionid, schema.starts)
+                        backend.incref(ds.name, partitionid, schema.stops)
+                elif isinstance(schema, oamap.schema.Union):
+                    for partitionid in partitions:
+                        backend.incref(ds.name, partitionid, schema.tags)
+                        backend.incref(ds.name, partitionid, schema.offsets)
+                elif isinstance(schema, oamap.schema.Pointer):
+                    for partitionid in partitions:
+                        backend.incref(ds.name, partitionid, schema.positions)
+                if schema.nullable:
+                    for partitionid in partitions:
+                        backend.incref(ds.name, partitionid, schema.mask)
+                return schema
+        startingpoint.replace(transform)
+
+    def _decref(self, ds):
+        if isinstance(ds, oamap.dataset.Dataset):
+            partitions = range(ds.numpartitions)
+            startingpoint = ds.schema.generator().namedschema().content
+        else:
+            partitions = [None]
+            startingpoint = ds.schema.generator().namedschema()
+
+        def transform(schema):
+            if schema.namespace in self._backends and isinstance(self._backends[schema.namespace], WritableBackend):
+                backend = self._backends[schema.namespace]
+                if isinstance(schema, oamap.schema.Primitive):
+                    for partitionid in partitions:
+                        backend.decref(ds.name, partitionid, schema.data)
+                elif isinstance(schema, oamap.schema.List):
+                    for partitionid in partitions:
+                        backend.decref(ds.name, partitionid, schema.starts)
+                        backend.decref(ds.name, partitionid, schema.stops)
+                elif isinstance(schema, oamap.schema.Union):
+                    for partitionid in partitions:
+                        backend.decref(ds.name, partitionid, schema.tags)
+                        backend.decref(ds.name, partitionid, schema.offsets)
+                elif isinstance(schema, oamap.schema.Pointer):
+                    for partitionid in partitions:
+                        backend.decref(ds.name, partitionid, schema.positions)
+                if schema.nullable:
+                    for partitionid in partitions:
+                        backend.decref(ds.name, partitionid, schema.mask)
+                return schema
+        startingpoint.replace(transform)

@@ -158,6 +158,7 @@ class _Data(Operable):
         self._doc = doc
         self._metadata = metadata
         self._delimiter = delimiter
+        self._cachedobject = None
 
     def __repr__(self):
         return "<Data {0}>{1}".format(repr(self._name), "".join(str(x) for x in self._operations))
@@ -197,14 +198,12 @@ class _Data(Operable):
         out._operations = copy.deepcopy(self._operations)
         return out
 
-    def transform(self, name, namespace, backend, refcount, update):
+    def transform(self, name, namespace, backend, update):
         if all(isinstance(x, Recasting) for x in self._operations):
             result = self()
             for operation in self._operations:
                 result = operation.apply(result)
-
-            out = Data(name, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
-            return [SingleThreadExecutor.PseudoFuture(update(name, out))]
+            return [SingleThreadExecutor.PseudoFuture(update(Data(name, result._generator.schema, self._backends, self._executor, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)))]
 
         else:
             def task(name, dataset, namespace, backend, update):
@@ -217,15 +216,11 @@ class _Data(Operable):
                 active = backend.instantiate(None)
                 if hasattr(active, "putall"):
                     active.putall(roles2arrays)
-                    for n, x in roles2arrays.items():
-                        refcount.increment(str(n))
                 else:
                     for n, x in roles2arrays.items():
                         active[str(n)] = x
-                        refcount.increment(str(n))
-
-                out = Data(name, schema, dataset._backends, dataset._executor, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
-                return update(name, out)
+                
+                return update(Data(name, schema, dataset._backends, dataset._executor, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter))
 
             return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
 
@@ -241,7 +236,9 @@ class _Data(Operable):
 class Data(_Data):
     def __call__(self):
         # FIXME: packing, extension, prefix, delimiter
-        return self._schema(self.arrays())
+        if self._cachedobject is None:
+            self._cachedobject = self._schema(self.arrays())
+        return self._cachedobject
 
 class DataArrays(object):
     def __init__(self, backends):
@@ -297,6 +294,7 @@ class Dataset(_Data):
         if not numpy.all(offsets[:-1] <= offsets[1:]):
             raise ValueError("offsets must be monotonically increasing")
         self._offsets = offsets
+        self._cachedpartition = None
 
     def __repr__(self):
         return "<Dataset {0} {1} partitions {2} entries>{3}".format(repr(self._name), self.numpartitions, self.numentries, "".join(str(x) for x in self._operations))
@@ -330,7 +328,10 @@ class Dataset(_Data):
 
     def partition(self, partitionid):
         # FIXME: packing, extension, prefix, delimiter
-        return self._schema(self.arrays(partitionid))
+        if self._cachedpartition != partitionid:
+            self._cachedpartition = partitionid
+            self._cachedobject = self._schema(self.arrays(partitionid))
+        return self._cachedobject
         
     def __getitem__(self, index):
         if isinstance(index, slice):
@@ -374,14 +375,12 @@ class Dataset(_Data):
         out._operations = copy.deepcopy(self._operations)
         return out
 
-    def transform(self, name, namespace, backend, refcount, update):
+    def transform(self, name, namespace, backend, update):
         if all(isinstance(x, Recasting) for x in self._operations):
             result = self.partition(0)
             for operation in self._operations:
                 result = operation.apply(result)
-
-            out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
-            return [SingleThreadExecutor.PseudoFuture(update(name, out))]
+            return [SingleThreadExecutor.PseudoFuture(update(Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)))]
 
         else:
             def task(name, dataset, namespace, backend, partitionid):
@@ -394,12 +393,9 @@ class Dataset(_Data):
                 active = backend.instantiate(partitionid)
                 if hasattr(active, "putall"):
                     active.putall(roles2arrays)
-                    for n, x in roles2arrays.items():
-                        refcount.increment(str(n))
                 else:
                     for n, x in roles2arrays.items():
                         active[str(n)] = x
-                        refcount.increment(str(n))
 
                 return schema, len(result)
 
@@ -412,9 +408,7 @@ class Dataset(_Data):
                 else:
                     offsets = numpy.cumsum([0] + [x.result()[1] for x in results], dtype=numpy.int64)
                     schema = results[0].result()[0]
-
-                out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
-                return update(name, out)
+                return update(Dataset(name, schema, dataset._backends, dataset._executor, offsets, packing=dataset._packing, extension=dataset._extension, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter))
 
             tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))
             return tasks
