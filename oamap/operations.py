@@ -293,7 +293,7 @@ class _DualSource(object):
 
 ################################################################ fieldname/recordname
 
-def fieldname(data, at, newname):
+def fieldname(data, newname, at):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
         nodes = schema.path(at, parents=True)
@@ -314,7 +314,7 @@ def fieldname(data, at, newname):
 
 recastings["fieldname"] = fieldname
 
-def recordname(data, at, newname):
+def recordname(data, newname, at=""):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
         nodes = schema.path(at, parents=True)

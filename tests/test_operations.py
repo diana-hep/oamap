@@ -40,20 +40,42 @@ class TestOperations(unittest.TestCase):
     def test_fieldname(self):
         data = Record({"one": "int"}).fromdata({"one": 1})
         self.assertEqual(data.one, 1)
-        data = fieldname(data, "one", "two")
+        data = fieldname(data, "two", "one")
         self.assertEqual(data.two, 1)
 
         data = List(Record({"one": "int"})).fromdata([{"one": 1}, {"one": 2}, {"one": 3}])
         self.assertEqual([x.one for x in data], [1, 2, 3])
-        data = fieldname(data, "one", "two")
+        data = fieldname(data, "two", "one")
         self.assertEqual([x.two for x in data], [1, 2, 3])
 
         data = List(Record({"hey": Record({"one": "int"})})).fromdata([{"hey": {"one": 1}}, {"hey": {"one": 2}}, {"hey": {"one": 3}}])
         self.assertEqual([x.hey.one for x in data], [1, 2, 3])
-        data = fieldname(data, "hey/one", "two")
+        data = fieldname(data, "two", "hey/one")
         self.assertEqual([x.hey.two for x in data], [1, 2, 3])
 
         data = List(Record({"hey": List(Record({"one": "int"}))})).fromdata([{"hey": [{"one": 1}, {"one": 2}, {"one": 3}]}, {"hey": []}, {"hey": [{"one": 4}, {"one": 5}]}])
         self.assertEqual([y.one for x in data for y in x.hey], [1, 2, 3, 4, 5])
-        data = fieldname(data, "hey/one", "two")
+        data = fieldname(data, "two", "hey/one")
         self.assertEqual([y.two for x in data for y in x.hey], [1, 2, 3, 4, 5])
+
+    def test_recordname(self):
+        data = Record({"one": "int"}).fromdata({"one": 1})
+        self.assertEqual(data.name, None)
+        data = recordname(data, "Event")
+        self.assertEqual(data.name, "Event")
+
+        data = List(Record({"one": "int"})).fromdata([{"one": 1}, {"one": 2}, {"one": 3}])
+        self.assertEqual(data[0].name, None)
+        data = recordname(data, "Event")
+        self.assertEqual(data[0].name, "Event")
+
+        data = List(Record({"hey": Record({"one": "int"})})).fromdata([{"hey": {"one": 1}}, {"hey": {"one": 2}}, {"hey": {"one": 3}}])
+        self.assertEqual(data[0].hey.name, None)
+        data = recordname(data, "Event", "hey")
+        self.assertEqual(data[0].hey.name, "Event")
+
+        data = List(Record({"hey": List(Record({"one": "int"}))})).fromdata([{"hey": [{"one": 1}, {"one": 2}, {"one": 3}]}, {"hey": []}, {"hey": [{"one": 4}, {"one": 5}]}])
+        self.assertEqual(data[0].hey[0].name, None)
+        data = recordname(data, "Event", "hey")
+        self.assertEqual(data[0].hey[0].name, "Event")
+
