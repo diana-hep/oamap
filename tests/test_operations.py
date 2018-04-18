@@ -108,3 +108,20 @@ class TestOperations(unittest.TestCase):
         data = List(Record({"hey": List(Record({"x1": "int", "x2": "float", "y1": List("bool")}))})).fromdata([{"hey": [{"x1": 1, "x2": 1.1, "y1": []}, {"x1": 2, "x2": 2.2, "y1": [False]}, {"x1": 3, "x2": 3.3, "y1": [False, True]}]}, {"hey": []}, {"hey": [{"x1": 4, "x2": 4.4, "y1": [False, True, False]}, {"x1": 5, "x2": 5.5, "y1": [False, True, False, True]}]}])
         self.assertEqual(set(data[0].hey[0].fields), set(["x1", "x2", "y1"]))
         self.assertEqual(set(keep(data, "hey/x*")[0].hey[0].fields), set(["x1", "x2"]))
+
+    def test_drop(self):
+        data = Record({"x1": "int", "x2": "float", "y1": List("bool")}).fromdata({"x1": 1, "x2": 2.2, "y1": [False, True]})
+        self.assertEqual(set(data.fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(drop(data, "x*").fields), set(["y1"]))
+
+        data = List(Record({"x1": "int", "x2": "float", "y1": List("bool")})).fromdata([{"x1": 1, "x2": 1.1, "y1": []}, {"x1": 2, "x2": 2.2, "y1": [False]}, {"x1": 3, "x2": 3.3, "y1": [False, True]}])
+        self.assertEqual(set(data[0].fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(drop(data, "x*")[0].fields), set(["y1"]))
+
+        data = List(Record({"hey": Record({"x1": "int", "x2": "float", "y1": List("bool")})})).fromdata([{"hey": {"x1": 1, "x2": 1.1, "y1": []}}, {"hey": {"x1": 2, "x2": 2.2, "y1": [False]}}, {"hey": {"x1": 3, "x2": 3.3, "y1": [False, True]}}])
+        self.assertEqual(set(data[0].hey.fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(drop(data, "hey/x*")[0].hey.fields), set(["y1"]))
+
+        data = List(Record({"hey": List(Record({"x1": "int", "x2": "float", "y1": List("bool")}))})).fromdata([{"hey": [{"x1": 1, "x2": 1.1, "y1": []}, {"x1": 2, "x2": 2.2, "y1": [False]}, {"x1": 3, "x2": 3.3, "y1": [False, True]}]}, {"hey": []}, {"hey": [{"x1": 4, "x2": 4.4, "y1": [False, True, False]}, {"x1": 5, "x2": 5.5, "y1": [False, True, False, True]}]}])
+        self.assertEqual(set(data[0].hey[0].fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(drop(data, "hey/x*")[0].hey[0].fields), set(["y1"]))
