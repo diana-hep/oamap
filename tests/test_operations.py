@@ -182,3 +182,22 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(undo4[0].hey[0].x1, 1)
         self.assertEqual(undo4[0].hey[0].x2, 1.1)
         self.assertEqual(undo4[0].horses[0].y1, [])
+
+    def test_parent(self):
+        data = List(Record({"hey": List(Record({"one": "int"}))})).fromdata([{"hey": [{"one": 1}, {"one": 2}, {"one": 3}]}, {"hey": []}, {"hey": [{"one": 4}, {"one": 5}]}])
+        new = parent(data, "up", "hey")
+        for x in new[0].hey:
+            self.assertEqual(x.up._index, 0)
+        for x in new[1].hey:
+            self.assertEqual(x.up._index, 1)
+        for x in new[2].hey:
+            self.assertEqual(x.up._index, 2)
+
+    def test_index(self):
+        data = List(Record({"hey": List(Record({"one": "int"}))})).fromdata([{"hey": [{"one": 1}, {"one": 2}, {"one": 3}]}, {"hey": []}, {"hey": [{"one": 4}, {"one": 5}]}])
+        new = index(data, "ind", "hey")
+        self.assertEqual(new[0].hey[0].ind, 0)
+        self.assertEqual(new[0].hey[1].ind, 1)
+        self.assertEqual(new[0].hey[2].ind, 2)
+        self.assertEqual(new[2].hey[0].ind, 0)
+        self.assertEqual(new[2].hey[1].ind, 1)
