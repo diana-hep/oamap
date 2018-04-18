@@ -79,3 +79,32 @@ class TestOperations(unittest.TestCase):
         data = recordname(data, "Event", "hey")
         self.assertEqual(data[0].hey[0].name, "Event")
 
+    def test_project(self):
+        data = Record({"one": "int"}).fromdata({"one": 1})
+        self.assertEqual(project(data, "one"), 1)
+
+        data = List(Record({"one": "int"})).fromdata([{"one": 1}, {"one": 2}, {"one": 3}])
+        self.assertEqual(project(data, "one"), [1, 2, 3])
+
+        data = List(Record({"hey": Record({"one": "int"})})).fromdata([{"hey": {"one": 1}}, {"hey": {"one": 2}}, {"hey": {"one": 3}}])
+        self.assertEqual(project(data, "hey/one"), [1, 2, 3])
+
+        data = List(Record({"hey": List(Record({"one": "int"}))})).fromdata([{"hey": [{"one": 1}, {"one": 2}, {"one": 3}]}, {"hey": []}, {"hey": [{"one": 4}, {"one": 5}]}])
+        self.assertEqual(project(data, "hey/one"), [[1, 2, 3], [], [4, 5]])
+
+    def test_keep(self):
+        data = Record({"x1": "int", "x2": "float", "y1": List("bool")}).fromdata({"x1": 1, "x2": 2.2, "y1": [False, True]})
+        self.assertEqual(set(data.fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(keep(data, "x*").fields), set(["x1", "x2"]))
+
+        data = List(Record({"x1": "int", "x2": "float", "y1": List("bool")})).fromdata([{"x1": 1, "x2": 1.1, "y1": []}, {"x1": 2, "x2": 2.2, "y1": [False]}, {"x1": 3, "x2": 3.3, "y1": [False, True]}])
+        self.assertEqual(set(data[0].fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(keep(data, "x*")[0].fields), set(["x1", "x2"]))
+
+        data = List(Record({"hey": Record({"x1": "int", "x2": "float", "y1": List("bool")})})).fromdata([{"hey": {"x1": 1, "x2": 1.1, "y1": []}}, {"hey": {"x1": 2, "x2": 2.2, "y1": [False]}}, {"hey": {"x1": 3, "x2": 3.3, "y1": [False, True]}}])
+        self.assertEqual(set(data[0].hey.fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(keep(data, "hey/x*")[0].hey.fields), set(["x1", "x2"]))
+
+        data = List(Record({"hey": List(Record({"x1": "int", "x2": "float", "y1": List("bool")}))})).fromdata([{"hey": [{"x1": 1, "x2": 1.1, "y1": []}, {"x1": 2, "x2": 2.2, "y1": [False]}, {"x1": 3, "x2": 3.3, "y1": [False, True]}]}, {"hey": []}, {"hey": [{"x1": 4, "x2": 4.4, "y1": [False, True, False]}, {"x1": 5, "x2": 5.5, "y1": [False, True, False, True]}]}])
+        self.assertEqual(set(data[0].hey[0].fields), set(["x1", "x2", "y1"]))
+        self.assertEqual(set(keep(data, "hey/x*")[0].hey[0].fields), set(["x1", "x2"]))

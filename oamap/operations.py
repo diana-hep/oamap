@@ -51,13 +51,21 @@ actions = {}
 
 def _setindexes(input, output):
     if isinstance(input, oamap.proxy.ListProxy):
-        output._whence, output._stride, output._length = input._whence, input._stride, input._length
-    elif isinstance(input, oamap.proxy.RecordProxy):
-        output._index = input._index
-    elif isinstance(input, oamap.proxy.TupleProxy):
-        output._index = input._index
+        if isinstance(output, oamap.proxy.ListProxy):
+            output._whence, output._stride, output._length = input._whence, input._stride, input._length
+        elif isinstance(output, (oamap.proxy.RecordProxy, oamap.proxy.TupleProxy)):
+            output._index = input._whence
+
+    elif isinstance(input, (oamap.proxy.RecordProxy, oamap.proxy.TupleProxy)):
+        if isinstance(output, (oamap.proxy.RecordProxy, oamap.proxy.TupleProxy)):
+            output._index = input._index
+        elif isinstance(output, oamap.proxy.ListProxy):
+            output._length = output._length - input._index
+            output._whence = input._index
+
     else:
         raise AssertionError(type(input))
+
     return output
     
 class _DualSource(object):
