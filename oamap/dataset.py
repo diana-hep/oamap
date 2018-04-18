@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import copy
 import numbers
 import types
 import functools
@@ -193,7 +194,7 @@ class _Data(Operable):
 
     def _serializable(self):
         out = Data(self._name, self._schema, self._backends, None, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
-        out._operations = self._operations
+        out._operations = copy.deepcopy(self._operations)
         return out
 
     def transform(self, name, namespace, backend, refcount, update):
@@ -370,7 +371,7 @@ class Dataset(_Data):
 
     def _serializable(self):
         out = Dataset(self._name, self._schema, self._backends, None, self._offsets, packing=self._packing, extension=self._extension, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
-        out._operations = self._operations
+        out._operations = copy.deepcopy(self._operations)
         return out
 
     def transform(self, name, namespace, backend, refcount, update):
