@@ -28,6 +28,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import math
+
 import unittest
 
 from oamap.schema import *
@@ -201,3 +203,45 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new[0].hey[2].ind, 2)
         self.assertEqual(new[2].hey[0].ind, 0)
         self.assertEqual(new[2].hey[1].ind, 1)
+
+    def test_tomask(self):
+        nan = float("nan")
+
+        data = Record({"one": "float"}).fromdata({"one": nan})
+        self.assertTrue(math.isnan(data.one))
+        data = tomask(data, "one", nan)
+        self.assertEqual(data.one, None)
+
+        data = List(Record({"one": "float"})).fromdata([{"one": nan}, {"one": 2}, {"one": 3}])
+        self.assertTrue(math.isnan(data[0].one))
+        self.assertEqual(data[1].one, 2)
+        self.assertEqual(data[2].one, 3)
+        data = tomask(data, "one", nan)
+        self.assertEqual(data[0].one, None)
+        data = tomask(data, "one", 2)
+        self.assertEqual(data[1].one, None)
+        data = tomask(data, "one", 2, 3)
+        self.assertEqual(data[2].one, None)
+
+        data = List(Record({"hey": Record({"one": "float"})})).fromdata([{"hey": {"one": nan}}, {"hey": {"one": 2}}, {"hey": {"one": 3}}])
+        self.assertTrue(math.isnan(data[0].hey.one))
+        self.assertEqual(data[1].hey.one, 2)
+        self.assertEqual(data[2].hey.one, 3)
+        data = tomask(data, "hey/one", nan)
+        self.assertEqual(data[0].hey.one, None)
+        data = tomask(data, "hey/one", 2)
+        self.assertEqual(data[1].hey.one, None)
+        data = tomask(data, "hey/one", 2, 3)
+        self.assertEqual(data[2].hey.one, None)
+
+        data = List(Record({"hey": List(Record({"one": "float"}))})).fromdata([{"hey": [{"one": nan}, {"one": 2}, {"one": 3}]}, {"hey": []}, {"hey": [{"one": 4}, {"one": 5}]}])
+        self.assertTrue(math.isnan(data[0].hey[0].one))
+        self.assertEqual(data[0].hey[1].one, 2)
+        self.assertEqual(data[0].hey[2].one, 3)
+        data = tomask(data, "hey/one", nan)
+        self.assertEqual(data[0].hey[0].one, None)
+        data = tomask(data, "hey/one", 2)
+        self.assertEqual(data[0].hey[1].one, None)
+        data = tomask(data, "hey/one", 2, 3)
+        self.assertEqual(data[0].hey[2].one, None)
+        

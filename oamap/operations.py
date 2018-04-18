@@ -626,8 +626,11 @@ def tomask(data, at, low, high=None):
             else:
                 if math.isnan(low) or math.isnan(high):
                     raise ValueError("if a range is specified, neither of the endpoints can be NaN")
+                selected_nans = numpy.isnan(primitive)
+                primitive[selected_nans] = low
                 selection = (primitive >= low)
                 numpy.bitwise_and(selection, (primitive <= high), selection)
+                selection[selected_nans] = False
 
             mask[selection] = oamap.generator.Masked.maskedvalue
 
