@@ -139,7 +139,7 @@ class MaskBitPack(PackedSource):
 
     def getall(self, roles):
         others  = [n for n in roles if not isinstance(n, oamap.generator.MaskRole)]
-        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix), n) for n in roles if isinstance(n, oamap.generator.MaskRole))
+        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix, n.namespace), n) for n in roles if isinstance(n, oamap.generator.MaskRole))
         out = super(MaskBitPack, self).getall(others + list(renamed))
         for suffixedname, name in renamed.items():
             out[name] = self.unpack(out[suffixedname])
@@ -150,7 +150,7 @@ class MaskBitPack(PackedSource):
         out = {}
         for n, x in roles2arrays.items():
             if isinstance(n, oamap.generator.MaskRole):
-                out[oamap.generator.NoRole(str(n) + self.suffix)] = self.pack(x)
+                out[oamap.generator.NoRole(str(n) + self.suffix, n.namespace)] = self.pack(x)
             else:
                 out[n] = x
         super(MaskBitPack, self).putall(out)
@@ -189,7 +189,7 @@ class ListCounts(PackedSource):
 
     def getall(self, roles):
         others  = [n for n in roles if not isinstance(n, (oamap.generator.StartsRole, oamap.generator.StopsRole))]
-        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix), n) for n in roles if isinstance(n, oamap.generator.StartsRole))
+        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix, n.namespace), n) for n in roles if isinstance(n, oamap.generator.StartsRole))
         out = super(ListCounts, self).getall(others + list(renamed))
         for suffixedname, name in renamed.items():
             out[name], out[name.stops] = self.fromcounts(out[suffixedname])
@@ -200,7 +200,7 @@ class ListCounts(PackedSource):
         out = {}
         for n, x in roles2arrays.items():
             if isinstance(n, oamap.generator.StartsRole):
-                out[oamap.generator.NoRole(str(n) + self.suffix)] = self.tocounts(x, roles2arrays[n.stops])
+                out[oamap.generator.NoRole(str(n) + self.suffix, n.namespace)] = self.tocounts(x, roles2arrays[n.stops])
             elif isinstance(n, oamap.generator.StopsRole):
                 pass
             else:

@@ -105,11 +105,11 @@ class Schema(object):
             raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
         self._packing = value
 
-    def _packingcopy(self):
+    def _packingcopy(self, source=None):
         if self._packing is None:
-            return None
+            return source
         else:
-            return self._packing.copy()
+            return self._packing.anchor(source)
 
     def _packingtojson(self):
         if self._packing is None:
@@ -321,16 +321,18 @@ class Schema(object):
         import oamap.fill
         return self(oamap.fill.fromiterdata(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
 
-    def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
-        return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
+    def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common, packing=None):
+        return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension), packing=packing)(arrays)
 
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common, packing=None):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".format(self._baddelimiter.pattern))
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
+        if packing is not None:
+            packing = packing.copy()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension, packing), cacheidx, memo, extension, packing)
 
     def _get_name(self, prefix, delimiter):
         if self._name is not None:
@@ -344,7 +346,7 @@ class Schema(object):
         else:
             return self._mask
 
-    def _finalizegenerator(self, out, cacheidx, memo, extension):
+    def _finalizegenerator(self, out, cacheidx, memo, extension, packing):
         allgenerators = list(memo.values())
         for generator in memo.values():
             if isinstance(generator, oamap.generator.PointerGenerator):
@@ -361,7 +363,7 @@ class Schema(object):
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
                     generator._internal = False
-                    generator.target = target._finalizegenerator(target._generator(generator.schema._get_external(prefix, delimiter), delimiter, cacheidx, memo2, set(), extension), cacheidx, memo2, extension)
+                    generator.target = target._finalizegenerator(target._generator(generator.schema._get_external(prefix, delimiter), delimiter, cacheidx, memo2, set(), extension, packing), cacheidx, memo2, extension, packing)
                     generator.schema.target = generator.target.schema
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
@@ -636,7 +638,7 @@ class Primitive(Schema):
         else:
             return self._data
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
@@ -653,10 +655,10 @@ class Primitive(Schema):
 
         args.append(self._dtype)
         args.append(self._namespace)
-        args.append(self._packingcopy())
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(packing=self._packingcopy()))
+        args.append(self.copy(packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -931,7 +933,7 @@ class List(Schema):
     def _get_content(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "L"
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
@@ -949,13 +951,13 @@ class List(Schema):
         args.append(self._get_stops(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        contentgen = self._content._generator(self._get_content(prefix, delimiter), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)
+        contentgen = self._content._generator(self._get_content(prefix, delimiter), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing)
         args.append(contentgen)
         args.append(self._namespace)
-        args.append(self._packingcopy())
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(content=contentgen.schema, packing=self._packingcopy()))
+        args.append(self.copy(content=contentgen.schema, packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1271,7 +1273,7 @@ class Union(Schema):
     def _get_possibility(self, prefix, delimiter, i):
         return self._get_name(prefix, delimiter) + delimiter + "U" + repr(i)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
@@ -1289,13 +1291,13 @@ class Union(Schema):
         args.append(self._get_offsets(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        possibilitiesgen = [x._generator(self._get_possibility(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._possibilities)]
+        possibilitiesgen = [x._generator(self._get_possibility(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing) for i, x in enumerate(self._possibilities)]
         args.append(possibilitiesgen)
         args.append(self._namespace)
-        args.append(self._packingcopy())
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen], packing=self._packingcopy()))
+        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen], packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1571,7 +1573,7 @@ class Record(Schema):
     def _get_field(self, prefix, delimiter, n):
         return self._get_name(prefix, delimiter) + delimiter + "F" + n
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if len(self._fields) == 0:
             raise TypeError("Record has no fields")
         if id(self) in nesting:
@@ -1585,13 +1587,13 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        fieldsgen = OrderedDict([(n, self._fields[n]._generator(self._get_field(prefix, delimiter, n), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)) for n in sorted(self._fields)])
+        fieldsgen = OrderedDict([(n, self._fields[n]._generator(self._get_field(prefix, delimiter, n), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing)) for n in sorted(self._fields)])
         args.append(fieldsgen)
         args.append(self._namespace)
-        args.append(self._packingcopy())
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items()), packing=self._packingcopy()))
+        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items()), packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1872,7 +1874,7 @@ class Tuple(Schema):
     def _get_field(self, prefix, delimiter, i):
         return self._get_name(prefix, delimiter) + delimiter + "F" + repr(i)
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
         if id(self) in nesting:
@@ -1886,13 +1888,13 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        typesgen = [x._generator(self._get_field(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._types)]
+        typesgen = [x._generator(self._get_field(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing) for i, x in enumerate(self._types)]
         args.append(typesgen)
         args.append(self._namespace)
-        args.append(self._packingcopy())
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(types=[x.schema for x in typesgen], packing=self._packingcopy()))
+        args.append(self.copy(types=[x.schema for x in typesgen], packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -2165,7 +2167,7 @@ class Pointer(Schema):
     def _get_external(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "X"
 
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
         args = []
@@ -2182,10 +2184,10 @@ class Pointer(Schema):
 
         args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
         args.append(self._namespace)
-        args.append(self._packingcopy())
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(packing=self._packingcopy()))
+        args.append(self.copy(packing=None))
 
         for ext in extension:
             if ext.matches(self):
