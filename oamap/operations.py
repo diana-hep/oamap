@@ -41,6 +41,7 @@ import oamap.schema
 import oamap.generator
 import oamap.proxy
 import oamap.util
+import oamap.compiler
 
 recastings = {}
 transformations = {}
@@ -921,51 +922,91 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
         rtype = oamap.util.returntype(fcn, ptypes)
 
         if rtype is None:
-            first = fcn(*((view[0],) + args))
+            viewindex = 0
+            for datum in view:
+                first = fcn(*((datum,) + args))
+                viewindex += 1
+                if first is not None:
+                    break
 
-            if isinstance(first, numbers.Real):
-                out = numpy.empty(len(view), dtype=(numpy.int64 if isinstance(first, numbers.Integral) else numpy.float64))
-
-            elif isinstance(first, tuple) and len(first) > 0 and all(isinstance(x, (numbers.Real, bool, numpy.bool_)) for x in first):
-                if names is None:
-                    names = ["f" + str(i) for i in range(len(first))]
-                if len(names) != len(first):
-                    raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(first)))
-
-                out = numpy.empty(len(view), dtype=zip(names, [numpy.bool_ if isinstance(x, (bool, numpy.bool_)) else numpy.int64 if isinstance(x, numbers.Integral) else numpy.float64 for x in first]))
+            if viewindex == len(view):
+                out = None
 
             else:
-                raise TypeError("function must return tuples of numbers (rows of a table)")
+                if isinstance(first, numbers.Real):
+                    out = numpy.empty(len(view), dtype=(numpy.int64 if isinstance(first, numbers.Integral) else numpy.float64))
 
-            out[0] = first
-            i = 1
-            if args == ():
-                for datum in view[1:]:
-                    out[i] = fcn(datum)
-                    i += 1
-            else:
-                for datum in view[1:]:
-                    out[i] = fcn(*((datum,) + args))
-                    i += 1
+                elif isinstance(first, tuple) and len(first) > 0 and all(isinstance(x, (numbers.Real, bool, numpy.bool_)) for x in first):
+                    if names is None:
+                        names = ["f" + str(i) for i in range(len(first))]
+                    if len(names) != len(first):
+                        raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(first)))
+
+                    out = numpy.empty(len(view), dtype=zip(names, [numpy.bool_ if isinstance(x, (bool, numpy.bool_)) else numpy.int64 if isinstance(x, numbers.Integral) else numpy.float64 for x in first]))
+
+                else:
+                    raise TypeError("function must return tuples of numbers (rows of a table)")
+
+                numitems = 0
+                out[numitems] = first
+                numitems += 1
+                if args == ():
+                    for datum in view[viewindex:]:
+                        tmp = fcn(datum)
+                        if tmp is not None:
+                            out[numitems] = tmp
+                            numitems += 1
+                else:
+                    for datum in view[viewindex:]:
+                        tmp = fcn(*((datum,) + args))
+                        if tmp is not None:
+                            out[numitems] = tmp
+                            numitems += 1
+
+                out = out[:numitems]
                         
-        elif isinstance(rtype, (nb.types.Integer, nb.types.Float)):
+        elif isinstance(rtype, (nb.types.Integer, nb.types.Float, nb.types.Boolean)):
             out = numpy.empty(len(view), dtype=numpy.dtype(rtype.name))
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {out}{params}):
-    {i} = 0
+    {numitems} = 0
     for {datum} in {view}:
-        {out}[{i}] = {fcn}({datum}{params})
-        {i} += 1
+        {out}[{numitems}] = {fcn}({datum}{params})
+        {numitems} += 1
 """.format(fill=fillname,
            view=oamap.util.varname(avoid, "view"),
            out=oamap.util.varname(avoid, "out"),
            params="".join("," + x for x in params[1:]),
-           i=oamap.util.varname(avoid, "i"),
+           numitems=oamap.util.varname(avoid, "numitems"),
            datum=oamap.util.varname(avoid, "datum"),
            fcn=fcnname), env)
             fill = oamap.util.trycompile(env[fillname], numba=numba)
             fill(*((view, out) + args))
+
+        elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Integer, nb.types.Float, nb.types.Boolean)):
+            out = numpy.empty(len(view), dtype=numpy.dtype(rtype.type.name))
+            env = {fcnname: fcn}
+            exec("""
+def {fill}({view}, {out}{params}):
+    {numitems} = 0
+    for {datum} in {view}:
+        {tmp} = {fcn}({datum}{params})
+        if {tmp} is not None:
+            {out}[{numitems}] = {tmp}
+            {numitems} += 1
+    return {numitems}
+""".format(fill=fillname,
+           view=oamap.util.varname(avoid, "view"),
+           out=oamap.util.varname(avoid, "out"),
+           params="".join("," + x for x in params[1:]),
+           numitems=oamap.util.varname(avoid, "numitems"),
+           datum=oamap.util.varname(avoid, "datum"),
+           tmp=oamap.util.varname(avoid, "tmp"),
+           fcn=fcnname), env)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
+            numitems = fill(*((view, out) + args))
+            out = out[:numitems]
 
         elif isinstance(rtype, (nb.types.Tuple, nb.types.UniTuple)) and len(rtype.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.types):
             if names is None:
@@ -977,27 +1018,66 @@ def {fill}({view}, {out}{params}):
             outs = tuple(out[n] for n in names)
 
             outnames = [oamap.util.varname(avoid, "out" + str(i)) for i in range(len(names))]
-            iname = oamap.util.varname(avoid, "i")
+            numitemsname = oamap.util.varname(avoid, "numitems")
             tmpname = oamap.util.varname(avoid, "tmp")
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {outs}{params}):
-    {i} = 0
+    {numitems} = 0
     for {datum} in {view}:
         {tmp} = {fcn}({datum}{params})
         {assignments}
-        {i} += 1
+        {numitems} += 1
 """.format(fill=fillname,
            view=oamap.util.varname(avoid, "view"),
            outs=",".join(outnames),
            params="".join("," + x for x in params[1:]),
-           i=iname,
+           numitems=numitemsname,
            datum=oamap.util.varname(avoid, "datum"),
            tmp=tmpname,
            fcn=fcnname,
-           assignments="\n        ".join("{out}[{i}] = {tmp}[{j}]".format(out=out, i=iname, tmp=tmpname, j=j) for j, out in enumerate(outnames))), env)
+           assignments="\n        ".join("{out}[{numitems}] = {tmp}[{i}]".format(out=out, numitems=numitemsname, tmp=tmpname, i=i) for i, out in enumerate(outnames))), env)
             fill = oamap.util.trycompile(env[fillname], numba=numba)
             fill(*((view,) + outs + args))
+
+        elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Tuple, nb.types.UniTuple)) and len(rtype.type.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.type.types):
+            if names is None:
+                names = ["f" + str(i) for i in range(len(rtype.type.types))]
+            if len(names) != len(rtype.type.types):
+                raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(rtype.type.types)))
+
+            out = numpy.empty(len(view), dtype=zip(names, [numpy.dtype(x.name) for x in rtype.type.types]))
+            outs = tuple(out[n] for n in names)
+
+            outnames = [oamap.util.varname(avoid, "out" + str(i)) for i in range(len(names))]
+            numitemsname = oamap.util.varname(avoid, "numitems")
+            tmp2name = oamap.util.varname(avoid, "tmp2")
+            requiredname = oamap.util.varname(avoid, "required")
+            env = {fcnname: fcn, requiredname: oamap.compiler.required}
+            exec("""
+def {fill}({view}, {outs}{params}):
+    {numitems} = 0
+    for {datum} in {view}:
+        {tmp} = {fcn}({datum}{params})
+        if {tmp} is not None:
+            {tmp2} = {required}({tmp})
+            {assignments}
+            {numitems} += 1
+    return {numitems}
+""".format(fill=fillname,
+           view=oamap.util.varname(avoid, "view"),
+           outs=",".join(outnames),
+           params="".join("," + x for x in params[1:]),
+           numitems=numitemsname,
+           datum=oamap.util.varname(avoid, "datum"),
+           tmp=oamap.util.varname(avoid, "tmp"),
+           tmp2=tmp2name,
+           required=requiredname,
+           fcn=fcnname,
+           assignments="\n            ".join("{out}[{numitems}] = {tmp2}[{i}]".format(out=out, numitems=numitemsname, tmp2=tmp2name, i=i) for i, out in enumerate(outnames))), env)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
+            numitems = fill(*((view,) + outs + args))
+            out = out[:numitems]
 
         else:
             raise TypeError("function must return tuples of numbers (rows of a table)")

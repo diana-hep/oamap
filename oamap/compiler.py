@@ -1509,3 +1509,29 @@ else:
         c.pyapi.decref(tupleproxy_cls)
 
         return out
+
+    ################################################################ additional useful functions
+
+    # FIXME: you probably want this to work for OAMap proxies as well
+
+    def required(x):
+        if x is None:
+            raise ValueError("optional value is None")
+        else:
+            return x
+
+    @numba.extending.type_callable(required)
+    def required_type(context):
+        def typer(x):
+            if isinstance(x, numba.types.Optional):
+                return x.type
+        return typer
+
+    @numba.extending.lower_builtin(required, numba.types.Optional)
+    def required_impl(context, builder, sig, args):
+        tpe, = sig.args
+        val, = args
+        helper = context.make_helper(builder, tpe, value=val)
+        with builder.if_then(builder.not_(helper.valid), likely=False):
+            context.call_conv.return_user_exc(builder, TypeError, ("optional value is None",))
+        return helper.data
