@@ -245,3 +245,84 @@ class TestOperations(unittest.TestCase):
         data = tomask(data, "hey/one", 2, 3)
         self.assertEqual(data[0].hey[2].one, None)
         
+    def test_flatten(self):
+        data = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
+        self.assertEqual(flatten(data), [1, 2, 3, 4, 5])
+
+        data = Record({"x": List(List("int"))}).fromdata({"x": [[1, 2, 3], [], [4, 5]]})
+        self.assertEqual(flatten(data, "x").x, [1, 2, 3, 4, 5])
+
+        data = List(Record({"x": List(List("int"))})).fromdata([{"x": [[1, 2, 3], [], [4, 5]]}, {"x": []}, {"x": [[], [], []]}])
+        new = flatten(data, "x")
+        self.assertEqual(new[0].x, [1, 2, 3, 4, 5])
+        self.assertEqual(new[1].x, [])
+        self.assertEqual(new[2].x, [])
+
+    def test_filter(self):
+        data = List("int").fromdata([1, 2, 3, 4, 5])
+        fcn = lambda x, y: x % 2 == y
+        self.assertEqual(filter(data, fcn, 0, numba=False), [2, 4])
+        self.assertEqual(filter(data, fcn, 0, numba=True), [2, 4])
+        self.assertEqual(filter(data, fcn, 1, numba=False), [1, 3, 5])
+        self.assertEqual(filter(data, fcn, 1, numba=True), [1, 3, 5])
+
+        data = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
+        self.assertEqual(filter(data, lambda obj: len(obj) > 0, numba=False), [[1, 2, 3], [4, 5]])
+        self.assertEqual(filter(data, lambda obj: len(obj) > 0, numba=True), [[1, 2, 3], [4, 5]])
+
+        data = List(Record({"x": "int"})).fromdata([{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}, {"x": 5}])
+        self.assertEqual(len(filter(data, lambda obj: obj.x % 2 == 0, numba=False)), 2)
+        self.assertEqual(len(filter(data, lambda obj: obj.x % 2 == 0, numba=True)), 2)
+
+        data = Record({"hey": List("int")}).fromdata({"hey": [1, 2, 3, 4, 5]})
+        fcn = lambda x, y: x % 2 == y
+        self.assertEqual(filter(data, fcn, 0, at="hey", numba=False).hey, [2, 4])
+        self.assertEqual(filter(data, fcn, 0, at="hey", numba=True).hey, [2, 4])
+        self.assertEqual(filter(data, fcn, 1, at="hey", numba=False).hey, [1, 3, 5])
+        self.assertEqual(filter(data, fcn, 1, at="hey", numba=True).hey, [1, 3, 5])
+
+        data = Record({"hey": List(List("int"))}).fromdata({"hey": [[1, 2, 3], [], [4, 5]]})
+        self.assertEqual(filter(data, lambda obj: len(obj) > 0, at="hey", numba=False).hey, [[1, 2, 3], [4, 5]])
+        self.assertEqual(filter(data, lambda obj: len(obj) > 0, at="hey", numba=True).hey, [[1, 2, 3], [4, 5]])
+
+        data = Record({"hey": List(Record({"x": "int"}))}).fromdata({"hey": [{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}, {"x": 5}]})
+        self.assertEqual(len(filter(data, lambda obj: obj.x % 2 == 0, at="hey", numba=False).hey), 2)
+        self.assertEqual(len(filter(data, lambda obj: obj.x % 2 == 0, at="hey", numba=True).hey), 2)
+
+    def test_define(self):
+        data = Record({"x": "int"}).fromdata({"x": 5})
+        fcn = lambda obj, y: obj.x + y
+        self.assertEqual(define(data, "z", fcn, 10, numba=False).z, 15)
+        self.assertEqual(define(data, "z", fcn, 10, numba=True).z, 15)
+
+        data = List(Record({"x": "int"})).fromdata([{"x": 1}, {"x": 2}, {"x": 3}])
+        new = define(data, "z", lambda obj: obj.x + 10, numba=False)
+        self.assertEqual([obj.z for obj in new], [11, 12, 13])
+        new = define(data, "z", lambda obj: obj.x + 10, numba=True)
+        self.assertEqual([obj.z for obj in new], [11, 12, 13])
+
+        data = List(List(Record({"x": "int"}))).fromdata([[], [{"x": 1}, {"x": 2}, {"x": 3}], []])
+        new = define(data, "z", lambda obj: obj.x + 10, numba=False)
+        self.assertEqual(len(new[0]), 0)
+        self.assertEqual([obj.z for obj in new[1]], [11, 12, 13])
+        self.assertEqual(len(new[2]), 0)
+        new = define(data, "z", lambda obj: obj.x + 10, numba=True)
+        self.assertEqual(len(new[0]), 0)
+        self.assertEqual([obj.z for obj in new[1]], [11, 12, 13])
+        self.assertEqual(len(new[2]), 0)
+
+        data = List(Record({"hey": List(Record({"x": "int"}))})).fromdata([{"hey": []}, {"hey": [{"x": 1}, {"x": 2}, {"x": 3}]}, {"hey": []}])
+        new = define(data, "z", lambda obj: obj.x + 10, at="hey", numba=False)
+        self.assertEqual(len(new[0].hey), 0)
+        self.assertEqual([obj.z for obj in new[1].hey], [11, 12, 13])
+        self.assertEqual(len(new[2].hey), 0)
+        new = define(data, "z", lambda obj: obj.x + 10, at="hey", numba=True)
+        self.assertEqual(len(new[0].hey), 0)
+        self.assertEqual([obj.z for obj in new[1].hey], [11, 12, 13])
+        self.assertEqual(len(new[2].hey), 0)
+
+        data = List(Record({"hey": List(Record({"x": "int"}))})).fromdata([{"hey": []}, {"hey": [{"x": 1}, {"x": 2}, {"x": 3}]}, {"hey": []}])
+        new = define(data, "z", lambda obj: None if obj.x % 2 == 0 else obj.x + 10, at="hey", numba=False)
+        self.assertEqual([obj.z for obj in new[1].hey], [11, None, 13])
+        new = define(data, "z", lambda obj: None if obj.x % 2 == 0 else obj.x + 10, at="hey", numba=True)
+        self.assertEqual([obj.z for obj in new[1].hey], [11, None, 13])

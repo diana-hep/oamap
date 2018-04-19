@@ -778,7 +778,7 @@ transformations["filter"] = filter
 
 ################################################################ define
 
-def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitive(numpy.float64), numba=True):
+def define(data, fieldname, fcn, args=(), at="", fieldtype=None, numba=True):
     if not isinstance(args, tuple):
         try:
             args = tuple(args)
@@ -792,24 +792,27 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
             nodes = (nodes[0].content,) + nodes
         if not isinstance(nodes[0], oamap.schema.Record):
             raise TypeError("path {0} does not refer to a record:\n\n    {1}".format(repr(at), nodes[0].__repr__(indent="    ")))
-        if len(nodes) < 2 or not isinstance(nodes[1], oamap.schema.List):
-            raise TypeError("path {0} does not refer to a record in a list:\n\n    {1}".format(repr(at), nodes[-1].__repr__(indent="    ")))
-        recordnode = nodes[0]
-        listnode = nodes[1]
-        if recordnode.nullable or listnode.nullable:
-            raise NotImplementedError("nullable; need to merge masks")
 
-        recordnode[fieldname] = fieldtype.deepcopy()
+        if len(nodes) >= 2 and isinstance(nodes[1], oamap.schema.List):
+            recordnode, listnode = nodes[:2]
+            listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
+            viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+            viewschema = listgenerator.namedschema()
+            viewarrays = _DualSource(data._arrays, data._generator.namespaces())
 
-        listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
-        viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
-        viewschema = listgenerator.namedschema()
-        viewarrays = _DualSource(data._arrays, data._generator.namespaces())
-        if numpy.array_equal(viewstarts[1:], viewstops[:-1]):
-            viewarrays.put(viewschema, viewstarts[:1], viewstops[-1:])
+            if not numpy.array_equal(viewstarts[1:], viewstops[:-1]):
+                raise NotImplementedError("'define' through a list defined by arrays that are not contiguous: view would require the creation of pointers")
+
+            viewarrays.put(viewschema, viewstarts[:1], viewstops[-1:])   # unlike 'flatten', this does not preserve upper list structure (which is desirable here and not there)
+            view = viewschema(viewarrays)
+
         else:
-            raise NotImplementedError("non-contiguous arrays: have to do some sort of concatenation")
-        view = viewschema(viewarrays)
+            recordnode = nodes[0]
+            viewschema = oamap.schema.List(recordnode)
+            viewarrays = _DualSource(data._arrays, data._generator.namespaces())
+            offsets = numpy.array([0, 1], dtype=oamap.generator.ListGenerator.posdtype)
+            viewarrays.put(viewschema, offsets[:1], offsets[-1:])
+            view = viewschema(viewarrays)
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
@@ -824,13 +827,19 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=oamap.schema.Primitiv
         fcn = oamap.util.trycompile(fcn, paramtypes=ptypes, numba=numba)
         rtype = oamap.util.returntype(fcn, ptypes)
 
-        if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
-            if rtype is not None:
-                if rtype == nb.types.pyobject:
-                    raise TypeError("numba could not prove that the function's output type is:\n\n    {0}".format(fieldtype.__repr__(indent="    ")))
-                elif rtype != nb.from_dtype(fieldtype.dtype):
-                    raise TypeError("function returns {0} but fieldtype is set to:\n\n    {1}".format(rtype, fieldtype.__repr__(indent="    ")))
+        if fieldtype is None:
+            if rtype is None or rtype == nb.types.pyobject:
+                fieldtype = oamap.schema.Primitive(numpy.float64, nullable=True)
+            elif isinstance(rtype, (nb.types.Integer, nb.types.Float, nb.types.Boolean)):
+                fieldtype = oamap.schema.Primitive(rtype.name)
+            elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Integer, nb.types.Float, nb.types.Boolean)):
+                fieldtype = oamap.schema.Primitive(rtype.type.name, nullable=True)
+            else:
+                raise NotImplementedError("'define' not implemented for type {0}".format(rtype))
 
+        recordnode[fieldname] = fieldtype.deepcopy()
+
+        if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {primitive}{params}):
@@ -855,10 +864,6 @@ def {fill}({view}, {primitive}{params}):
             return schema(arrays)
 
         elif isinstance(fieldtype, oamap.schema.Primitive):
-            if rtype is not None:
-                if rtype != nb.types.optional(nb.from_dtype(fieldtype.dtype)):
-                    raise TypeError("function returns {0} but fieldtype is set to:\n\n    {1}".format(rtype, fieldtype.__repr__(indent="    ")))
-
             env = {fcnname: fcn}
             exec("""
 def {fill}({view}, {primitive}, {mask}{params}):
