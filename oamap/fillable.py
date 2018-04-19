@@ -352,7 +352,7 @@ class FillableFile(Fillable):
         chunkindex, self._indexinchunk = divmod(self._len, self.chunksize)
         if self._chunkindex != chunkindex:
             self._file.seek(self._datapos + chunkindex*self.chunksize*self.dtype.itemsize)
-            olddata = numpy.fromstring(self._file.read(self.chunksize*self.dtype.itemsize), dtype=self.dtype)
+            olddata = numpy.frombuffer(self._file.read(self.chunksize*self.dtype.itemsize), dtype=self.dtype)
             self._data[:len(olddata)] = olddata
 
         self._chunkindex = chunkindex
@@ -397,14 +397,14 @@ class FillableFile(Fillable):
                 itemsize = self.dtype.itemsize
                 try:
                     self._file.seek(self._datapos + normalindex*itemsize)
-                    return numpy.fromstring(self._file.read(itemsize), self.dtype)[0]
+                    return numpy.frombuffer(self._file.read(itemsize), self.dtype)[0]
                 finally:
                     self._file.seek(self._datapos + self._chunkindex*self.chunksize*self.dtype.itemsize)
             else:
                 # otherwise, you have to open a new file
                 with open(self.filename, "rb") as file:
                     file.seek(self._datapos + normalindex*itemsize)
-                    return numpy.fromstring(file.read(itemsize), self.dtype)[0]
+                    return numpy.frombuffer(file.read(itemsize), self.dtype)[0]
 
 ################################################################ FillableNumpyFile (FillableFile with a self-describing header)
 

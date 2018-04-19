@@ -256,17 +256,17 @@ class TestCompiler(unittest.TestCase):
 
             value = List(Primitive(float)).fromdata([0.0, 1.1, 2.2, 3.3, 4.4])
 
-            self.assertEquals(doit(value, 0), 0.0)
-            self.assertEquals(doit(value, 1), 1.1)
-            self.assertEquals(doit(value, 2), 2.2)
-            self.assertEquals(doit(value, 3), 3.3)
-            self.assertEquals(doit(value, 4), 4.4)
+            self.assertEqual(doit(value, 0), 0.0)
+            self.assertEqual(doit(value, 1), 1.1)
+            self.assertEqual(doit(value, 2), 2.2)
+            self.assertEqual(doit(value, 3), 3.3)
+            self.assertEqual(doit(value, 4), 4.4)
 
-            self.assertEquals(doit(value, -1), 4.4)
-            self.assertEquals(doit(value, -2), 3.3)
-            self.assertEquals(doit(value, -3), 2.2)
-            self.assertEquals(doit(value, -4), 1.1)
-            self.assertEquals(doit(value, -5), 0.0)
+            self.assertEqual(doit(value, -1), 4.4)
+            self.assertEqual(doit(value, -2), 3.3)
+            self.assertEqual(doit(value, -3), 2.2)
+            self.assertEqual(doit(value, -4), 1.1)
+            self.assertEqual(doit(value, -5), 0.0)
 
             self.assertRaises(IndexError, lambda: doit(value, 5))
             self.assertRaises(IndexError, lambda: doit(value, -6))
