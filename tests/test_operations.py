@@ -409,3 +409,23 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype.names, ("one", "two", "three"))
+
+    def test_reduce(self):
+        data = List("int").fromdata([1, 2, 3, 4, 5])
+        fcn = lambda x, tally, y: x + tally + y
+        self.assertEqual(reduce(data, 0, fcn, 0, numba=False), 15)
+        self.assertEqual(reduce(data, 0, fcn, 1, numba=False), 20)
+        self.assertEqual(reduce(data, 0, fcn, 0, numba={"nopython": True}), 15)
+        self.assertEqual(reduce(data, 0, fcn, 1, numba={"nopython": True}), 20)
+
+        data = List(Record({"x": "int"})).fromdata([{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}, {"x": 5}])
+        self.assertEqual(reduce(data, 0, lambda obj, tally: obj.x + tally, numba=False), 15)
+        self.assertEqual(reduce(data, 0, lambda obj, tally: obj.x + tally, numba={"nopython": True}), 15)
+
+        data = Record({"hey": List(Record({"x": "int"}))}).fromdata({"hey": [{"x": 1}, {"x": 2}, {"x": 3}, {"x": 4}, {"x": 5}]})
+        self.assertEqual(reduce(data, 0, lambda obj, tally: obj.x + tally, at="hey", numba=False), 15)
+        self.assertEqual(reduce(data, 0, lambda obj, tally: obj.x + tally, at="hey", numba={"nopython": True}), 15)
+
+        data = List(Record({"hey": List(Record({"x": "int"}))})).fromdata([{"hey": [{"x": 1}, {"x": 2}, {"x": 3}]}, {"hey": []}, {"hey": [{"x": 4}, {"x": 5}]}])
+        self.assertEqual(reduce(data, 0, lambda obj, tally: obj.x + tally, at="hey", numba=False), 15)
+        self.assertEqual(reduce(data, 0, lambda obj, tally: obj.x + tally, at="hey", numba={"nopython": True}), 15)
