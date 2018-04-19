@@ -55,3 +55,14 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(oamap.operations.project(one.partition(0), "x"), [1, 2, 3])
         self.assertEqual(oamap.operations.project(one.partition(1), "x"), [4, 5, 6])
 
+        # recasting
+        db.data.two = one.project("x")
+        two = db.data.two
+        self.assertEqual([x for x in two], [1, 2, 3, 4, 5, 6])
+        self.assertEqual(two.partition(0), [1, 2, 3])
+        self.assertEqual(two.partition(1), [4, 5, 6])
+
+        # transformation
+        db.data.three = one.filter(lambda obj: obj.x % 2 == 0)
+
+
