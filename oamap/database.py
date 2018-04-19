@@ -32,6 +32,7 @@ import sys
 
 import oamap.schema
 import oamap.dataset
+import oamap.extension.common
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -56,17 +57,17 @@ class WritableBackend(Backend):
         raise NotImplementedError("missing implementation for {0}.decref".format(self.__class__))
 
 class DictBackend(WritableBackend):
-    def __init__(self, values=None, refcounts=None):
-        if values is None:
-            values = {}
+    def __init__(self, arrays=None, refcounts=None):
+        if arrays is None:
+            arrays = {}
         if refcounts is None:
             refcounts = {}
-        self._values = values
+        self._arrays = arrays
         self._refcounts = refcounts
-        super(DictBackend, self).__init__(values, refcounts)
+        super(DictBackend, self).__init__(arrays, refcounts)
 
     def instantiate(self, partitionid):
-        out = self._values[partitionid] = self._values.get(partitionid, {})
+        out = self._arrays[partitionid] = self._arrays.get(partitionid, {})
         return out
 
     def incref(self, dataset, partitionid, arrayname):
@@ -79,7 +80,7 @@ class DictBackend(WritableBackend):
         if out[arrayname] <= 0:
             del out[arrayname]
             try:
-                del self._values[partitionid][arrayname]
+                del self._arrays[partitionid][arrayname]
             except KeyError:
                 pass
 
@@ -193,6 +194,59 @@ class Database(object):
         return obj
 
 class InMemoryDatabase(Database):
+    @staticmethod
+    def fromdata(name, schema, *partitions, **opts):
+        try:
+            pointer_fromequal = opts.pop("pointer_fromequal", False)
+        except KeyError:
+            pass
+        try:
+            namespace = opts.pop("namespace", "")
+        except KeyError:
+            pass
+        try:
+            delimiter = opts.pop("delimiter", "-")
+        except KeyError:
+            pass
+        try:
+            extension = opts.pop("extension", oamap.extension.common)
+        except KeyError:
+            pass
+        try:
+            packing = opts.pop("packing", None)
+        except KeyError:
+            pass
+        if len(opts) > 0:
+            raise TypeError("unrecognized options: {0}".format(" ".join(opts)))
+
+        generator = schema.generator(prefix=name, delimiter=delimiter, extension=extension, packing=packing)
+
+        if isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
+            if len(partitions) != 1:
+                raise TypeError("only lists can have more or less than one partition")
+            arrays = {None: generator.fromdata(partitions[0])._arrays}
+            refcounts = {None: dict((n, 1) for n in arrays)}
+            return InMemoryDatabase(
+                backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
+                namespace=namespace,
+                datasets={"name": name, "schema": schema.tojson()})
+
+        elif isinstance(schema, oamap.schema.List):
+            arrays = {}
+            refcounts = {}
+            offsets = [0]
+            for i, x in enumerate(partitions):
+                arrays[i] = generator.fromdata(x)._arrays
+                refcounts[i] = dict((n, 1) for n in arrays[i])
+                offsets.append(len(x))
+            return InMemoryDatabase(
+                backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
+                namespace=namespace,
+                datasets={"name": name, "schema": schema.tojson(), "offsets": offsets})
+
+        else:
+            raise TypeError("can only create datasets from proxy types (list, records, tuples)")
+
     def __init__(self, backends={}, namespace="", datasets={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
         self._datasets = dict(datasets)

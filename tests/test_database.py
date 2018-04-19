@@ -42,28 +42,7 @@ class TestDatabase(unittest.TestCase):
         pass
 
     def test_dataset(self):
-        backend = DictBackend({0: {"object-L-Fx-Di8": [1, 2, 1], "object-L-Fy-Di8": [4, 5, 6]},
-                               1: {"object-L-Fx-Di8": [5, 1, 2], "object-L-Fy-Di8": [7, 6, 5]}},
-                              {0: {"object-L-Fx-Di8": 1, "object-L-Fy-Di8": 1},
-                               1: {"object-L-Fx-Di8": 1, "object-L-Fy-Di8": 1}})
-        dataset = {"name": "object", "schema": List(Record({"x": "int", "y": "int"})).tojson(), "offsets": [0, 3, 6]}
-        db = InMemoryDatabase(backends={"": backend}, namespace="", datasets={"one": dataset})
-
+        db = InMemoryDatabase.fromdata("one", List(Record({"x": "int", "y": "int"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
         one = db.data.one
-        self.assertEqual(one[0].x, 1)
-        self.assertEqual(one[1].x, 2)
-        self.assertEqual(one[2].x, 1)
-        self.assertEqual(one[3].x, 5)
-        self.assertEqual(one[4].x, 1)
-        self.assertEqual(one[5].x, 2)
-        self.assertEqual([obj.x for obj in one], [1, 2, 1, 5, 1, 2])
-        self.assertEqual([obj.y for obj in one], [4, 5, 6, 7, 6, 5])
-        self.assertEqual(oamap.operations.project(one.partition(0), "x"), [1, 2, 1])
-        self.assertEqual(oamap.operations.project(one.partition(1), "x"), [5, 1, 2])
 
-        # # recasting
-        # db.data.two = one.split("x", "y")
-        # two = db.data.two
-        # self.assertEqual([obj.x for obj in one], [1, 2, 1, 5, 1, 2])
-        # self.assertEqual([obj.y for obj in one], [4, 5, 6, 7, 6, 5])
-
+        
