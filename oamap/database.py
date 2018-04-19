@@ -224,8 +224,8 @@ class InMemoryDatabase(Database):
         if isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
             if len(partitions) != 1:
                 raise TypeError("only lists can have more or less than one partition")
-            arrays = {None: generator.fromdata(partitions[0])._arrays}
-            refcounts = {None: dict((n, 1) for n in arrays)}
+            arrays = {0: generator.fromdata(partitions[0])._arrays}
+            refcounts = {0: dict((n, 1) for n in arrays)}
             return InMemoryDatabase(
                 backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
                 namespace=namespace,
@@ -304,7 +304,7 @@ class InMemoryDatabase(Database):
             partitions = range(ds.numpartitions)
             startingpoint = ds.schema.generator().namedschema().content
         else:
-            partitions = [None]
+            partitions = [0]
             startingpoint = ds.schema.generator().namedschema()
 
         def transform(schema):
@@ -335,7 +335,7 @@ class InMemoryDatabase(Database):
             partitions = range(ds.numpartitions)
             startingpoint = ds.schema.generator().namedschema().content
         else:
-            partitions = [None]
+            partitions = [0]
             startingpoint = ds.schema.generator().namedschema()
 
         def transform(schema):

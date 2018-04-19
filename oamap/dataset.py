@@ -202,7 +202,11 @@ class _Data(Operable):
             result = self()
             for operation in self._operations:
                 result = operation.apply(result)
-            return [SingleThreadExecutor.PseudoFuture(update(Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)))]
+            if isinstance(result, oamap.proxy.ListProxy):
+                out = Dataset(name, result._generator.schema, self._backends, self._executor, [0, len(result)], extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+            else:
+                out = Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+            return [SingleThreadExecutor.PseudoFuture(update(out))]
 
         else:
             def task(name, dataset, namespace, backend, update):
@@ -212,14 +216,18 @@ class _Data(Operable):
 
                 schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, name, dataset._delimiter)
 
-                active = backend.instantiate(None)
+                active = backend.instantiate(0)
                 if hasattr(active, "putall"):
                     active.putall(roles2arrays)
                 else:
                     for n, x in roles2arrays.items():
                         active[str(n)] = x
                 
-                return update(Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter))
+                if isinstance(result, oamap.proxy.ListProxy):
+                    out = Dataset(name, schema, dataset._backends, dataset._executor, [0, len(result)], extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                else:
+                    out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                return update(out)
 
             return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
 
@@ -250,7 +258,7 @@ class DataArrays(object):
     def __init__(self, backends):
         self._backends = backends
         self._active = {}
-        self._partitionid = None
+        self._partitionid = 0
 
     def _toplevel(self, out, filtered):
         return filtered
@@ -399,7 +407,11 @@ class Dataset(_Data):
             result = self.partition(0)
             for operation in self._operations:
                 result = operation.apply(result)
-            return [SingleThreadExecutor.PseudoFuture(update(Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)))]
+            if isinstance(result, oamap.proxy.ListProxy):
+                out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+            else:
+                out = Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+            return [SingleThreadExecutor.PseudoFuture(update(out))]
 
         else:
             def task(name, dataset, namespace, backend, partitionid):
@@ -415,8 +427,10 @@ class Dataset(_Data):
                 else:
                     for n, x in roles2arrays.items():
                         active[str(n)] = x
-
-                return schema, len(result)
+                if isinstance(result, oamap.proxy.ListProxy):
+                    return schema, len(result)
+                else:
+                    return schema, 1
 
             tasks = [self._executor.submit(task, name, self._serializable(), namespace, backend, i) for i in range(self.numpartitions)]
 
@@ -427,7 +441,11 @@ class Dataset(_Data):
                 else:
                     offsets = numpy.cumsum([0] + [x.result()[1] for x in results], dtype=numpy.int64)
                     schema = results[0].result()[0]
-                return update(Dataset(name, schema, dataset._backends, dataset._executor, offsets, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter))
+                if isinstance(schema, oamap.schema.List):
+                    out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                else:
+                    out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                return update(out)
 
             tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))
             return tasks
