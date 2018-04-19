@@ -295,7 +295,10 @@ class _DualSource(object):
 
             roles2arrays.update(r2a)
 
-        recurse2(schema, generator, set())
+        if isinstance(schema, oamap.schema.List):
+            recurse2(schema.content, generator.content, set())
+        else:
+            recurse2(schema, generator, set())
 
         return generator.namedschema(), roles2arrays
 
@@ -725,19 +728,24 @@ def filter(data, fcn, args=(), at="", numba=True):
 
     if (isinstance(data, oamap.proxy.ListProxy) and data._whence == 0 and data._stride == 1) or (isinstance(data, oamap.proxy.Proxy) and data._index == 0):
         schema = data._generator.namedschema()
-        listnode = schema.path(at)
+        nodes = schema.path(at, parents=True)
+        listnode = nodes[0]
         if not isinstance(listnode, oamap.schema.List):
             raise TypeError("path {0} does not refer to a list:\n\n    {1}".format(repr(at), listnode.__repr__(indent="    ")))
         if listnode.nullable:
             raise NotImplementedError("nullable; need to merge masks")
 
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
-        viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
-        viewschema = listgenerator.namedschema()
-        viewarrays = _DualSource(data._arrays, data._generator.namespaces())
-        viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
-        viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
-        view = viewschema(viewarrays)
+        
+        if all(isinstance(x, (oamap.schema.Record, oamap.schema.Tuple)) for x in nodes[1:]):
+            view = listgenerator(data._arrays)
+        else:
+            viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+            viewschema = listgenerator.namedschema()
+            viewarrays = _DualSource(data._arrays, data._generator.namespaces())
+            viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
+            viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
+            view = viewschema(viewarrays)
 
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
@@ -757,8 +765,36 @@ def filter(data, fcn, args=(), at="", numba=True):
             if rtype != nb.types.boolean:
                 raise TypeError("filter function must return boolean, not {0}".format(rtype))
 
-        env = {fcnname: fcn, lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
-        oamap.util.doexec("""
+        if all(isinstance(x, (oamap.schema.Record, oamap.schema.Tuple)) for x in nodes[1:]):
+            env = {fcnname: fcn}
+            oamap.util.doexec("""
+def {fill}({view}, {pointers}{params}):
+    {i} = 0
+    {numitems} = 0
+    for {datum} in {view}:
+        if {fcn}({datum}{params}):
+            {pointers}[{numitems}] = {i}
+            {numitems} += 1
+        {i} += 1
+    return {numitems}
+""".format(fill=fillname,
+           view=oamap.util.varname(avoid, "view"),
+           pointers=oamap.util.varname(avoid, "pointers"),
+           params="".join("," + x for x in params[1:]),
+           i=oamap.util.varname(avoid, "i"),
+           numitems=oamap.util.varname(avoid, "numitems"),
+           datum=oamap.util.varname(avoid, "datum"),
+           fcn=fcnname), env)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
+
+            pointers = numpy.empty(len(view), dtype=oamap.generator.PointerGenerator.posdtype)
+            numitems = fill(*((view, pointers) + args))
+            pointers = pointers[:numitems]
+            offsets = numpy.array([0, numitems], dtype=oamap.generator.ListGenerator.posdtype)
+
+        else:
+            env = {fcnname: fcn, lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
+            oamap.util.doexec("""
 def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
     {numitems} = 0
     for {i} in {range}({len}({viewstarts})):
@@ -783,13 +819,13 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
            j=oamap.util.varname(avoid, "j"),
            datum=oamap.util.varname(avoid, "datum"),
            fcn=fcnname), env)
-        fill = oamap.util.trycompile(env[fillname], numba=numba)
+            fill = oamap.util.trycompile(env[fillname], numba=numba)
 
-        offsets = numpy.empty(len(viewstarts) + 1, dtype=oamap.generator.ListGenerator.posdtype)
-        offsets[0] = 0
-        pointers = numpy.empty(len(view), dtype=oamap.generator.PointerGenerator.posdtype)
-        numitems = fill(*((view, viewstarts, viewstops, offsets[1:], pointers) + args))
-        pointers = pointers[:numitems]
+            offsets = numpy.empty(len(viewstarts) + 1, dtype=oamap.generator.ListGenerator.posdtype)
+            offsets[0] = 0
+            pointers = numpy.empty(len(view), dtype=oamap.generator.PointerGenerator.posdtype)
+            numitems = fill(*((view, viewstarts, viewstops, offsets[1:], pointers) + args))
+            pointers = pointers[:numitems]
 
         listnode.content = oamap.schema.Pointer(listnode.content)
 

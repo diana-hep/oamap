@@ -261,11 +261,14 @@ class InMemoryDatabase(Database):
             raise KeyError("no dataset named {0}".format(repr(dataset)))
 
         elif isinstance(ds, list):
+            oldds = ds[0]
             task = ds[-1]
             if task.done():
                 ds = task.result()
                 self._datasets[dataset] = self._dataset2json(ds)
                 self._incref(ds)
+                if oldds is not None:
+                    self._decref(oldds)
                 return ds
             else:
                 raise NotImplementedError("FIXME: deal with failed and incomplete tasks")
@@ -280,8 +283,13 @@ class InMemoryDatabase(Database):
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
 
-        self._datasets[dataset] = value.transform(dataset, namespace, self._backends[namespace], lambda data: data)
-        
+        try:
+            ds = self.get(dataset)
+        except KeyError:
+            ds = None
+            
+        self._datasets[dataset] = [ds] + value.transform(dataset, namespace, self._backends[namespace], lambda data: data)
+
     def delete(self, dataset):
         ds = self.get(dataset)
         self._decref(ds)

@@ -62,7 +62,40 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(two.partition(0), [1, 2, 3])
         self.assertEqual(two.partition(1), [4, 5, 6])
 
+        db.data.two = one.drop("y").project("x")
+        two = db.data.two
+        self.assertEqual([x for x in two], [1, 2, 3, 4, 5, 6])
+        self.assertEqual(two.partition(0), [1, 2, 3])
+        self.assertEqual(two.partition(1), [4, 5, 6])
+
+        print
+        for n, x in db._backends[db._namespace]._arrays[0].items():
+            print n, db._backends[db._namespace]._refcounts[0][n], x
+
         # transformation
         db.data.three = one.filter(lambda obj: obj.x % 2 == 0)
+        three = db.data.three
+        self.assertEqual([obj.x for obj in three], [2, 4, 6])
+        self.assertEqual([obj.y for obj in three], [2.2, 4.4, 6.6])
+        self.assertEqual(oamap.operations.project(three.partition(0), "x"), [2])
+        self.assertEqual(oamap.operations.project(three.partition(1), "x"), [4, 6])
 
+        print
+        for n, x in db._backends[db._namespace]._arrays[0].items():
+            print n, db._backends[db._namespace]._refcounts[0][n], x
+
+        db.data.three = one.filter(lambda obj: obj.x > 1).filter(lambda obj: obj.x < 6)
+        three = db.data.three
+
+        print
+        for n, x in db._backends[db._namespace]._arrays[0].items():
+            print n, db._backends[db._namespace]._refcounts[0][n], x
+
+        self.assertEqual([obj.x for obj in three], [2, 3, 4, 5])
+        self.assertEqual([obj.y for obj in three], [2.2, 3.3, 4.4, 5.5])
+        self.assertEqual(oamap.operations.project(three.partition(0), "x"), [2, 3])
+        self.assertEqual(oamap.operations.project(three.partition(1), "x"), [4, 5])
+
+        # action
+        
 
