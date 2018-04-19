@@ -35,14 +35,35 @@ import unittest
 from oamap.schema import *
 from oamap.database import *
 from oamap.dataset import *
+import oamap.operations
 
 class TestDatabase(unittest.TestCase):
     def runTest(self):
         pass
 
-    def test_recasting(self):
-        backend = DictBackend({0: {"object-L-Fone-Di8": [1, 2, 1], "object-L-Ftwo-Di8": [4, 5, 6]},
-                               1: {"object-L-Fone-Di8": [5, 1, 2], "object-L-Ftwo-Di8": [7, 6, 5]}},
-                              {0: {"object-L-Fone-Di8": 1, "object-L-Ftwo-Di8": 1},
-                               1: {"object-L-Fone-Di8": 1, "object-L-Ftwo-Di8": 1}})
+    def test_dataset(self):
+        backend = DictBackend({0: {"object-L-Fx-Di8": [1, 2, 1], "object-L-Fy-Di8": [4, 5, 6]},
+                               1: {"object-L-Fx-Di8": [5, 1, 2], "object-L-Fy-Di8": [7, 6, 5]}},
+                              {0: {"object-L-Fx-Di8": 1, "object-L-Fy-Di8": 1},
+                               1: {"object-L-Fx-Di8": 1, "object-L-Fy-Di8": 1}})
+        dataset = {"name": "object", "schema": List(Record({"x": "int", "y": "int"})).tojson(), "offsets": [0, 3, 6]}
+        db = InMemoryDatabase(backends={"": backend}, namespace="", datasets={"one": dataset})
+
+        one = db.data.one
+        self.assertEqual(one[0].x, 1)
+        self.assertEqual(one[1].x, 2)
+        self.assertEqual(one[2].x, 1)
+        self.assertEqual(one[3].x, 5)
+        self.assertEqual(one[4].x, 1)
+        self.assertEqual(one[5].x, 2)
+        self.assertEqual([obj.x for obj in one], [1, 2, 1, 5, 1, 2])
+        self.assertEqual([obj.y for obj in one], [4, 5, 6, 7, 6, 5])
+        self.assertEqual(oamap.operations.project(one.partition(0), "x"), [1, 2, 1])
+        self.assertEqual(oamap.operations.project(one.partition(1), "x"), [5, 1, 2])
+
+        # # recasting
+        # db.data.two = one.split("x", "y")
+        # two = db.data.two
+        # self.assertEqual([obj.x for obj in one], [1, 2, 1, 5, 1, 2])
+        # self.assertEqual([obj.y for obj in one], [4, 5, 6, 7, 6, 5])
 

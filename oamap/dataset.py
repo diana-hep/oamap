@@ -243,7 +243,7 @@ class Data(_Data):
             else:
                 extension = [oamap.util.import_module(x) for x in self._extension]
 
-            self._cachedobject = self._schema(self.arrays(), prefix=self._name, delimiter=self._delimiter, extension=extension, packing=packing)
+            self._cachedobject = self._schema(self.arrays(), prefix=self._name, delimiter=self._delimiter, extension=extension, packing=self._packing)
 
         return self._cachedobject
 
@@ -344,10 +344,15 @@ class Dataset(_Data):
             else:
                 extension = [oamap.util.import_module(x) for x in self._extension]
 
-            self._cachedobject = self._schema(self.arrays(partitionid), prefix=self._name, delimiter=self._delimiter, extension=extension, packing=packing)
+            self._cachedobject = self._schema(self.arrays(partitionid), prefix=self._name, delimiter=self._delimiter, extension=extension, packing=self._packing)
 
         return self._cachedobject
-        
+
+    def __iter__(self):
+        for partitionid in range(self.numpartitions):
+            for i in range(self._offsets[partitionid], self._offsets[partitionid + 1]):
+                yield self[i]
+
     def __getitem__(self, index):
         if isinstance(index, slice):
             start, stop, step = oamap.util.slice2sss(index, self.numentries)

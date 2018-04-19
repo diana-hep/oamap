@@ -379,33 +379,54 @@ recastings["drop"] = drop
 def split(data, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
+        newschema = []
 
-        found = False
         for path in paths:
-            for nodes in schema.paths(path, parents=True):
+            found = False
+            for nodes in schema.paths(path, parents=True, allowtop=False):
                 found = True
 
-                if len(nodes) < 4 or not isinstance(nodes[1], oamap.schema.Record) or not isinstance(nodes[2], oamap.schema.List) or not isinstance(nodes[3], oamap.schema.Record):
-                    raise TypeError("path {0} matches a field that is not in a Record(List(Record({{field: ...}})))".format(repr(path)))
+                if len(nodes) < 3 or not isinstance(nodes[1], oamap.schema.Record) or not isinstance(nodes[2], oamap.schema.List):
+                    raise TypeError("path {0} matches a field that is not in a List(Record({{field: ...}}))".format(repr(path)))
 
-                datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
+                if len(nodes) > 3 and not isinstance(nodes[3], oamap.schema.Record):
+                    raise TypeError("path {0} matches a field that is in something other than a Record(List(Record({{field: ...}}))):\n\n    {1}".format(repr(path), nodes[3].__repr__(indent="    ")))
+
+                if len(nodes) == 3:
+                    outernode = oamap.schema.Record(oamap.util.OrderedDict())
+                    newschema.append(outernode)
+                    datanode, innernode, listnode = nodes[0], nodes[1], nodes[2]
+                else:
+                    datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
+                
                 for n, x in innernode.fields.items():
                     if x is datanode:
                         innername = n
                         break
+                outername = None
                 for n, x in outernode.fields.items():
                     if x is listnode:
                         outername = n
                         break
 
                 del innernode[innername]
-                if len(innernode.fields) == 0:
+                if len(innernode.fields) == 0 and outername is not None:
                     del outernode[outername]
 
                 outernode[innername] = listnode.copy(content=datanode)
 
-        if not found:
-            raise TypeError("none of the paths matched a field")
+            if not found:
+                raise TypeError("path {0} did not match any field".format(repr(path)))
+
+        if len(newschema) > 0:
+            if len(schema.content.fields) > 0:
+                schema = oamap.schema.Record(oamap.util.OrderedDict([("original", schema)]))
+            else:
+                schema = oamap.schema.Record(oamap.util.OrderedDict())
+
+            for ns in newschema:
+                for n, x in ns.fields.items():
+                    schema[n] = x
 
         return schema(data._arrays)
 
@@ -419,6 +440,15 @@ recastings["split"] = split
 def merge(data, container, *paths):
     if isinstance(data, oamap.proxy.Proxy):
         schema = data._generator.namedschema()
+
+        allpaths = []
+        for path in paths:
+            found = False
+            for nodes in schema.paths(path, parents=True, allowtop=False):
+                found = True
+                allpaths.append(nodes)
+            if not found:
+                raise TypeError("path {0} did not match any field".format(repr(path)))
 
         constructed = False
         try:
@@ -456,30 +486,32 @@ def merge(data, container, *paths):
         if not constructed:
             listnodes.append(containerlist)
 
-        for path in paths:
-            for nodes in schema.paths(path, parents=True):
-                if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.List) or nodes[1:] != parents:
-                    raise TypeError("".format(repr(path)))
+        for nodes in allpaths:
+            if len(nodes) < 2 or not isinstance(nodes[0], oamap.schema.List) or nodes[1:] != parents:
+                raise TypeError("path {0} did not match a list at the same level as container {1}".format(repr(path), repr(container)))
 
-                listnode, outernode = nodes[0], nodes[1]
-                listnodes.append(listnode)
-                
-                for n, x in outernode.fields.items():
-                    if x is listnode:
-                        outername = n
-                        break
+            listnode, outernode = nodes[0], nodes[1]
+            listnodes.append(listnode)
 
-                del outernode[outername]
-                containerrecord[outername] = listnode.content
+            for n, x in outernode.fields.items():
+                if x is listnode:
+                    outername = n
+                    break
+
+            del outernode[outername]
+            containerrecord[outername] = listnode.content
 
         if len(listnodes) == 0:
             raise TypeError("at least one path must match schema elements")
 
-        if not all(x.namespace == listnodes[0].namespace and x.starts == listnodes[0].starts and x.stops == listnodes[0].stops for x in listnodes[1:]):
+        checknodes = [x for x in listnodes if x.starts is not None]
+        assert len(checknodes) > 0
+
+        if not all(x.namespace == checknodes[0].namespace and x.starts == checknodes[0].starts and x.stops == checknodes[0].stops for x in checknodes[1:]):
             ### RECONSIDER: without this fallback, merge is a pure recasting (like split) and is easy to decide whether to parallelize
             #
-            # starts1, stops1 = data._generator.findbynames("List", listnodes[0].namespace, starts=listnodes[0].starts, stops=listnodes[0].stops)._getstartsstops(data._arrays, data._cache)
-            # for x in listnodes[1:]:
+            # starts1, stops1 = data._generator.findbynames("List", checknodes[0].namespace, starts=checknodes[0].starts, stops=checknodes[0].stops)._getstartsstops(data._arrays, data._cache)
+            # for x in checknodes[1:]:
             #     starts2, stops2 = data._generator.findbynames("List", x.namespace, starts=x.starts, stops=x.stops)._getstartsstops(data._arrays, data._cache)
             #     if not (starts1 is starts2 or numpy.array_equal(starts1, starts2)) and not (stops1 is stops2 or numpy.array_equal(stops1, stops2)):
             #         raise ValueError("some of the paths refer to lists of different lengths")
