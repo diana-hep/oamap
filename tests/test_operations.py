@@ -29,6 +29,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import math
+from collections import namedtuple
 
 import unittest
 
@@ -326,3 +327,49 @@ class TestOperations(unittest.TestCase):
         self.assertEqual([obj.z for obj in new[1].hey], [11, None, 13])
         new = define(data, "z", lambda obj: None if obj.x % 2 == 0 else obj.x + 10, at="hey", numba=True)
         self.assertEqual([obj.z for obj in new[1].hey], [11, None, 13])
+        
+    def test_map(self):
+        data = List(Record({"x": "int"})).fromdata([{"x": 1}, {"x": 2}, {"x": 3}])
+        fcn = lambda obj, y: obj.x + y
+        new = map(data, fcn, 10, numba=False)
+        self.assertEqual(new.tolist(), [11, 12, 13])
+        self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
+        new = map(data, fcn, 10, numba=True)
+        self.assertEqual(new.tolist(), [11, 12, 13])
+        self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
+
+        data = Record({"hey": List(Record({"x": "int", "y": "float"}))}).fromdata({"hey": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}]})
+        new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba=False)
+        self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3)])
+        self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
+        new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba=True)
+        self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3)])
+        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
+
+        data = List(Record({"hey": List(Record({"x": "int", "y": "float"}))})).fromdata([{"hey": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}]}, {"hey": []}, {"hey": [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]}])
+        new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba=False)
+        self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3), (4, 4.4, 8.4), (5, 5.5, 10.5)])
+        self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
+        new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba=True)
+        self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3), (4, 4.4, 8.4), (5, 5.5, 10.5)])
+        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
+
+        data = List(Record({"hey": List(Record({"x": "int", "y": "float"}))})).fromdata([{"hey": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}]}, {"hey": []}, {"hey": [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}]}])
+        new = map(data, lambda obj: None if obj.x % 2 == 0 else (obj.x, obj.y, obj.x + obj.y), at="hey", numba=False)
+        self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (3, 3.3, 6.3), (5, 5.5, 10.5)])
+        self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
+        new = map(data, lambda obj: None if obj.x % 2 == 0 else (obj.x, obj.y, obj.x + obj.y), at="hey", numba=True)
+        self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (3, 3.3, 6.3), (5, 5.5, 10.5)])
+        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
+        self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))

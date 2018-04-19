@@ -959,15 +959,18 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
 
             else:
                 if isinstance(first, numbers.Real):
-                    out = numpy.empty(len(view), dtype=(numpy.int64 if isinstance(first, numbers.Integral) else numpy.float64))
+                    out = numpy.empty(len(view), dtype=numpy.float64)
 
                 elif isinstance(first, tuple) and len(first) > 0 and all(isinstance(x, (numbers.Real, bool, numpy.bool_)) for x in first):
                     if names is None:
-                        names = ["f" + str(i) for i in range(len(first))]
+                        if hasattr(first, "_fields"):
+                            names = first._fields
+                        else:
+                            names = ["f" + str(i) for i in range(len(first))]
                     if len(names) != len(first):
                         raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(first)))
 
-                    out = numpy.empty(len(view), dtype=zip(names, [numpy.bool_ if isinstance(x, (bool, numpy.bool_)) else numpy.int64 if isinstance(x, numbers.Integral) else numpy.float64 for x in first]))
+                    out = numpy.empty(len(view), dtype=zip(names, [numpy.float64] * len(first)))
 
                 else:
                     raise TypeError("function must return tuples of numbers (rows of a table)")
@@ -1033,9 +1036,12 @@ def {fill}({view}, {out}{params}):
             numitems = fill(*((view, out) + args))
             out = out[:numitems]
 
-        elif isinstance(rtype, (nb.types.Tuple, nb.types.UniTuple)) and len(rtype.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.types):
+        elif isinstance(rtype, (nb.types.Tuple, nb.types.UniTuple, nb.types.NamedUniTuple)) and len(rtype.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.types):
             if names is None:
-                names = ["f" + str(i) for i in range(len(rtype.types))]
+                if isinstance(rtype, nb.types.NamedUniTuple):
+                    names = rtype.fields
+                else:
+                    names = ["f" + str(i) for i in range(len(rtype.types))]
             if len(names) != len(rtype.types):
                 raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(rtype.types)))
 
@@ -1065,9 +1071,12 @@ def {fill}({view}, {outs}{params}):
             fill = oamap.util.trycompile(env[fillname], numba=numba)
             fill(*((view,) + outs + args))
 
-        elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Tuple, nb.types.UniTuple)) and len(rtype.type.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.type.types):
+        elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Tuple, nb.types.UniTuple, nb.types.NamedUniTuple)) and len(rtype.type.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.type.types):
             if names is None:
-                names = ["f" + str(i) for i in range(len(rtype.type.types))]
+                if isinstance(rtype.type, nb.types.NamedUniTuple):
+                    names = rtype.type.fields
+                else:
+                    names = ["f" + str(i) for i in range(len(rtype.type.types))]
             if len(names) != len(rtype.type.types):
                 raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(rtype.type.types)))
 
