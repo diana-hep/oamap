@@ -33,6 +33,11 @@ from collections import namedtuple
 
 import unittest
 
+try:
+    import numba
+except ImportError:
+    numba = None
+
 from oamap.schema import *
 from oamap.operations import *
 
@@ -372,7 +377,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
         new = map(data, fcn, 10, numba={"nopython": True})
         self.assertEqual(new.tolist(), [11, 12, 13])
-        self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
 
         data = List(Record({"x": "int"})).fromdata([{"x": 1}, {"x": 2}, {"x": 3}])
         new = map(data, lambda obj: None if obj.x % 2 == 0 else obj.x + 10, numba=False)
@@ -380,7 +388,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
         new = map(data, lambda obj: None if obj.x % 2 == 0 else obj.x + 10, numba={"nopython": True})
         self.assertEqual(new.tolist(), [11, 13])
-        self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
 
         data = Record({"hey": List(Record({"x": "int", "y": "float"}))}).fromdata({"hey": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}]})
         new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba=False)
@@ -391,7 +402,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype.names, ("f0", "f1", "f2"))
         new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba={"nopython": True})
         self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3)])
-        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
         self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype.names, ("f0", "f1", "f2"))
@@ -405,7 +419,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype.names, ("f0", "f1", "f2"))
         new = map(data, lambda obj: (obj.x, obj.y, obj.x + obj.y), at="hey", numba={"nopython": True})
         self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3), (4, 4.4, 8.4), (5, 5.5, 10.5)])
-        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
         self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype.names, ("f0", "f1", "f2"))
@@ -419,7 +436,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype.names, ("one", "two", "three"))
         new = map(data, lambda obj: Triple(obj.x, obj.y, obj.x + obj.y), at="hey", numba={"nopython": True})
         self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3), (4, 4.4, 8.4), (5, 5.5, 10.5)])
-        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
         self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype.names, ("one", "two", "three"))
@@ -433,7 +453,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype.names, ("f0", "f1", "f2"))
         new = map(data, lambda obj: None if obj.x % 2 == 0 else (obj.x, obj.y, obj.x + obj.y), at="hey", numba={"nopython": True})
         self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (3, 3.3, 6.3), (5, 5.5, 10.5)])
-        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
         self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype.names, ("f0", "f1", "f2"))
@@ -447,7 +470,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype.names, ("one", "two", "three"))
         new = map(data, lambda obj: None if obj.x % 2 == 0 else Triple(obj.x, obj.y, obj.x + obj.y), at="hey", numba={"nopython": True})
         self.assertTrue(new.tolist(), [(1, 1.1, 2.1), (3, 3.3, 6.3), (5, 5.5, 10.5)])
-        self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
+        if numba is None:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.float64))
+        else:
+            self.assertEqual(new.dtype[0], numpy.dtype(numpy.int64))
         self.assertEqual(new.dtype[1], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype[2], numpy.dtype(numpy.float64))
         self.assertEqual(new.dtype.names, ("one", "two", "three"))
