@@ -269,6 +269,10 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(filter(data, fcn, 1, numba=False), [1, 3, 5])
         self.assertEqual(filter(data, fcn, 1, numba={"nopython": True}), [1, 3, 5])
 
+        data = List("int").fromdata([1, 2, 3, 4, 5])
+        self.assertEqual(filter(filter(data, lambda x: x > 1, numba=False), lambda x: x < 5, numba=False), [2, 3, 4])
+        self.assertEqual(filter(filter(data, lambda x: x > 1, numba={"nopython": True}), lambda x: x < 5, numba={"nopython": True}), [2, 3, 4])
+
         data = List(List("int")).fromdata([[1, 2, 3], [], [4, 5]])
         self.assertEqual(filter(data, lambda obj: len(obj) > 0, numba=False), [[1, 2, 3], [4, 5]])
         self.assertEqual(filter(data, lambda obj: len(obj) > 0, numba={"nopython": True}), [[1, 2, 3], [4, 5]])
@@ -338,6 +342,14 @@ class TestOperations(unittest.TestCase):
         self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
         new = map(data, fcn, 10, numba={"nopython": True})
         self.assertEqual(new.tolist(), [11, 12, 13])
+        self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
+
+        data = List(Record({"x": "int"})).fromdata([{"x": 1}, {"x": 2}, {"x": 3}])
+        new = map(data, lambda obj: None if obj.x % 2 == 0 else obj.x + 10, numba=False)
+        self.assertEqual(new.tolist(), [11, 13])
+        self.assertEqual(new.dtype, numpy.dtype(numpy.float64))
+        new = map(data, lambda obj: None if obj.x % 2 == 0 else obj.x + 10, numba={"nopython": True})
+        self.assertEqual(new.tolist(), [11, 13])
         self.assertEqual(new.dtype, numpy.dtype(numpy.int64))
 
         data = Record({"hey": List(Record({"x": "int", "y": "float"}))}).fromdata({"hey": [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}]})
