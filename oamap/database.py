@@ -229,7 +229,7 @@ class InMemoryDatabase(Database):
             return InMemoryDatabase(
                 backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
                 namespace=namespace,
-                datasets={name: {"schema": schema.tojson()}})
+                datasets={name: {"schema": generator.namedschema().tojson()}})
 
         elif isinstance(schema, oamap.schema.List):
             arrays = {}
@@ -237,12 +237,16 @@ class InMemoryDatabase(Database):
             offsets = [0]
             for i, x in enumerate(partitions):
                 arrays[i] = generator.fromdata(x)._arrays
+                del arrays[i][generator.starts]
+                del arrays[i][generator.stops]
+                if schema.nullable:
+                    del arrays[i][generator.mask]
                 refcounts[i] = dict((n, 1) for n in arrays[i])
                 offsets.append(offsets[-1] + len(x))
             return InMemoryDatabase(
                 backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
                 namespace=namespace,
-                datasets={name: {"schema": schema.tojson(), "offsets": offsets}})
+                datasets={name: {"schema": generator.namedschema().tojson(), "offsets": offsets}})
 
         else:
             raise TypeError("can only create datasets from proxy types (list, records, tuples)")

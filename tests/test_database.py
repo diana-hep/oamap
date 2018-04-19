@@ -68,10 +68,6 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(two.partition(0), [1, 2, 3])
         self.assertEqual(two.partition(1), [4, 5, 6])
 
-        print
-        for n, x in db._backends[db._namespace]._arrays[0].items():
-            print n, db._backends[db._namespace]._refcounts[0][n], x
-
         # transformation
         db.data.three = one.filter(lambda obj: obj.x % 2 == 0)
         three = db.data.three
@@ -80,16 +76,8 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(oamap.operations.project(three.partition(0), "x"), [2])
         self.assertEqual(oamap.operations.project(three.partition(1), "x"), [4, 6])
 
-        print
-        for n, x in db._backends[db._namespace]._arrays[0].items():
-            print n, db._backends[db._namespace]._refcounts[0][n], x
-
         db.data.three = one.filter(lambda obj: obj.x > 1).filter(lambda obj: obj.x < 6)
         three = db.data.three
-
-        print
-        for n, x in db._backends[db._namespace]._arrays[0].items():
-            print n, db._backends[db._namespace]._refcounts[0][n], x
 
         self.assertEqual([obj.x for obj in three], [2, 3, 4, 5])
         self.assertEqual([obj.y for obj in three], [2.2, 3.3, 4.4, 5.5])
@@ -97,5 +85,31 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(oamap.operations.project(three.partition(1), "x"), [4, 5])
 
         # action
-        
+        table = one.map(lambda obj: None if obj.x % 2 == 0 else (obj.x, obj.y, obj.x + obj.y))
+        self.assertEqual(table.result().tolist(), [(1, 1.1, 2.1), (3, 3.3, 6.3), (5, 5.5, 10.5)])
 
+        summary = one.reduce(0, lambda obj, tally: obj.x + tally)
+        self.assertEqual(summary.result(), sum([1, 2, 3, 4, 5, 6]))
+
+        # print
+        # print "one"
+        # for n, x in db._backends[db._namespace]._arrays[0].items():
+        #     print db._backends[db._namespace]._refcounts[0][n], n, x
+
+        del db.data.one
+        # print "two"
+        # for n, x in db._backends[db._namespace]._arrays[0].items():
+        #     print db._backends[db._namespace]._refcounts[0][n], n, x
+
+        del db.data.two
+        # print "three"
+        # for n, x in db._backends[db._namespace]._arrays[0].items():
+        #     print db._backends[db._namespace]._refcounts[0][n], n, x
+
+        del db.data.three
+        # print "done"
+        # for n, x in db._backends[db._namespace]._arrays[0].items():
+        #     print db._backends[db._namespace]._refcounts[0][n], n, x
+
+        self.assertEqual(len(db._backends[db._namespace]._refcounts.get(0, {})), 0)
+        self.assertEqual(len(db._backends[db._namespace]._refcounts.get(1, {})), 0)
