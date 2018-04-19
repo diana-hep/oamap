@@ -381,42 +381,44 @@ def split(data, *paths):
         schema = data._generator.namedschema()
         newschema = []
 
+        allpaths = []
         for path in paths:
             found = False
             for nodes in schema.paths(path, parents=True, allowtop=False):
                 found = True
-
-                if len(nodes) < 3 or not isinstance(nodes[1], oamap.schema.Record) or not isinstance(nodes[2], oamap.schema.List):
-                    raise TypeError("path {0} matches a field that is not in a List(Record({{field: ...}}))".format(repr(path)))
-
-                if len(nodes) > 3 and not isinstance(nodes[3], oamap.schema.Record):
-                    raise TypeError("path {0} matches a field that is in something other than a Record(List(Record({{field: ...}}))):\n\n    {1}".format(repr(path), nodes[3].__repr__(indent="    ")))
-
-                if len(nodes) == 3:
-                    outernode = oamap.schema.Record(oamap.util.OrderedDict())
-                    newschema.append(outernode)
-                    datanode, innernode, listnode = nodes[0], nodes[1], nodes[2]
-                else:
-                    datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
-                
-                for n, x in innernode.fields.items():
-                    if x is datanode:
-                        innername = n
-                        break
-                outername = None
-                for n, x in outernode.fields.items():
-                    if x is listnode:
-                        outername = n
-                        break
-
-                del innernode[innername]
-                if len(innernode.fields) == 0 and outername is not None:
-                    del outernode[outername]
-
-                outernode[innername] = listnode.copy(content=datanode)
-
+                allpaths.append(nodes)
             if not found:
                 raise TypeError("path {0} did not match any field".format(repr(path)))
+
+        for nodes in allpaths:
+            if len(nodes) < 3 or not isinstance(nodes[1], oamap.schema.Record) or not isinstance(nodes[2], oamap.schema.List):
+                raise TypeError("path {0} matches a field that is not in a List(Record({{field: ...}}))".format(repr(path)))
+
+            if len(nodes) > 3 and not isinstance(nodes[3], oamap.schema.Record):
+                raise TypeError("path {0} matches a field that is in something other than a Record(List(Record({{field: ...}}))):\n\n    {1}".format(repr(path), nodes[3].__repr__(indent="    ")))
+
+            if len(nodes) == 3:
+                outernode = oamap.schema.Record(oamap.util.OrderedDict())
+                newschema.append(outernode)
+                datanode, innernode, listnode = nodes[0], nodes[1], nodes[2]
+            else:
+                datanode, innernode, listnode, outernode = nodes[0], nodes[1], nodes[2], nodes[3]
+
+            for n, x in innernode.fields.items():
+                if x is datanode:
+                    innername = n
+                    break
+            outername = None
+            for n, x in outernode.fields.items():
+                if x is listnode:
+                    outername = n
+                    break
+
+            del innernode[innername]
+            if len(innernode.fields) == 0 and outername is not None:
+                del outernode[outername]
+
+            outernode[innername] = listnode.copy(content=datanode)
 
         if len(newschema) > 0:
             if len(schema.content.fields) > 0:
@@ -756,7 +758,7 @@ def filter(data, fcn, args=(), at="", numba=True):
                 raise TypeError("filter function must return boolean, not {0}".format(rtype))
 
         env = {fcnname: fcn, lenname: len, rangename: range if sys.version_info[0] > 2 else xrange}
-        exec("""
+        oamap.util.doexec("""
 def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
     {numitems} = 0
     for {i} in {range}({len}({viewstarts})):
@@ -873,7 +875,7 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=None, numba=True):
 
         if isinstance(fieldtype, oamap.schema.Primitive) and not fieldtype.nullable:
             env = {fcnname: fcn}
-            exec("""
+            oamap.util.doexec("""
 def {fill}({view}, {primitive}{params}):
     {i} = 0
     for {datum} in {view}:
@@ -897,7 +899,7 @@ def {fill}({view}, {primitive}{params}):
 
         elif isinstance(fieldtype, oamap.schema.Primitive):
             env = {fcnname: fcn}
-            exec("""
+            oamap.util.doexec("""
 def {fill}({view}, {primitive}, {mask}{params}):
     {i} = 0
     {numitems} = 0
@@ -1002,7 +1004,7 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
                     if len(names) != len(first):
                         raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(first)))
 
-                    out = numpy.empty(len(view), dtype=zip(names, [numpy.float64] * len(first)))
+                    out = numpy.empty(len(view), dtype=list(zip(names, [numpy.float64] * len(first))))
 
                 else:
                     raise TypeError("function must return tuples of numbers (rows of a table)")
@@ -1028,7 +1030,7 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
         elif isinstance(rtype, (nb.types.Integer, nb.types.Float, nb.types.Boolean)):
             out = numpy.empty(len(view), dtype=numpy.dtype(rtype.name))
             env = {fcnname: fcn}
-            exec("""
+            oamap.util.doexec("""
 def {fill}({view}, {out}{params}):
     {numitems} = 0
     for {datum} in {view}:
@@ -1047,7 +1049,7 @@ def {fill}({view}, {out}{params}):
         elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Integer, nb.types.Float, nb.types.Boolean)):
             out = numpy.empty(len(view), dtype=numpy.dtype(rtype.type.name))
             env = {fcnname: fcn}
-            exec("""
+            oamap.util.doexec("""
 def {fill}({view}, {out}{params}):
     {numitems} = 0
     for {datum} in {view}:
@@ -1077,14 +1079,14 @@ def {fill}({view}, {out}{params}):
             if len(names) != len(rtype.types):
                 raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(rtype.types)))
 
-            out = numpy.empty(len(view), dtype=zip(names, [numpy.dtype(x.name) for x in rtype.types]))
+            out = numpy.empty(len(view), dtype=list(zip(names, [numpy.dtype(x.name) for x in rtype.types])))
             outs = tuple(out[n] for n in names)
 
             outnames = [oamap.util.varname(avoid, "out" + str(i)) for i in range(len(names))]
             numitemsname = oamap.util.varname(avoid, "numitems")
             tmpname = oamap.util.varname(avoid, "tmp")
             env = {fcnname: fcn}
-            exec("""
+            oamap.util.doexec("""
 def {fill}({view}, {outs}{params}):
     {numitems} = 0
     for {datum} in {view}:
@@ -1112,7 +1114,7 @@ def {fill}({view}, {outs}{params}):
             if len(names) != len(rtype.type.types):
                 raise TypeError("names has length {0} but function returns {1} numbers per row".format(len(names), len(rtype.type.types)))
 
-            out = numpy.empty(len(view), dtype=zip(names, [numpy.dtype(x.name) for x in rtype.type.types]))
+            out = numpy.empty(len(view), dtype=list(zip(names, [numpy.dtype(x.name) for x in rtype.type.types])))
             outs = tuple(out[n] for n in names)
 
             outnames = [oamap.util.varname(avoid, "out" + str(i)) for i in range(len(names))]
@@ -1120,7 +1122,7 @@ def {fill}({view}, {outs}{params}):
             tmp2name = oamap.util.varname(avoid, "tmp2")
             requiredname = oamap.util.varname(avoid, "required")
             env = {fcnname: fcn, requiredname: oamap.compiler.required}
-            exec("""
+            oamap.util.doexec("""
 def {fill}({view}, {outs}{params}):
     {numitems} = 0
     for {datum} in {view}:
@@ -1225,7 +1227,7 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
                 raise TypeError("function should return the same type as tally")
 
         env = {fcnname: fcn}
-        exec("""
+        oamap.util.doexec("""
 def {fill}({view}, {tally}{params}):
     for {datum} in {view}:
         {tally} = {fcn}({datum}, {tally}{params})
