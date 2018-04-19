@@ -44,7 +44,7 @@ if sys.version_info[0] > 2:
 ################################################################ inferring schemas from data
 
 def fromdata(obj, limit=None):
-    if limit is None or (isinstance(limit, numbers.Integral) and limit >= 0):
+    if limit is None or (isinstance(limit, (numbers.Integral, numpy.integer)) and limit >= 0):
         pass
     else:
         raise TypeError("limit must be None or a non-negative integer, not {0}".format(limit))
@@ -240,13 +240,13 @@ def fromdata(obj, limit=None):
         elif obj is False or obj is True:
             return Boolean(False)
 
-        elif isinstance(obj, numbers.Integral):
+        elif isinstance(obj, (numbers.Integral, numpy.integer)):
             return Number(False, int(obj), int(obj), True, True)
 
-        elif isinstance(obj, numbers.Real):
+        elif isinstance(obj, (numbers.Real, numpy.floating)):
             return Number(False, float(obj), float(obj), False, True)
 
-        elif isinstance(obj, numbers.Complex):
+        elif isinstance(obj, (numbers.Complex, numpy.complex)):
             return Number(False, float("-inf"), float("inf"), False, False)
 
         elif isinstance(obj, bytes):

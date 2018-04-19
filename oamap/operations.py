@@ -1028,10 +1028,10 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
                 out = None
 
             else:
-                if isinstance(first, numbers.Real):
+                if isinstance(first, (numbers.Integral, numbers.Real, numpy.integer, numpy.floating, bool, numpy.bool_)):
                     out = numpy.empty(len(view), dtype=numpy.float64)
 
-                elif isinstance(first, tuple) and len(first) > 0 and all(isinstance(x, (numbers.Real, bool, numpy.bool_)) for x in first):
+                elif isinstance(first, tuple) and len(first) > 0 and all(isinstance(x, (numbers.Integral, numbers.Real, numpy.integer, numpy.floating, bool, numpy.bool_)) for x in first):
                     if names is None:
                         if hasattr(first, "_fields"):
                             names = first._fields
@@ -1043,6 +1043,11 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
                     out = numpy.empty(len(view), dtype=list(zip(names, [numpy.float64] * len(first))))
 
                 else:
+                    print()
+                    print(isinstance(first, tuple))
+                    print(len(first))
+                    print([isinstance(x, (numbers.Integral, numbers.Real, numpy.integer, numpy.floating, bool, numpy.bool_)) for x in first])
+
                     raise TypeError("function must return tuples of numbers (rows of a table)")
 
                 numitems = 0

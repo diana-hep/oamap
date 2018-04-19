@@ -607,13 +607,13 @@ class Primitive(Schema):
 
                 elif issubclass(self.dtype.type, numpy.integer):
                     iinfo = numpy.iinfo(self.dtype.type)
-                    return isinstance(value, numbers.Integral) and iinfo.min <= value <= iinfo.max
+                    return isinstance(value, (numbers.Integral, numpy.integer)) and iinfo.min <= value <= iinfo.max
 
                 elif issubclass(self.dtype.type, numpy.floating):
-                    return isinstance(value, numbers.Real)
+                    return isinstance(value, (numbers.Real, numpy.floating))
 
                 elif issubclass(self.dtype.type, numpy.complex):
-                    return isinstance(value, numbers.Complex)
+                    return isinstance(value, (numbers.Complex, numpy.complex))
 
                 else:
                     raise TypeError("unexpected dtype: {0}".format(self.dtype))
@@ -1047,7 +1047,7 @@ class Union(Schema):
         return self._possibilities[index]
 
     def __setitem__(self, index, value):
-        if not isinstance(index, numbers.Integral):
+        if not isinstance(index, (numbers.Integral, numpy.integer)):
             raise TypeError("possibility index must be an integer, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)
@@ -1661,7 +1661,7 @@ class Tuple(Schema):
         return self._types[index]
 
     def __setitem__(self, index, value):
-        if not isinstance(index, numbers.Integral):
+        if not isinstance(index, (numbers.Integral, numpy.integer)):
             raise TypeError("types index must be an integer, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)

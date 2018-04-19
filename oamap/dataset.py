@@ -296,7 +296,7 @@ class Dataset(_Data):
 
         if not isinstance(offsets, numpy.ndarray):
             try:
-                if not all(isinstance(x, numbers.Integral) and x >= 0 for x in offsets):
+                if not all(isinstance(x, (numbers.Integral, numpy.integer)) and x >= 0 for x in offsets):
                     raise TypeError
             except TypeError:
                 raise TypeError("offsets must be an iterable of non-negative integers")

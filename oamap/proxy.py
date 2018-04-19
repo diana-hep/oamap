@@ -51,9 +51,9 @@ def tojson(value):
         return dict((n, tojson(getattr(value, n))) for n in value._fields)
     elif isinstance(value, TupleProxy):
         return [tojson(x) for x in value]
-    elif isinstance(value, numbers.Integral):
+    elif isinstance(value, (numbers.Integral, numpy.integer)):
         return int(value)
-    elif isinstance(value, numbers.Real):
+    elif isinstance(value, (numbers.Real, numpy.floating)):
         if math.isnan(value):
             return "nan"
         elif value == float("-inf"):
@@ -62,7 +62,7 @@ def tojson(value):
             return "inf"
         else:
             return float(value)
-    elif isinstance(value, numbers.Complex):
+    elif isinstance(value, (numbers.Complex, numpy.complex)):
         return {"real": tojson(value.real), "imag": tojson(value.imag)}
     elif isinstance(value, numpy.ndarray):
         return value.tolist()

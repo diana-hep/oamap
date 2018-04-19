@@ -31,6 +31,8 @@
 import sys
 import types
 
+import numpy
+
 if sys.version_info[0] > 2:
     basestring = str
     unicode = str
@@ -149,10 +151,10 @@ def python2json(value, allowlinks=False):
         if value is None:
             memo[id(value)] = None
 
-        elif isinstance(value, numbers.Complex):
-            memo[id(value)] = {"real": float(value.real), "imag": float(value.imag)}
+        elif isinstance(value, (numbers.Integral, numpy.integer)):
+            memo[id(value)] = int(value)
 
-        elif isinstance(value, numbers.Real):
+        elif isinstance(value, (numbers.Real, numpy.floating)):
             if math.isnan(value):
                 memo[id(value)] = "nan"
             elif math.isinf(value) and value > 0:
@@ -162,8 +164,8 @@ def python2json(value, allowlinks=False):
             else:
                 memo[id(value)] = float(value)
 
-        elif isinstance(value, numbers.Integral):
-            memo[id(value)] = int(value)
+        elif isinstance(value, (numbers.Complex, numpy.complex)):
+            memo[id(value)] = {"real": float(value.real), "imag": float(value.imag)}
 
         elif isinstance(value, basestring):
             memo[id(value)] = value

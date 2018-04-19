@@ -60,11 +60,37 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(two[3], 4)
         self.assertEqual(two[4], 5)
 
+        db.data.two = one.drop("y")
+        two = db.data.two
+        self.assertEqual(two().x[0], 1)
+        self.assertEqual(two().x[1], 2)
+        self.assertEqual(two().x[2], 3)
+        self.assertEqual(two().x[3], 4)
+        self.assertEqual(two().x[4], 5)
 
+        db.data.two = one.drop("y").keep("x")
+        two = db.data.two
+        self.assertEqual(two().x[0], 1)
+        self.assertEqual(two().x[1], 2)
+        self.assertEqual(two().x[2], 3)
+        self.assertEqual(two().x[3], 4)
+        self.assertEqual(two().x[4], 5)
 
+        # transformation
+        db.data.three = one.filter(lambda x: x % 2 == 0, at="x")
+        three = db.data.three
+        self.assertEqual(three().x, [2, 4])
 
+        db.data.three = one.filter(lambda x: x > 1, at="x").filter(lambda x: x < 5, at="x")
+        three = db.data.three
+        self.assertEqual(three().x, [2, 3, 4])
 
+        # action
+        table = one.map(lambda x: x**2, at="x")
+        self.assertEqual(table.result().tolist(), [1, 4, 9, 16, 25])
 
+        summary = one.reduce(0, lambda x, tally: x + tally, at="x")
+        self.assertEqual(summary.result(), sum([1, 2, 3, 4, 5]))
 
     def test_dataset(self):
         db = InMemoryDatabase.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
