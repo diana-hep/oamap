@@ -19,10 +19,12 @@ addons:
 install:
   - sudo apt-get update
   - pip install --upgrade pip
-  - python .travis-conda.py
+
+install:
+  - pip install --upgrade setuptools_scm
 
 script:
-  source $HOME/miniconda/bin/activate test-environment; python setup.py test
+  python .travis-conda.py ; source $HOME/miniconda/bin/activate test-environment; python setup.py test
 
 deploy:
   provider: pypi

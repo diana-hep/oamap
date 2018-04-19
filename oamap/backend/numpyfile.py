@@ -28,55 +28,32 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""Substitutions for parts of fastparquet that we need to do differently.
-
-This file (only one in the _fastparquet directory) is under OAMap's license.
-"""
-
 import os
 
 import numpy
 
-from oamap.util import OrderedDict
+class NumpyFile(object):
+    def __init__(self, base, partition):
+        self.directory = os.path.join(base, partition)
+        if not os.path.exists(self.directory):
+            os.mkdir(self.directory)
 
-try:
-    import thriftpy
-    import thriftpy.protocol
-except ImportError:
-    thriftpy = None
-    parquet_thrift = None
-else:
-    THRIFT_FILE = os.path.join(os.path.dirname(__file__), "parquet.thrift")
-    parquet_thrift = thriftpy.load(THRIFT_FILE, module_name="parquet_thrift")
+    def __getitem__(self, name):
+        try:
+            return numpy.load(os.path.join(self.directory, name))
+        except Exception as err:
+            raise KeyError(str(err))
 
-def unpack_byte_array(array, count):
-    data = numpy.empty(len(array) - 4*count, numpy.uint8)
-    size = numpy.empty(count, numpy.int32)
+class WritableNumpyFile(NumpyFile):
+    @staticmethod
+    def partarg(nsname, partitionid):
+        return (nsname + "-" + str(partitionid),)
 
-    i = 0
-    datai = 0
-    sizei = 0
-    while sizei < count:
-        if i + 4 > len(array):
-            raise RuntimeError("ran out of input")
-        itemlen = array[i] + (array[i + 1] << 8) + (array[i + 2] << 16) + (array[i + 3] << 24)
-        i += 4
+    def __setitem__(self, name, value):
+        numpy.save(os.path.join(self.directory, name), value)
 
-        if i + itemlen > len(array):
-            raise RuntimeError("ran out of input")
-        data[datai : datai + itemlen] = array[i : i + itemlen]
-        size[sizei] = itemlen
-
-        i += itemlen
-        datai += itemlen
-        sizei += 1
-
-    return data, size
-
-try:
-    import numba
-except ImportError:
-    pass
-else:
-    njit = numba.jit(nopython=True, nogil=True)
-    unpack_byte_array = njit(unpack_byte_array)
+    def __delitem__(self, name):
+        try:
+            os.remove(os.path.join(self.directory, name))
+        except Exception as err:
+            raise KeyError(str(err))

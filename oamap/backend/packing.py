@@ -46,17 +46,17 @@ class PackedSource(object):
     def __repr__(self):
         return "{0}({1}{2})".format(self.__class__.__name__, repr(self.source), "".join(", " + repr(x) for x in self._tojsonargs()))
 
-    def getall(self, names):
+    def getall(self, roles):
         if hasattr(self.source, "getall"):
-            return self.source.getall(names)
+            return self.source.getall(roles)
         else:
-            return dict((n, self.source[str(n)]) for n in names)
+            return dict((n, self.source[str(n)]) for n in roles)
 
-    def putall(self, names2arrays):
+    def putall(self, roles2arrays):
         if hasattr(self.source, "putall"):
-            self.source.putall(names2arrays)
+            self.source.putall(roles2arrays)
         else:
-            for n, x in names2arrays.items():
+            for n, x in roles2arrays.items():
                 self.source[str(n)] = x
 
     def copy(self):
@@ -137,20 +137,20 @@ class MaskBitPack(PackedSource):
         else:
             return [self.suffix]
 
-    def getall(self, names):
-        others  = [n for n in names if not isinstance(n, oamap.generator.MaskRole)]
-        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix), n) for n in names if isinstance(n, oamap.generator.MaskRole))
+    def getall(self, roles):
+        others  = [n for n in roles if not isinstance(n, oamap.generator.MaskRole)]
+        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix, n.namespace), n) for n in roles if isinstance(n, oamap.generator.MaskRole))
         out = super(MaskBitPack, self).getall(others + list(renamed))
         for suffixedname, name in renamed.items():
             out[name] = self.unpack(out[suffixedname])
             del out[suffixedname]
         return out
 
-    def putall(self, names2arrays, roles):
+    def putall(self, roles2arrays):
         out = {}
-        for n, x in names2arrays.items():
+        for n, x in roles2arrays.items():
             if isinstance(n, oamap.generator.MaskRole):
-                out[oamap.generator.NoRole(str(n) + self.suffix)] = self.pack(x)
+                out[oamap.generator.NoRole(str(n) + self.suffix, n.namespace)] = self.pack(x)
             else:
                 out[n] = x
         super(MaskBitPack, self).putall(out)
@@ -187,20 +187,20 @@ class ListCounts(PackedSource):
         else:
             return [self.suffix]
 
-    def getall(self, names):
-        others  = [n for n in names if not isinstance(n, (oamap.generator.StartsRole, oamap.generator.StopsRole))]
-        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix), n) for n in names if isinstance(n, oamap.generator.StartsRole))
+    def getall(self, roles):
+        others  = [n for n in roles if not isinstance(n, (oamap.generator.StartsRole, oamap.generator.StopsRole))]
+        renamed = dict((oamap.generator.NoRole(str(n) + self.suffix, n.namespace), n) for n in roles if isinstance(n, oamap.generator.StartsRole))
         out = super(ListCounts, self).getall(others + list(renamed))
         for suffixedname, name in renamed.items():
             out[name], out[name.stops] = self.fromcounts(out[suffixedname])
             del out[suffixedname]
         return out
 
-    def putall(self, names2arrays):
+    def putall(self, roles2arrays):
         out = {}
-        for n, x in names2arrays.items():
+        for n, x in roles2arrays.items():
             if isinstance(n, oamap.generator.StartsRole):
-                out[oamap.generator.NoRole(str(n) + self.suffix)] = self.tocounts(x, names2arrays[n.stops])
+                out[oamap.generator.NoRole(str(n) + self.suffix, n.namespace)] = self.tocounts(x, roles2arrays[n.stops])
             elif isinstance(n, oamap.generator.StopsRole):
                 pass
             else:
@@ -233,16 +233,16 @@ class UnionDropOffsets(PackedSource):
     def _tojsonargs(self):
         return []
 
-    def getall(self, names):
-        nooffsets = [n for n in names if not isinstance(n, oamap.generator.OffsetsRole)]
+    def getall(self, roles):
+        nooffsets = [n for n in roles if not isinstance(n, oamap.generator.OffsetsRole)]
         out = super(UnionDropOffsets, self).getall(nooffsets)
-        for n in names:
+        for n in roles:
             if isinstance(n, oamap.generator.TagsRole):
                 out[n.offsets] = self.tags2offsets(out[n])
         return out
 
-    def putall(self, names2arrays):
-        super(UnionDropOffsets, self).putall(dict((n, x) for n, x in names2arrays.items() if not isinstance(n, oamap.generator.OffsetsRole)))
+    def putall(self, roles2arrays):
+        super(UnionDropOffsets, self).putall(dict((n, x) for n, x in roles2arrays.items() if not isinstance(n, oamap.generator.OffsetsRole)))
 
     @staticmethod
     def tags2offsets(tags):

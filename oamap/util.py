@@ -28,6 +28,22 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import sys
+import types
+
+import numpy
+
+if sys.version_info[0] > 2:
+    basestring = str
+    unicode = str
+    def MethodType(function, instance, cls):
+        if instance is None:
+            return function
+        else:
+            return types.MethodType(function, instance)
+else:
+    MethodType = types.MethodType
+
 try:
     from collections import OrderedDict
 except ImportError:
@@ -135,10 +151,10 @@ def python2json(value, allowlinks=False):
         if value is None:
             memo[id(value)] = None
 
-        elif isinstance(value, numbers.Complex):
-            memo[id(value)] = {"real": float(value.real), "imag": float(value.imag)}
+        elif isinstance(value, (numbers.Integral, numpy.integer)):
+            memo[id(value)] = int(value)
 
-        elif isinstance(value, numbers.Real):
+        elif isinstance(value, (numbers.Real, numpy.floating)):
             if math.isnan(value):
                 memo[id(value)] = "nan"
             elif math.isinf(value) and value > 0:
@@ -148,8 +164,8 @@ def python2json(value, allowlinks=False):
             else:
                 memo[id(value)] = float(value)
 
-        elif isinstance(value, numbers.Integral):
-            memo[id(value)] = int(value)
+        elif isinstance(value, (numbers.Complex, numpy.complex)):
+            memo[id(value)] = {"real": float(value.real), "imag": float(value.imag)}
 
         elif isinstance(value, basestring):
             memo[id(value)] = value
@@ -179,3 +195,92 @@ def python2hashable(value):
         else:
             return value
     return recurse(python2json(value))
+
+def varname(avoid, trial=None):
+    while trial is None or trial in avoid:
+        trial = "v" + str(len(avoid))
+    avoid.add(trial)
+    return trial
+
+def paramtypes(args):
+    try:
+        import numba as nb
+    except ImportError:
+        return None
+    else:
+        return tuple(nb.typeof(x) for x in args)
+
+def doexec(module, env):
+    exec(module, env)
+
+def trycompile(fcn, paramtypes=None, numba=True):
+    if isinstance(fcn, basestring):
+        parsed = ast.parse(fcn).body
+        if isinstance(parsed[-1], ast.Expr):
+            parsed[-1] = ast.Return(parsed[-1].value)
+            parsed[-1].lineno = parsed[-1].value.lineno
+            parsed[-1].col_offset = parsed[-1].value.col_offset
+
+        free = set()
+        defined = set(["None", "False", "True"])
+        def recurse(node):
+            if isinstance(node, ast.Name):
+                if isinstance(node.ctx, ast.Store):
+                    defined.add(node.id)
+                elif isinstance(node.ctx, ast.Load) and node.id not in defined:
+                    free.add(node.id)
+            elif isinstance(node, ast.AST):
+                for n in node._fields:
+                    recurse(getattr(node, n))
+            elif isinstance(node, list):
+                for x in node:
+                    recurse(x)
+        recurse(parsed)
+
+        avoid = free.union(defined)
+        fcnname = varname(avoid, "fcn")
+
+        module = ast.parse("""
+def {fcn}({params}):
+    REPLACEME
+""".format(fcn=fcnname, params=",".join(free)))
+        module.body[0].body = parsed
+        module = compile(module, "<fcn string>", "exec")
+
+        env = dict(globals())
+        doexec(module, env)
+        fcn = env[fcnname]
+
+    if numba is None or numba is False:
+        return fcn
+
+    try:
+        import numba as nb
+    except ImportError:
+        return fcn
+
+    if numba is True:
+        numbaopts = {}
+    else:
+        numbaopts = numba
+
+    if isinstance(fcn, nb.dispatcher.Dispatcher):
+        fcn = fcn.py_fcn
+
+    if paramtypes is None:
+        return nb.jit(**numbaopts)(fcn)
+    else:
+        return nb.jit(paramtypes, **numbaopts)(fcn)
+
+def returntype(fcn, paramtypes):
+    try:
+        import numba as nb
+    except ImportError:
+        return None
+
+    if isinstance(fcn, nb.dispatcher.Dispatcher):
+        overload = fcn.overloads.get(paramtypes, None)
+        if overload is None:
+            return None
+        else:
+            return overload.signature.return_type

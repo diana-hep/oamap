@@ -42,47 +42,66 @@ if sys.version_info[0] > 2:
 
 # for sources that perform specialized actions on particular kinds of arrays
 class Role(object):
-    def __init__(self, name):
+    def __init__(self, name, namespace):
         self.name = name
+        self.namespace = namespace
+    @property
+    def args(self):
+        return (self.name, self.namespace)
     def __repr__(self):
-        return "{0}({1})".format(self.__class__.__name__, repr(str(self)))
+        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(str(x)) for x in self.args))
     def __str__(self):
         return self.name
     def __hash__(self):
-        return hash((Role, str(self)))
+        return hash((Role, self.name, self.namespace))
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and str(self) == str(other)
+        return isinstance(other, self.__class__) and self.name == other.name and self.namespace == other.namespace
     def __ne__(self, other):
         return not self.__eq__(other)
 
 class NoRole(Role): pass
 
 class MaskRole(Role):
-    def __init__(self, name, others):
-        super(MaskRole, self).__init__(name)
+    def __init__(self, name, namespace, others):
+        super(MaskRole, self).__init__(name, namespace)
         self.others = others
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.others)
 
 class DataRole(Role): pass
 
 class StartsRole(Role):
-    def __init__(self, name, stops):
-        super(StartsRole, self).__init__(name)
+    def __init__(self, name, namespace, stops):
+        super(StartsRole, self).__init__(name, namespace)
         self.stops = stops
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.stops)
 
 class StopsRole(Role):
-    def __init__(self, name, starts):
-        super(StopsRole, self).__init__(name)
+    def __init__(self, name, namespace, starts):
+        super(StopsRole, self).__init__(name, namespace)
         self.starts = starts
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.starts)
 
 class TagsRole(Role):
-    def __init__(self, name, offsets):
-        super(TagsRole, self).__init__(name)
+    def __init__(self, name, namespace, offsets):
+        super(TagsRole, self).__init__(name, namespace)
         self.offsets = offsets
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.offsets)
 
 class OffsetsRole(Role):
-    def __init__(self, name, tags):
-        super(OffsetsRole, self).__init__(name)
+    def __init__(self, name, namespace, tags):
+        super(OffsetsRole, self).__init__(name, namespace)
         self.tags = tags
+    @property
+    def args(self):
+        return (self.name, self.namespace, self.tags)
 
 class PositionsRole(Role): pass
 
@@ -98,7 +117,8 @@ class Generator(object):
         Generator._nextid += 1
         return out
 
-    def __init__(self, packing, name, derivedname, schema):
+    def __init__(self, namespace, packing, name, derivedname, schema):
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.derivedname = derivedname
@@ -166,6 +186,18 @@ class Generator(object):
 
         return ptrs, lens, ptrs.ctypes.data, lens.ctypes.data
 
+    def names(self, namespace=False, idx=False):
+        return list(self.iternames(namespace=namespace, idx=idx))
+
+    def namespaces(self):
+        return set(ns for n, ns in self.iternames(namespace=True))
+
+    def namedschema(self):
+        return self._namedschema({})
+
+    def findbynames(self, schematype, namespace, **names):
+        return self._findbynames(schematype, namespace, names, set())
+
     def case(self, obj):
         return self.schema.case(obj)
 
@@ -183,7 +215,7 @@ class Masked(object):
 
     def _toget(self, arrays, cache):
         others = self.__class__.__bases__[1]._toget(self, arrays, cache)
-        out = OrderedDict([(MaskRole(self.mask, others), (self.maskidx, self.maskdtype))])
+        out = OrderedDict([(MaskRole(self.mask, self.namespace, others), (self.maskidx, self.maskdtype))])
         out.update(others)
         return out
 
@@ -203,25 +235,34 @@ class Masked(object):
         else:
             return OrderedDict()
 
-    def _generate(self, arrays, index, cache):
+    def _getmask(self, arrays, cache):
         mask = cache[self.maskidx]
         if mask is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             mask = cache[self.maskidx]
+            if not isinstance(mask, numpy.ndarray):
+                mask = numpy.array(mask, dtype=self.maskdtype)
+        return mask
 
-        value = mask[index]
+    def _generate(self, arrays, index, cache):
+        value = self._getmask(arrays, cache)[index]
         if value == self.maskedvalue:
             return None
         else:
             # otherwise, the value is the index for compactified data
             return self.__class__.__bases__[1]._generate(self, arrays, value, cache)
 
-    def names(self):
-        return list(self.iternames())
+    def iternames(self, namespace=False, idx=False):
+        out = (self.mask,)
+        if namespace:
+            out = out + (self.namespace,)
+        if idx:
+            out = out + (self.maskidx,)
+        if len(out) == 1:
+            out = out[0]
+        yield out
 
-    def iternames(self):
-        yield self.mask
-        for x in self.__class__.__bases__[1].iternames(self):
+        for x in self.__class__.__bases__[1].iternames(self, namespace=namespace, idx=idx):
             yield x
 
     def loaded(self, cache, memo=None):
@@ -249,14 +290,14 @@ class Masked(object):
 ################################################################ Primitives
 
 class PrimitiveGenerator(Generator):
-    def __init__(self, data, dataidx, dtype, packing, name, derivedname, schema):
+    def __init__(self, data, dataidx, dtype, namespace, packing, name, derivedname, schema):
         self.data = data
         self.dataidx = dataidx
         self.dtype = dtype
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _toget(self, arrays, cache):
-        return OrderedDict([(DataRole(self.data), (self.dataidx, self.dtype))])
+        return OrderedDict([(DataRole(self.data, self.namespace), (self.dataidx, self.dtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -265,19 +306,30 @@ class PrimitiveGenerator(Generator):
                 return self._toget(arrays, cache)
         return OrderedDict()
 
-    def _generate(self, arrays, index, cache):
+    def _getdata(self, arrays, cache):
         data = cache[self.dataidx]
         if data is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             data = cache[self.dataidx]
-        
-        return data[index]
+            if not isinstance(data, numpy.ndarray):
+                data = numpy.array(data, dtype=self.dtype)
+        return data
+
+    def _generate(self, arrays, index, cache):
+        return self._getdata(arrays, cache)[index]
 
     def _requireall(self, memo=None):
         self._required = True
 
-    def iternames(self):
-        yield self.data
+    def iternames(self, namespace=False, idx=False):
+        out = (self.data,)
+        if namespace:
+            out = out + (self.namespace,)
+        if idx:
+            out = out + (self.dataidx,)
+        if len(out) == 1:
+            out = out[0]
+        yield out
 
     def loaded(self, cache, memo=None):
         if memo is None:
@@ -295,23 +347,38 @@ class PrimitiveGenerator(Generator):
             if self._required:
                 yield self.data
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(data=self.data, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(data=self.data)
+        return memo[id(self)]
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Primitive" and namespace == self.namespace and names.get("data", None) == self.data and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+            return self
+        else:
+            return None
+
 class MaskedPrimitiveGenerator(Masked, PrimitiveGenerator):
-    def __init__(self, mask, maskidx, data, dataidx, dtype, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, data, dataidx, dtype, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PrimitiveGenerator.__init__(self, data, dataidx, dtype, packing, name, derivedname, schema)
+        PrimitiveGenerator.__init__(self, data, dataidx, dtype, namespace, packing, name, derivedname, schema)
 
 ################################################################ Lists
 
 class ListGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
+    def __init__(self, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema):
         self.starts = starts
         self.startsidx = startsidx
         self.stops = stops
         self.stopsidx = stopsidx
         self.content = content
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -322,8 +389,8 @@ class ListGenerator(Generator):
             self.content._new(memo)
 
     def _toget(self, arrays, cache):
-        starts = StartsRole(self.starts, None)
-        stops = StopsRole(self.stops, None)
+        starts = StartsRole(self.starts, self.namespace, None)
+        stops = StopsRole(self.stops, self.namespace, None)
         starts.stops = stops
         stops.starts = starts
         return OrderedDict([(starts, (self.startsidx, self.posdtype)), (stops, (self.stopsidx, self.posdtype))])
@@ -343,14 +410,21 @@ class ListGenerator(Generator):
         else:
             return OrderedDict()
 
-    def _generate(self, arrays, index, cache):
+    def _getstartsstops(self, arrays, cache):
         starts = cache[self.startsidx]
         stops = cache[self.stopsidx]
         if starts is None or stops is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             starts = cache[self.startsidx]
             stops = cache[self.stopsidx]
+            if not isinstance(starts, numpy.ndarray):
+                starts = numpy.array(starts, dtype=self.posdtype)
+            if not isinstance(stops, numpy.ndarray):
+                stops = numpy.array(stops, dtype=self.posdtype)
+        return starts, stops
 
+    def _generate(self, arrays, index, cache):
+        starts, stops = self._getstartsstops(arrays, cache)
         return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
 
     def _requireall(self, memo=None):
@@ -361,10 +435,22 @@ class ListGenerator(Generator):
             self._required = True
             self.content._requireall(memo)
 
-    def iternames(self):
-        yield self.starts
-        yield self.stops
-        for x in self.content.iternames():
+    def iternames(self, namespace=False, idx=False):
+        out1 = (self.starts,)
+        out2 = (self.stops,)
+        if namespace:
+            out1 = out1 + (self.namespace,)
+            out2 = out2 + (self.namespace,)
+        if idx:
+            out1 = out1 + (self.startsidx,)
+            out2 = out2 + (self.stopsidx,)
+        if len(out1) == 1:
+            out1 = out1[0]
+            out2 = out2[0]
+        yield out1
+        yield out2
+            
+        for x in self.content.iternames(namespace=namespace, idx=idx):
             yield x
 
     def loaded(self, cache, memo=None):
@@ -390,10 +476,26 @@ class ListGenerator(Generator):
             for x in self.content.required(memo):
                 yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(starts=self.starts, stops=self.stops, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(starts=self.starts, stops=self.stops)
+        memo[id(self)].content = self.content._namedschema(memo)
+        return memo[id(self)]
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "List" and namespace == self.namespace and names.get("starts", None) == self.starts and names.get("stops", None) == self.stops and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+            return self
+        else:
+            return self.content._findbynames(schematype, namespace, names, memo)
+
 class MaskedListGenerator(Masked, ListGenerator):
-    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, packing, name, derivedname, schema)
+        ListGenerator.__init__(self, starts, startsidx, stops, stopsidx, content, namespace, packing, name, derivedname, schema)
 
 ################################################################ Unions
 
@@ -401,13 +503,13 @@ class UnionGenerator(Generator):
     tagdtype = numpy.dtype(numpy.int8)
     offsetdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
+    def __init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema):
         self.tags = tags
         self.tagsidx = tagsidx
         self.offsets = offsets
         self.offsetsidx = offsetsidx
         self.possibilities = possibilities
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -419,8 +521,8 @@ class UnionGenerator(Generator):
                 x._new(memo)
 
     def _toget(self, arrays, cache):
-        tags = TagsRole(self.tags, None)
-        offsets = OffsetsRole(self.offsets, None)
+        tags = TagsRole(self.tags, self.namespace, None)
+        offsets = OffsetsRole(self.offsets, self.namespace, None)
         tags.offsets = offsets
         offsets.tags = tags
         return OrderedDict([(tags, (self.tagsidx, self.tagdtype)), (offsets, (self.offsetsidx, self.offsetdtype))])
@@ -442,14 +544,21 @@ class UnionGenerator(Generator):
         else:
             return OrderedDict()
 
-    def _generate(self, arrays, index, cache):
+    def _gettagsoffsets(self, arrays, cache):
         tags = cache[self.tagsidx]
         offsets = cache[self.offsetsidx]
         if tags is None or offsets is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             tags = cache[self.tagsidx]
             offsets = cache[self.offsetsidx]
+            if not isinstance(tags, numpy.ndarray):
+                tags = numpy.array(tags, dtype=self.tagdtype)
+            if not isinstance(offsets, numpy.ndarray):
+                offsets = numpy.array(offsets, dtype=self.offsetdtype)
+        return tags, offsets
 
+    def _generate(self, arrays, index, cache):
+        tags, offsets = self._gettagsoffsets(arrays, cache)
         return self.possibilities[tags[index]]._generate(arrays, offsets[index], cache)
 
     def _requireall(self, memo=None):
@@ -461,11 +570,23 @@ class UnionGenerator(Generator):
             for x in self.possibilities:
                 x._requireall(memo)
 
-    def iternames(self):
-        yield self.tags
-        yield self.offsets
+    def iternames(self, namespace=False, idx=False):
+        out1 = (self.tags,)
+        out2 = (self.offsets,)
+        if namespace:
+            out1 = out1 + (self.namespace,)
+            out2 = out2 + (self.namespace,)
+        if idx:
+            out1 = out1 + (self.tagsidx,)
+            out2 = out2 + (self.offsetsidx,)
+        if len(out1) == 1:
+            out1 = out1[0]
+            out2 = out2[0]
+        yield out1
+        yield out2
+
         for x in self.possibilities:
-            for y in x.iternames():
+            for y in x.iternames(namespace=namespace, idx=idx):
                 yield y
 
     def loaded(self, cache, memo=None):
@@ -493,17 +614,37 @@ class UnionGenerator(Generator):
                 for x in possibility.required(memo):
                     yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(tags=self.tags, offsets=self.offsets, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(tags=self.tags, offsets=self.offsets)
+        memo[id(self)].possibilities = [x._namedschema(memo) for x in self.possibilities]
+        return memo[id(self)]
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Union" and namespace == self.namespace and names.get("tags", None) == self.tags and names.get("offsets", None) == self.offsets and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+            return self
+        else:
+            for possibility in self.possibilities:
+                out = possibility._findbynames(schematype, namespace, names, memo)
+                if out is not None:
+                    return out
+            return None
+
 class MaskedUnionGenerator(Masked, UnionGenerator):
-    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, packing, name, derivedname, schema)
+        UnionGenerator.__init__(self, tags, tagsidx, offsets, offsetsidx, possibilities, namespace, packing, name, derivedname, schema)
 
 ################################################################ Records
 
 class RecordGenerator(Generator):
-    def __init__(self, fields, packing, name, derivedname, schema):
+    def __init__(self, fields, namespace, packing, name, derivedname, schema):
         self.fields = fields
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -539,9 +680,9 @@ class RecordGenerator(Generator):
             for x in self.fields.values():
                 x._requireall(memo)
 
-    def iternames(self):
+    def iternames(self, namespace=False, idx=False):
         for x in self.fields.values():
-            for y in x.iternames():
+            for y in x.iternames(namespace=namespace, idx=idx):
                 yield y
 
     def loaded(self, cache, memo=None):
@@ -562,17 +703,38 @@ class RecordGenerator(Generator):
                 for x in field.required(memo):
                     yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy()
+        for n in memo[id(self)].fields:
+            memo[id(self)][n] = self.fields[n]._namedschema(memo)
+        return memo[id(self)]
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Record" and namespace == self.namespace and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+            return self
+        else:
+            for x in self.fields.values():
+                out = x._findbynames(schematype, namespace, names, memo)
+                if out is not None:
+                    return out
+            return None
+
 class MaskedRecordGenerator(Masked, RecordGenerator):
-    def __init__(self, mask, maskidx, fields, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, fields, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        RecordGenerator.__init__(self, fields, packing, name, derivedname, schema)
+        RecordGenerator.__init__(self, fields, namespace, packing, name, derivedname, schema)
 
 ################################################################ Tuples
 
 class TupleGenerator(Generator):
-    def __init__(self, types, packing, name, derivedname, schema):
+    def __init__(self, types, namespace, packing, name, derivedname, schema):
         self.types = types
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -608,9 +770,9 @@ class TupleGenerator(Generator):
             for x in self.types:
                 x._requireall(memo)
 
-    def iternames(self):
+    def iternames(self, namespace=False, idx=False):
         for x in self.types:
-            for y in x.iternames():
+            for y in x.iternames(namespace=namespace, idx=idx):
                 yield y
 
     def loaded(self, cache, memo=None):
@@ -631,21 +793,41 @@ class TupleGenerator(Generator):
                 for x in field.required(memo):
                     yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy()
+        memo[id(self)].types = tuple(x._namedschema(memo) for x in self.types)
+        return memo[id(self)]
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Tuple" and namespace == self.namespace and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+            return self
+        else:
+            for x in self.types:
+                out = x._findbynames(schematype, namespace, names, memo)
+                if out is not None:
+                    return out
+            return None
+
 class MaskedTupleGenerator(Masked, TupleGenerator):
-    def __init__(self, mask, maskidx, types, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, types, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        TupleGenerator.__init__(self, types, packing, name, derivedname, schema)
+        TupleGenerator.__init__(self, types, namespace, packing, name, derivedname, schema)
 
 ################################################################ Pointers
 
 class PointerGenerator(Generator):
     posdtype = numpy.dtype(numpy.int32)
 
-    def __init__(self, positions, positionsidx, target, packing, name, derivedname, schema):
+    def __init__(self, positions, positionsidx, target, namespace, packing, name, derivedname, schema):
         self.positions = positions
         self.positionsidx = positionsidx
         self.target = target
-        Generator.__init__(self, packing, name, derivedname, schema)
+        Generator.__init__(self, namespace, packing, name, derivedname, schema)
 
     def _new(self, memo=None):
         if memo is None:
@@ -656,7 +838,7 @@ class PointerGenerator(Generator):
             self.target._new(memo)
 
     def _toget(self, arrays, cache):
-        return OrderedDict([(PositionsRole(self.positions), (self.positionsidx, self.posdtype))])
+        return OrderedDict([(PositionsRole(self.positions, self.namespace), (self.positionsidx, self.posdtype))])
 
     def _togetall(self, arrays, cache, bottomup, memo):
         if id(self) not in memo:
@@ -673,13 +855,17 @@ class PointerGenerator(Generator):
         else:
             return OrderedDict()
 
-    def _generate(self, arrays, index, cache):
+    def _getpositions(self, arrays, cache):
         positions = cache[self.positionsidx]
         if positions is None:
             self._getarrays(arrays, cache, self._toget(arrays, cache))
             positions = cache[self.positionsidx]
+            if not isinstance(positions, numpy.ndarray):
+                positions = numpy.array(positions, dtype=self.posdtype)
+        return positions
 
-        return self.target._generate(arrays, positions[index], cache)
+    def _generate(self, arrays, index, cache):
+        return self.target._generate(arrays, self._getpositions(arrays, cache)[index], cache)
 
     def _requireall(self, memo=None):
         if memo is None:
@@ -689,10 +875,18 @@ class PointerGenerator(Generator):
             self._required = True
             self.target._requireall(memo)
 
-    def iternames(self):
-        yield self.positions
+    def iternames(self, namespace=False, idx=False):
+        out = (self.positions,)
+        if namespace:
+            out = out + (self.namespace,)
+        if idx:
+            out = out + (self.positionsidx,)
+        if len(out) == 1:
+            out = out[0]
+        yield out
+
         if not self._internal:
-            for x in self.target.iternames():
+            for x in self.target.iternames(namespace=namespace, idx=idx):
                 yield x
 
     def loaded(self, cache, memo=None):
@@ -715,10 +909,29 @@ class PointerGenerator(Generator):
             for x in self.target.required(memo):
                 yield x
 
+    def _namedschema(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        if isinstance(self, Masked):
+            memo[id(self)] = self.schema.copy(positions=self.positions, mask=self.mask)
+        else:
+            memo[id(self)] = self.schema.copy(positions=self.positions)
+        memo[id(self)].target = self.target._namedschema(memo)
+        return memo[id(self)]
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        if schematype == "Pointer" and namespace == self.namespace and names.get("positions", None) == self.positions and (not isinstance(self, Masked) or names.get("mask", None) == self.mask):
+            return self
+        else:
+            if id(self) in memo:
+                return None
+            memo.add(id(self))
+            return self.target._findbynames(schematype, namespace, names, memo)
+
 class MaskedPointerGenerator(Masked, PointerGenerator):
-    def __init__(self, mask, maskidx, positions, positionsidx, target, packing, name, derivedname, schema):
+    def __init__(self, mask, maskidx, positions, positionsidx, target, namespace, packing, name, derivedname, schema):
         Masked.__init__(self, mask, maskidx)
-        PointerGenerator.__init__(self, positions, positionsidx, target, packing, name, derivedname, schema)
+        PointerGenerator.__init__(self, positions, positionsidx, target, namespace, packing, name, derivedname, schema)
 
 ################################################################ for extensions: domain-specific and user
 
@@ -753,6 +966,10 @@ class ExtendedGenerator(Generator):
         return self.generic._togetall(arrays, cache, bottomup, memo)
 
     @property
+    def namespace(self):
+        return self.generic.namespace
+
+    @property
     def packing(self):
         return self.generic.packing
 
@@ -768,8 +985,8 @@ class ExtendedGenerator(Generator):
     def schema(self):
         return self.generic.schema
 
-    def iternames(self):
-        for x in self.generic.iternames():
+    def iternames(self, namespace=False, idx=False):
+        for x in self.generic.iternames(namespace=namespace, idx=idx):
             yield x
 
     def loaded(self, cache, memo=None):
@@ -780,8 +997,15 @@ class ExtendedGenerator(Generator):
         for x in self.generic.required(memo):
             yield x
 
+    def _namedschema(self, memo):
+        return self.generic._namedschema(memo)
+
+    def _findbynames(self, schematype, namespace, names, memo):
+        return self.generic._findbynames(schematype, namespace, names, memo)
+
     @classmethod
     def matches(cls, schema):
+        import oamap.schema
         def recurse(pattern, schema):
             if isinstance(pattern, basestring):
                 return schema["type"] == "primitive" and schema["dtype"] == pattern

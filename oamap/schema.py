@@ -29,19 +29,20 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import bisect
-import copy
 import codecs
+import copy
+import fnmatch
+import json
+import numbers
 import re
 import sys
-import numbers
-import json
 from types import ModuleType
 
 import numpy
 
 import oamap.generator
 import oamap.inference
-import oamap.source.packing
+import oamap.backend.packing
 import oamap.extension.common
 import oamap.proxy
 import oamap.util
@@ -85,20 +86,30 @@ class Schema(object):
         self._mask = value
 
     @property
+    def namespace(self):
+        return self._namespace
+
+    @namespace.setter
+    def namespace(self, value):
+        if not isinstance(value, basestring):
+            raise TypeError("namespace must be a string, not {0}".format(repr(value)))
+        self._namespace = value
+
+    @property
     def packing(self):
         return self._packing
 
     @packing.setter
     def packing(self, value):
-        if not (value is None or isinstance(value, oamap.source.packing.PackedSource)):
+        if not (value is None or isinstance(value, oamap.backend.packing.PackedSource)):
             raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
         self._packing = value
 
-    def _packingcopy(self):
+    def _packingcopy(self, source=None):
         if self._packing is None:
-            return None
+            return source
         else:
-            return self._packing.copy()
+            return self._packing.anchor(source)
 
     def _packingtojson(self):
         if self._packing is None:
@@ -111,7 +122,7 @@ class Schema(object):
         if packing is None:
             return None
         else:
-            return oamap.source.packing.PackedSource.fromjson(packing)
+            return oamap.backend.packing.PackedSource.fromjson(packing)
 
     @property
     def name(self):
@@ -168,20 +179,6 @@ class Schema(object):
         else:
             stream.write(out)
             stream.write("\n")
-
-    def defaultnames(self, prefix="object", delimiter="-"):
-        memo = {}
-        pointers = []
-        self._defaultnames(prefix, delimiter, memo, pointers, set())
-
-        for pointer in pointers:
-            if id(pointer.target) in memo:
-                # internal
-                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter) + delimiter + memo[id(pointer.target)]
-            else:
-                # external
-                pointer._positions = pointer._get_positions(memo[id(pointer)], delimiter)
-                pointer._target.defaultnames(pointer._get_external(memo[id(pointer)], delimiter), delimiter)
 
     @property
     def hasarraynames(self):
@@ -244,8 +241,55 @@ class Schema(object):
         else:
             raise TypeError("unrecognized type for Schema from JSON: {0}".format(repr(data)))
 
+    def replace(self, fcn, *args, **kwds):
+        return self._replace(fcn, args, kwds, {})
+
     def deepcopy(self, **replacements):
         return self.replace(lambda x: x, **replacements)
+
+    def path(self, path, parents=False, allowtop=True):
+        out = None
+        for nodes in self._path((), path, (), allowtop, set()):
+            if out is None:
+                if parents:
+                    out = nodes
+                else:
+                    out = nodes[0]
+            else:
+                raise ValueError("path {0} matches more than one field in schema".format(repr(path)))
+
+        if out is None:
+            raise ValueError("path {0} does not match any fields in the schema".format(repr(path)))
+        else:
+            return out
+
+    def paths(self, *paths, **options):
+        parents = options.pop("parents", False)
+        allowtop = options.pop("allowtop", True)
+        if len(options) > 0:
+            raise TypeError("unrecognized options: {0}".format(", ".join(options)))
+        for path in paths:
+            for nodes in self._path((), path, (), allowtop, set()):
+                if parents:
+                    yield nodes
+                else:
+                    yield nodes[0]
+
+    def _path(self, loc, path, parents, allowtop, memo):
+        if allowtop and fnmatch.fnmatchcase("/".join(loc), path):
+            yield (self,) + parents
+
+    def project(self, path):
+        return self._keep((), [path], True, {})
+
+    def keep(self, *paths):
+        return self._keep((), paths, False, {})
+
+    def drop(self, *paths):
+        return self._drop((), paths, {})
+
+    def contains(self, schema):
+        return self._contains(schema, set())
 
     def _normalize_extension(self, extension):
         if isinstance(extension, ModuleType):
@@ -278,16 +322,18 @@ class Schema(object):
         import oamap.fill
         return self(oamap.fill.fromiterdata(values, generator=self, limit=limit, pointer_fromequal=pointer_fromequal))
 
-    def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common):
-        return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension))(arrays)
+    def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common, packing=None):
+        return self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension), packing=packing)(arrays)
 
-    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common):
+    def generator(self, prefix="object", delimiter="-", extension=oamap.extension.common, packing=None):
         if self._baddelimiter.match(delimiter) is not None:
             raise ValueError("delimiters must not contain /{0}/".format(self._baddelimiter.pattern))
         cacheidx = [0]
         memo = OrderedDict()
         extension = self._normalize_extension(extension)
-        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension), cacheidx, memo, extension)
+        if packing is not None:
+            packing = packing.copy()
+        return self._finalizegenerator(self._generator(prefix, delimiter, cacheidx, memo, set(), extension, packing), cacheidx, memo, extension, packing)
 
     def _get_name(self, prefix, delimiter):
         if self._name is not None:
@@ -301,7 +347,7 @@ class Schema(object):
         else:
             return self._mask
 
-    def _finalizegenerator(self, out, cacheidx, memo, extension):
+    def _finalizegenerator(self, out, cacheidx, memo, extension, packing):
         allgenerators = list(memo.values())
         for generator in memo.values():
             if isinstance(generator, oamap.generator.PointerGenerator):
@@ -318,7 +364,7 @@ class Schema(object):
                     # the target is not in the type tree: resolve it now
                     memo2 = OrderedDict()   # new memo, but same cacheidx
                     generator._internal = False
-                    generator.target = target._finalizegenerator(target._generator(generator.schema._get_external(prefix, delimiter), delimiter, cacheidx, memo2, set(), extension), cacheidx, memo2, extension)
+                    generator.target = target._finalizegenerator(target._generator(generator.schema._get_external(prefix, delimiter), delimiter, cacheidx, memo2, set(), extension, packing), cacheidx, memo2, extension, packing)
                     generator.schema.target = generator.target.schema
                     for generator2 in memo2.values():
                         allgenerators.append(generator2)
@@ -340,11 +386,12 @@ class Schema(object):
 ################################################################ Primitives can be any Numpy type
 
 class Primitive(Schema):
-    def __init__(self, dtype, nullable=False, data=None, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, dtype, nullable=False, data=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.dtype = dtype
         self.nullable = nullable
         self.data = data
         self.mask = mask
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.doc = doc
@@ -439,6 +486,8 @@ class Primitive(Schema):
                 args.append("data" + eq + repr(self._data))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._namespace != "":
+                args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
@@ -467,7 +516,7 @@ class Primitive(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            if not explicit and self._nullable is False and self._data is None and self._mask is None and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
+            if not explicit and self._nullable is False and self._data is None and self._mask is None and self._namespace == "" and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
                 return str(self._dtype)
             else:
                 out = OrderedDict([("type", "primitive"), ("dtype", self._dtype2str(self._dtype, "-"))])
@@ -477,6 +526,8 @@ class Primitive(Schema):
                     out["data"] = self._data
                 if explicit or self._mask is not None:
                     out["mask"] = self._mask
+                if explicit or self._namespace != "":
+                    out["namespace"] = self._namespace
                 if explicit or self._packing is not None:
                     out["packing"] = self._packingtojson()
                 if explicit or self._name is not None:
@@ -498,7 +549,7 @@ class Primitive(Schema):
         else:
             if "dtype" not in data:
                 raise TypeError("Primitive Schema from JSON is missing argument 'dtype'")
-            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=oamap.util.json2python(data.get("metadata", None)))
+            out = Primitive(Primitive._str2dtype(data["dtype"], "-"), nullable=data.get("nullable", False), data=data.get("data", None), mask=data.get("mask", None), namespace=data.get("namespace", ""), packing=Schema._packingfromjson(data.get("packing", None)), name=data.get("name", None), doc=data.get("doc", None), metadata=oamap.util.json2python(data.get("metadata", None)))
             if "label" in data:
                 labels[data["label"]] = out
             return out
@@ -515,6 +566,8 @@ class Primitive(Schema):
             replacements["data"] = self._data
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
         if "packing" not in replacements:
             replacements["packing"] = self._packing
         if "name" not in replacements:
@@ -525,14 +578,23 @@ class Primitive(Schema):
             replacements["metadata"] = self._metadata
         return Primitive(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _keep(self, loc, paths, project, memo):
+        return self.deepcopy()
+
+    def _drop(self, loc, paths, memo):
+        return self.deepcopy()
+
+    def _contains(self, schema, memo):
+        return self == schema
 
     def __hash__(self):
-        return hash((Primitive, self._dtype, self._nullable, self._data, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+        return hash((Primitive, self._dtype, self._nullable, self._data, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
     def __eq__(self, other, memo=None):
-        return isinstance(other, Primitive) and self._dtype == other._dtype and self._nullable == other._nullable and self._data == other._data and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata
+        return isinstance(other, Primitive) and self._dtype == other._dtype and self._nullable == other._nullable and self._data == other._data and self._mask == other._mask and self._namespace == other._namespace and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata
 
     def __contains__(self, value, memo=None):
         if value is None:
@@ -545,13 +607,13 @@ class Primitive(Schema):
 
                 elif issubclass(self.dtype.type, numpy.integer):
                     iinfo = numpy.iinfo(self.dtype.type)
-                    return isinstance(value, numbers.Integral) and iinfo.min <= value <= iinfo.max
+                    return isinstance(value, (numbers.Integral, numpy.integer)) and iinfo.min <= value <= iinfo.max
 
                 elif issubclass(self.dtype.type, numpy.floating):
-                    return isinstance(value, numbers.Real)
+                    return isinstance(value, (numbers.Real, numpy.floating))
 
                 elif issubclass(self.dtype.type, numpy.complex):
-                    return isinstance(value, numbers.Complex)
+                    return isinstance(value, (numbers.Complex, numpy.complex))
 
                 else:
                     raise TypeError("unexpected dtype: {0}".format(self.dtype))
@@ -577,15 +639,7 @@ class Primitive(Schema):
         else:
             return self._data
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        self._data = self._get_data(prefix, delimiter)
-        memo[id(self)] = prefix
-
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
@@ -601,10 +655,11 @@ class Primitive(Schema):
         args.append(cacheidx[0]); cacheidx[0] += 1
 
         args.append(self._dtype)
-        args.append(self._packingcopy())
+        args.append(self._namespace)
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(packing=self._packingcopy()))
+        args.append(self.copy(packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -618,12 +673,13 @@ class Primitive(Schema):
 ################################################################ Lists may have arbitrary length
 
 class List(Schema):
-    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, content, nullable=False, starts=None, stops=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.content = content
         self.nullable = nullable
         self.starts = starts
         self.stops = stops
         self.mask = mask
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.doc = doc
@@ -690,6 +746,8 @@ class List(Schema):
                 args.append("stops" + eq + repr(self._stops))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._namespace != "":
+                args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
@@ -728,6 +786,8 @@ class List(Schema):
                 out["stops"] = self._stops
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._namespace != "":
+                out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
@@ -752,6 +812,7 @@ class List(Schema):
         out.starts = data.get("starts", None)
         out.stops = data.get("stops", None)
         out.mask = data.get("mask", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -786,6 +847,8 @@ class List(Schema):
             replacements["stops"] = self._stops
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
         if "packing" not in replacements:
             replacements["packing"] = self._packing
         if "name" not in replacements:
@@ -796,18 +859,46 @@ class List(Schema):
             replacements["metadata"] = self._metadata
         return List(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(List(self._content.replace(fcn, *args, **kwds), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(List(self._content._replace(fcn, args, kwds, memo), nullable=self._nullable, starts=self._starts, stops=self._stops, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _path(self, loc, path, parents, allowtop, memo):
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, allowtop, memo):
+            yield nodes
+        if nodes is None:
+            for nodes in self._content._path(loc, path, (self,) + parents, allowtop, memo):
+                yield nodes
+
+    def _keep(self, loc, paths, project, memo):
+        content = self.content._keep(loc, paths, project, memo)
+        if content is None:
+            return None
+        else:
+            return self.copy(content=content)
+
+    def _drop(self, loc, paths, memo):
+        content = self.content._drop(loc, paths, memo)
+        if content is None:
+            return None
+        else:
+            return self.copy(content=content)
+
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return self._content._contains(schema, memo)
 
     def __hash__(self):
-        return hash((List, self._content, self._nullable, self._starts, self._stops, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+        return hash((List, self._content, self._nullable, self._starts, self._stops, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, List) and self._nullable == other._nullable and self._starts == other._starts and self._stops == other._stops and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
+        if not (isinstance(other, List) and self._nullable == other._nullable and self._starts == other._starts and self._stops == other._stops and self._mask == other._mask and self._namespace == other._namespace and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return self.content.__eq__(other.content, memo)
@@ -843,17 +934,7 @@ class List(Schema):
     def _get_content(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "L"
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        self._starts = self._get_starts(prefix, delimiter)
-        self._stops = self._get_stops(prefix, delimiter)
-        self._content._defaultnames(self._get_content(prefix, delimiter), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
-
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
@@ -871,12 +952,13 @@ class List(Schema):
         args.append(self._get_stops(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        contentgen = self._content._generator(self._get_content(prefix, delimiter), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)
+        contentgen = self._content._generator(self._get_content(prefix, delimiter), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing)
         args.append(contentgen)
-        args.append(self._packingcopy())
+        args.append(self._namespace)
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(content=contentgen.schema, packing=self._packingcopy()))
+        args.append(self.copy(content=contentgen.schema, packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -890,12 +972,13 @@ class List(Schema):
 ################################################################ Unions may be one of several types
 
 class Union(Schema):
-    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, possibilities, nullable=False, tags=None, offsets=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.possibilities = possibilities
         self.nullable = nullable
         self.tags = tags
         self.offsets = offsets
         self.mask = mask
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.doc = doc
@@ -964,7 +1047,7 @@ class Union(Schema):
         return self._possibilities[index]
 
     def __setitem__(self, index, value):
-        if not isinstance(index, numbers.Integral):
+        if not isinstance(index, (numbers.Integral, numpy.integer)):
             raise TypeError("possibility index must be an integer, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)
@@ -1001,6 +1084,8 @@ class Union(Schema):
                 args.append("offsets" + eq + repr(self._offsets))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._namespace != "":
+                args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
@@ -1039,6 +1124,8 @@ class Union(Schema):
                 out["offsets"] = self._offsets
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._namespace != "":
+                out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
@@ -1065,6 +1152,7 @@ class Union(Schema):
         out.tags = data.get("tags", None)
         out.offsets = data.get("offsets", None)
         out.mask = data.get("mask", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1101,6 +1189,8 @@ class Union(Schema):
             replacements["offsets"] = self._offsets
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
         if "packing" not in replacements:
             replacements["packing"] = self._packing
         if "name" not in replacements:
@@ -1111,18 +1201,53 @@ class Union(Schema):
             replacements["metadata"] = self._metadata
         return Union(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Union([x.replace(fcn, *args, **kwds) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Union([x._replace(fcn, args, kwds, memo) for x in self._possibilities], nullable=self._nullable, tags=self._tags, offsets=self._offsets, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _path(self, loc, path, parents, allowtop, memo):
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, allowtop, memo):
+            yield nodes
+        if nodes is None:
+            for possibility in self._possibilities:
+                for nodes in possibility._path(loc, path, (self,) + parents, allowtop, memo):
+                    yield nodes
+
+    def _keep(self, loc, paths, project, memo):
+        possibilities = []
+        for x in self._possibilities:
+            p = self._keep(loc, paths, project, memo)
+            if p is None:
+                return None
+            else:
+                possibilities.append(p)
+        return self.copy(possibilities)
+
+    def _drop(self, loc, paths, memo):
+        possibilities = []
+        for x in self._possibilities:
+            p = self._drop(loc, paths, memo)
+            if p is None:
+                return None
+            else:
+                possibilities.append(p)
+        return self.copy(possibilities)
+
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return any(x._contains(schema, memo) for x in self._possibilities)
 
     def __hash__(self):
-        return hash((Union, self._possibilities, self._nullable, self._tags, self._offsets, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+        return hash((Union, self._possibilities, self._nullable, self._tags, self._offsets, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Union) and len(self._possibilities) == len(other._possibilities) and self._nullable == other._nullable and self._tags == other._tags and self._offsets == other._offsets and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
+        if not (isinstance(other, Union) and len(self._possibilities) == len(other._possibilities) and self._nullable == other._nullable and self._tags == other._tags and self._offsets == other._offsets and self._mask == other._mask and self._namespace == other._namespace and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self.possibilities, other.possibilities))
@@ -1149,18 +1274,7 @@ class Union(Schema):
     def _get_possibility(self, prefix, delimiter, i):
         return self._get_name(prefix, delimiter) + delimiter + "U" + repr(i)
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        self._tags = self._get_tags(prefix, delimiter)
-        self._offsets = self._get_offsets(prefix, delimiter)
-        for i, x in enumerate(self._possibilities):
-            x._defaultnames(self._get_possibility(prefix, delimiter, i), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
-
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
         args = []
@@ -1178,12 +1292,13 @@ class Union(Schema):
         args.append(self._get_offsets(prefix, delimiter))
         args.append(cacheidx[0]); cacheidx[0] += 1
 
-        possibilitiesgen = [x._generator(self._get_possibility(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._possibilities)]
+        possibilitiesgen = [x._generator(self._get_possibility(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing) for i, x in enumerate(self._possibilities)]
         args.append(possibilitiesgen)
-        args.append(self._packingcopy())
+        args.append(self._namespace)
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen], packing=self._packingcopy()))
+        args.append(self.copy(possibilities=[x.schema for x in possibilitiesgen], packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1197,10 +1312,11 @@ class Union(Schema):
 ################################################################ Records contain fields of known types
 
 class Record(Schema):
-    def __init__(self, fields, nullable=False, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, fields, nullable=False, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.fields = fields
         self.nullable = nullable
         self.mask = mask
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.doc = doc
@@ -1243,20 +1359,8 @@ class Record(Schema):
             raise TypeError("field values must be Schemas, not {0}".format(repr(value)))
         self._fields[index] = value
 
-    def rename(self, fromfield, tofield):
-        if not self.hasarraynames:
-            raise ValueError("cannot rename a field in a schema without fixed array names; try calling defaultnames() to assign fixed array names")
-        renamed = []    # but maintain order
-        found = False
-        for n, x in self._fields.items():
-            if n == fromfield:
-                renamed.append((tofield, x))
-                found = True
-            else:
-                renamed.append((n, x))
-        if not found:
-            raise KeyError("field not found: {0}".format(repr(fromfield)))
-        self._fields = OrderedDict(renamed)
+    def __delitem__(self, index):
+        del self._fields[index]
 
     def _hasarraynames(self, memo):
         if id(self) in memo:
@@ -1283,6 +1387,8 @@ class Record(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._namespace != "":
+                args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
@@ -1317,6 +1423,8 @@ class Record(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._namespace != "":
+                out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
@@ -1344,6 +1452,7 @@ class Record(Schema):
             raise TypeError("argument 'fields' for Record Schema from JSON should be a list or dict of key-value pairs (in which the keys are strings), not {0}".format(repr(data["fields"])))
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1376,6 +1485,8 @@ class Record(Schema):
             replacements["nullable"] = self._nullable
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
         if "packing" not in replacements:
             replacements["packing"] = self._packing
         if "name" not in replacements:
@@ -1386,18 +1497,62 @@ class Record(Schema):
             replacements["metadata"] = self._metadata
         return Record(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Record(OrderedDict((n, x.replace(fcn, *args, **kwds)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Record(OrderedDict((n, x._replace(fcn, args, kwds, memo)) for n, x in self._fields.items()), nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _path(self, loc, path, parents, allowtop, memo):
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, allowtop, memo):
+            yield nodes
+        if nodes is None:
+            for n, x in self._fields.items():
+                for nodes in x._path(loc + (n,), path, (self,) + parents, True, memo):
+                    yield nodes
+
+    def _keep(self, loc, paths, project, memo):
+        fields = OrderedDict()
+        for n, x in self._fields.items():
+            if any(fnmatch.fnmatchcase("/".join(loc + (n,)), p) for p in paths):
+                fields[n] = x
+            elif any(fnmatch.fnmatchcase("/".join(loc + (n,)), "/".join(p.split("/")[:len(loc) + 1])) for p in paths):
+                f = x._keep(loc + (n,), paths, project, memo)
+                if f is not None:
+                    fields[n] = f
+        if len(fields) == 0:
+            return None
+        elif project and len(fields) == 1:
+            out, = fields.values()
+            return out
+        else:
+            return self.copy(fields=fields)
+
+    def _drop(self, loc, paths, memo):
+        fields = OrderedDict()
+        for n, x in self._fields.items():
+            if not any(fnmatch.fnmatchcase("/".join(loc + (n,)), p) for p in paths):
+                f = x._drop(loc + (n,), paths, memo)
+                if f is not None:
+                    fields[n] = f
+        if len(fields) == 0:
+            return None
+        else:
+            return self.copy(fields=fields)
+
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return any(x._contains(schema, memo) for x in self._fields.values())
 
     def __hash__(self):
-        return hash((Record, tuple(self._fields.items()), self._nullable, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+        return hash((Record, tuple(self._fields.items()), self._nullable, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self._nullable == other._nullable and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
+        if not (isinstance(other, Record) and set(self._fields) == set(other._fields) and self._nullable == other._nullable and self._mask == other._mask and self._namespace == other._namespace and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return all(self._fields[n].__eq__(other._fields[n], memo) for n in self._fields)
@@ -1419,16 +1574,7 @@ class Record(Schema):
     def _get_field(self, prefix, delimiter, n):
         return self._get_name(prefix, delimiter) + delimiter + "F" + n
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        for n, x in self._fields.items():
-            x._defaultnames(self._get_field(prefix, delimiter, n), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
-
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if len(self._fields) == 0:
             raise TypeError("Record has no fields")
         if id(self) in nesting:
@@ -1442,12 +1588,13 @@ class Record(Schema):
         else:
             cls = oamap.generator.RecordGenerator
 
-        fieldsgen = OrderedDict([(n, self._fields[n]._generator(self._get_field(prefix, delimiter, n), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension)) for n in sorted(self._fields)])
+        fieldsgen = OrderedDict([(n, self._fields[n]._generator(self._get_field(prefix, delimiter, n), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing)) for n in sorted(self._fields)])
         args.append(fieldsgen)
-        args.append(self._packingcopy())
+        args.append(self._namespace)
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items()), packing=self._packingcopy()))
+        args.append(self.copy(fields=OrderedDict((n, x.schema) for n, x in fieldsgen.items()), packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1461,10 +1608,11 @@ class Record(Schema):
 ################################################################ Tuples are like records but with an order instead of field names
 
 class Tuple(Schema):
-    def __init__(self, types, nullable=False, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, types, nullable=False, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.types = types
         self.nullable = nullable
         self.mask = mask
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.doc = doc
@@ -1513,7 +1661,7 @@ class Tuple(Schema):
         return self._types[index]
 
     def __setitem__(self, index, value):
-        if not isinstance(index, numbers.Integral):
+        if not isinstance(index, (numbers.Integral, numpy.integer)):
             raise TypeError("types index must be an integer, not {0}".format(repr(index)))
         if isinstance(value, basestring):
             value = Primitive(value)
@@ -1546,6 +1694,8 @@ class Tuple(Schema):
                 args.append("nullable" + eq + repr(self._nullable))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._namespace != "":
+                args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
@@ -1579,6 +1729,8 @@ class Tuple(Schema):
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._namespace != "":
+                out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
@@ -1603,6 +1755,7 @@ class Tuple(Schema):
         out._types = [Schema._fromjson(x, labels) for x in data["types"]]
         out.nullable = data.get("nullable", False)
         out.mask = data.get("mask", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1635,6 +1788,8 @@ class Tuple(Schema):
             replacements["nullable"] = self._nullable
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
         if "packing" not in replacements:
             replacements["packing"] = self._packing
         if "name" not in replacements:
@@ -1645,18 +1800,64 @@ class Tuple(Schema):
             replacements["metadata"] = self._metadata
         return Tuple(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Tuple([x.replace(fcn, *args, **kwds) for x in self._types], nullable=self._nullable, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        return fcn(Tuple([x._replace(fcn, args, kwds, memo) for x in self._types], nullable=self._nullable, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+
+    def _path(self, loc, path, parents, allowtop, memo):
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, allowtop, memo):
+            yield nodes
+        if nodes is None:
+            for i, x in enumerate(self._types):
+                for nodes in x._path(loc + (str(i),), path, (self,) + parents, True, memo):
+                    yield nodes
+
+    def _keep(self, loc, paths, project, memo):
+        types = []
+        for i, x in enumerate(self._types):
+            n = str(i)
+            if any(fnmatch.fnmatchcase("/".join(loc + (n,)), p) for p in paths):
+                types.append(x)
+            elif any(fnmatch.fnmatchcase("/".join(loc + (n,)), "/".join(p.split("/")[:len(loc) + 1])) for p in paths):
+                f = x._keep(loc + (n,), paths, project, memo)
+                if f is not None:
+                    types.append(f)
+        if len(types) == 0:
+            return None
+        elif project and len(fields) == 1:
+            out, = fields.values()
+            return out
+        else:
+            return self.copy(types=types)
+
+    def _drop(self, loc, paths, memo):
+        types = []
+        for i, x in enumerate(self._types):
+            n = str(i)
+            if not any(fnmatch.fnmatchcase("/".join(loc + (n,)), p) for p in paths):
+                f = x._drop(loc + (n,), paths, memo)
+                if f is not None:
+                    types.append(f)
+        if len(types) == 0:
+            return None
+        else:
+            return self.copy(types=types)
+
+    def _contains(self, schema, memo):
+        if self == schema:
+            return True
+        else:
+            return any(x._contains(schema, memo) for x in self._types)
 
     def __hash__(self):
-        return hash((Tuple, self._types, self._nullable, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+        return hash((Tuple, self._types, self._nullable, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self._nullable == other._nullable and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
+        if not (isinstance(other, Tuple) and len(self._types) == len(other._types) and self._nullable == other._nullable and self._mask == other._mask and self._namespace == other._namespace and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return all(x.__eq__(y, memo) for x, y in zip(self._types, other._types))
@@ -1674,16 +1875,7 @@ class Tuple(Schema):
     def _get_field(self, prefix, delimiter, i):
         return self._get_name(prefix, delimiter) + delimiter + "F" + repr(i)
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if id(self) in nesting:
-            raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        for i, x in enumerate(self._types):
-            x._defaultnames(self._get_field(prefix, delimiter, i), delimiter, memo, pointers, nesting.union(set([id(self)])))
-        memo[id(self)] = prefix
-
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if len(self._types) == 0:
             raise TypeError("Tuple has no types")
         if id(self) in nesting:
@@ -1697,12 +1889,13 @@ class Tuple(Schema):
         else:
             cls = oamap.generator.TupleGenerator
 
-        typesgen = [x._generator(self._get_field(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension) for i, x in enumerate(self._types)]
+        typesgen = [x._generator(self._get_field(prefix, delimiter, i), delimiter, cacheidx, memo, nesting.union(set([id(self)])), extension, packing) for i, x in enumerate(self._types)]
         args.append(typesgen)
-        args.append(self._packingcopy())
+        args.append(self._namespace)
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(types=[x.schema for x in typesgen], packing=self._packingcopy()))
+        args.append(self.copy(types=[x.schema for x in typesgen], packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1716,11 +1909,12 @@ class Tuple(Schema):
 ################################################################ Pointers redirect to the contents of other types
 
 class Pointer(Schema):
-    def __init__(self, target, nullable=False, positions=None, mask=None, packing=None, name=None, doc=None, metadata=None):
+    def __init__(self, target, nullable=False, positions=None, mask=None, namespace="", packing=None, name=None, doc=None, metadata=None):
         self.target = target
         self.nullable = nullable
         self.positions = positions
         self.mask = mask
+        self.namespace = namespace
         self.packing = packing
         self.name = name
         self.doc = doc
@@ -1770,13 +1964,18 @@ class Pointer(Schema):
 
             args = []
             if indent is None:
-                args.append(self._target.__repr__(labels, shown, indent))
+                if self._target is None:
+                    args.append(repr(None))
+                else:
+                    args.append(self._target.__repr__(labels, shown, indent))
             if self._nullable is not False:
                 args.append("nullable" + eq + repr(self._nullable))
             if self._positions is not None:
                 args.append("positions" + eq + repr(self._positions))
             if self._mask is not None:
                 args.append("mask" + eq + repr(self._mask))
+            if self._namespace != "":
+                args.append("namespace" + eq + repr(self._namespace))
             if self._packing is not None:
                 args.append("packing" + eq + repr(self._packing))
             if self._name is not None:
@@ -1789,7 +1988,10 @@ class Pointer(Schema):
             if indent is None:
                 argstr = ", ".join(args)
             else:
-                args.append("target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
+                if self._target is None:
+                    args.append("target" + eq + repr(None) + "\n" + indent)
+                else:
+                    args.append("target" + eq + self._target.__repr__(labels, shown, indent + "  ").lstrip() + "\n" + indent)
                 args[0] = "\n" + indent + "  " + args[0]
                 argstr = ("," + "\n" + indent + "  ").join(args)
                 
@@ -1806,6 +2008,8 @@ class Pointer(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
+            if self._target is None:
+                raise TypeError("pointer target is still None; must be resolved before it can be stored")
             out = OrderedDict([("type", "pointer"), ("target", self._target._tojson(explicit, labels, shown))])
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
@@ -1813,6 +2017,8 @@ class Pointer(Schema):
                 out["positions"] = self._positions
             if explicit or self._mask is not None:
                 out["mask"] = self._mask
+            if explicit or self._namespace != "":
+                out["namespace"] = self._namespace
             if explicit or self._packing is not None:
                 out["packing"] = self._packingtojson()
             if explicit or self._name is not None:
@@ -1836,6 +2042,7 @@ class Pointer(Schema):
         out.nullable = data.get("nullable", False)
         out.positions = data.get("positions", None)
         out.mask = data.get("mask", None)
+        out.namespace = data.get("namespace", "")
         out.packing = Schema._packingfromjson(data.get("packing", None))
         out.name = data.get("name", None)
         out.doc = data.get("doc", None)
@@ -1855,7 +2062,8 @@ class Pointer(Schema):
     def _collectlabels(self, collection, labels):
         if id(self) not in collection:
             collection.add(id(self))
-            self._target._collectlabels(collection, labels)
+            if self._target is not None:
+                self._target._collectlabels(collection, labels)
         else:
             labels.append(self)
 
@@ -1868,6 +2076,8 @@ class Pointer(Schema):
             replacements["positions"] = self._positions
         if "mask" not in replacements:
             replacements["mask"] = self._mask
+        if "namespace" not in replacements:
+            replacements["namespace"] = self._namespace
         if "packing" not in replacements:
             replacements["packing"] = self._packing
         if "name" not in replacements:
@@ -1878,18 +2088,63 @@ class Pointer(Schema):
             replacements["metadata"] = self._metadata
         return Pointer(**replacements)
 
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Pointer(self._target.replace(fcn, *args, **kwds), nullable=self._nullable, positions=self._positions, mask=self._mask, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
+    def _replace(self, fcn, args, kwds, memo):
+        if id(self) in memo:
+            return fcn(memo[id(self)], *args, **kwds)
+        memo[id(self)] = Pointer(None, nullable=self._nullable, positions=self._positions, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata))
+        memo[id(self)]._target = self._target._replace(fcn, args, kwds, memo)
+        return fcn(memo[id(self)], *args, **kwds)
+
+    def _path(self, loc, path, parents, allowtop, memo):
+        nodes = None
+        for nodes in Schema._path(self, loc, path, parents, allowtop, memo):
+            yield nodes
+        if nodes is None:
+            if id(self) not in memo:
+                memo.add(id(self))
+                for nodes in self._target._path(loc, path, (self,) + parents, allowtop, memo):
+                    yield nodes
+        
+    def _keep(self, loc, paths, project, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        memo[id(self)] = self.copy(target=None)
+        target = self._target._keep(loc, paths, project, memo)
+        if target is None:
+            return None
+        else:
+            memo[id(self)]._target = target
+            return memo[id(self)]
+
+    def _drop(self, loc, paths, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        memo[id(self)] = self.copy(target=None)
+        target = self._target._drop(loc, paths, memo)
+        if target is None:
+            return None
+        else:
+            memo[id(self)]._target = target
+            return memo[id(self)]
+
+    def _contains(self, schema, memo):
+        if id(self) in memo:
+            return False
+        memo.add(id(self))
+        if self == schema:
+            return True
+        else:
+            return self._target._contains(schema, memo)
 
     def __hash__(self):
-        return hash((Pointer, self._target, self._nullable, self._positions, self._mask, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
+        return hash((Pointer, self._target, self._nullable, self._positions, self._mask, self._namespace, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
 
     def __eq__(self, other, memo=None):
         if memo is None:
             memo = {}
         if id(self) in memo:
             return memo[id(self)] == id(other)
-        if not (isinstance(other, Pointer) and self._nullable == other._nullable and self._positions == other._positions and self._mask == other._mask and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
+        if not (isinstance(other, Pointer) and self._nullable == other._nullable and self._positions == other._positions and self._mask == other._mask and self._namespace == other._namespace and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata):
             return False
         memo[id(self)] = id(other)
         return self.target.__eq__(other.target, memo)
@@ -1913,14 +2168,7 @@ class Pointer(Schema):
     def _get_external(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "X"
 
-    def _defaultnames(self, prefix, delimiter, memo, pointers, nesting):
-        if self._nullable:
-            self._mask = self._get_mask(prefix, delimiter)
-        # not done: see Schema.defaultnames
-        memo[id(self)] = prefix
-        pointers.append(self)
-        
-    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension):
+    def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if self._target is None:
             raise TypeError("when creating a Pointer type from a Pointer schema, target must be set to a value other than None")
         args = []
@@ -1936,10 +2184,11 @@ class Pointer(Schema):
         args.append(cacheidx[0]); cacheidx[0] += 1
 
         args.append((self._target, prefix, delimiter))  # placeholder! see _finalizegenerator!
-        args.append(self._packingcopy())
+        args.append(self._namespace)
+        args.append(self._packingcopy(packing))
         args.append(self._name)
         args.append(prefix)
-        args.append(self.copy(packing=self._packingcopy()))
+        args.append(self.copy(packing=None))
 
         for ext in extension:
             if ext.matches(self):
@@ -1949,458 +2198,3 @@ class Pointer(Schema):
 
         memo[id(self)] = cls(*args)
         return memo[id(self)]
-
-################################################################ Partitionings are descriptions of of to map partition numbers and column names to array names
-
-class Partitioning(object):
-    class Lookup(object):
-        dtype = numpy.dtype(numpy.int32)
-
-        def __init__(self, array, delimiter, prefix):
-            if isinstance(array, bytes):
-                array = numpy.frombuffer(array, dtype=self.dtype)
-            elif isinstance(array, basestring):
-                array = codecs.utf_8_encode(numpy.frombuffer(array, dtype=self.dtype))[0]
-
-            self.offsets = [int(x) for x in array]
-            self.delimiter = delimiter
-            self.prefix = prefix
-
-        def __array__(self):
-            return numpy.array(self.offsets, dtype=Partitioning.Lookup.dtype)
-
-        @property
-        def numentries(self):
-            return self.offsets[-1]
-
-        @property
-        def numpartitions(self):
-            return len(self.offsets) - 1
-
-        def id2size(self, id):
-            if 0 <= id < self.numpartitions:
-                return self.offsets[id + 1] - self.offsets[id]
-            else:
-                raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-        def index2id(self, index):
-            normalindex = index if index >= 0 else index + self.numentries
-            if not 0 <= normalindex < self.numentries:
-                raise IndexError("index {0} is out of bounds for size {1}".format(index, self.numentries))
-            return bisect.bisect_right(self.offsets, normalindex) - 1
-
-        def id2name(self, column, id):
-            if 0 <= id < self.numpartitions:
-                if self.prefix:
-                    return "{0}{1}{2}".format(id, self.delimiter, column)
-                else:
-                    return "{0}{1}part{2}".format(column, self.delimiter, id)
-            else:
-                raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-        def index2name(self, column, index):
-            return self.id2name(column, self.index2id(index))
-
-        def append(self, numentries, columns):
-            self.offsets.append(self.offsets[-1] + numentries)
-
-    class ExplicitLookup(Lookup):
-        dtype = numpy.dtype(numpy.uint8)
-
-        def __init__(self, array):
-            assert getattr(array, "dtype", self.dtype) == self.dtype
-            assert getattr(array, "shape", (-1,))[1:] == ()
-            if isinstance(array, unicode):
-                data = json.loads(array)
-            else:
-                data = json.loads(codecs.utf_8_decode(array)[0])
-
-            if "offsets" not in data:
-                raise ValueError("Partitioning.ExplicitLookup array is missing its 'offsets' field")
-            if not isinstance(data["offsets"], list) or not all(isinstance(x, int) for x in data["offsets"]):
-                raise ValueError("Partitioning.ExplicitLookup array 'offsets' must be a list of integers")
-            self.offsets = data["offsets"]
-
-            if "names" not in data:
-                raise ValueError("Partitioning.ExplicitLookup array is missing its 'names' field")
-            if not isinstance(data["names"], list) or not all(isinstance(x, dict) and all(isinstance(y, basestring) and isinstance(z, basestring) for y, z in x.items()) for x in data["names"]):
-                raise ValueError("Partitioning.ExplicitLookup array 'names' must be a list of string-to-string mappings")
-            self.names = data["names"]
-
-            if len(self.names) + 1 != len(self.offsets):
-                raise ValueError("Partitioning.ExplicitLookup array 'names' length must be one less than 'offsets'")
-
-        def __array__(self):
-            return numpy.frombuffer(codecs.utf_8_encode(json.dumps({"offsets": self.offsets, "names": self.names}))[0], dtype=self.dtype)
-
-        def id2name(self, column, id):
-            if 0 <= id < self.numpartitions:
-                return self.names[id][column]
-            else:
-                raise IndexError("id of {0} is out of range for numpartitions {1}".format(id, self.numpartitions))
-
-        def append(self, numentries, columns):
-            self.offsets.append(self.offsets[-1] + numentries)
-            self.names.append(dict((n, "{0}-{1}".format(len(self.names), n)) for n in columns))
-
-    def __init__(self, key):
-        self.key = key
-
-    @property
-    def key(self):
-        return self._key
-
-    @key.setter
-    def key(self, value):
-        if not isinstance(value, basestring):
-            raise TypeError("key must be a string, not {0}".format(repr(value)))
-        self._key = value
-
-    def __repr__(self):
-        return "{0}({1})".format(self.__class__.__name__, repr(self.key))
-
-    def empty_partitionlookup(self, delimiter):
-        return Partitioning.Lookup([0], delimiter, True)
-
-    def partitionlookup(self, array, delimiter):
-        return Partitioning.Lookup(array, delimiter, True)
-
-    def __hash__(self):
-        return hash((self.__class__, self._key))
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self._key == other._key
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def tojson(self):
-        return OrderedDict([(self.__class__.__name__, [self.key])])
-
-    @staticmethod
-    def fromjson(data):
-        if isinstance(data, dict) and len(data) == 1:
-            classname, = data.keys()
-            args, = data.values()
-            try:
-                cls = globals()[classname]
-            except KeyError:
-                raise ValueError("partitioning class {0} not found".format(repr(classname)))
-            return cls(*args)
-        else:
-            raise TypeError("JSON for a Partitioning must be a one-item dict, not {0}".format(repr(data)))
-
-class SuffixPartitioning(Partitioning):
-    def empty_partitionlookup(self, delimiter):
-        return Partitioning.Lookup([0], delimiter, False)
-
-    def partitionlookup(self, array, delimiter):
-        return Partitioning.Lookup(array, delimiter, False)
-    
-class ExplicitPartitioning(Partitioning):
-    def empty_partitionlookup(self, delimiter):
-        return Partitioning.ExplicitLookup(codecs.utf_8_encode(json.dumps({"offsets": [0], "names": []}))[0])
-
-    def partitionlookup(self, array, delimiter):
-        return Partitioning.ExplicitLookup(array)
-
-################################################################ Datasets are Schemas with optional Partitionings and Packings
-
-class Dataset(object):
-    def __init__(self, schema, prefix=None, delimiter=None, extension=None, partitioning=None, packing=None, name=None, doc=None, metadata=None):
-        self._partitioning = None
-        self.schema = schema
-        self.prefix = prefix
-        self.delimiter = delimiter
-        self.extension = extension
-        self.partitioning = partitioning
-        self.packing = packing
-        self.name = name
-        self.doc = doc
-        self.metadata = metadata
-
-    @property
-    def prefix(self):
-        return self._prefix
-
-    @prefix.setter
-    def prefix(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("prefix must be None or a string, not {0}".format(repr(value)))
-        self._prefix = value
-
-    @property
-    def delimiter(self):
-        return self._delimiter
-
-    @delimiter.setter
-    def delimiter(self, value):
-        if value is not None and not (isinstance(value, basestring) and Schema._baddelimiter.match(value) is None):
-            raise ValueError("delimiters must not contain /{0}/".format(Schema._baddelimiter.pattern))
-        self._delimiter = value
-
-    @property
-    def extension(self):
-        return self._extension
-
-    @extension.setter
-    def extension(self, value):
-        if value is None:
-            self._extension = None
-        elif isinstance(value, basestring):
-            self._extension = value
-        else:
-            try:
-                modules = []
-                for x in value:
-                    if not isinstance(x, basestring):
-                        raise TypeError
-                    modules.append(x)
-            except TypeError:
-                raise ValueError("extension must be None, a string, or a list of strings, not {0}".format(repr(value)))
-            else:
-                self._extension = modules
-
-    @property
-    def schema(self):
-        return self._schema
-
-    @schema.setter
-    def schema(self, value):
-        if not isinstance(value, Schema):
-            raise TypeError("schema must be a Schema, not {0}".format(repr(value)))
-        if self._partitioning is not None and not (isinstance(value, List) and not value.nullable):
-            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a non-nullable List")
-        self._schema = value
-
-    @property
-    def partitioning(self):
-        return self._partitioning
-
-    @partitioning.setter
-    def partitioning(self, value):
-        if not (value is None or isinstance(value, Partitioning)):
-            raise TypeError("partitioning must be None or a Partitioning, not {0}".format(repr(value)))
-        if value is not None and not (isinstance(self._schema, List) and not self._schema.nullable):
-            raise TypeError("non-trivial (None) partitionings can only be used on data whose schema is a non-nullable List")
-        self._partitioning = value
-
-    def _partitioningtojson(self):
-        if self._partitioning is None:
-            return None
-        else:
-            return self._partitioning.tojson()
-
-    def _get_partitioning(self, prefix, delimiter):
-        if self._partitioning is None:
-            return Partitioning(prefix + delimiter + "K")
-        else:
-            return self._partitioning
-
-    @property
-    def packing(self):
-        return self._packing
-
-    @packing.setter
-    def packing(self, value):
-        if not (value is None or isinstance(value, oamap.source.packing.PackedSource)):
-            raise TypeError("packing must be None or a PackedSource, not {0}".format(repr(value)))
-        self._packing = value
-
-    @staticmethod
-    def _partitioningfromjson(partitioning):
-        if partitioning is None:
-            return None
-        else:
-            return Partitioning.fromjson(partitioning)
-
-    def _packingtojson(self):
-        if self._packing is None:
-            return None
-        else:
-            return self._packing.tojson()
-
-    @staticmethod
-    def _packingfromjson(packing):
-        if packing is None:
-            return None
-        else:
-            return oamap.source.packing.PackedSource.fromjson(packing)
-
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("name must be None or a string, not {0}".format(repr(value)))
-        self._name = value
-
-    @property
-    def doc(self):
-        return self._doc
-
-    @doc.setter
-    def doc(self, value):
-        if not (value is None or isinstance(value, basestring)):
-            raise TypeError("doc must be None or a string, not {0}".format(repr(value)))
-        self._doc = value
-
-    @property
-    def metadata(self):
-        return self._metadata
-
-    @metadata.setter
-    def metadata(self, value):
-        self._metadata = value
-
-    def __getitem__(self, index):
-        return self._metadata[index]
-
-    def __setitem__(self, index, value):
-        if not isinstance(index, basestring):
-            raise TypeError("metadata keys must be strings, not {0}".format(repr(index)))
-        self._metadata[index] = value
-
-    def defaultnames(self, prefix="object", delimiter="-"):
-        self.schema.defaultnames(prefix=prefix, delimiter=delimiter)
-
-    @property
-    def hasarraynames(self):
-        return self.schema.hasarraynames
-
-    def __repr__(self, indent=None):
-        eq = "=" if indent is None else " = "
-
-        args = []
-        if indent is None:
-            args.append(self._schema.__repr__(indent=indent))
-        if self._prefix is not None:
-            args.append("prefix" + eq + repr(self._prefix))
-        if self._delimiter is not None:
-            args.append("delimiter" + eq + repr(self._delimiter))
-        if self._extension is not None:
-            args.append("extension" + eq + repr(self._extension))
-        if self._partitioning is not None:
-            args.append("partitioning" + eq + repr(self._partitioning))
-        if self._packing is not None:
-            args.append("packing" + eq + repr(self._packing))
-        if self._name is not None:
-            args.append("name" + eq + repr(self._name))
-        if self._doc is not None:
-            args.append("doc" + eq + repr(self._doc))
-        if self._metadata is not None:
-            args.append("metadata" + eq + repr(self._metadata))
-
-        if indent is None:
-            argstr = ", ".join(args)
-        else:
-            args.append("schema" + eq + self._schema.__repr__(indent=(indent + "  ")).lstrip() + "\n" + indent)
-            args[0] = "\n" + indent + "  " + args[0]
-            argstr = ("," + "\n" + indent + "  ").join(args)
-
-        return "Dataset(" + argstr + ")"
-
-    def show(self, stream=sys.stdout):
-        out = self.__repr__(indent="")
-        if stream is None:
-            return out
-        else:
-            stream.write(out)
-            stream.write("\n")
-
-    def copy(self, **replacements):
-        if "schema" not in replacements:
-            replacements["schema"] = self._schema
-        if "prefix" not in replacements:
-            replacements["prefix"] = self._prefix
-        if "delimiter" not in replacements:
-            replacements["delimiter"] = self._delimiter
-        if "extension" not in replacements:
-            replacements["extension"] = self._extension
-        if "partitioning" not in replacements:
-            replacements["partitioning"] = self._partitioning
-        if "packing" not in replacements:
-            replacements["packing"] = self._packing
-        if "name" not in replacements:
-            replacements["name"] = self._name
-        if "doc" not in replacements:
-            replacements["doc"] = self._doc
-        if "metadata" not in replacements:
-            replacements["metadata"] = self._metadata
-        return Dataset(**replacements)
-
-    def deepcopy(self, **replacements):
-        return self.replace(lambda x: x, **replacements)
-
-    def replace(self, fcn, *args, **kwds):
-        return fcn(Dataset(schema=self._schema.deepcopy(),
-                           prefix=self._prefix,
-                           delimiter=self._delimiter,
-                           extension=(None if self._extension is None else list(self._extension)),
-                           partitioning=(None if self._partitioning is None else self._partitioning.__class__(self._partitioning._key)),
-                           packing=self._packingcopy(),
-                           name=self._name,
-                           doc=self._doc,
-                           metadata=copy.deepcopy(self._metadata)),
-                   *args, **kwds)
-
-    def __hash__(self):
-        return hash((Dataset, self._schema, self._prefix, self._delimiter, self._extension, self._partitioning, self._packing, self._name, self._doc, oamap.util.python2hashable(self._metadata)))
-
-    def __eq__(self, other):
-        return isinstance(other, Dataset) and self._schema == other._schema and self._prefix == other._prefix and self._delimiter == other._delimiter and self._extension == other._extension and self._partitioning == other._partitioning and self._packing == other._packing and self._name == other._name and self._doc == other._doc and self._metadata == other._metadata
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def tojsonfile(self, file, *args, **kwds):
-        json.dump(self.tojson(), file, *args, **kwds)
-
-    def tojsonstring(self, *args, **kwds):
-        return json.dumps(self.tojson(), *args, **kwds)
-
-    def tojson(self, explicit=False):
-        out = OrderedDict([("schema", self._schema.tojson(explicit=explicit))])
-        if explicit or self._prefix is not None:
-            out["prefix"] = self._prefix
-        if explicit or self._delimiter is not None:
-            out["delimiter"] = self._delimiter
-        if explicit or self._extension is not None:
-            out["extension"] = self._extension
-        if explicit or self._partitioning is not None:
-            out["partitioning"] = self._partitioningtojson()
-        if explicit or self._packing is not None:
-            out["packing"] = self._packingtojson()
-        if explicit or self._name is not None:
-            out["name"] = self._name
-        if explicit or self._doc is not None:
-            out["doc"] = self._doc
-        if explicit or self._metadata is not None:
-            out["metadata"] = oamap.util.python2json(self._metadata)
-        return out
-
-    @staticmethod
-    def fromjsonfile(file, *args, **kwds):
-        return Dataset.fromjson(json.load(file, *args, **kwds))
-
-    @staticmethod
-    def fromjsonstring(data, *args, **kwds):
-        return Dataset.fromjson(json.loads(data, *args, **kwds))
-
-    @staticmethod
-    def fromjson(data):
-        if isinstance(data, dict):
-            schema = Schema.fromjson(data["schema"])
-            prefix = data.get("prefix", None)
-            delimiter = data.get("delimiter", None)
-            extensions = data.get("extension", None)
-            partitioning = Dataset._partitioningfromjson(data.get("partitioning", None))
-            packing = Dataset._packingfromjson(data.get("packing", None))
-            name = data.get("data", None)
-            doc = data.get("doc", None)
-            metadata = oamap.util.json2python(data.get("metadata", None))
-            return Dataset(schema, prefix=prefix, delimiter=delimiter, partitioning=partitioning, packing=packing, name=name, doc=doc, metadata=metadata)
-        else:
-            raise TypeError("JSON for Dataset must be a dict, not {0}".format(repr(data)))

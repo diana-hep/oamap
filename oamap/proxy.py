@@ -51,9 +51,9 @@ def tojson(value):
         return dict((n, tojson(getattr(value, n))) for n in value._fields)
     elif isinstance(value, TupleProxy):
         return [tojson(x) for x in value]
-    elif isinstance(value, numbers.Integral):
+    elif isinstance(value, (numbers.Integral, numpy.integer)):
         return int(value)
-    elif isinstance(value, numbers.Real):
+    elif isinstance(value, (numbers.Real, numpy.floating)):
         if math.isnan(value):
             return "nan"
         elif value == float("-inf"):
@@ -62,7 +62,7 @@ def tojson(value):
             return "inf"
         else:
             return float(value)
-    elif isinstance(value, numbers.Complex):
+    elif isinstance(value, (numbers.Complex, numpy.complex)):
         return {"real": tojson(value.real), "imag": tojson(value.imag)}
     elif isinstance(value, numpy.ndarray):
         return value.tolist()
@@ -111,9 +111,6 @@ class ListProxy(Proxy):
     @property
     def schema(self):
         return self._generator.schema
-
-    def regenerate(self):
-        self._generator = self._generator.schema.generator()
 
     def indexed(self):
         return self
@@ -204,103 +201,6 @@ class ListProxy(Proxy):
                 return True
         return False
 
-class PartitionedListProxy(ListProxy):
-    def __init__(self, generator, listofarrays):
-        assert isinstance(generator, oamap.generator.ListGenerator)
-        self._generator = generator
-        self._listofarrays = listofarrays
-        self._current = None
-        self._cache = generator._newcache()
-
-    def __repr__(self):
-        out = []
-        for x in self:
-            if len(out) == 5:
-                return "[{0}, ...]".format(", ".join(repr(y) for y in out))
-            out.append(x)
-        return "[{0}]".format(", ".join(repr(y) for y in out))
-
-    @property
-    def numpartitions(self):
-        return len(self._listofarrays)
-
-    def partition(self, i):
-        if self._current != i:
-            if self._current is not None and hasattr(self._listofarrays[self._current], "close"):
-                self._listofarrays[self._current].close()
-            self._current = i
-            self._cache = self._generator._newcache()
-        return self._generator._generate(self._listofarrays[i], 0, self._cache)
-
-    def indexed(self):
-        return IndexedPartitionedListProxy(self._generator, self._listofarrays)
-
-    def __iter__(self):
-        for i in range(self.numpartitions):
-            partition = self.partition(i)
-            for x in partition:
-                yield x
-                
-    def __len__(self):
-        return len(self.indexed())
-
-    def __getitem__(self, index):
-        return self.indexed()[index]
-
-    def __enter__(self, *args, **kwds):
-        return self
-
-    def __exit__(self, *args, **kwds):
-        for arrays in self._listofarrays:
-            if hasattr(arrays, "close"):
-                arrays.close()
-        
-class IndexedPartitionedListProxy(PartitionedListProxy):
-    def __init__(self, generator, listofarrays, offsets=None):
-        super(IndexedPartitionedListProxy, self).__init__(generator, listofarrays)
-
-        if offsets is None:
-            globalindex = 0
-            offsets = []
-            for arrays in self._listofarrays:
-                offsets.append(globalindex)
-                self._generator._getarrays(arrays, self._cache, self._generator._toget(arrays, self._cache))
-                starts = self._cache[self._generator.startsidx]
-                stops = self._cache[self._generator.stopsidx]
-                assert len(starts) == 1 and len(stops) == 1
-                globalindex += stops[0] - starts[0]
-            offsets.append(globalindex)
-        self._offsets = numpy.array(offsets, dtype=numpy.int64)
-
-        assert len(self._listofarrays) + 1 == len(self._offsets)
-
-    def __repr__(self):
-        if len(self) > 10:
-            return "[{0}, ..., {1}]".format(", ".join(repr(self[i]) for i in range(5)), ", ".join(repr(self[i]) for i in range(-5, 0)))
-        else:
-            return "[{0}]".format(", ".join(repr(x) for x in self))
-
-    def indexed(self):
-        return self
-
-    def __len__(self):
-        return self._offsets[-1]
-
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            raise TypeError("an IndexedPartitionedListProxy can only be indexed by an integer, not a slice")
-
-        else:
-            normalindex = index if index >= 0 else index + len(self)
-            if not 0 <= normalindex < len(self):
-                raise IndexError("index {0} is out of bounds for size {1}".format(index, len(self)))
-
-            partitionid = bisect.bisect_right(self._offsets, normalindex) - 1
-            assert 0 <= partitionid < self.numpartitions
-
-            localindex = normalindex - self._offsets[partitionid]
-            return self.partition(partitionid)[localindex]
-
 ################################################################ Records
 
 class RecordProxy(Proxy):
@@ -337,10 +237,6 @@ class RecordProxy(Proxy):
                 return self._fields
             elif field == "name":
                 return self._generator.name
-            elif field == "regenerate":
-                def regenerate():
-                    self._generator = self._generator.schema.generator()
-                return regenerate
             else:
                 raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
         else:

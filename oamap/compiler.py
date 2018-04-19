@@ -735,6 +735,10 @@ else:
                        ("length", numba.types.int64)]
             super(ListProxyModel, self).__init__(dmm, fe_type, members)
 
+    numba.extending.make_attribute_wrapper(ListProxyNumbaType, "whence", "_whence")
+    numba.extending.make_attribute_wrapper(ListProxyNumbaType, "stride", "_stride")
+    numba.extending.make_attribute_wrapper(ListProxyNumbaType, "length", "_length")
+
     @numba.extending.type_callable(len)
     def listproxy_len_type(context):
         def typer(listproxy):
@@ -1263,6 +1267,8 @@ else:
                        ("index", numba.types.int64)]
             super(RecordProxyModel, self).__init__(dmm, fe_type, members)
 
+    numba.extending.make_attribute_wrapper(RecordProxyNumbaType, "index", "_index")
+
     @numba.extending.infer_getattr
     class RecordProxyAttribute(numba.typing.templates.AttributeTemplate):
         key = RecordProxyNumbaType
@@ -1378,6 +1384,8 @@ else:
                        ("lens", numba.types.voidptr),
                        ("index", numba.types.int64)]
             super(TupleProxyModel, self).__init__(dmm, fe_type, members)
+
+    numba.extending.make_attribute_wrapper(TupleProxyNumbaType, "index", "_index")
 
     @numba.extending.type_callable(len)
     def tupleproxy_len_type(context):
@@ -1502,349 +1510,28 @@ else:
 
         return out
 
-    ################################################################ PartitionedListProxy and IndexedPartitionedListProxy
+    ################################################################ additional useful functions
 
-    @numba.extending.typeof_impl.register(oamap.proxy.PartitionedListProxy)
-    def typeof_proxy(val, c):
-        if isinstance(val, oamap.proxy.IndexedPartitionedListProxy):
-            return IndexedPartitionedListType(val._generator)
+    # FIXME: you probably want this to work for OAMap proxies as well
+
+    def required(x):
+        if x is None:
+            raise ValueError("optional value is None")
         else:
-            return PartitionedListType(val._generator)
+            return x
 
-    class PartitionedListType(numba.types.Type):
-        def __init__(self, generator):
-            self.generator = generator
-            super(PartitionedListType, self).__init__(name="OAMap-PartitionedListProxy-" + self.generator.id)
-
-        def __repr__(self):
-            return "\n    Partitioned " + self.generator.schema.__repr__(indent="    ") + "\n"
-
-    class IndexedPartitionedListType(PartitionedListType):
-        def __init__(self, generator):
-            self.generator = generator
-            super(PartitionedListType, self).__init__(name="OAMap-IndexedPartitionedListProxy-" + self.generator.id)
-
-        def __repr__(self):
-            return "\n    Indexed Partitioned " + self.generator.schema.__repr__(indent="    ") + "\n"
-
-    @numba.extending.register_model(PartitionedListType)
-    class PartitionedListModel(numba.datamodel.models.StructModel):
-        def __init__(self, dmm, fe_type):
-            members = [("numpartitions", numba.types.int64),
-                       ("generator", numba.types.pyobject),
-                       ("listofarrays", numba.types.pyobject),
-                       ("cache", numba.types.pyobject),
-                       ("current", numba.types.CPointer(numba.types.int64)),
-                       ("listproxy", numba.types.CPointer(ListProxyNumbaType(fe_type.generator)))]
-            super(PartitionedListModel, self).__init__(dmm, fe_type, members)
-
-    @numba.extending.register_model(IndexedPartitionedListType)
-    class IndexedPartitionedListModel(numba.datamodel.models.StructModel):
-        def __init__(self, dmm, fe_type):
-            members = [("offsets", numba.types.voidptr),
-                       ("numpartitions", numba.types.int64),
-                       ("generator", numba.types.pyobject),
-                       ("listofarrays", numba.types.pyobject),
-                       ("cache", numba.types.pyobject),
-                       ("current", numba.types.CPointer(numba.types.int64)),
-                       ("listproxy", numba.types.CPointer(ListProxyNumbaType(fe_type.generator)))]
-            super(IndexedPartitionedListModel, self).__init__(dmm, fe_type, members)
-
-    @numba.extending.infer_getattr
-    class PartitionedListAttribute(numba.typing.templates.AttributeTemplate):
-        key = PartitionedListType
-        @numba.typing.templates.bound_function("partitionedlist.partition")
-        def resolve_partition(self, partitionedlisttype, args, kwds):
-            if len(args) == 1:
-                arg, = args
-                if isinstance(arg, numba.types.Integer):
-                    return ListProxyNumbaType(partitionedlisttype.generator)(arg)
-
-    @numba.extending.lower_builtin("partitionedlist.partition", PartitionedListType, numba.types.Integer)
-    def partitionedlist_partition(context, builder, sig, args):
-        partitionedlisttype, indextype = sig.args
-        partitionedlistval, indexval = args
-        partitionedlist = numba.cgutils.create_struct_proxy(partitionedlisttype)(context, builder, value=partitionedlistval)
-
-        raise_exception(context,
-                        builder,
-                        builder.or_(builder.icmp_signed("<", indexval, literal_int64(0)),
-                                    builder.icmp_signed(">=", indexval, partitionedlist.numpartitions)),
-                        TypeError("partition index out of range for PartitionedListProxy"))
-
-        with builder.if_then(builder.icmp_signed("!=", builder.load(partitionedlist.current), indexval), likely=False):
-            pyapi = context.get_python_api(builder)
-            generator_obj = partitionedlist.generator
-
-            with builder.if_then(builder.icmp_signed("!=", builder.load(partitionedlist.current), literal_int64(-1)), likely=True):
-                listproxy = numba.cgutils.create_struct_proxy(ListProxyNumbaType(partitionedlisttype.generator))(context, builder, value=builder.load(partitionedlist.listproxy))
-                baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder, value=listproxy.baggage)
-
-                pyapi.decref(baggage.ptrs)
-                pyapi.decref(baggage.lens)
-
-            index_obj = pyapi.long_from_longlong(builder.load(partitionedlist.current))
-            clearcache_fcn = pyapi.object_getattr_string(generator_obj, "_clearcache")
-            results2_obj = pyapi.call_function_objargs(clearcache_fcn, (partitionedlist.cache, partitionedlist.listofarrays, index_obj))
-            raise_exception(context,
-                            builder,
-                            numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
-                            RuntimeError("call to generator._clearcache failed"))
-            pyapi.decref(results2_obj)
-            pyapi.decref(generator_obj)
-            pyapi.decref(index_obj)
-
-            entercompiled_fcn = pyapi.object_getattr_string(generator_obj, "_entercompiled")
-            arrays_obj = pyapi.list_getitem(partitionedlist.listofarrays, indexval)
-            results_obj = pyapi.call_function_objargs(entercompiled_fcn, (arrays_obj, partitionedlist.cache))
-
-            raise_exception(context,
-                            builder,
-                            numba.cgutils.is_not_null(builder, pyapi.err_occurred()),
-                            RuntimeError("call to generator._entercompiled (which gets the next batch of arrays) failed"))
-
-            baggage = numba.cgutils.create_struct_proxy(baggagetype)(context, builder)
-            baggage.arrays = arrays_obj
-            baggage.cache = partitionedlist.cache
-            baggage.ptrs = pyapi.tuple_getitem(results_obj, 0)
-            baggage.lens = pyapi.tuple_getitem(results_obj, 1)
-
-            ptrs_obj = pyapi.tuple_getitem(results_obj, 2)
-            lens_obj = pyapi.tuple_getitem(results_obj, 3)
-            ptrs = pyapi.long_as_voidptr(ptrs_obj)
-            lens = pyapi.long_as_voidptr(lens_obj)
-
-            pyapi.incref(baggage.ptrs)
-            pyapi.incref(baggage.lens)
-
-            pyapi.decref(results_obj)
-            pyapi.decref(generator_obj)
-
-            builder.store(indexval, partitionedlist.current)
-            builder.store(generate(context, builder, partitionedlisttype.generator, baggage._getvalue(), ptrs, lens, literal_int64(0)), partitionedlist.listproxy)
-
-        return builder.load(partitionedlist.listproxy)
-
-    @numba.extending.type_callable(len)
-    def partitionedlist_len_type(context):
-        def typer(partitionedlist):
-            if isinstance(partitionedlist, IndexedPartitionedListType):
-                return numba.types.int64
+    @numba.extending.type_callable(required)
+    def required_type(context):
+        def typer(x):
+            if isinstance(x, numba.types.Optional):
+                return x.type
         return typer
 
-    @numba.extending.lower_builtin(len, IndexedPartitionedListType)
-    def partitionedlist_len(context, builder, sig, args):
-        partitionedlisttpe, = sig.args
-        partitionedlistval, = args
-        partitionedlist = numba.cgutils.create_struct_proxy(partitionedlisttpe)(context, builder, value=partitionedlistval)
-
-        ptr = builder.inttoptr(
-            builder.add(builder.ptrtoint(partitionedlist.offsets, llvmlite.llvmpy.core.Type.int(64)), builder.mul(partitionedlist.numpartitions, literal_int64(8))),
-            llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.types.int64)))
-        return numba.targets.arrayobj.load_item(context, builder, numba.types.int64[:], ptr)
-
-    @numba.typing.templates.infer
-    class PartitionedListGetItem(numba.typing.templates.AbstractTemplate):
-        key = "getitem"
-        def generic(self, args, kwds):
-            if len(args) == 2:
-                tpe, idx = args
-                if isinstance(tpe, IndexedPartitionedListType):
-                    if isinstance(idx, numba.types.Integer):
-                        return typeof_generator(tpe.generator.content)(tpe, idx)
-
-    @numba.extending.lower_builtin("getitem", IndexedPartitionedListType, numba.types.Integer)
-    def partitionedlist_getitem(context, builder, sig, args):
-        partitionedlisttpe, indextpe = sig.args
-        partitionedlistval, indexval = args
-        partitionedlist = numba.cgutils.create_struct_proxy(partitionedlisttpe)(context, builder, value=partitionedlistval)
-        indexval = cast_int64(builder, indexval)
-        length = partitionedlist_len(context, builder, numba.types.int64(partitionedlisttpe), (partitionedlistval,))
-
-        normindex_ptr = numba.cgutils.alloca_once_value(builder, indexval)
-        with builder.if_then(builder.icmp_signed("<", indexval, literal_int64(0))):
-            builder.store(builder.add(indexval, length), normindex_ptr)
-        normindex = builder.load(normindex_ptr)
-
-        raise_exception(context,
-                        builder,
-                        builder.or_(builder.icmp_signed("<", normindex, literal_int64(0)),
-                                    builder.icmp_signed(">=", normindex, length)),
-                        IndexError("index out of bounds"))
-
-        partitionidx_ptr = numba.cgutils.alloca_once_value(builder, literal_int64(-1))
-        localindex_ptr = numba.cgutils.alloca_once_value(builder, literal_int64(-1))
-        with numba.cgutils.for_range(builder, length) as loop:
-            lowptr = builder.inttoptr(
-                builder.add(builder.ptrtoint(partitionedlist.offsets, llvmlite.llvmpy.core.Type.int(64)), builder.mul(loop.index, literal_int64(8))),
-                llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.types.int64)))
-            highptr = builder.inttoptr(
-                builder.add(builder.ptrtoint(partitionedlist.offsets, llvmlite.llvmpy.core.Type.int(64)), builder.mul(builder.add(loop.index, literal_int64(1)), literal_int64(8))),
-                llvmlite.llvmpy.core.Type.pointer(context.get_value_type(numba.types.int64)))
-            low = numba.targets.arrayobj.load_item(context, builder, numba.types.int64[:], lowptr)
-            high = numba.targets.arrayobj.load_item(context, builder, numba.types.int64[:], highptr)
-            with builder.if_then(builder.and_(builder.icmp_signed("<=", low, normindex), builder.icmp_signed("<", normindex, high))):
-                builder.store(loop.index, partitionidx_ptr)
-                builder.store(builder.sub(normindex, low), localindex_ptr)
-                loop.do_break()
-
-        raise_exception(context,
-                        builder,
-                        builder.icmp_signed("<", builder.load(partitionidx_ptr), literal_int64(0)),
-                        IndexError("IndexedPartitionedListProxy's 'offsets' are incorrectly formatted"))
-
-        listproxyval = partitionedlist_partition(context, builder, ListProxyNumbaType(partitionedlisttpe.generator)(partitionedlisttpe, numba.types.int64), (partitionedlistval, builder.load(partitionidx_ptr),))
-        listproxy = numba.cgutils.create_struct_proxy(ListProxyNumbaType(partitionedlisttpe.generator))(context, builder, value=listproxyval)
-        return generate(context, builder, partitionedlisttpe.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, builder.load(localindex_ptr))
-
-    @numba.extending.unbox(PartitionedListType)
-    def unbox_partitionedlist(typ, obj, c):
-        generator_obj = c.pyapi.object_getattr_string(obj, "_generator")
-        listofarrays_obj = c.pyapi.object_getattr_string(obj, "_listofarrays")
-        cache_obj = c.pyapi.object_getattr_string(obj, "_cache")
-
-        baggage = numba.cgutils.create_struct_proxy(baggagetype)(c.context, c.builder)
-        baggage.arrays = llvmlite.llvmpy.core.Constant.null(c.context.get_value_type(numba.types.pyobject))
-        baggage.cache = llvmlite.llvmpy.core.Constant.null(c.context.get_value_type(numba.types.pyobject))
-        baggage.ptrs = llvmlite.llvmpy.core.Constant.null(c.context.get_value_type(numba.types.pyobject))
-        baggage.lens = llvmlite.llvmpy.core.Constant.null(c.context.get_value_type(numba.types.pyobject))
-
-        current_ptr = numba.cgutils.alloca_once_value(c.builder, literal_int64(-1))
-        listproxy_ptr = numba.cgutils.alloca_once_value(c.builder, generate_empty(c.context, c.builder, typ.generator, baggage._getvalue()))
-
-        partitionedlist = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder)
-        partitionedlist.numpartitions = c.pyapi.list_size(listofarrays_obj)
-        partitionedlist.generator = generator_obj
-        partitionedlist.listofarrays = listofarrays_obj
-        partitionedlist.cache = cache_obj
-        partitionedlist.current = current_ptr
-        partitionedlist.listproxy = listproxy_ptr
-
-        if isinstance(typ, IndexedPartitionedListType):
-            offsets_array_obj = c.pyapi.object_getattr_string(obj, "_offsets")
-            offsets_ctypes_obj = c.pyapi.object_getattr_string(offsets_array_obj, "ctypes")
-            offsets_data_obj = c.pyapi.object_getattr_string(offsets_ctypes_obj, "data")
-            partitionedlist.offsets = c.pyapi.long_as_voidptr(offsets_data_obj)
-            c.pyapi.decref(offsets_array_obj)
-            c.pyapi.decref(offsets_ctypes_obj)
-            c.pyapi.decref(offsets_data_obj)
-
-        c.pyapi.decref(generator_obj)
-        c.pyapi.decref(listofarrays_obj)
-        c.pyapi.decref(cache_obj)
-
-        is_error = numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
-        return numba.extending.NativeValue(partitionedlist._getvalue(), is_error=is_error)
-
-    @numba.extending.box(PartitionedListType)
-    def box_partitionedlist(typ, val, c):
-        generator_obj = c.pyapi.unserialize(c.pyapi.serialize_object(typ.generator))
-        new_fcn = c.pyapi.object_getattr_string(generator_obj, "_new")
-        results_obj = c.pyapi.call_function_objargs(new_fcn, ())
-        with c.builder.if_then(numba.cgutils.is_not_null(c.builder, c.pyapi.err_occurred()), likely=False):
-            c.builder.ret(llvmlite.llvmpy.core.Constant.null(c.pyapi.pyobj))
-        c.pyapi.decref(results_obj)
-
-        partitionedlist = numba.cgutils.create_struct_proxy(typ)(c.context, c.builder, value=val)
-
-        if isinstance(typ, IndexedPartitionedListType):
-            partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.IndexedPartitionedListProxy))
-            lenoffsets = c.builder.add(partitionedlist.numpartitions, literal_int64(1))
-            offsets_obj = c.pyapi.list_new(cast_intp(c.builder, lenoffsets))
-            with numba.cgutils.for_range(c.builder, lenoffsets) as loop:
-                ptr = c.builder.inttoptr(
-                    c.builder.add(c.builder.ptrtoint(partitionedlist.offsets, llvmlite.llvmpy.core.Type.int(64)), c.builder.mul(loop.index, literal_int64(8))),
-                    llvmlite.llvmpy.core.Type.pointer(c.context.get_value_type(numba.types.int64)))
-                val = numba.targets.arrayobj.load_item(c.context, c.builder, numba.types.int64[:], ptr)
-                val_obj = c.pyapi.long_from_longlong(val)
-                c.pyapi.list_setitem(offsets_obj, loop.index, val_obj)
-
-            args = (generator_obj, partitionedlist.listofarrays, offsets_obj)
-        else:
-            partitionedlistproxy_cls = c.pyapi.unserialize(c.pyapi.serialize_object(oamap.proxy.PartitionedListProxy))
-            args = (generator_obj, partitionedlist.listofarrays)
-
-        out = c.pyapi.call_function_objargs(partitionedlistproxy_cls, args)
-
-        c.pyapi.decref(partitionedlistproxy_cls)
-
-        return out
-
-    ################################################################ PartitionedListProxyIterator
-
-    class PartitionedListIteratorType(numba.types.common.SimpleIteratorType):
-        def __init__(self, partitionedlisttype):
-            self.partitionedlisttype = partitionedlisttype
-            super(PartitionedListIteratorType, self).__init__("iter({0})".format(self.partitionedlisttype.name), typeof_generator(self.partitionedlisttype.generator.content))
-
-    @numba.datamodel.registry.register_default(PartitionedListIteratorType)
-    class PartitionedListIteratorModel(numba.datamodel.models.StructModel):
-        def __init__(self, dmm, fe_type):
-            members = [("partitionindex", numba.types.EphemeralPointer(numba.types.int64)),
-                       ("listindex", numba.types.EphemeralPointer(numba.types.int64)),
-                       ("partitionedlist", fe_type.partitionedlisttype)]
-            super(PartitionedListIteratorModel, self).__init__(dmm, fe_type, members)
-
-    @numba.typing.templates.infer
-    class PartitionedListIteratorGetIter(numba.typing.templates.AbstractTemplate):
-        key = "getiter"
-        def generic(self, args, kwds):
-            if len(args) == 1:
-                objtyp, = args
-                if isinstance(objtyp, PartitionedListType):
-                    return numba.typing.templates.signature(PartitionedListIteratorType(objtyp), objtyp)
-
-    @numba.extending.lower_builtin("getiter", PartitionedListType)
-    def partitionedlist_getiter(context, builder, sig, args):
-        partitionedlisttpe, = sig.args
-        partitionedlistval, = args
-
-        iterproxy = context.make_helper(builder, sig.return_type)
-        iterproxy.partitionindex = numba.cgutils.alloca_once_value(builder, literal_int64(0))
-        iterproxy.listindex = numba.cgutils.alloca_once_value(builder, literal_int64(0))
-        iterproxy.partitionedlist = partitionedlistval
-
-        if context.enable_nrt:
-            context.nrt.incref(builder, partitionedlisttpe, partitionedlistval)
-
-        return numba.targets.imputils.impl_ret_new_ref(context, builder, sig.return_type, iterproxy._getvalue())
-
-    @numba.extending.lower_builtin("iternext", PartitionedListIteratorType)
-    @numba.targets.imputils.iternext_impl
-    def partitionedlist_iternext(context, builder, sig, args, result):
-        itertpe, = sig.args
-        iterval, = args
-        iterproxy = context.make_helper(builder, itertpe, value=iterval)
-        partitionedlistproxy = numba.cgutils.create_struct_proxy(itertpe.partitionedlisttype)(context, builder, value=iterproxy.partitionedlist)
-
-        do_partitionindex = builder.append_basic_block("do.partitionindex")
-        do_listproxy      = builder.append_basic_block("do.listproxy")
-        do_yielditem      = builder.append_basic_block("do.yielditem")
-        do_listend        = builder.append_basic_block("do.listend")
-        do_end            = builder.append_basic_block("do.end")
-        do_begin          = builder.basic_block
-        builder.branch(do_partitionindex)
-
-        with builder.goto_block(do_partitionindex):
-            result.set_valid(builder.icmp_signed("<", builder.load(iterproxy.partitionindex), partitionedlistproxy.numpartitions))
-            builder.cbranch(result.is_valid(), do_listproxy, do_end)
-        
-        with builder.goto_block(do_listproxy):
-            listproxytype = ListProxyNumbaType(itertpe.partitionedlisttype.generator)
-            listproxyval = partitionedlist_partition(context, builder, listproxytype(itertpe.partitionedlisttype, numba.types.int64), (iterproxy.partitionedlist, builder.load(iterproxy.partitionindex)))
-            listproxy = numba.cgutils.create_struct_proxy(listproxytype)(context, builder, value=listproxyval)
-            check_listend = builder.icmp_signed("<", builder.load(iterproxy.listindex), listproxy.length)
-            builder.cbranch(check_listend, do_yielditem, do_listend)
-
-        with builder.goto_block(do_yielditem):
-            at = builder.add(listproxy.whence, builder.mul(listproxy.stride, builder.load(iterproxy.listindex)))
-            result.yield_(generate(context, builder, itertpe.partitionedlisttype.generator.content, listproxy.baggage, listproxy.ptrs, listproxy.lens, at))
-            builder.store(numba.cgutils.increment_index(builder, builder.load(iterproxy.listindex)), iterproxy.listindex)
-            builder.branch(do_end)
-
-        with builder.goto_block(do_listend):
-            builder.store(literal_int64(0), iterproxy.listindex)
-            builder.store(numba.cgutils.increment_index(builder, builder.load(iterproxy.partitionindex)), iterproxy.partitionindex)
-            builder.branch(do_partitionindex)
-
-        builder.position_at_end(do_end)
+    @numba.extending.lower_builtin(required, numba.types.Optional)
+    def required_impl(context, builder, sig, args):
+        tpe, = sig.args
+        val, = args
+        helper = context.make_helper(builder, tpe, value=val)
+        with builder.if_then(builder.not_(helper.valid), likely=False):
+            context.call_conv.return_user_exc(builder, TypeError, ("optional value is None",))
+        return helper.data
