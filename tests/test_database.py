@@ -42,7 +42,16 @@ class TestDatabase(unittest.TestCase):
         pass
 
     def test_dataset(self):
-        db = InMemoryDatabase.fromdata("one", List(Record({"x": "int", "y": "int"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
+        db = InMemoryDatabase.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
         one = db.data.one
+        self.assertEqual(one[0].x, 1)
+        self.assertEqual(one[1].x, 2)
+        self.assertEqual(one[2].x, 3)
+        self.assertEqual(one[3].x, 4)
+        self.assertEqual(one[4].x, 5)
+        self.assertEqual(one[5].x, 6)
+        self.assertEqual([obj.x for obj in one], [1, 2, 3, 4, 5, 6])
+        self.assertEqual([obj.y for obj in one], [1.1, 2.2, 3.3, 4.4, 5.5, 6.6])
+        self.assertEqual(oamap.operations.project(one.partition(0), "x"), [1, 2, 3])
+        self.assertEqual(oamap.operations.project(one.partition(1), "x"), [4, 5, 6])
 
-        

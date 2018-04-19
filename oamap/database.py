@@ -156,7 +156,7 @@ class Database(object):
         packing = oamap.schema.Schema._packingfromjson(obj.get("packing", None))
 
         if isinstance(schema, oamap.schema.List):
-            return oamap.dataset.Dataset(obj["name"],
+            return oamap.dataset.Dataset(name,
                                          schema,
                                          dict(self._backends),
                                          self._executor,
@@ -167,7 +167,7 @@ class Database(object):
                                          metadata=obj.get("metadata", None),
                                          delimiter=obj.get("delimiter", "-"))
         else:
-            return oamap.dataset.Data(obj["name"],
+            return oamap.dataset.Data(name,
                                       schema,
                                       dict(self._backends),
                                       self._executor,
@@ -178,7 +178,7 @@ class Database(object):
                                       delimiter=obj.get("delimiter", "-"))
 
     def _dataset2json(self, data):
-        obj = {"name": data._name, "schema": data._schema.tojson()}
+        obj = {"schema": data._schema.tojson()}
         if isinstance(data._schema, oamap.schema.List):
             obj["offsets"] = data._offsets.tolist()
         if data._packing is not None:
@@ -229,7 +229,7 @@ class InMemoryDatabase(Database):
             return InMemoryDatabase(
                 backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
                 namespace=namespace,
-                datasets={"name": name, "schema": schema.tojson()})
+                datasets={name: {"schema": schema.tojson()}})
 
         elif isinstance(schema, oamap.schema.List):
             arrays = {}
@@ -238,11 +238,11 @@ class InMemoryDatabase(Database):
             for i, x in enumerate(partitions):
                 arrays[i] = generator.fromdata(x)._arrays
                 refcounts[i] = dict((n, 1) for n in arrays[i])
-                offsets.append(len(x))
+                offsets.append(offsets[-1] + len(x))
             return InMemoryDatabase(
                 backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
                 namespace=namespace,
-                datasets={"name": name, "schema": schema.tojson(), "offsets": offsets})
+                datasets={name: {"schema": schema.tojson(), "offsets": offsets}})
 
         else:
             raise TypeError("can only create datasets from proxy types (list, records, tuples)")

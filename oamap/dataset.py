@@ -30,7 +30,6 @@
 
 import copy
 import numbers
-import types
 import functools
 
 import numpy
@@ -136,13 +135,13 @@ class Operable(object):
             return action
 
         for n, x in oamap.operations.recastings.items():
-            setattr(Operable, n, types.MethodType(newrecasting(n, x), None, Operable))
+            setattr(Operable, n, oamap.util.MethodType(newrecasting(n, x), None, Operable))
 
         for n, x in oamap.operations.transformations.items():
-            setattr(Operable, n, types.MethodType(newtransformation(n, x), None, Operable))
+            setattr(Operable, n, oamap.util.MethodType(newtransformation(n, x), None, Operable))
 
         for n, x in oamap.operations.actions.items():
-            setattr(Operable, n, types.MethodType(newaction(n, x), None, Operable))
+            setattr(Operable, n, oamap.util.MethodType(newaction(n, x), None, Operable))
 
 Operable.update_operations()
 

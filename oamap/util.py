@@ -29,10 +29,18 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import sys
+import types
 
 if sys.version_info[0] > 2:
     basestring = str
     unicode = str
+    def MethodType(function, instance, cls):
+        if instance is None:
+            return function
+        else:
+            return types.MethodType(function, instance)
+else:
+    MethodType = types.MethodType
 
 try:
     from collections import OrderedDict
@@ -200,6 +208,9 @@ def paramtypes(args):
     else:
         return tuple(nb.typeof(x) for x in args)
 
+def doexec(module, env):
+    exec(module, env)
+
 def trycompile(fcn, paramtypes=None, numba=True):
     if isinstance(fcn, basestring):
         parsed = ast.parse(fcn).body
@@ -235,7 +246,7 @@ def {fcn}({params}):
         module = compile(module, "<fcn string>", "exec")
 
         env = dict(globals())
-        exec(module, env)
+        doexec(module, env)
         fcn = env[fcnname]
 
     if numba is None or numba is False:
