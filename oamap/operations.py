@@ -1036,9 +1036,9 @@ def {fill}({view}, {out}{params}):
             numitems = fill(*((view, out) + args))
             out = out[:numitems]
 
-        elif isinstance(rtype, (nb.types.Tuple, nb.types.UniTuple, nb.types.NamedUniTuple)) and len(rtype.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.types):
+        elif isinstance(rtype, (nb.types.Tuple, nb.types.NamedTuple, nb.types.UniTuple, nb.types.NamedUniTuple)) and len(rtype.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.types):
             if names is None:
-                if isinstance(rtype, nb.types.NamedUniTuple):
+                if isinstance(rtype, (nb.types.NamedTuple, nb.types.NamedUniTuple)):
                     names = rtype.fields
                 else:
                     names = ["f" + str(i) for i in range(len(rtype.types))]
@@ -1071,9 +1071,9 @@ def {fill}({view}, {outs}{params}):
             fill = oamap.util.trycompile(env[fillname], numba=numba)
             fill(*((view,) + outs + args))
 
-        elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Tuple, nb.types.UniTuple, nb.types.NamedUniTuple)) and len(rtype.type.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.type.types):
+        elif isinstance(rtype, nb.types.Optional) and isinstance(rtype.type, (nb.types.Tuple, nb.types.NamedTuple, nb.types.UniTuple, nb.types.NamedUniTuple)) and len(rtype.type.types) > 0 and all(isinstance(x, (nb.types.Integer, nb.types.Float, nb.types.Boolean)) for x in rtype.type.types):
             if names is None:
-                if isinstance(rtype.type, nb.types.NamedUniTuple):
+                if isinstance(rtype.type, (nb.types.NamedTuple, nb.types.NamedUniTuple)):
                     names = rtype.type.fields
                 else:
                     names = ["f" + str(i) for i in range(len(rtype.type.types))]
