@@ -52,6 +52,23 @@ class NumpyFileBackend(oamap.database.WritableBackend):
     def prefix(self, dataset):
         return os.path.join(dataset, "PART", "obj")
 
+    def incref(self, dataset, partitionid, arrayname):
+        print "incref", dataset, partitionid, arrayname
+
+        otherdataset_part, array = os.path.split(arrayname)
+        otherdataset, part = os.path.split(otherdataset_part)
+        if otherdataset != dataset:
+            src = os.path.join(self._directory, otherdataset, str(partitionid), array) + ".npy"
+            dst = os.path.join(self._directory, dataset, str(partitionid), array) + ".npy"
+            os.link(src, dst)
+
+    def decref(self, dataset, partitionid, arrayname):
+        print "decref", dataset, partitionid, arrayname
+
+        otherdataset_part, array = os.path.split(arrayname)
+        path = os.path.join(self._directory, dataset, str(partitionid), array) + ".npy"
+        os.unlink(path)
+
 class NumpyArrays(object):
     def __init__(self, directory, partitionid):
         self._directory = directory
@@ -74,7 +91,7 @@ class NumpyArrays(object):
             if not os.path.exists(os.path.join(self._directory, dataset, str(self._partitionid))):
                 os.mkdir(os.path.join(self._directory, dataset, str(self._partitionid)))
 
-        return os.path.join(self._directory, dataset, str(self._partitionid), array)
+        return os.path.join(self._directory, dataset, str(self._partitionid), array) + ".npy"
 
     def __getitem__(self, name):
         return numpy.load(self.fullname(name))

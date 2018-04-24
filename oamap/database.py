@@ -338,6 +338,11 @@ class InMemoryDatabase(Database):
             self[namespace] = DictBackend()
         backend = self[namespace]
 
+        def setnamespace(node):
+            node.namespace = namespace
+            return node
+        schema = schema.replace(setnamespace)
+
         generator = schema.generator(prefix=backend.prefix(name), delimiter=backend.delimiter(), extension=extension, packing=packing)
         generator._requireall()
         roles = generator._togetall({}, generator._newcache(), True, set())
@@ -362,6 +367,16 @@ class InMemoryDatabase(Database):
             for partitionid, partition in enumerate(partitions):
                 data = generator.fromdata(partition)
                 roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
+                startsrole = oamap.generator.StartsRole(generator.starts, generator.namespace, None)
+                stopsrole = oamap.generator.StopsRole(generator.stops, generator.namespace, None)
+                startsrole.stops = stopsrole
+                stopsrole.starts = startsrole
+                if schema.nullable:
+                    maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, {startsrole: roles2arrays[startsrole], stopsrole: roles2arrays[stopsrole]})
+                del roles2arrays[startsrole]
+                del roles2arrays[stopsrole]
+                if schema.nullable:
+                    del roles2arrays[maskrole]
 
                 active = backend.instantiate(partitionid)
                 if hasattr(active, "putall"):
