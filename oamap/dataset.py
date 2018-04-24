@@ -146,7 +146,7 @@ class Operable(object):
 Operable.update_operations()
 
 class _Data(Operable):
-    def __init__(self, name, schema, backends, executor, extension=None, packing=None, doc=None, metadata=None, delimiter="-"):
+    def __init__(self, name, schema, backends, executor, extension=None, packing=None, doc=None, metadata=None):
         super(_Data, self).__init__()
         self._name = name
         self._schema = schema
@@ -156,7 +156,6 @@ class _Data(Operable):
         self._packing = packing
         self._doc = doc
         self._metadata = metadata
-        self._delimiter = delimiter
         self._cachedobject = None
 
     def __repr__(self):
@@ -193,7 +192,7 @@ class _Data(Operable):
         return DataArrays(self._backends)
 
     def _serializable(self):
-        out = Data(self._name, self._schema, self._backends, None, extension=self._extension, packing=self._packing, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+        out = Data(self._name, self._schema, self._backends, None, extension=self._extension, packing=self._packing, doc=self._doc, metadata=self._metadata)
         out._operations = copy.deepcopy(self._operations)
         return out
 
@@ -203,9 +202,9 @@ class _Data(Operable):
             for operation in self._operations:
                 result = operation.apply(result)
             if isinstance(result, oamap.proxy.ListProxy):
-                out = Dataset(name, result._generator.schema, self._backends, self._executor, [0, len(result)], extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+                out = Dataset(name, result._generator.schema, self._backends, self._executor, [0, len(result)], extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata)
             else:
-                out = Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+                out = Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata)
             return [SingleThreadExecutor.PseudoFuture(update(out))]
 
         else:
@@ -214,7 +213,7 @@ class _Data(Operable):
                 for operation in dataset._operations:
                     result = operation.apply(result)
 
-                schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, name, dataset._delimiter)
+                schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, backend.prefix(name), backend.delimiter())
 
                 active = backend.instantiate(0)
                 if hasattr(active, "putall"):
@@ -224,9 +223,9 @@ class _Data(Operable):
                         active[str(n)] = x
                 
                 if isinstance(result, oamap.proxy.ListProxy):
-                    out = Dataset(name, schema, dataset._backends, dataset._executor, [0, len(result)], extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                    out = Dataset(name, schema, dataset._backends, dataset._executor, [0, len(result)], extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 else:
-                    out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                    out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 return update(out)
 
             return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
@@ -250,7 +249,7 @@ class Data(_Data):
             else:
                 extension = [oamap.util.import_module(x) for x in self._extension]
 
-            self._cachedobject = self._schema(self.arrays(), prefix=self._name, delimiter=self._delimiter, extension=extension, packing=self._packing)
+            self._cachedobject = self._schema(self.arrays(), extension=extension, packing=self._packing)
 
         return self._cachedobject
 
@@ -288,11 +287,11 @@ class DataArrays(object):
             self._active[namespace] = None
                 
 class Dataset(_Data):
-    def __init__(self, name, schema, backends, executor, offsets, extension=None, packing=None, doc=None, metadata=None, delimiter="-"):
+    def __init__(self, name, schema, backends, executor, offsets, extension=None, packing=None, doc=None, metadata=None):
         if not isinstance(schema, oamap.schema.List):
             raise TypeError("Dataset must have a list schema, not\n\n    {0}".format(schema.__repr__(indent="    ")))
 
-        super(Dataset, self).__init__(name, schema, backends, executor, extension=extension, packing=packing, doc=doc, metadata=metadata, delimiter=delimiter)
+        super(Dataset, self).__init__(name, schema, backends, executor, extension=extension, packing=packing, doc=doc, metadata=metadata)
 
         if not isinstance(offsets, numpy.ndarray):
             try:
@@ -351,7 +350,7 @@ class Dataset(_Data):
             else:
                 extension = [oamap.util.import_module(x) for x in self._extension]
 
-            self._cachedobject = self._schema(self.arrays(partitionid), prefix=self._name, delimiter=self._delimiter, extension=extension, packing=self._packing)
+            self._cachedobject = self._schema(self.arrays(partitionid), extension=extension, packing=self._packing)
 
         return self._cachedobject
 
@@ -391,14 +390,14 @@ class Dataset(_Data):
         if not 0 <= normid < self.numpartitions:
             raise IndexError("partitionid {0} out of range for {1} partitions".format(partitionid, self.numpartitions))
 
-        startsrole = oamap.generator.StartsRole(self._schema._get_starts(self._name, self._delimiter), self._schema.namespace, None)
-        stopsrole = oamap.generator.StopsRole(self._schema._get_stops(self._name, self._delimiter), self._schema.namespace, None)
+        startsrole = oamap.generator.StartsRole(self._schema._get_starts("object", "-"), self._schema.namespace, None)
+        stopsrole = oamap.generator.StopsRole(self._schema._get_stops("object", "-"), self._schema.namespace, None)
         startsrole.stops = stopsrole
         stopsrole.starts = startsrole
         return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
     def _serializable(self):
-        out = Dataset(self._name, self._schema, self._backends, None, self._offsets, extension=self._extension, packing=self._packing, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+        out = Dataset(self._name, self._schema, self._backends, None, self._offsets, extension=self._extension, packing=self._packing, doc=self._doc, metadata=self._metadata)
         out._operations = copy.deepcopy(self._operations)
         return out
 
@@ -408,9 +407,9 @@ class Dataset(_Data):
             for operation in self._operations:
                 result = operation.apply(result)
             if isinstance(result, oamap.proxy.ListProxy):
-                out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+                out = Dataset(name, result._generator.schema, self._backends, self._executor, self._offsets, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata)
             else:
-                out = Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata, delimiter=self._delimiter)
+                out = Data(name, result._generator.schema, self._backends, self._executor, extension=self._extension, packing=None, doc=self._doc, metadata=self._metadata)
             return [SingleThreadExecutor.PseudoFuture(update(out))]
 
         else:
@@ -419,7 +418,7 @@ class Dataset(_Data):
                 for operation in dataset._operations:
                     result = operation.apply(result)
 
-                schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, name, dataset._delimiter)
+                schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, backend.prefix(name), backend.delimiter())
 
                 active = backend.instantiate(partitionid)
                 if hasattr(active, "putall"):
@@ -442,9 +441,9 @@ class Dataset(_Data):
                     offsets = numpy.cumsum([0] + [x.result()[1] for x in results], dtype=numpy.int64)
                     schema = results[0].result()[0]
                 if isinstance(schema, oamap.schema.List):
-                    out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                    out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 else:
-                    out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata, delimiter=dataset._delimiter)
+                    out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 return update(out)
 
             tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))

@@ -49,6 +49,12 @@ class Backend(object):
     def instantiate(self, partitionid):
         raise NotImplementedError("missing implementation for {0}.instantiate".format(self.__class__))
 
+    def prefix(self, dataset):
+        return dataset
+
+    def delimiter(self):
+        return "-"
+
 class WritableBackend(Backend):
     def incref(self, dataset, partitionid, arrayname):
         raise NotImplementedError("missing implementation for {0}.incref".format(self.__class__))
@@ -164,8 +170,7 @@ class Database(object):
                                          packing=packing,
                                          extension=obj.get("extension", None),
                                          doc=obj.get("doc", None),
-                                         metadata=obj.get("metadata", None),
-                                         delimiter=obj.get("delimiter", "-"))
+                                         metadata=obj.get("metadata", None))
         else:
             return oamap.dataset.Data(name,
                                       schema,
@@ -174,8 +179,7 @@ class Database(object):
                                       packing=packing,
                                       extension=obj.get("extension", None),
                                       doc=obj.get("doc", None),
-                                      metadata=obj.get("metadata", None),
-                                      delimiter=obj.get("delimiter", "-"))
+                                      metadata=obj.get("metadata", None))
 
     def _dataset2json(self, data):
         obj = {"schema": data._schema.tojson()}
@@ -189,8 +193,6 @@ class Database(object):
             obj["doc"] = data._doc
         if data._metadata is not None:
             obj["metadata"] = data._metadata
-        if data._delimiter != "-":
-            obj["delimiter"] = data._delimiter
         return obj
 
 class InMemoryDatabase(Database):

@@ -32,28 +32,58 @@ import os
 
 import numpy
 
-class NumpyFile(object):
-    def __init__(self, base, partition):
-        self.directory = os.path.join(base, partition)
-        if not os.path.exists(self.directory):
-            os.mkdir(self.directory)
+import oamap.dataset
+import oamap.database
+
+class NumpyFileBackend(oamap.database.WritableBackend):
+    def __init__(self, directory):
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+        self._directory = directory
+        super(NumpyFileBackend, self).__init__(directory)
+
+    @property
+    def directory(self):
+        return self._directory
+
+    def instantiate(self, partitionid):
+        return NumpyArrays(self._directory, partitionid)
+
+    def prefix(self, dataset):
+        return os.path.join(dataset, "PART", "obj")
+
+class NumpyArrays(object):
+    def __init__(self, directory, partitionid):
+        self._directory = directory
+        self._partitionid = partitionid
+
+    @property
+    def directory(self):
+        return self._directory
+
+    @property
+    def partitionid(self):
+        return self._partitionid
+
+    def fullname(self, name, create=False):
+        dataset_part, array = os.path.split(name)
+        dataset, part = os.path.split(dataset_part)
+        if create:
+            if not os.path.exists(os.path.join(self._directory, dataset)):
+                os.mkdir(os.path.join(self._directory, dataset))
+            if not os.path.exists(os.path.join(self._directory, dataset, str(self._partitionid))):
+                os.mkdir(os.path.join(self._directory, dataset, str(self._partitionid)))
+
+        return os.path.join(self._directory, dataset, str(self._partitionid), array)
 
     def __getitem__(self, name):
-        try:
-            return numpy.load(os.path.join(self.directory, name))
-        except Exception as err:
-            raise KeyError(str(err))
-
-class WritableNumpyFile(NumpyFile):
-    @staticmethod
-    def partarg(nsname, partitionid):
-        return (nsname + "-" + str(partitionid),)
+        return numpy.load(self.fullname(name))
 
     def __setitem__(self, name, value):
-        numpy.save(os.path.join(self.directory, name), value)
+        numpy.save(self.fullname(name, create=True), value)
 
     def __delitem__(self, name):
         try:
-            os.remove(os.path.join(self.directory, name))
+            os.remove(self.fullname(name))
         except Exception as err:
             raise KeyError(str(err))
