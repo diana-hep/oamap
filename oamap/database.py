@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
 import sys
 
 import oamap.schema
@@ -61,6 +62,63 @@ class WritableBackend(Backend):
 
     def decref(self, dataset, partitionid, arrayname):
         raise NotImplementedError("missing implementation for {0}.decref".format(self.__class__))
+
+class FilesystemBackend(WritableBackend):
+    def __init__(self, directory, arrayprefix="obj", arraysuffix=""):
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+        self._directory = directory
+        self._arrayprefix = arrayprefix
+        self._arraysuffix = arraysuffix
+        super(FilesystemBackend, self).__init__(directory)
+
+    @property
+    def directory(self):
+        return self._directory
+
+    @property
+    def arrayprefix(self):
+        return self._arrayprefix
+
+    @property
+    def arraysuffix(self):
+        return self._arraysuffix
+
+    def prefix(self, dataset):
+        return os.path.join(dataset, "PART", self._arrayprefix)
+
+    def incref(self, dataset, partitionid, arrayname):
+        otherdataset_part, array = os.path.split(arrayname)
+        otherdataset, part = os.path.split(otherdataset_part)
+        if otherdataset != dataset:
+            src = os.path.join(self._directory, otherdataset, str(partitionid), array) + self._arraysuffix
+            dst = os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
+            if not os.path.exists(dst):
+                os.link(src, dst)
+
+    def decref(self, dataset, partitionid, arrayname):
+        otherdataset_part, array = os.path.split(arrayname)
+        path = os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
+        os.unlink(path)
+        try:
+            os.rmdir(os.path.join(self._directory, dataset, str(partitionid)))
+        except OSError:
+            pass
+        else:
+            try:
+                os.rmdir(os.path.join(self._directory, dataset))
+            except OSError:
+                pass
+
+    def fullname(self, partitionid, arrayname, create=False):
+        dataset_part, array = os.path.split(arrayname)
+        dataset, part = os.path.split(dataset_part)
+        if create:
+            if not os.path.exists(os.path.join(self._directory, dataset)):
+                os.mkdir(os.path.join(self._directory, dataset))
+            if not os.path.exists(os.path.join(self._directory, dataset, str(partitionid))):
+                os.mkdir(os.path.join(self._directory, dataset, str(partitionid)))
+        return os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
 
 class DictBackend(WritableBackend):
     def __init__(self, arrays=None, refcounts=None):

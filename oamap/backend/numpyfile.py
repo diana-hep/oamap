@@ -35,72 +35,27 @@ import numpy
 import oamap.dataset
 import oamap.database
 
-class NumpyFileBackend(oamap.database.WritableBackend):
+class NumpyFileBackend(oamap.database.FilesystemBackend):
     def __init__(self, directory):
-        if not os.path.exists(directory):
-            os.mkdir(directory)
-        self._directory = directory
-        super(NumpyFileBackend, self).__init__(directory)
-
-    @property
-    def directory(self):
-        return self._directory
+        super(NumpyFileBackend, self).__init__(directory, arraysuffix=".npy")
 
     def instantiate(self, partitionid):
-        return NumpyArrays(self._directory, partitionid)
-
-    def prefix(self, dataset):
-        return os.path.join(dataset, "PART", "obj")
-
-    def incref(self, dataset, partitionid, arrayname):
-        print "incref", dataset, partitionid, arrayname
-
-        otherdataset_part, array = os.path.split(arrayname)
-        otherdataset, part = os.path.split(otherdataset_part)
-        if otherdataset != dataset:
-            src = os.path.join(self._directory, otherdataset, str(partitionid), array) + ".npy"
-            dst = os.path.join(self._directory, dataset, str(partitionid), array) + ".npy"
-            os.link(src, dst)
-
-    def decref(self, dataset, partitionid, arrayname):
-        print "decref", dataset, partitionid, arrayname
-
-        otherdataset_part, array = os.path.split(arrayname)
-        path = os.path.join(self._directory, dataset, str(partitionid), array) + ".npy"
-        os.unlink(path)
+        return NumpyArrays(lambda name: self.fullname(partitionid, name, create=False),
+                           lambda name: self.fullname(partitionid, name, create=True))
 
 class NumpyArrays(object):
-    def __init__(self, directory, partitionid):
-        self._directory = directory
-        self._partitionid = partitionid
-
-    @property
-    def directory(self):
-        return self._directory
-
-    @property
-    def partitionid(self):
-        return self._partitionid
-
-    def fullname(self, name, create=False):
-        dataset_part, array = os.path.split(name)
-        dataset, part = os.path.split(dataset_part)
-        if create:
-            if not os.path.exists(os.path.join(self._directory, dataset)):
-                os.mkdir(os.path.join(self._directory, dataset))
-            if not os.path.exists(os.path.join(self._directory, dataset, str(self._partitionid))):
-                os.mkdir(os.path.join(self._directory, dataset, str(self._partitionid)))
-
-        return os.path.join(self._directory, dataset, str(self._partitionid), array) + ".npy"
+    def __init__(self, loadname, storename):
+        self._loadname = loadname
+        self._storename = storename
 
     def __getitem__(self, name):
-        return numpy.load(self.fullname(name))
+        return numpy.load(self._loadname(name))
 
     def __setitem__(self, name, value):
-        numpy.save(self.fullname(name, create=True), value)
+        numpy.save(self._storename(name), value)
 
     def __delitem__(self, name):
         try:
-            os.remove(self.fullname(name))
+            os.remove(self._loadname(name))
         except Exception as err:
             raise KeyError(str(err))

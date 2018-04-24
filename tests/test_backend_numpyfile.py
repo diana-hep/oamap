@@ -52,4 +52,9 @@ class TestBackendNumpyfile(unittest.TestCase):
         # db.data.two = db.data.one.define("z", lambda obj: obj.x + obj.y)
         # db.data.two.schema.show()
 
+        # print [(obj.x, obj.y, obj.z) for obj in db.data.two]
+
+        # del db.data.one
+        # del db.data.two
+
         pass
