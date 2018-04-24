@@ -196,63 +196,6 @@ class Database(object):
         return obj
 
 class InMemoryDatabase(Database):
-    @staticmethod
-    def fromdata(name, schema, *partitions, **opts):
-        try:
-            pointer_fromequal = opts.pop("pointer_fromequal", False)
-        except KeyError:
-            pass
-        try:
-            namespace = opts.pop("namespace", "")
-        except KeyError:
-            pass
-        try:
-            delimiter = opts.pop("delimiter", "-")
-        except KeyError:
-            pass
-        try:
-            extension = opts.pop("extension", oamap.extension.common)
-        except KeyError:
-            pass
-        try:
-            packing = opts.pop("packing", None)
-        except KeyError:
-            pass
-        if len(opts) > 0:
-            raise TypeError("unrecognized options: {0}".format(" ".join(opts)))
-
-        generator = schema.generator(prefix=name, delimiter=delimiter, extension=extension, packing=packing)
-
-        if isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
-            if len(partitions) != 1:
-                raise TypeError("only lists can have more or less than one partition")
-            arrays = {0: generator.fromdata(partitions[0])._arrays}
-            refcounts = {0: dict((n, 1) for n in arrays)}
-            return InMemoryDatabase(
-                backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
-                namespace=namespace,
-                datasets={name: {"schema": generator.namedschema().tojson()}})
-
-        elif isinstance(schema, oamap.schema.List):
-            arrays = {}
-            refcounts = {}
-            offsets = [0]
-            for i, x in enumerate(partitions):
-                arrays[i] = generator.fromdata(x)._arrays
-                del arrays[i][generator.starts]
-                del arrays[i][generator.stops]
-                if schema.nullable:
-                    del arrays[i][generator.mask]
-                refcounts[i] = dict((n, 1) for n in arrays[i])
-                offsets.append(offsets[-1] + len(x))
-            return InMemoryDatabase(
-                backends={namespace: DictBackend(arrays=arrays, refcounts=refcounts)},
-                namespace=namespace,
-                datasets={name: {"schema": generator.namedschema().tojson(), "offsets": offsets}})
-
-        else:
-            raise TypeError("can only create datasets from proxy types (list, records, tuples)")
-
     def __init__(self, backends={}, namespace="", datasets={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
         self._datasets = dict(datasets)
@@ -362,3 +305,76 @@ class InMemoryDatabase(Database):
                         backend.decref(ds.name, partitionid, schema.mask)
                 return schema
         startingpoint.replace(transform)
+
+    def fromdata(self, name, schema, *partitions, **opts):
+        try:
+            pointer_fromequal = opts.pop("pointer_fromequal", False)
+        except KeyError:
+            pass
+        try:
+            namespace = opts.pop("namespace", self._namespace)
+        except KeyError:
+            pass
+        try:
+            extension = opts.pop("extension", oamap.extension.common)
+        except KeyError:
+            pass
+        try:
+            packing = opts.pop("packing", None)
+        except KeyError:
+            pass
+        try:
+            doc = opts.pop("doc", None)
+        except KeyError:
+            pass
+        try:
+            metadata = opts.pop("metadata", None)
+        except KeyError:
+            pass
+        if len(opts) > 0:
+            raise TypeError("unrecognized options: {0}".format(" ".join(opts)))
+
+        if namespace not in self._backends:
+            self[namespace] = DictBackend()
+        backend = self[namespace]
+
+        generator = schema.generator(prefix=backend.prefix(name), delimiter=backend.delimiter(), extension=extension, packing=packing)
+        generator._requireall()
+        roles = generator._togetall({}, generator._newcache(), True, set())
+
+        if isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
+            if len(partitions) != 1:
+                raise TypeError("only lists can have more or less than one partition")
+            data = generator.fromdata(partitions[0])
+            roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
+
+            active = backend.instantiate(0)
+            if hasattr(active, "putall"):
+                active.putall(roles2arrays)
+            else:
+                for n, x in roles2arrays.items():
+                    active[str(n)] = x
+
+            out = oamap.dataset.Data(name, generator.namedschema(), self._backends, self._executor, extension=None, packing=packing, doc=doc, metadata=metadata)   # FIXME: extension
+
+        elif isinstance(schema, oamap.schema.List):
+            offsets = [0]
+            for partitionid, partition in enumerate(partitions):
+                data = generator.fromdata(partition)
+                roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
+
+                active = backend.instantiate(partitionid)
+                if hasattr(active, "putall"):
+                    active.putall(roles2arrays)
+                else:
+                    for n, x in roles2arrays.items():
+                        active[str(n)] = x
+
+                offsets.append(offsets[-1] + len(data))
+
+            out = oamap.dataset.Dataset(name, generator.namedschema(), self._backends, self._executor, offsets, extension=None, packing=packing, doc=doc, metadata=metadata)   # FIXME: extension
+
+        else:
+            raise TypeError("can only create datasets from proxy types (list, records, tuples)")
+
+        self.put(name, out, namespace=namespace)

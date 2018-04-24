@@ -42,7 +42,9 @@ class TestDatabase(unittest.TestCase):
         pass
 
     def test_data(self):
-        db = InMemoryDatabase.fromdata("one", Record({"x": List("int32"), "y": List("float64")}), {"x": [1, 2, 3, 4, 5], "y": [1.1, 2.2, 3.3]})
+        db = InMemoryDatabase()
+        db.fromdata("one", Record({"x": List("int32"), "y": List("float64")}), {"x": [1, 2, 3, 4, 5], "y": [1.1, 2.2, 3.3]})
+
         one = db.data.one
         self.assertEqual(one().x[0], 1)
         self.assertEqual(one().x[1], 2)
@@ -93,7 +95,8 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(summary.result(), sum([1, 2, 3, 4, 5]))
 
     def test_dataset(self):
-        db = InMemoryDatabase.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
+        db = InMemoryDatabase()
+        db.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
         one = db.data.one
         self.assertEqual(one[0].x, 1)
         self.assertEqual(one[1].x, 2)
