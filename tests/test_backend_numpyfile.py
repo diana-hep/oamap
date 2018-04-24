@@ -42,19 +42,17 @@ class TestBackendNumpyfile(unittest.TestCase):
         pass
 
     def test_database(self):
-        # db = InMemoryDatabase()
-        # db[""] = NumpyFileBackend("DATABASE")
-        # db.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
+        db = InMemoryDatabase()
+        db[""] = NumpyFileBackend("DATABASE")
+        db.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
 
-        # print db.list()
-        # db.data.one.schema.show()
+        print db.list()
+        db.data.one.schema.show()
 
-        # db.data.two = db.data.one.define("z", lambda obj: obj.x + obj.y)
-        # db.data.two.schema.show()
+        db.data.two = db.data.one.define("z", lambda obj: obj.x + obj.y)
+        db.data.two.schema.show()
 
-        # print [(obj.x, obj.y, obj.z) for obj in db.data.two]
+        print [(obj.x, obj.y, obj.z) for obj in db.data.two]
 
-        # del db.data.one
-        # del db.data.two
-
-        pass
+        del db.data.one
+        del db.data.two

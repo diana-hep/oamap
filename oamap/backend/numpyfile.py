@@ -53,9 +53,3 @@ class NumpyArrays(object):
 
     def __setitem__(self, name, value):
         numpy.save(self._storename(name), value)
-
-    def __delitem__(self, name):
-        try:
-            os.remove(self._loadname(name))
-        except Exception as err:
-            raise KeyError(str(err))

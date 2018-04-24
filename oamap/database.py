@@ -28,8 +28,11 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import glob
 import os
 import sys
+import time
+import json
 
 import oamap.schema
 import oamap.dataset
@@ -38,6 +41,8 @@ import oamap.extension.common
 if sys.version_info[0] > 2:
     basestring = str
     unicode = str
+
+################################################################ Backend, WritableBackend, FilesystemBackend (abstract)
 
 class Backend(object):
     def __init__(self, *args):
@@ -120,6 +125,8 @@ class FilesystemBackend(WritableBackend):
                 os.mkdir(os.path.join(self._directory, dataset, str(partitionid)))
         return os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
 
+################################################################ DictBackend (concrete)
+
 class DictBackend(WritableBackend):
     def __init__(self, arrays=None, refcounts=None):
         if arrays is None:
@@ -147,6 +154,8 @@ class DictBackend(WritableBackend):
                 del self._arrays[partitionid][arrayname]
             except KeyError:
                 pass
+
+################################################################ Database (abstract)
 
 class Database(object):
     class Data(object):
@@ -201,7 +210,7 @@ class Database(object):
         return self.Data(self)
     def list(self):
         return NotImplementedError("missing implementation for {0}.list".format(self.__class__))
-    def get(self, dataset):
+    def get(self, dataset, timeout=None):
         return NotImplementedError("missing implementation for {0}.get".format(self.__class__))
     def put(self, dataset, value, namespace=None):
         return NotImplementedError("missing implementation for {0}.put".format(self.__class__))
@@ -239,7 +248,8 @@ class Database(object):
                                       doc=obj.get("doc", None),
                                       metadata=obj.get("metadata", None))
 
-    def _dataset2json(self, data):
+    @staticmethod
+    def _dataset2json(data):
         obj = {"schema": data._schema.tojson()}
         if isinstance(data._schema, oamap.schema.List):
             obj["offsets"] = data._offsets.tolist()
@@ -253,6 +263,96 @@ class Database(object):
             obj["metadata"] = data._metadata
         return obj
 
+    def fromdata(self, name, schema, *partitions, **opts):
+        try:
+            pointer_fromequal = opts.pop("pointer_fromequal", False)
+        except KeyError:
+            pass
+        try:
+            namespace = opts.pop("namespace", self._namespace)
+        except KeyError:
+            pass
+        try:
+            extension = opts.pop("extension", None)
+        except KeyError:
+            pass
+        try:
+            packing = opts.pop("packing", None)
+        except KeyError:
+            pass
+        try:
+            doc = opts.pop("doc", None)
+        except KeyError:
+            pass
+        try:
+            metadata = opts.pop("metadata", None)
+        except KeyError:
+            pass
+        if len(opts) > 0:
+            raise TypeError("unrecognized options: {0}".format(" ".join(opts)))
+
+        if namespace not in self._backends:
+            self[namespace] = DictBackend()
+        backend = self[namespace]
+
+        def setnamespace(node):
+            node.namespace = namespace
+            return node
+        schema = schema.replace(setnamespace)
+
+        generator = schema.generator(prefix=backend.prefix(name), delimiter=backend.delimiter(), packing=packing)
+        generator._requireall()
+        roles = generator._togetall({}, generator._newcache(), True, set())
+
+        if isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
+            if len(partitions) != 1:
+                raise TypeError("only lists can have more or less than one partition")
+            data = generator.fromdata(partitions[0])
+            roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
+
+            active = backend.instantiate(0)
+            if hasattr(active, "putall"):
+                active.putall(roles2arrays)
+            else:
+                for n, x in roles2arrays.items():
+                    active[str(n)] = x
+
+            out = oamap.dataset.Data(name, generator.namedschema(), self._backends, self._executor, extension=extension, packing=packing, doc=doc, metadata=metadata)
+
+        elif isinstance(schema, oamap.schema.List):
+            offsets = [0]
+            for partitionid, partition in enumerate(partitions):
+                data = generator.fromdata(partition)
+                roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
+                startsrole = oamap.generator.StartsRole(generator.starts, generator.namespace, None)
+                stopsrole = oamap.generator.StopsRole(generator.stops, generator.namespace, None)
+                startsrole.stops = stopsrole
+                stopsrole.starts = startsrole
+                if schema.nullable:
+                    maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, {startsrole: roles2arrays[startsrole], stopsrole: roles2arrays[stopsrole]})
+                del roles2arrays[startsrole]
+                del roles2arrays[stopsrole]
+                if schema.nullable:
+                    del roles2arrays[maskrole]
+
+                active = backend.instantiate(partitionid)
+                if hasattr(active, "putall"):
+                    active.putall(roles2arrays)
+                else:
+                    for n, x in roles2arrays.items():
+                        active[str(n)] = x
+
+                offsets.append(offsets[-1] + len(data))
+
+            out = oamap.dataset.Dataset(name, generator.namedschema(), self._backends, self._executor, offsets, extension=extension, packing=packing, doc=doc, metadata=metadata)
+
+        else:
+            raise TypeError("can only create datasets from proxy types (list, records, tuples)")
+
+        self.put(name, out, namespace=namespace)
+
+################################################################ InMemoryDatabase (concrete)
+
 class InMemoryDatabase(Database):
     def __init__(self, backends={}, namespace="", datasets={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
@@ -261,24 +361,21 @@ class InMemoryDatabase(Database):
     def list(self):
         return list(self._datasets)
 
-    def get(self, dataset):
+    def get(self, dataset, timeout=None):
         ds = self._datasets.get(dataset, None)
-
         if ds is None:
             raise KeyError("no dataset named {0}".format(repr(dataset)))
 
         elif isinstance(ds, list):
             oldds = ds[0]
             task = ds[-1]
-            if task.done():
-                ds = task.result()
-                self._datasets[dataset] = self._dataset2json(ds)
-                self._incref(ds)
-                if oldds is not None:
-                    self._decref(oldds)
-                return ds
-            else:
-                raise NotImplementedError("FIXME: deal with failed and incomplete tasks")
+
+            ds = task.result()
+            self._datasets[dataset] = self._dataset2json(ds)
+            self._incref(ds)
+            if oldds is not None:
+                self._decref(oldds)
+            return ds
 
         else:
             return self._json2dataset(dataset, ds)
@@ -290,9 +387,9 @@ class InMemoryDatabase(Database):
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
 
-        try:
+        if dataset in self._datasets:
             ds = self.get(dataset)
-        except KeyError:
+        else:
             ds = None
             
         self._datasets[dataset] = [ds] + value.transform(dataset, namespace, self._backends[namespace], lambda data: data)
@@ -364,90 +461,46 @@ class InMemoryDatabase(Database):
                 return schema
         startingpoint.replace(transform)
 
-    def fromdata(self, name, schema, *partitions, **opts):
+################################################################ FilesystemDatabase (concrete)
+
+class FilesystemDatabase(Database):
+    def __init__(self, directory, backends={}, namespace=""):
+        super(FilesystemDatabase, self).__init__(None, backends, namespace)
+        self._directory = directory
+
+    def list(self):
+        out = []
+        for x in glob.glob(os.path.join(self._directory, "*", "dataset.json")):
+            directory_dataset, _ = os.path.split(x)
+            _, dataset = os.path.split(directory_dataset)
+            out.append(dataset)
+        return out
+
+    def get(self, dataset, timeout=None):
+        dsjson = os.path.join(self._directory, dataset, "dataset.json")
+        while not os.path.exists(dsjson):
+            time.sleep(0)
+        return self._json2dataset(dataset, json.load(open(dsjson)))
+
+    def put(self, dataset, value, namespace=None):
+        namespace = self._normalize_namespace(namespace)
+        if namespace not in self._backends or not isinstance(self._backends[namespace], WritableBackend):
+            raise ValueError("namespace {0} does not point to a writable backend".format(repr(namespace)))
+        if not isinstance(value, oamap.dataset._Data):
+            raise TypeError("can only put Datasets in Database")
+
+        dsjson = os.path.join(self._directory, dataset, "dataset.json")
+        if os.path.exists(dsjson):
+            os.unlink(dsjson)
+
+        def update(data):
+            json.dump(Database._dataset2json(data), open(dsjson, "w"))
+            return data
+
+        value.transform(dataset, namespace, self._backends[namespace], update)
+
+    def delete(self, dataset):
         try:
-            pointer_fromequal = opts.pop("pointer_fromequal", False)
-        except KeyError:
-            pass
-        try:
-            namespace = opts.pop("namespace", self._namespace)
-        except KeyError:
-            pass
-        try:
-            extension = opts.pop("extension", oamap.extension.common)
-        except KeyError:
-            pass
-        try:
-            packing = opts.pop("packing", None)
-        except KeyError:
-            pass
-        try:
-            doc = opts.pop("doc", None)
-        except KeyError:
-            pass
-        try:
-            metadata = opts.pop("metadata", None)
-        except KeyError:
-            pass
-        if len(opts) > 0:
-            raise TypeError("unrecognized options: {0}".format(" ".join(opts)))
-
-        if namespace not in self._backends:
-            self[namespace] = DictBackend()
-        backend = self[namespace]
-
-        def setnamespace(node):
-            node.namespace = namespace
-            return node
-        schema = schema.replace(setnamespace)
-
-        generator = schema.generator(prefix=backend.prefix(name), delimiter=backend.delimiter(), extension=extension, packing=packing)
-        generator._requireall()
-        roles = generator._togetall({}, generator._newcache(), True, set())
-
-        if isinstance(schema, (oamap.schema.Record, oamap.schema.Tuple)):
-            if len(partitions) != 1:
-                raise TypeError("only lists can have more or less than one partition")
-            data = generator.fromdata(partitions[0])
-            roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
-
-            active = backend.instantiate(0)
-            if hasattr(active, "putall"):
-                active.putall(roles2arrays)
-            else:
-                for n, x in roles2arrays.items():
-                    active[str(n)] = x
-
-            out = oamap.dataset.Data(name, generator.namedschema(), self._backends, self._executor, extension=None, packing=packing, doc=doc, metadata=metadata)   # FIXME: extension
-
-        elif isinstance(schema, oamap.schema.List):
-            offsets = [0]
-            for partitionid, partition in enumerate(partitions):
-                data = generator.fromdata(partition)
-                roles2arrays = dict((x, data._arrays[str(x)]) for x in roles)
-                startsrole = oamap.generator.StartsRole(generator.starts, generator.namespace, None)
-                stopsrole = oamap.generator.StopsRole(generator.stops, generator.namespace, None)
-                startsrole.stops = stopsrole
-                stopsrole.starts = startsrole
-                if schema.nullable:
-                    maskrole = oamap.generator.MaskRole(generator.mask, generator.namespace, {startsrole: roles2arrays[startsrole], stopsrole: roles2arrays[stopsrole]})
-                del roles2arrays[startsrole]
-                del roles2arrays[stopsrole]
-                if schema.nullable:
-                    del roles2arrays[maskrole]
-
-                active = backend.instantiate(partitionid)
-                if hasattr(active, "putall"):
-                    active.putall(roles2arrays)
-                else:
-                    for n, x in roles2arrays.items():
-                        active[str(n)] = x
-
-                offsets.append(offsets[-1] + len(data))
-
-            out = oamap.dataset.Dataset(name, generator.namedschema(), self._backends, self._executor, offsets, extension=None, packing=packing, doc=doc, metadata=metadata)   # FIXME: extension
-
-        else:
-            raise TypeError("can only create datasets from proxy types (list, records, tuples)")
-
-        self.put(name, out, namespace=namespace)
+            os.unlink(os.path.join(self._directory, dataset))
+        except OSError as err:
+            raise KeyError(str(err))
