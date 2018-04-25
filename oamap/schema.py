@@ -279,6 +279,14 @@ class Schema(object):
         if allowtop and fnmatch.fnmatchcase("/".join(loc), path):
             yield (self,) + parents
 
+    def nodes(self, parents=False, bottomup=True):
+        if parents:
+            for x in self._nodes((), bottomup, set()):
+                yield x
+        else:
+            for x in self._nodes((), bottomup, set()):
+                yield x[0]
+
     def project(self, path):
         return self._keep((), [path], True, {})
 
@@ -581,6 +589,9 @@ class Primitive(Schema):
     def _replace(self, fcn, args, kwds, memo):
         return fcn(Primitive(self._dtype, nullable=self._nullable, data=self._data, mask=self._mask, namespace=self._namespace, packing=self._packingcopy(), name=self._name, doc=self._doc, metadata=copy.deepcopy(self._metadata)), *args, **kwds)
 
+    def _nodes(self, loc, bottomup, memo):
+        yield (self,) + loc
+
     def _keep(self, loc, paths, project, memo):
         return self.deepcopy()
 
@@ -869,6 +880,15 @@ class List(Schema):
         if nodes is None:
             for nodes in self._content._path(loc, path, (self,) + parents, allowtop, memo):
                 yield nodes
+
+    def _nodes(self, loc, bottomup, memo):
+        if bottomup:
+            for x in self._content._nodes((self,) + loc, bottomup, memo):
+                yield x
+        yield (self,) + loc
+        if not bottomup:
+            for x in self._content._nodes((self,) + loc, bottomup, memo):
+                yield x
 
     def _keep(self, loc, paths, project, memo):
         content = self.content._keep(loc, paths, project, memo)
@@ -1213,6 +1233,17 @@ class Union(Schema):
                 for nodes in possibility._path(loc, path, (self,) + parents, allowtop, memo):
                     yield nodes
 
+    def _nodes(self, loc, bottomup, memo):
+        if bottomup:
+            for possibility in self._possibilities:
+                for x in possibility._nodes((self,) + loc, bottomup, memo):
+                    yield x
+        yield (self,) + loc
+        if not bottomup:
+            for possibility in self._possibilities:
+                for x in possibility._nodes((self,) + loc, bottomup, memo):
+                    yield x
+
     def _keep(self, loc, paths, project, memo):
         possibilities = []
         for x in self._possibilities:
@@ -1518,6 +1549,17 @@ class Record(Schema):
                 for nodes in x._path(loc + (n,), path, (self,) + parents, True, memo):
                     yield nodes
 
+    def _nodes(self, loc, bottomup, memo):
+        if bottomup:
+            for field in self._fields.values():
+                for x in field._nodes((self,) + loc, bottomup, memo):
+                    yield x
+        yield (self,) + loc
+        if not bottomup:
+            for field in self._fields.values():
+                for x in field._nodes((self,) + loc, bottomup, memo):
+                    yield x
+
     def _keep(self, loc, paths, project, memo):
         fields = OrderedDict()
         for n, x in self._fields.items():
@@ -1821,6 +1863,17 @@ class Tuple(Schema):
                 for nodes in x._path(loc + (str(i),), path, (self,) + parents, True, memo):
                     yield nodes
 
+    def _nodes(self, loc, bottomup, memo):
+        if bottomup:
+            for field in self._types:
+                for x in field._nodes((self,) + loc, bottomup, memo):
+                    yield x
+        yield (self,) + loc
+        if not bottomup:
+            for field in self._types:
+                for x in field._nodes((self,) + loc, bottomup, memo):
+                    yield x
+
     def _keep(self, loc, paths, project, memo):
         types = []
         for i, x in enumerate(self._types):
@@ -2113,7 +2166,18 @@ class Pointer(Schema):
                 memo.add(id(self))
                 for nodes in self._target._path(loc, path, (self,) + parents, allowtop, memo):
                     yield nodes
-        
+
+    def _nodes(self, loc, bottomup, memo):
+        if id(self) not in memo:
+            memo.add(id(self))
+            if bottomup:
+                for x in self._target._nodes((self,) + loc, bottomup, memo):
+                    yield x
+            yield (self,) + loc
+            if not bottomup:
+                for x in self._target._nodes((self,) + loc, bottomup, memo):
+                    yield x
+
     def _keep(self, loc, paths, project, memo):
         if id(self) in memo:
             return memo[id(self)]
