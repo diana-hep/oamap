@@ -32,6 +32,7 @@ import numpy
 
 import oamap.schema
 import oamap.dataset
+import oamap.database
 import oamap.backend.packing
 from oamap.util import OrderedDict
 
@@ -78,7 +79,7 @@ def schema(path, treepath, namespace=""):
     tree = uproot.open(path, localsource=localsource)[treepath]
 
     def accumulate(node):
-        out = oamap.schema.Record(OrderedDict())
+        out = oamap.schema.Record(OrderedDict(), namespace=namespace)
         for branchname, branch in node.iteritems(aliases=False) if isinstance(node, uproot.tree.TTreeMethods) else node.iteritems():
             fieldname = branchname.split(".")[-1]
 
@@ -88,28 +89,25 @@ def schema(path, treepath, namespace=""):
                     out[fieldname] = subrecord
 
             elif isinstance(branch.interpretation, (uproot.interp.asdtype, uproot.interp.numerical.asdouble32)):
-                subnode = oamap.schema.Primitive(branch.interpretation.todtype, data=branchname)
+                subnode = oamap.schema.Primitive(branch.interpretation.todtype, data=branchname, namespace=namespace)
                 for i in range(len(branch.interpretation.todims)):
-                    subnode = oamap.schema.List(subnode, starts="{0}:/{1}".format(branchname, i), stops="{0}:/{1}".format(branchname, i))
+                    subnode = oamap.schema.List(subnode, starts="{0}:/{1}".format(branchname, i), stops="{0}:/{1}".format(branchname, i), namespace=namespace)
                 out[fieldname] = subnode
 
             elif isinstance(branch.interpretation, uproot.interp.asjagged) and isinstance(branch.interpretation.asdtype, uproot.interp.asdtype):
-                subnode = oamap.schema.Primitive(branch.interpretation.asdtype.todtype, data=branchname)
+                subnode = oamap.schema.Primitive(branch.interpretation.asdtype.todtype, data=branchname, namespace=namespace)
                 for i in range(len(branch.interpretation.asdtype.todims)):
-                    subnode = oamap.schema.List(subnode, starts="{0}:/{1}".format(branchname, i), stops="{0}:/{1}".format(branchname, i))
-                out[fieldname] = oamap.schema.List(subnode, starts=branchname, stops=branchname)
+                    subnode = oamap.schema.List(subnode, starts="{0}:/{1}".format(branchname, i), stops="{0}:/{1}".format(branchname, i), namespace=namespace)
+                out[fieldname] = oamap.schema.List(subnode, starts=branchname, stops=branchname, namespace=namespace)
 
             elif isinstance(branch.interpretation, uproot.interp.asstrings):
-                out[fieldname] = oamap.schema.List(oamap.schema.Primitive(oamap.interp.strings.CHARTYPE, data=branchname), starts=branchname, stops=branchname, name="ByteString")
-
-            elif isinstance(branch.interpretation, uproot.interp.numerical.asstlbitset):
-                out[fieldname] = oamap.schema.List(oamap.schema.Primitive(branch.interpretation.todtype, data=branchname), starts=branchname, stops=branchname)
+                out[fieldname] = oamap.schema.List(oamap.schema.Primitive(oamap.interp.strings.CHARTYPE, data=branchname, namespace=namespace), starts=branchname, stops=branchname, namespace=namespace, name="ByteString")
         
         return out
 
     def combinelists(schema):
         if isinstance(schema, oamap.schema.Record) and all(isinstance(x, oamap.schema.List) for x in schema.fields.values()):
-            out = oamap.schema.List(oamap.schema.Record(OrderedDict()))
+            out = oamap.schema.List(oamap.schema.Record(OrderedDict(), namespace=namespace), namespace=namespace)
 
             countbranch = None
             for fieldname, field in schema.items():
@@ -135,11 +133,11 @@ def schema(path, treepath, namespace=""):
 
         return schema
 
-    return oamap.schema.List(accumulate(tree).replace(combinelists), doc=tree.title)
+    return oamap.schema.List(accumulate(tree).replace(combinelists), namespace=namespace, doc=tree.title)
 
 class ROOTBackend(oamap.database.Backend):
     def __init__(self, paths, treepath):
-        self._path = path
+        self._paths = paths
         self._treepath = treepath
 
     @property
@@ -147,12 +145,13 @@ class ROOTBackend(oamap.database.Backend):
         return (self._path, self._treepath)
 
     def instantiate(self, partitionid):
-        return ROOTArrays(self._path[partitionid], self._treepath)
+        return ROOTArrays(self._paths[partitionid], self._treepath)
 
 class ROOTArrays(object):
     def __init__(self, path, treepath):
         import uproot
-        self._tree = uproot.open(path)[treepath]
+        self._file = uproot.open(path, keep_source=True)
+        self._tree = self._file[treepath]
         self._cache = {}
 
     def getall(self, roles):
@@ -167,6 +166,7 @@ class ROOTArrays(object):
                 return str(role)[:colon], str(role)[colon + 1:]
             
         arrays = self._tree.arrays(set(chop(x)[0] for x in roles), cache=self._cache, keycache=self._cache)
+
         out = {}
         for role in roles:
             branchname, leafname = chop(role)
@@ -228,5 +228,6 @@ class ROOTArrays(object):
         return out
 
     def close(self):
-        self._tree.close()
+        self._file._context.source.close()
+        self._file = None
         self._tree = None
