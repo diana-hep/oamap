@@ -1330,6 +1330,15 @@ class Record(Schema):
     def fields(self, value):
         self._extend(value, [])
 
+    def keys(self):
+        return self._fields.keys()
+
+    def values(self):
+        return self._fields.values()
+
+    def items(self):
+        return self._fields.items()
+    
     def _extend(self, fields, start):
         trial = []
         try:

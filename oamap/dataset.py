@@ -191,11 +191,6 @@ class _Data(Operable):
     def arrays(self):
         return DataArrays(self._backends)
 
-    def _serializable(self):
-        out = Data(self._name, self._schema, self._backends, None, extension=self._extension, packing=self._packing, doc=self._doc, metadata=self._metadata)
-        out._operations = copy.deepcopy(self._operations)
-        return out
-
     def transform(self, name, namespace, backend, update):
         if all(isinstance(x, Recasting) for x in self._operations):
             result = self()
@@ -228,7 +223,7 @@ class _Data(Operable):
                     out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 return update(out)
 
-            return [self._executor.submit(task, name, self._serializable(), namespace, backend, update)]
+            return [self._executor.submit(task, name, self, namespace, backend, update)]
 
     def act(self, combiner):
         def task(dataset):
@@ -237,7 +232,7 @@ class _Data(Operable):
                 result = operation.apply(result)
             return result
 
-        return combiner([self._executor.submit(task, self._serializable())])
+        return combiner([self._executor.submit(task, self)])
             
 class Data(_Data):
     def __call__(self):
@@ -396,11 +391,6 @@ class Dataset(_Data):
         stopsrole.starts = startsrole
         return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
-    def _serializable(self):
-        out = Dataset(self._name, self._schema, self._backends, None, self._offsets, extension=self._extension, packing=self._packing, doc=self._doc, metadata=self._metadata)
-        out._operations = copy.deepcopy(self._operations)
-        return out
-
     def transform(self, name, namespace, backend, update):
         if all(isinstance(x, Recasting) for x in self._operations):
             result = self.partition(0)
@@ -431,7 +421,7 @@ class Dataset(_Data):
                 else:
                     return schema, 1
 
-            tasks = [self._executor.submit(task, name, self._serializable(), namespace, backend, i) for i in range(self.numpartitions)]
+            tasks = [self._executor.submit(task, name, self, namespace, backend, i) for i in range(self.numpartitions)]
 
             def collect(name, dataset, results, update):
                 if isinstance(results[0], tuple) and len(results[0]) == 2 and isinstance(results[0][0], oamap.schema.Schema):
@@ -446,7 +436,7 @@ class Dataset(_Data):
                     out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 return update(out)
 
-            tasks.append(self._executor.submit(collect, name, self._serializable(), tuple(tasks), update))
+            tasks.append(self._executor.submit(collect, name, self, tuple(tasks), update))
             return tasks
 
     def act(self, combiner):
@@ -456,7 +446,7 @@ class Dataset(_Data):
                 result = operation.apply(result)
             return result
 
-        return combiner([self._executor.submit(task, self._serializable(), i) for i in range(self.numpartitions)])
+        return combiner([self._executor.submit(task, self, i) for i in range(self.numpartitions)])
 
 class DatasetArrays(DataArrays):
     def __init__(self, partitionid, startsrole, stopsrole, numentries, backends):
