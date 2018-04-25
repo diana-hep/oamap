@@ -171,6 +171,12 @@ class Database(object):
         def __delattr__(self, name):
             self.__dict__["_database"].delete(name)
 
+    @classmethod
+    def writable(cls, backend, namespace="", *args, **kwargs):
+        out = cls(*args, **kwargs)
+        out[namespace] = backend
+        return out
+
     def __init__(self, connection, backends={}, namespace="", executor=oamap.dataset.SingleThreadExecutor()):
         self._connection = connection
         if isinstance(backends, Backend):

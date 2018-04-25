@@ -64,7 +64,7 @@ def dataset(path, treepath, namespace=None, **kwargs):
     return oamap.dataset.Dataset(treepath.split("/")[-1].split(";")[0],
                                  sch,
                                  {namespace: ROOTBackend(paths, treepath)},
-                                 oamap.dataset.SingleThreadExecutor,
+                                 oamap.dataset.SingleThreadExecutor(),
                                  offsets,
                                  extension=None,
                                  packing=None,
