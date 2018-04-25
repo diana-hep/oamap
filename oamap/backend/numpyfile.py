@@ -53,3 +53,7 @@ class NumpyArrays(object):
 
     def __setitem__(self, name, value):
         numpy.save(self._storename(name), value)
+
+class NumpyFileDatabase(oamap.database.FilesystemDatabase):
+    def __init__(self, directory, namespace=""):
+        super(NumpyFileDatabase, self).__init__(directory, backends={namespace: NumpyFileBackend(directory)}, namespace=namespace)

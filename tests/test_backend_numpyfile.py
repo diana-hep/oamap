@@ -29,12 +29,12 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import math
+import tempfile
+import shutil
 
 import unittest
 
 from oamap.schema import *
-from oamap.database import *
-from oamap.dataset import *
 from oamap.backend.numpyfile import *
 
 class TestBackendNumpyfile(unittest.TestCase):
@@ -42,17 +42,17 @@ class TestBackendNumpyfile(unittest.TestCase):
         pass
 
     def test_database(self):
-        db = InMemoryDatabase()
-        db[""] = NumpyFileBackend("DATABASE")
-        db.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
+        tmpdir = tempfile.mkdtemp()
+        try:
+            db = NumpyFileDatabase(tmpdir)
+            db.fromdata("one", List(Record({"x": "int32", "y": "float64"})), [{"x": 1, "y": 1.1}, {"x": 2, "y": 2.2}, {"x": 3, "y": 3.3}], [{"x": 4, "y": 4.4}, {"x": 5, "y": 5.5}, {"x": 6, "y": 6.6}])
 
-        print db.list()
-        db.data.one.schema.show()
+            db.data.two = db.data.one.define("z", lambda obj: obj.x + obj.y)
 
-        db.data.two = db.data.one.define("z", lambda obj: obj.x + obj.y)
-        db.data.two.schema.show()
+            self.assertEqual([(obj.x, obj.y, obj.z) for obj in db.data.two], [(1, 1.1, 2.1), (2, 2.2, 4.2), (3, 3.3, 6.3), (4, 4.4, 8.4), (5, 5.5, 10.5), (6, 6.6, 12.6)])
 
-        print [(obj.x, obj.y, obj.z) for obj in db.data.two]
+            del db.data.one
+            del db.data.two
 
-        del db.data.one
-        del db.data.two
+        finally:
+            shutil.rmtree(tmpdir)

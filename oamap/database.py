@@ -29,10 +29,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import glob
+import json
 import os
+import shutil
 import sys
 import time
-import json
 
 import oamap.schema
 import oamap.dataset
@@ -172,7 +173,11 @@ class Database(object):
 
     def __init__(self, connection, backends={}, namespace="", executor=oamap.dataset.SingleThreadExecutor()):
         self._connection = connection
-        self._backends = dict(backends)
+        if isinstance(backends, Backend):
+            backends = {namespace: backends}
+        self._backends = {}
+        for n, x in backends.items():
+            self[n] = x
         self._namespace = namespace
         self._executor = executor
 
@@ -356,7 +361,13 @@ class Database(object):
 class InMemoryDatabase(Database):
     def __init__(self, backends={}, namespace="", datasets={}):
         super(InMemoryDatabase, self).__init__(None, backends, namespace)
-        self._datasets = dict(datasets)
+
+        if isinstance(datasets, oamap.dataset.Data):
+            datasets = {datasets.name: datasets}
+
+        self._datasets = {}
+        for n, x in datasets.items():
+            self.put(n, x)
 
     def list(self):
         return list(self._datasets)
@@ -383,7 +394,7 @@ class InMemoryDatabase(Database):
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
         if namespace not in self._backends or not isinstance(self._backends[namespace], WritableBackend):
-            raise ValueError("namespace {0} does not point to a writable backend".format(repr(namespace)))
+            raise ValueError("namespace {0} does not point to a WritableBackend".format(repr(namespace)))
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
 
@@ -484,8 +495,8 @@ class FilesystemDatabase(Database):
 
     def put(self, dataset, value, namespace=None):
         namespace = self._normalize_namespace(namespace)
-        if namespace not in self._backends or not isinstance(self._backends[namespace], WritableBackend):
-            raise ValueError("namespace {0} does not point to a writable backend".format(repr(namespace)))
+        if namespace not in self._backends or not isinstance(self._backends[namespace], FilesystemBackend):
+            raise ValueError("namespace {0} does not point to a FilesystemBackend".format(repr(namespace)))
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
 
@@ -501,6 +512,6 @@ class FilesystemDatabase(Database):
 
     def delete(self, dataset):
         try:
-            os.unlink(os.path.join(self._directory, dataset))
+            shutil.rmtree(os.path.join(self._directory, dataset))
         except OSError as err:
             raise KeyError(str(err))
