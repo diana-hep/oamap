@@ -527,7 +527,7 @@ class Primitive(Schema):
             if not explicit and self._nullable is False and self._data is None and self._mask is None and self._namespace == "" and self._packing is None and self._name is None and self._doc is None and self._metadata is None:
                 return str(self._dtype)
             else:
-                out = OrderedDict([("type", "primitive"), ("dtype", self._dtype2str(self._dtype, "-"))])
+                out = {"type": "primitive", "dtype": self._dtype2str(self._dtype, "-")}
                 if explicit or self._nullable is not False:
                     out["nullable"] = self._nullable
                 if explicit or self._data is not None:
@@ -788,7 +788,7 @@ class List(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = OrderedDict([("type", "list"), ("content", self._content._tojson(explicit, labels, shown))])
+            out = {"type": "list", "content": self._content._tojson(explicit, labels, shown)}
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._starts is not None:
@@ -1135,7 +1135,7 @@ class Union(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = OrderedDict([("type", "union"), ("possibilities", [x._tojson(explicit, labels, shown) for x in self._possibilities])])
+            out = {"type": "union", "possibilities": [x._tojson(explicit, labels, shown) for x in self._possibilities]}
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._tags is not None:
@@ -1458,7 +1458,7 @@ class Record(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = OrderedDict([("type", "record"), ("fields", [[n, x._tojson(explicit, labels, shown)] for n, x in self._fields.items()])])
+            out = {"type": "record", "fields": [[n, x._tojson(explicit, labels, shown)] for n, x in self._fields.items()]}
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
@@ -1775,7 +1775,7 @@ class Tuple(Schema):
 
         if label is None or id(self) not in shown:
             shown.add(id(self))
-            out = OrderedDict([("type", "tuple"), ("types", [x._tojson(explicit, labels, shown) for x in self._types])])
+            out = {"type": "tuple", "types": [x._tojson(explicit, labels, shown) for x in self._types]}
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._mask is not None:
@@ -2072,7 +2072,7 @@ class Pointer(Schema):
             shown.add(id(self))
             if self._target is None:
                 raise TypeError("pointer target is still None; must be resolved before it can be stored")
-            out = OrderedDict([("type", "pointer"), ("target", self._target._tojson(explicit, labels, shown))])
+            out = {"type": "pointer", "target": self._target._tojson(explicit, labels, shown)}
             if explicit or self._nullable is not False:
                 out["nullable"] = self._nullable
             if explicit or self._positions is not None:

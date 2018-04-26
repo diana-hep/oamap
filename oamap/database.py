@@ -404,6 +404,7 @@ class InMemoryDatabase(Database):
             namespace = self._normalize_namespace(namespace)
             if namespace not in self._backends or not isinstance(self._backends[namespace], WritableBackend):
                 raise ValueError("namespace {0} does not point to a WritableBackend".format(repr(namespace)))
+            value._backends[namespace] = self._backends[namespace]
 
         if dataset in self._datasets:
             ds = self.get(dataset)
@@ -413,8 +414,8 @@ class InMemoryDatabase(Database):
         for ns, backend in value._backends.items():
             if ns not in self._backends:
                 self[ns] = backend
-            
-        self._datasets[dataset] = [ds] + value.transform(dataset, namespace, self._backends.get(namespace, backend), lambda data: data)
+
+        self._datasets[dataset] = [ds] + value.transform(dataset, namespace, lambda data: data)
 
     def delete(self, dataset):
         ds = self.get(dataset)
@@ -501,11 +502,13 @@ class FilesystemDatabase(Database):
         return self._json2dataset(dataset, json.load(open(dsjson)))
 
     def put(self, dataset, value, namespace=None):
-        namespace = self._normalize_namespace(namespace)
-        if namespace not in self._backends or not isinstance(self._backends[namespace], FilesystemBackend):
-            raise ValueError("namespace {0} does not point to a FilesystemBackend".format(repr(namespace)))
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
+        if not value._notransformations():
+            namespace = self._normalize_namespace(namespace)
+            if namespace not in self._backends or not isinstance(self._backends[namespace], FilesystemBackend):
+                raise ValueError("namespace {0} does not point to a FilesystemBackend".format(repr(namespace)))
+            value._backends[namespace] = self._backends[namespace]
 
         dsjson = os.path.join(self._directory, dataset, "dataset.json")
         if os.path.exists(dsjson):
@@ -519,7 +522,7 @@ class FilesystemDatabase(Database):
             json.dump(Database._dataset2json(data), open(dsjson, "w"))
             return data
 
-        value.transform(dataset, namespace, self._backends.get(namespace, backend), update)
+        value.transform(dataset, namespace, update)
 
     def delete(self, dataset):
         try:

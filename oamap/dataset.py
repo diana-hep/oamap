@@ -194,7 +194,7 @@ class _Data(Operable):
     def arrays(self):
         return DataArrays(self._backends)
 
-    def transform(self, name, namespace, backend, update):
+    def transform(self, name, namespace, update):
         if self._notransformations():
             result = self()
             for operation in self._operations:
@@ -206,11 +206,12 @@ class _Data(Operable):
             return [SingleThreadExecutor.PseudoFuture(update(out))]
 
         else:
-            def task(name, dataset, namespace, backend, update):
+            def task(name, dataset, namespace, update):
                 result = dataset()
                 for operation in dataset._operations:
                     result = operation.apply(result)
 
+                backend = dataset._backends[namespace]
                 schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, backend.prefix(name), backend.delimiter())
 
                 active = backend.instantiate(0)
@@ -226,7 +227,7 @@ class _Data(Operable):
                     out = Data(name, schema, dataset._backends, dataset._executor, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 return update(out)
 
-            return [self._executor.submit(task, name, self, namespace, backend, update)]
+            return [self._executor.submit(task, name, self, namespace, update)]
 
     def act(self, combiner):
         def task(dataset):
@@ -394,7 +395,7 @@ class Dataset(_Data):
         stopsrole.starts = startsrole
         return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
-    def transform(self, name, namespace, backend, update):
+    def transform(self, name, namespace, update):
         if self._notransformations():
             result = self.partition(0)
             for operation in self._operations:
@@ -406,11 +407,12 @@ class Dataset(_Data):
             return [SingleThreadExecutor.PseudoFuture(update(out))]
 
         else:
-            def task(name, dataset, namespace, backend, partitionid):
+            def task(name, dataset, namespace, partitionid):
                 result = dataset.partition(partitionid)
                 for operation in dataset._operations:
                     result = operation.apply(result)
 
+                backend = dataset._backends[namespace]
                 schema, roles2arrays = oamap.operations._DualSource.collect(result._generator.namedschema(), result._arrays, namespace, backend.prefix(name), backend.delimiter())
 
                 active = backend.instantiate(partitionid)
@@ -424,7 +426,7 @@ class Dataset(_Data):
                 else:
                     return schema, 1
 
-            tasks = [self._executor.submit(task, name, self, namespace, backend, i) for i in range(self.numpartitions)]
+            tasks = [self._executor.submit(task, name, self, namespace, i) for i in range(self.numpartitions)]
 
             def collect(name, dataset, results, update):
                 if isinstance(results[0], tuple) and len(results[0]) == 2 and isinstance(results[0][0], oamap.schema.Schema):
@@ -433,6 +435,7 @@ class Dataset(_Data):
                 else:
                     offsets = numpy.cumsum([0] + [x.result()[1] for x in results], dtype=numpy.int64)
                     schema = results[0].result()[0]
+
                 if isinstance(schema, oamap.schema.List):
                     out = Dataset(name, schema, dataset._backends, dataset._executor, offsets, extension=dataset._extension, packing=None, doc=dataset._doc, metadata=dataset._metadata)
                 else:

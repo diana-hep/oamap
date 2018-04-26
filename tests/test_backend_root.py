@@ -52,13 +52,12 @@ class TestBackendRoot(unittest.TestCase):
 
         self.assertEqual(repr(db.data.one[0].Electron[0].pt), "28.555809")
 
-    # def test_transform(self):
-    #     dataset = oamap.backend.root.dataset("tests/samples/mc10events.root", "Events")
+    def test_transform(self):
+        dataset = oamap.backend.root.dataset("tests/samples/mc10events.root", "Events")
 
-    #     print dataset[0].Electron[0].pt * math.sinh(dataset[0].Electron[0].eta)
+        self.assertEqual(repr(dataset[0].Electron[0].pt * math.sinh(dataset[0].Electron[0].eta)), "-17.956890574044056")
 
-    #     db = oamap.database.InMemoryDatabase.writable(oamap.database.DictBackend())
-    #     db.data.one = dataset.define("pz", lambda x: x.pt * math.sinh(x.eta), at="Electron")
+        db = oamap.database.InMemoryDatabase.writable(oamap.database.DictBackend())
+        db.data.one = dataset.define("pz", lambda x: x.pt * math.sinh(x.eta), at="Electron", numba=False)
 
-    #     print db.data.one[0].Electron[0].pz
-
+        self.assertEqual(repr(db.data.one[0].Electron[0].pz), "-17.956890574044056")
