@@ -43,9 +43,9 @@ import oamap.proxy
 import oamap.util
 import oamap.compiler
 
-recastings = {}
-transformations = {}
-actions = {}
+recastings      = oamap.util.OrderedDict()
+transformations = oamap.util.OrderedDict()
+actions         = oamap.util.OrderedDict()
 
 ################################################################ general utilities
 

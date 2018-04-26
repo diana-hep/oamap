@@ -108,6 +108,16 @@ class ListProxy(Proxy):
     def __str__(self):
         return repr(self)
 
+    def __getattr__(self, field):
+        if field in self.__dict__:
+            return self.__dict__[field]
+        else:
+            import oamap.operations
+            for n, x in reversed(list(oamap.operations.actions.items()) + list(oamap.operations.transformations.items()) + list(oamap.operations.recastings.items())):
+                if field == n:
+                    return lambda *args, **kwargs: x(self, *args, **kwargs)
+            raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+
     @property
     def schema(self):
         return self._generator.schema
@@ -238,6 +248,10 @@ class RecordProxy(Proxy):
             elif field == "name":
                 return self._generator.name
             else:
+                import oamap.operations
+                for n, x in reversed(list(oamap.operations.actions.items()) + list(oamap.operations.transformations.items()) + list(oamap.operations.recastings.items())):
+                    if field == n:
+                        return lambda *args, **kwargs: x(self, *args, **kwargs)
                 raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
         else:
             return generator._generate(self._arrays, self._index, self._cache)
@@ -281,6 +295,16 @@ class TupleProxy(Proxy):
 
     def __str__(self):
         return repr(self)
+
+    def __getattr__(self, field):
+        if field in self.__dict__:
+            return self.__dict__[field]
+        else:
+            import oamap.operations
+            for n, x in reversed(list(oamap.operations.actions.items()) + list(oamap.operations.transformations.items()) + list(oamap.operations.recastings.items())):
+                if field == n:
+                    return lambda *args, **kwargs: x(self, *args, **kwargs)
+            raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
 
     def __len__(self):
         return len(self._generator.types)
