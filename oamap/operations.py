@@ -356,7 +356,7 @@ def project(data, at):
         schema = data._generator.namedschema().project(at)
         if schema is None:
             raise TypeError("projection resulted in no schema")
-        if isinstance(schema, oamap.schema.List):
+        if isinstance(schema, oamap.schema.List) and isinstance(data, oamap.proxy.ListProxy):
             return _setindexes(data, schema(data._arrays, numentries=len(data)))
         else:
             return _setindexes(data, schema(data._arrays))
@@ -741,7 +741,7 @@ def flatten(data, at=""):
 
         arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(outernode, starts, stops)
-        if isinstance(schema, oamap.schema.List):
+        if isinstance(schema, oamap.schema.List) and outernode is not schema:
             return schema(arrays, numentries=len(data))
         else:
             return schema(arrays)
@@ -873,7 +873,9 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(listnode, offsets[:-1], offsets[1:])
         arrays.put(listnode.content, pointers)
-        if isinstance(schema, oamap.schema.List):
+        if isinstance(schema, oamap.schema.List) and listnode is schema:
+            return schema(arrays, numentries=numitems)
+        elif isinstance(schema, oamap.schema.List):
             return schema(arrays, numentries=len(data))
         else:
             return schema(arrays)

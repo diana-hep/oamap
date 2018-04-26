@@ -499,7 +499,8 @@ class FilesystemDatabase(Database):
         dsjson = os.path.join(self._directory, dataset, "dataset.json")
         while not os.path.exists(dsjson):
             time.sleep(0)
-        return self._json2dataset(dataset, json.load(open(dsjson)))
+        with open(dsjson) as ds:
+            return self._json2dataset(dataset, json.load(ds))
 
     def put(self, dataset, value, namespace=None):
         if not isinstance(value, oamap.dataset._Data):
@@ -519,8 +520,9 @@ class FilesystemDatabase(Database):
                 self[ns] = backend
 
         def update(data):
-            json.dump(Database._dataset2json(data), open(dsjson, "w"))
-            return data
+            with open(dsjson, "w") as ds:
+                json.dump(Database._dataset2json(data), ds)
+                return data
 
         value.transform(dataset, namespace, update)
 

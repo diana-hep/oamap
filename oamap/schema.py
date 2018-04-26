@@ -956,7 +956,11 @@ class List(Schema):
 
     def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common, packing=None, numentries=None):
         generator = self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension), packing=packing)
-        return generator(arrays, numentries=numentries)
+        import oamap.generator
+        if isinstance(generator, oamap.generator.ListGenerator):
+            return generator(arrays, numentries=numentries)
+        else:
+            return generator(arrays)
 
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:

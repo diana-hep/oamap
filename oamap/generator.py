@@ -424,7 +424,10 @@ class ListGenerator(Generator):
         return starts, stops
 
     def __call__(self, arrays, numentries=None):
-        return self._generate(arrays, 0, self._newcache(), numentries=numentries)
+        if isinstance(self, Masked):
+            return self._generate(arrays, 0, self._newcache())
+        else:
+            return self._generate(arrays, 0, self._newcache(), numentries=numentries)
 
     def _generate(self, arrays, index, cache, numentries=None):
         if numentries is None:
