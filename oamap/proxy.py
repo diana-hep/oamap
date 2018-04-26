@@ -116,11 +116,21 @@ class ListProxy(Proxy):
             for n, x in reversed(list(oamap.operations.actions.items()) + list(oamap.operations.transformations.items()) + list(oamap.operations.recastings.items())):
                 if field == n:
                     return lambda *args, **kwargs: x(self, *args, **kwargs)
-            raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+            raise AttributeError("ListProxy has no attribute {0}".format(repr(field)))
 
     @property
     def schema(self):
         return self._generator.schema
+
+    @property
+    def fields(self):
+        generator = self._generator
+        while isinstance(generator, oamap.generator.ListGenerator):
+            generator = generator.content
+        if isinstance(generator, oamap.generator.RecordGenerator):
+            return list(generator.fields)
+        else:
+            raise TypeError("list does not contain records")
 
     def indexed(self):
         return self
@@ -304,7 +314,7 @@ class TupleProxy(Proxy):
             for n, x in reversed(list(oamap.operations.actions.items()) + list(oamap.operations.transformations.items()) + list(oamap.operations.recastings.items())):
                 if field == n:
                     return lambda *args, **kwargs: x(self, *args, **kwargs)
-            raise AttributeError("{0} object has no attribute {1}".format(repr("Record" if self._generator.name is None else self._generator.name), repr(field)))
+            raise AttributeError("TupleProxy has no attribute {0}".format(repr(field)))
 
     def __len__(self):
         return len(self._generator.types)

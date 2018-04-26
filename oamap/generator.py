@@ -423,10 +423,16 @@ class ListGenerator(Generator):
                 stops = numpy.array(stops, dtype=self.posdtype)
         return starts, stops
 
-    def _generate(self, arrays, index, cache):
-        starts, stops = self._getstartsstops(arrays, cache)
-        return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
+    def __call__(self, arrays, numentries=None):
+        return self._generate(arrays, 0, self._newcache(), numentries=numentries)
 
+    def _generate(self, arrays, index, cache, numentries=None):
+        if numentries is None:
+            starts, stops = self._getstartsstops(arrays, cache)
+            return oamap.proxy.ListProxy(self, arrays, cache, starts[index], 1, stops[index] - starts[index])
+        else:
+            return oamap.proxy.ListProxy(self, arrays, cache, 0, 1, numentries)
+            
     def _requireall(self, memo=None):
         if memo is None:
             memo = set()

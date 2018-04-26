@@ -954,6 +954,10 @@ class List(Schema):
     def _get_content(self, prefix, delimiter):
         return self._get_name(prefix, delimiter) + delimiter + "L"
 
+    def __call__(self, arrays, prefix="object", delimiter="-", extension=oamap.extension.common, packing=None, numentries=None):
+        generator = self.generator(prefix=prefix, delimiter=delimiter, extension=self._normalize_extension(extension), packing=packing)
+        return generator(arrays, numentries=numentries)
+
     def _generator(self, prefix, delimiter, cacheidx, memo, nesting, extension, packing):
         if id(self) in nesting:
             raise TypeError("types may not be defined in terms of themselves:\n\n    {0}".format(repr(self)))

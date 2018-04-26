@@ -318,7 +318,11 @@ def fieldname(data, newname, at):
 
         del nodes[1][oldname]
         nodes[1][newname] = nodes[0]
-        return _setindexes(data, schema(data._arrays))
+
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(data._arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(data._arrays))
         
     else:
         raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
@@ -335,7 +339,10 @@ def recordname(data, newname, at=""):
             raise TypeError("path {0} did not match a record".format(repr(at)))
 
         nodes[0].name = newname
-        return _setindexes(data, schema(data._arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(data._arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(data._arrays))
         
     else:
         raise TypeError("fieldname can only be applied to an OAMap proxy (List, Record, Tuple)")
@@ -349,7 +356,10 @@ def project(data, at):
         schema = data._generator.namedschema().project(at)
         if schema is None:
             raise TypeError("projection resulted in no schema")
-        return _setindexes(data, schema(data._arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(data._arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("project can only be applied to an OAMap proxy (List, Record, Tuple)")
 
@@ -360,7 +370,10 @@ def keep(data, *paths):
         schema = data._generator.namedschema().keep(*paths)
         if schema is None:
             raise TypeError("keep operation resulted in no schema")
-        return _setindexes(data, schema(data._arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(data._arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("keep can only be applied to an OAMap proxy (List, Record, Tuple)")
 
@@ -371,7 +384,10 @@ def drop(data, *paths):
         schema = data._generator.namedschema().drop(*paths)
         if schema is None:
             raise TypeError("drop operation resulted in no schema")
-        return _setindexes(data, schema(data._arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(data._arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(data._arrays))
     else:
         raise TypeError("drop can only be applied to an OAMap proxy (List, Record, Tuple)")
 
@@ -433,7 +449,10 @@ def split(data, *paths):
                 for n, x in ns.fields.items():
                     schema[n] = x
 
-        return schema(data._arrays)
+        if isinstance(schema, oamap.schema.List):
+            return schema(data._arrays, numentries=len(data))
+        else:
+            return schema(data._arrays)
 
     else:
         raise TypeError("split can only be applied to an OAMap proxy (List, Record, Tuple)")
@@ -527,7 +546,10 @@ def merge(data, container, *paths):
             containerlist.starts = listnodes[0].starts
             containerlist.stops = listnodes[0].stops
 
-        return schema(data._arrays)
+        if isinstance(schema, oamap.schema.List):
+            return schema(data._arrays, numentries=len(data))
+        else:
+            return schema(data._arrays)
 
     else:
         raise TypeError("merge can only be applied to an OAMap proxy (List, Record, Tuple)")
@@ -574,7 +596,10 @@ def parent(data, fieldname, at):
         arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(childnode[fieldname], pointers)
 
-        return _setindexes(data, schema(arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(arrays))
             
 def _parent_fill(starts, stops, pointers):
     for i in range(len(starts)):
@@ -620,7 +645,10 @@ def index(data, fieldname, at):
         arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(childnode[fieldname], values)
 
-        return _setindexes(data, schema(arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(arrays))
             
 def _index_fill(starts, stops, pointers):
     for i in range(len(starts)):
@@ -676,7 +704,10 @@ def tomask(data, at, low, high=None):
         else:
             raise NotImplementedError("tomask operation only defined on primitive fields; {0} matches:\n\n    {1}".format(repr(at), node.__repr__(indent="    ")))
 
-        return _setindexes(data, schema(arrays))
+        if isinstance(schema, oamap.schema.List):
+            return _setindexes(data, schema(arrays, numentries=len(data)))
+        else:
+            return _setindexes(data, schema(arrays))
 
     else:
         raise TypeError("tomask can only be applied to an OAMap proxy (List, Record, Tuple)")
@@ -710,7 +741,10 @@ def flatten(data, at=""):
 
         arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(outernode, starts, stops)
-        return schema(arrays)
+        if isinstance(schema, oamap.schema.List):
+            return schema(arrays, numentries=len(data))
+        else:
+            return schema(arrays)
 
     else:
         raise TypeError("flatten can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
@@ -839,7 +873,10 @@ def {fill}({view}, {viewstarts}, {viewstops}, {stops}, {pointers}{params}):
         arrays = _DualSource(data._arrays, data._generator.namespaces())
         arrays.put(listnode, offsets[:-1], offsets[1:])
         arrays.put(listnode.content, pointers)
-        return schema(arrays)
+        if isinstance(schema, oamap.schema.List):
+            return schema(arrays, numentries=len(data))
+        else:
+            return schema(arrays)
 
     else:
         raise TypeError("filter can only be applied to a top-level OAMap proxy (List, Record, Tuple)")
@@ -931,7 +968,10 @@ def {fill}({view}, {primitive}{params}):
 
             arrays = _DualSource(data._arrays, data._generator.namespaces())
             arrays.put(recordnode[fieldname], primitive)
-            return schema(arrays)
+            if isinstance(schema, oamap.schema.List):
+                return schema(arrays, numentries=len(data))
+            else:
+                return schema(arrays)
 
         elif isinstance(fieldtype, oamap.schema.Primitive):
             env = {fcnname: fcn}
@@ -968,7 +1008,10 @@ def {fill}({view}, {primitive}, {mask}{params}):
 
             arrays = _DualSource(data._arrays, data._generator.namespaces())
             arrays.put(recordnode[fieldname], primitive, mask)
-            return schema(arrays)
+            if isinstance(schema, oamap.schema.List):
+                return schema(arrays, numentries=len(data))
+            else:
+                return schema(arrays)
 
         else:
             raise NotImplementedError("define not implemented for fieldtype:\n\n    {0}".format(fieldtype.__repr__(indent="    ")))
