@@ -55,7 +55,7 @@ setup(name = "oamap",
       license = "BSD 3-clause",
       test_suite = "tests",
       install_requires = ["numpy"],
-      tests_require = ["thriftpy", "python-snappy"],
+      tests_require = ["uproot", "thriftpy", "python-snappy"],
       classifiers = [
           "Development Status :: 4 - Beta",
           "Intended Audience :: Developers",

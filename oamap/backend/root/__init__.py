@@ -81,6 +81,8 @@ def schema(path, treepath, namespace=""):
     def accumulate(node):
         out = oamap.schema.Record(OrderedDict(), namespace=namespace)
         for branchname, branch in node.iteritems(aliases=False) if isinstance(node, uproot.tree.TTreeMethods) else node.iteritems():
+            if not isinstance(branchname, str):
+                branchname = branchname.decode("ascii")
             fieldname = branchname.split(".")[-1]
 
             if len(branch.fBranches) > 0:
@@ -127,13 +129,19 @@ def schema(path, treepath, namespace=""):
                 out.content[fieldname] = field.content
 
             if countbranch is not None:
-                out.starts = countbranch.name
-                out.stops = countbranch.name
+                countbranchname = countbranch.name
+                if not isinstance(countbranchname, str):
+                    countbranchname = countbranchname.decode("ascii")
+                out.starts = countbranchname
+                out.stops = countbranchname
                 return out
 
         return schema
 
-    return oamap.schema.List(accumulate(tree).replace(combinelists), namespace=namespace, doc=tree.title)
+    doc = tree.title
+    if not isinstance(doc, str):
+        doc = doc.decode("ascii")
+    return oamap.schema.List(accumulate(tree).replace(combinelists), namespace=namespace, doc=doc)
 
 class ROOTBackend(oamap.database.Backend):
     def __init__(self, paths, treepath):
@@ -158,12 +166,13 @@ class ROOTArrays(object):
         import uproot
 
         def chop(role):
+            name = str(role).encode("ascii")
             try:
-                colon = str(role).rindex(":")
+                colon = name.rindex(b":")
             except ValueError:
-                return str(role), None
+                return name, None
             else:
-                return str(role)[:colon], str(role)[colon + 1:]
+                return name[:colon], name[colon + 1:]
             
         arrays = self._tree.arrays(set(chop(x)[0] for x in roles), cache=self._cache, keycache=self._cache)
 
@@ -172,7 +181,7 @@ class ROOTArrays(object):
             branchname, leafname = chop(role)
             array = arrays[branchname]
 
-            if leafname is not None and leafname.startswith("/"):
+            if leafname is not None and leafname.startswith(b"/"):
                 if isinstance(array, (uproot.interp.jagged.JaggedArray, uproot.interp.strings.Strings)):
                     array = array.content
 
