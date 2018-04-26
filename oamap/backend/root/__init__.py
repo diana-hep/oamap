@@ -41,7 +41,7 @@ def dataset(path, treepath, namespace=None, **kwargs):
     import uproot
 
     if namespace is None:
-        namespace = "ROOT({0}, {1})".format(repr(path), repr(treepath))
+        namespace = "root({0}, {1})".format(repr(path), repr(treepath))
 
     if "localsource" not in kwargs:
         kwargs["localsource"] = lambda path: uproot.source.file.FileSource(path, chunkbytes=8*1024, limitbytes=None)
