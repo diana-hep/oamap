@@ -578,7 +578,11 @@ def parent(data, fieldname, at):
             raise NotImplementedError("nullable; need to merge masks")
 
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
-        starts, stops = listgenerator._getstartsstops(data._arrays, data._cache)
+        if listnode is schema:
+            offsets = numpy.array([0, len(data)], dtype=oamap.generator.ListGenerator.posdtype)
+            starts, stops = offsets[:1], offsets[-1:]
+        else:
+            starts, stops = listgenerator._getstartsstops(data._arrays, data._cache)
 
         if isinstance(parent.fill, types.FunctionType):
             try:
@@ -627,7 +631,11 @@ def index(data, fieldname, at):
             raise NotImplementedError("nullable; need to merge masks")
 
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
-        starts, stops = listgenerator._getstartsstops(data._arrays, data._cache)
+        if listnode is schema:
+            offsets = numpy.array([0, len(data)], dtype=oamap.generator.ListGenerator.posdtype)
+            starts, stops = offsets[:1], offsets[-1:]
+        else:
+            starts, stops = listgenerator._getstartsstops(data._arrays, data._cache)
 
         if isinstance(index.fill, types.FunctionType):
             try:
@@ -727,7 +735,11 @@ def flatten(data, at=""):
             raise NotImplementedError("nullable; need to merge masks")
 
         outergenerator = data._generator.findbynames("List", outernode.namespace, starts=outernode.starts, stops=outernode.stops)
-        outerstarts, outerstops = outergenerator._getstartsstops(data._arrays, data._cache)
+        if outernode is schema:
+            offsets = numpy.array([0, len(data)], dtype=oamap.generator.ListGenerator.posdtype)
+            outerstarts, outerstops = offsets[:1], offsets[-1:]
+        else:
+            outerstarts, outerstops = outergenerator._getstartsstops(data._arrays, data._cache)
         innergenerator = data._generator.findbynames("List", innernode.namespace, starts=innernode.starts, stops=innernode.stops)
         innerstarts, innerstops = innergenerator._getstartsstops(data._arrays, data._cache)
 
@@ -774,7 +786,11 @@ def filter(data, fcn, args=(), at="", numba=True):
         if all(isinstance(x, (oamap.schema.Record, oamap.schema.Tuple)) for x in nodes[1:]):
             view = listgenerator(data._arrays)
         else:
-            viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+            if listnode is schema:
+                offsets = numpy.array([0, len(data)], dtype=oamap.generator.ListGenerator.posdtype)
+                viewstarts, viewstops = offsets[:1], offsets[-1:]
+            else:
+                viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
             viewschema = listgenerator.namedschema()
             viewarrays = _DualSource(data._arrays, data._generator.namespaces())
             viewoffsets = numpy.array([viewstarts.min(), viewstops.max()], dtype=oamap.generator.ListGenerator.posdtype)
@@ -905,7 +921,11 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=None, numba=True):
         if len(nodes) >= 2 and isinstance(nodes[1], oamap.schema.List):
             recordnode, listnode = nodes[:2]
             listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
-            viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
+            if listnode is schema:
+                offsets = numpy.array([0, len(data)], dtype=oamap.generator.ListGenerator.posdtype)
+                viewstarts, viewstops = offsets[:1], offsets[-1:]
+            else:
+                viewstarts, viewstops = listgenerator._getstartsstops(data._arrays, data._cache)
             viewschema = listgenerator.namedschema()
             viewarrays = _DualSource(data._arrays, data._generator.namespaces())
 
