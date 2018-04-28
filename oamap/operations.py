@@ -784,7 +784,10 @@ def filter(data, fcn, args=(), at="", numba=True):
         listgenerator = data._generator.findbynames("List", listnode.namespace, starts=listnode.starts, stops=listnode.stops)
         
         if all(isinstance(x, (oamap.schema.Record, oamap.schema.Tuple)) for x in nodes[1:]):
-            view = listgenerator(data._arrays)
+            if listnode is schema:
+                view = listgenerator(data._arrays, numentries=len(data))
+            else:
+                view = listgenerator(data._arrays)
         else:
             if listnode is schema:
                 offsets = numpy.array([0, len(data)], dtype=oamap.generator.ListGenerator.posdtype)
