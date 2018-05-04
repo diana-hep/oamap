@@ -10,5 +10,5 @@ class TestIssues(unittest.TestCase):
         with open('README.rst') as f:
             try:
                 content = f.read()
-            except UnicodeDecodeError, e:
+            except UnicodeDecodeError as e:
                 self.fail("Cannot read README.rst: " + str(e))
