@@ -800,6 +800,7 @@ def filter(data, fcn, args=(), at="", numba=True):
             viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
             view = viewschema(viewarrays)
 
+        fcn = oamap.util.stringfcn(fcn)
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
@@ -946,6 +947,7 @@ def define(data, fieldname, fcn, args=(), at="", fieldtype=None, numba=True):
             viewarrays.put(viewschema, offsets[:1], offsets[-1:])
             view = viewschema(viewarrays)
 
+        fcn = oamap.util.stringfcn(fcn)
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
@@ -1071,6 +1073,7 @@ def map(data, fcn, args=(), at="", names=None, numba=True):
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
+        fcn = oamap.util.stringfcn(fcn)
         params = fcn.__code__.co_varnames[:fcn.__code__.co_argcount]
         avoid = set(params)
         fcnname = oamap.util.varname(avoid, "fcn")
@@ -1314,6 +1317,7 @@ def reduce(data, tally, fcn, args=(), at="", numba=True):
         viewarrays.put(viewschema, viewoffsets[:1], viewoffsets[-1:])
         view = viewschema(viewarrays)
 
+        fcn = oamap.util.stringfcn(fcn)
         if fcn.__code__.co_argcount < 2:
             raise TypeError("function must have at least two parameters (data and tally)")
 

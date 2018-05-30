@@ -28,6 +28,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import math
 import sys
 import types
 
@@ -213,7 +214,7 @@ def paramtypes(args):
 def doexec(module, env):
     exec(module, env)
 
-def trycompile(fcn, paramtypes=None, numba=True):
+def stringfcn(fcn):
     if isinstance(fcn, basestring):
         parsed = ast.parse(fcn).body
         if isinstance(parsed[-1], ast.Expr):
@@ -247,9 +248,15 @@ def {fcn}({params}):
         module.body[0].body = parsed
         module = compile(module, "<fcn string>", "exec")
 
-        env = dict(globals())
+        env = dict(math.__dict__)
+        env.update(globals())
         doexec(module, env)
         fcn = env[fcnname]
+
+    return fcn
+
+def trycompile(fcn, paramtypes=None, numba=True):
+    fcn = stringfcn(fcn)
 
     if numba is None or numba is False:
         return fcn
