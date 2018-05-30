@@ -223,8 +223,12 @@ def stringfcn(fcn):
             parsed[-1].lineno = parsed[-1].value.lineno
             parsed[-1].col_offset = parsed[-1].value.col_offset
 
+        env = dict(math.__dict__)
+        env.update(globals())
+
         free = set()
         defined = set(["None", "False", "True"])
+        defined.update(env)
         def recurse(node):
             if isinstance(node, ast.Name):
                 if isinstance(node.ctx, ast.Store):
@@ -249,8 +253,6 @@ def {fcn}({params}):
         module.body[0].body = parsed
         module = compile(module, "<fcn string>", "exec")
 
-        env = dict(math.__dict__)
-        env.update(globals())
         doexec(module, env)
         fcn = env[fcnname]
 
