@@ -36,6 +36,18 @@ class NumpyFileBackend(oamap.database.FilesystemBackend):
     def __init__(self, directory):
         super(NumpyFileBackend, self).__init__(directory, arraysuffix=".npy")
 
+    @property
+    def args(self):
+        return (self._directory,)
+
+    def tojson(self):
+        return {"class": self.__class__.__module__ + "." + self.__class__.__name__,
+                "directory": self._directory}
+
+    @staticmethod
+    def fromjson(obj, namespace):
+        return NumpyFileBackend(obj["directory"])
+
     def instantiate(self, partitionid):
         return NumpyArrays(lambda name: self.fullname(partitionid, name, create=False),
                            lambda name: self.fullname(partitionid, name, create=True))

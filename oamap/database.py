@@ -28,9 +28,11 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import collections
 import glob
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -40,6 +42,7 @@ import oamap.extension.common
 import oamap.operations
 import oamap.proxy
 import oamap.schema
+import oamap.util
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -48,13 +51,6 @@ if sys.version_info[0] > 2:
 ################################################################ Backend, WritableBackend, FilesystemBackend (abstract)
 
 class Backend(object):
-    def __init__(self, *args):
-        self._args = args
-
-    @property
-    def args(self):
-        return self._args
-
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(x) for x in self.args))
 
@@ -76,6 +72,14 @@ class Backend(object):
     def __hash__(self):
         return hash((self.__class__, self.args))
 
+    @staticmethod
+    def fromjson(obj, namespace):
+        assert isinstance(obj, dict)
+        assert "class" in obj
+        mod = obj["class"][:obj["class"].rindex(".")]
+        cls = obj["class"][obj["class"].rindex(".") + 1:]
+        return getattr(oamap.util.import_module(mod), cls).fromjson(obj, namespace)
+
 class WritableBackend(Backend):
     def incref(self, dataset, partitionid, arrayname):
         raise NotImplementedError("missing implementation for {0}.incref".format(self.__class__))
@@ -92,7 +96,20 @@ class FilesystemBackend(WritableBackend):
         self._directory = directory
         self._arrayprefix = arrayprefix
         self._arraysuffix = arraysuffix
-        super(FilesystemBackend, self).__init__(directory)
+
+    @property
+    def args(self):
+        return (self._directory, self._arrayprefix, self._arraysuffix)
+
+    def tojson(self):
+        return {"class": self.__class__.__module__ + "." + self.__class__.__name__,
+                "directory": self._directory,
+                "arrayprefix": self._arrayprefix,
+                "arraysuffix": self._arraysuffix}
+
+    @staticmethod
+    def fromjson(obj, namespace):
+        return FilesystemBackend(obj["directory"], obj["arrayprefix"], obj["arraysuffix"])
 
     @property
     def directory(self):
@@ -152,7 +169,10 @@ class DictBackend(WritableBackend):
             refcounts = {}
         self._arrays = arrays
         self._refcounts = refcounts
-        super(DictBackend, self).__init__(arrays, refcounts)
+
+    @property
+    def args(self):
+        return (self._arrays, self._refcounts)
 
     def instantiate(self, partitionid):
         out = self._arrays[partitionid] = self._arrays.get(partitionid, {})
@@ -522,21 +542,43 @@ class InMemoryDatabase(Database):
 ################################################################ FilesystemDatabase (concrete)
 
 class FilesystemDatabase(Database):
-    class BackendDict(object):
+    class BackendDict(collections.MutableMapping):
         def __init__(self, backenddir):
             self._backenddir = backenddir
 
+        @staticmethod
+        def _mangle(name):
+            return "_" + FilesystemDatabase.BackendDict._manglepattern.sub(lambda bad: "_" + "".join("{0:02x}".format(ord(x)) for x in bad.group(0)) + "_", name) + ".json"
+        _manglepattern = re.compile("[^a-zA-Z0-9]+")
+
+        @staticmethod
+        def _demangle(name):
+            return FilesystemDatabase.BackendDict._demanglepattern.sub(lambda bad: "".join(chr(int(x + y, 16)) for x, y in zip(bad.group(1)[::2], bad.group(1)[1::2])), name[1:-5])
+        _demanglepattern = re.compile("_([a-f0-9]+)_")
+            
+        def __iter__(self):
+            for x in os.listdir(self._backenddir):
+                if x.startswith("_"):
+                    yield self._demangle(x)
+
+        def __len__(self):
+            return sum(1 for x in self)
+
         def __contains__(self, namespace):
-            return os.path.exists(os.path.join(self._backenddir, "_" + namespace))
+            return os.path.exists(os.path.join(self._backenddir, self._mangle(namespace)))
 
         def __getitem__(self, namespace):
-            return json.load(open(os.path.join(self._backenddir, "_" + namespace)))
+            with open(os.path.join(self._backenddir, self._mangle(namespace))) as f:
+                return Backend.fromjson(json.load(f), namespace)
 
         def __setitem__(self, namespace, value):
-            return json.dump(value, open(os.path.join(self._backenddir, "_" + namespace), "w"))
+            if not isinstance(value, Backend):
+                raise TypeError("can only assign Backends to Database")
+            with open(os.path.join(self._backenddir, self._mangle(namespace)), "w") as f:
+                return json.dump(value.tojson(), f)
 
         def __delitem__(self, namespace):
-            os.unlink(os.path.join(self._backenddir, "_" + namespace))
+            os.unlink(os.path.join(self._backenddir, self._mangle(namespace)))
 
     def __init__(self, directory, backends={}, namespace=""):
         super(FilesystemDatabase, self).__init__(None, {}, namespace)
@@ -606,6 +648,6 @@ class FilesystemDatabase(Database):
 
     def delete(self, dataset):
         try:
-            shutil.rmtree(self._datasetdir())
+            shutil.rmtree(self._datasetdir(dataset))
         except OSError as err:
             raise KeyError(str(err))

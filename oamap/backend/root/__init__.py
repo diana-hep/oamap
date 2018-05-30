@@ -174,13 +174,22 @@ class ROOTBackend(oamap.database.Backend):
     def args(self):
         return (self._paths, self._treepath)
 
+    def tojson(self):
+        return {"class": self.__class__.__module__ + "." + self.__class__.__name__,
+                "paths": list(self._paths),
+                "treepath": self._treepath}
+
+    @staticmethod
+    def fromjson(obj, namespace):
+        return ROOTBackend(obj["paths"], obj["treepath"], namespace)
+
     @property
     def namespace(self):
         return self._namespace
 
     def instantiate(self, partitionid):
         return ROOTArrays.frompath(self._paths[partitionid], self._treepath, self)
-
+        
 class ROOTArrays(object):
     @staticmethod
     def frompath(path, treepath, backend):
