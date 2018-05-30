@@ -1039,7 +1039,7 @@ def {fill}({view}, {primitive}, {mask}{params}):
            fcn=fcnname,
            maskedvalue=oamap.generator.Masked.maskedvalue), env)
             fill = oamap.util.trycompile(env[fillname], numba=numba)
-            
+
             primitive = numpy.empty(len(view), dtype=fieldtype.dtype)
             mask = numpy.empty(len(view), dtype=oamap.generator.Masked.maskdtype)
             fill(*((view, primitive, mask) + args))

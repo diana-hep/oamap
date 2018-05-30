@@ -143,6 +143,9 @@ class Operable(object):
         for n, x in oamap.operations.actions.items():
             setattr(Operable, n, oamap.util.MethodType(newaction(n, x), None, Operable))
 
+    def _nooperations(self):
+        return len(self._operations) == 0
+
     def _notransformations(self):
         return all(isinstance(x, Recasting) for x in self._operations)
 
@@ -195,7 +198,10 @@ class _Data(Operable):
         return DataArrays(self._backends)
 
     def transform(self, name, namespace, update):
-        if self._notransformations():
+        if self._nooperations():
+            return [SingleThreadExecutor.PseudoFuture(update(self))]
+
+        elif self._notransformations():
             result = self()
             for operation in self._operations:
                 result = operation.apply(result)
@@ -396,7 +402,10 @@ class Dataset(_Data):
         return DatasetArrays(normid, startsrole, stopsrole, self._offsets[normid + 1] - self._offsets[normid], self._backends)
 
     def transform(self, name, namespace, update):
-        if self._notransformations():
+        if self._nooperations():
+            return [SingleThreadExecutor.PseudoFuture(update(self))]
+
+        elif self._notransformations():
             result = self.partition(0)
             for operation in self._operations:
                 result = operation.apply(result)
