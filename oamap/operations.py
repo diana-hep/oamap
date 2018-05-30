@@ -170,7 +170,7 @@ class _DualSource(object):
     def backends(self):
         old = self.old
         while isinstance(old, _DualSource):
-            old = self.old
+            old = old.old
         oldbackend = getattr(old, "backend", None)
         if oldbackend is None:
             return {}
