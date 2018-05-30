@@ -241,6 +241,16 @@ class Schema(object):
         else:
             raise TypeError("unrecognized type for Schema from JSON: {0}".format(repr(data)))
 
+    def renamespace(self, nullto=None, **to):
+        if nullto is not None:
+            to[""] = nullto
+
+        def replacement(node):
+            node.namespace = to.get(node.namespace, node.namespace)
+            return node
+
+        return self.replace(replacement)
+
     def replace(self, fcn, *args, **kwds):
         return self._replace(fcn, args, kwds, {})
 

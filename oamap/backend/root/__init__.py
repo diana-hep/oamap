@@ -64,7 +64,7 @@ def dataset(path, treepath, namespace=None, **kwargs):
 
     return oamap.dataset.Dataset(treepath.split("/")[-1].split(";")[0],
                                  sch,
-                                 {namespace: ROOTBackend(paths, treepath)},
+                                 {namespace: ROOTBackend(paths, treepath, namespace)},
                                  oamap.dataset.SingleThreadExecutor(),
                                  offsets,
                                  extension=None,
@@ -81,7 +81,7 @@ def proxy(path, treepath, namespace="", extension=oamap.extension.common):
 def _proxy(tree, namespace="", extension=oamap.extension.common):
     schema = _schema(tree, namespace=namespace)
     generator = schema.generator(extension=extension)
-    return oamap.proxy.ListProxy(generator, ROOTArrays(tree), generator._newcache(), 0, 1, tree.numentries)
+    return oamap.proxy.ListProxy(generator, ROOTArrays(tree, ROOTBackend([tree._context.sourcepath], tree._context.treename, namespace)), generator._newcache(), 0, 1, tree.numentries)
 
 def schema(path, treepath, namespace=""):
     import uproot
@@ -89,8 +89,11 @@ def schema(path, treepath, namespace=""):
         return uproot.source.file.FileSource(path, chunkbytes=8*1024, limitbytes=None)
     return _schema(uproot.open(path, localsource=localsource)[treepath], namespace=namespace)
 
-def _schema(tree, namespace=""):
+def _schema(tree, namespace=None):
     import uproot
+
+    if namespace is None:
+        namespace = "root({0}, {1})".format(repr(path), repr(treepath))
 
     def accumulate(node):
         out = oamap.schema.Record(OrderedDict(), namespace=namespace)
@@ -162,29 +165,43 @@ def _schema(tree, namespace=""):
     return oamap.schema.List(entries, namespace=namespace, doc=doc)
 
 class ROOTBackend(oamap.database.Backend):
-    def __init__(self, paths, treepath):
-        self._paths = paths
+    def __init__(self, paths, treepath, namespace):
+        self._paths = tuple(paths)
         self._treepath = treepath
+        self._namespace = namespace
 
     @property
     def args(self):
-        return (self._path, self._treepath)
+        return (self._paths, self._treepath)
+
+    @property
+    def namespace(self):
+        return self._namespace
 
     def instantiate(self, partitionid):
-        return ROOTArrays.frompath(self._paths[partitionid], self._treepath)
+        return ROOTArrays.frompath(self._paths[partitionid], self._treepath, self)
 
 class ROOTArrays(object):
     @staticmethod
-    def frompath(path, treepath):
+    def frompath(path, treepath, backend):
         import uproot
-        file = uproot.open(path, keep_source=True)
-        out = ROOTArrays(file[treepath])
+        file = uproot.open(path)
+        out = ROOTArrays(file[treepath], backend)
         out._source = file._context.source
         return out
 
-    def __init__(self, tree):
+    def __init__(self, tree, backend):
         self._tree = tree
+        self._backend = backend
         self._keycache = {}
+
+    @property
+    def tree(self):
+        return self._tree
+
+    @property
+    def backend(self):
+        return self._backend
 
     def getall(self, roles):
         import uproot

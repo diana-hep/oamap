@@ -166,6 +166,17 @@ class _DualSource(object):
         if hasattr(self.new, "close"):
             self.new.close()
 
+    @property
+    def backends(self):
+        old = self.old
+        while isinstance(old, _DualSource):
+            old = self.old
+        oldbackend = getattr(old, "backend", None)
+        if oldbackend is None:
+            return {}
+        else:
+            return {oldbackend.namespace: oldbackend}
+
     @staticmethod
     def collect(schema, arrays, namespace, prefix, delimiter):
         newarrays = {}

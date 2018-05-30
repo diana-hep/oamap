@@ -63,7 +63,7 @@ def dataset(path, namespace=None, **kwargs):
 
     return oamap.dataset.Dataset("Events",
                                  sch,
-                                 {namespace: oamap.backend.root.ROOTBackend(paths, "Events")},
+                                 {namespace: oamap.backend.root.ROOTBackend(paths, "Events", namespace)},
                                  oamap.dataset.SingleThreadExecutor(),
                                  offsets,
                                  extension=None,
@@ -71,24 +71,41 @@ def dataset(path, namespace=None, **kwargs):
                                  doc=doc,
                                  metadata={"schemafrom": paths[0]})
 
-def proxy(path, namespace="", extension=oamap.extension.common):
+def proxy(path, namespace=None, extension=oamap.extension.common):
     import uproot
+
+    if namespace is None:
+        namespace = "root.cmsnano({0})".format(repr(path))
+
     def localsource(path):
         return uproot.source.file.FileSource(path, chunkbytes=8*1024, limitbytes=None)
+
     return _proxy(uproot.open(path, localsource=localsource)["Events"], namespace=namespace, extension=extension)
 
-def _proxy(tree, namespace="", extension=oamap.extension.common):
+def _proxy(tree, namespace=None, extension=oamap.extension.common):
+    if namespace is None:
+        namespace = "root.cmsnano({0})".format(repr(path))
+
     schema = _schema(tree, namespace=namespace)
     generator = schema.generator(extension=extension)
-    return oamap.proxy.ListProxy(generator, oamap.backend.root.ROOTArrays(tree), generator._newcache(), 0, 1, tree.numentries)
 
-def schema(path, namespace=""):
+    return oamap.proxy.ListProxy(generator, oamap.backend.root.ROOTArrays(tree, oamap.backend.root.ROOTBackend([tree._context.sourcepath], tree._context.treename, namespace)), generator._newcache(), 0, 1, tree.numentries)
+
+def schema(path, namespace=None):
     import uproot
+
+    if namespace is None:
+        namespace = "root.cmsnano({0})".format(repr(path))
+
     def localsource(path):
         return uproot.source.file.FileSource(path, chunkbytes=8*1024, limitbytes=None)
+
     return _schema(uproot.open(path, localsource=localsource)["Events"], namespace=namespace)
 
-def _schema(tree, namespace=""):
+def _schema(tree, namespace=None):
+    if namespace is None:
+        namespace = "root.cmsnano({0})".format(repr(path))
+
     schema = oamap.backend.root._schema(tree, namespace=namespace)
 
     groups = OrderedDict()
@@ -106,7 +123,7 @@ def _schema(tree, namespace=""):
                     countbranchname = countbranchname.decode("ascii")
                 if groupname not in groups:
                     groups[groupname] = schema.content[groupname] = \
-                        oamap.schema.List(oamap.schema.Record({}, name=groupname), starts=countbranchname, stops=countbranchname)
+                        oamap.schema.List(oamap.schema.Record({}, name=groupname), starts=countbranchname, stops=countbranchname, namespace=namespace)
                 assert countbranchname == schema.content[groupname].starts
                 groups[groupname].content[fieldname] = schema.content[name].content
                 del schema.content[name]

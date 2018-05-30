@@ -35,9 +35,11 @@ import shutil
 import sys
 import time
 
-import oamap.schema
 import oamap.dataset
 import oamap.extension.common
+import oamap.operations
+import oamap.proxy
+import oamap.schema
 
 if sys.version_info[0] > 2:
     basestring = str
@@ -53,6 +55,9 @@ class Backend(object):
     def args(self):
         return self._args
 
+    def __repr__(self):
+        return "{0}({1})".format(self.__class__.__name__, ", ".join(repr(x) for x in self.args))
+
     def instantiate(self, partitionid):
         raise NotImplementedError("missing implementation for {0}.instantiate".format(self.__class__))
 
@@ -61,6 +66,15 @@ class Backend(object):
 
     def delimiter(self):
         return "-"
+
+    def __eq__(self, other):
+        return self.__class__ == other.__class__ and self.args == other.args
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.__class__, self.args))
 
 class WritableBackend(Backend):
     def incref(self, dataset, partitionid, arrayname):
@@ -73,6 +87,8 @@ class FilesystemBackend(WritableBackend):
     def __init__(self, directory, arrayprefix="obj", arraysuffix=""):
         if not os.path.exists(directory):
             os.mkdir(directory)
+        if not os.path.exists(os.path.join(directory, "data")):
+            os.mkdir(os.path.join(directory, "data"))
         self._directory = directory
         self._arrayprefix = arrayprefix
         self._arraysuffix = arraysuffix
@@ -97,22 +113,22 @@ class FilesystemBackend(WritableBackend):
         otherdataset_part, array = os.path.split(arrayname)
         otherdataset, part = os.path.split(otherdataset_part)
         if otherdataset != dataset:
-            src = os.path.join(self._directory, otherdataset, str(partitionid), array) + self._arraysuffix
-            dst = os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
+            src = os.path.join(self._directory, "data", otherdataset, str(partitionid), array) + self._arraysuffix
+            dst = os.path.join(self._directory, "data", dataset, str(partitionid), array) + self._arraysuffix
             if not os.path.exists(dst):
                 os.link(src, dst)
 
     def decref(self, dataset, partitionid, arrayname):
         otherdataset_part, array = os.path.split(arrayname)
-        path = os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
+        path = os.path.join(self._directory, "data", dataset, str(partitionid), array) + self._arraysuffix
         os.unlink(path)
         try:
-            os.rmdir(os.path.join(self._directory, dataset, str(partitionid)))
+            os.rmdir(os.path.join(self._directory, "data", dataset, str(partitionid)))
         except OSError:
             pass
         else:
             try:
-                os.rmdir(os.path.join(self._directory, dataset))
+                os.rmdir(os.path.join(self._directory, "data", dataset))
             except OSError:
                 pass
 
@@ -120,11 +136,11 @@ class FilesystemBackend(WritableBackend):
         dataset_part, array = os.path.split(arrayname)
         dataset, part = os.path.split(dataset_part)
         if create:
-            if not os.path.exists(os.path.join(self._directory, dataset)):
-                os.mkdir(os.path.join(self._directory, dataset))
-            if not os.path.exists(os.path.join(self._directory, dataset, str(partitionid))):
-                os.mkdir(os.path.join(self._directory, dataset, str(partitionid)))
-        return os.path.join(self._directory, dataset, str(partitionid), array) + self._arraysuffix
+            if not os.path.exists(os.path.join(self._directory, "data", dataset)):
+                os.mkdir(os.path.join(self._directory, "data", dataset))
+            if not os.path.exists(os.path.join(self._directory, "data", dataset, str(partitionid))):
+                os.mkdir(os.path.join(self._directory, "data", dataset, str(partitionid)))
+        return os.path.join(self._directory, "data", dataset, str(partitionid), array) + self._arraysuffix
 
 ################################################################ DictBackend (concrete)
 
@@ -228,6 +244,27 @@ class Database(object):
     def delete(self, dataset):
         return NotImplementedError("missing implementation for {0}.delete".format(self.__class__))
 
+    def _proxy2data(self, name, result, namespace):
+        namespace = self._normalize_namespace(namespace)
+        backend = self._backends[namespace]
+
+        backends = getattr(result._arrays, "backends", {})
+        schema = result._generator.namedschema()
+
+        schema, roles2arrays = oamap.operations._DualSource.collect(schema, result._arrays, namespace, backend.prefix(name), backend.delimiter())
+
+        active = backend.instantiate(0)
+        if hasattr(active, "putall"):
+            active.putall(roles2arrays)
+        else:
+            for n, x in roles2arrays.items():
+                active[str(n)] = x
+
+        if isinstance(result, oamap.proxy.ListProxy):
+            return oamap.dataset.Dataset(name, schema, backends, self._executor, [0, len(result)])
+        else:
+            return oamap.dataset.Data(name, schema, backends, self._executor)
+        
     def _normalize_namespace(self, namespace):
         if namespace is None:
             namespace = self._namespace
@@ -398,6 +435,8 @@ class InMemoryDatabase(Database):
             return self._json2dataset(dataset, ds)
 
     def put(self, dataset, value, namespace=None):
+        if isinstance(value, oamap.proxy.Proxy):
+            value = self._proxy2data(dataset, value, namespace)
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
         if not value._notransformations():
@@ -483,26 +522,65 @@ class InMemoryDatabase(Database):
 ################################################################ FilesystemDatabase (concrete)
 
 class FilesystemDatabase(Database):
+    class BackendDict(object):
+        def __init__(self, backenddir):
+            self._backenddir = backenddir
+
+        def __contains__(self, namespace):
+            return os.path.exists(os.path.join(self._backenddir, "_" + namespace))
+
+        def __getitem__(self, namespace):
+            return json.load(open(os.path.join(self._backenddir, "_" + namespace)))
+
+        def __setitem__(self, namespace, value):
+            return json.dump(value, open(os.path.join(self._backenddir, "_" + namespace), "w"))
+
+        def __delitem__(self, namespace):
+            os.unlink(os.path.join(self._backenddir, "_" + namespace))
+
     def __init__(self, directory, backends={}, namespace=""):
-        super(FilesystemDatabase, self).__init__(None, backends, namespace)
+        super(FilesystemDatabase, self).__init__(None, {}, namespace)
         self._directory = directory
+        self._backends = FilesystemDatabase.BackendDict(self._backenddir())
+        for n, x in backends.items():
+            self._backends[n] = x
+
+    def _datadir(self):
+        name = os.path.join(self._directory, "data")
+        if not os.path.exists(name):
+            os.mkdir(name)
+        return name
+
+    def _datasetdir(self, dataset):
+        name = os.path.join(self._datadir(), dataset)
+        if not os.path.exists(name):
+            os.mkdir(name)
+        return name
+
+    def _backenddir(self):
+        name = os.path.join(self._directory, "backends")
+        if not os.path.exists(name):
+            os.mkdir(name)
+        return name
 
     def list(self):
         out = []
-        for x in glob.glob(os.path.join(self._directory, "*", "dataset.json")):
+        for x in glob.glob(os.path.join(self._datadir(), "*", "dataset.json")):
             directory_dataset, _ = os.path.split(x)
             _, dataset = os.path.split(directory_dataset)
             out.append(dataset)
         return out
 
     def get(self, dataset, timeout=None):
-        dsjson = os.path.join(self._directory, dataset, "dataset.json")
+        dsjson = os.path.join(self._datasetdir(dataset), "dataset.json")
         while not os.path.exists(dsjson):
             time.sleep(0)
         with open(dsjson) as ds:
             return self._json2dataset(dataset, json.load(ds))
 
     def put(self, dataset, value, namespace=None):
+        if isinstance(value, oamap.proxy.Proxy):
+            value = self._proxy2data(dataset, value, namespace)
         if not isinstance(value, oamap.dataset._Data):
             raise TypeError("can only put Datasets in Database")
         if not value._notransformations():
@@ -511,7 +589,7 @@ class FilesystemDatabase(Database):
                 raise ValueError("namespace {0} does not point to a FilesystemBackend".format(repr(namespace)))
             value._backends[namespace] = self._backends[namespace]
 
-        dsjson = os.path.join(self._directory, dataset, "dataset.json")
+        dsjson = os.path.join(self._datasetdir(dataset), "dataset.json")
         if os.path.exists(dsjson):
             os.unlink(dsjson)
 
@@ -528,6 +606,6 @@ class FilesystemDatabase(Database):
 
     def delete(self, dataset):
         try:
-            shutil.rmtree(os.path.join(self._directory, dataset))
+            shutil.rmtree(self._datasetdir())
         except OSError as err:
             raise KeyError(str(err))
