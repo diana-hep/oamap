@@ -73,17 +73,18 @@ def proxy(table):
 
         def frombuffer(self, chunk, bufferindex):
             def truncate(array, length, offset=0):
-                if length is None:
-                    return array
-                else:
-                    return array[:length + offset]
+                return array[:length + offset]
 
             def mask(index, length):
-                unmasked = truncate(numpy.unpackbits(numpy.frombuffer(chunk.buffers()[index], dtype=numpy.uint8)).view(numpy.bool_), length)
-                mask = numpy.empty(len(unmasked), dtype=oamap.generator.Masked.maskdtype)
-                mask[unmasked] = numpy.arange(unmasked.sum(), dtype=mask.dtype)
-                mask[~unmasked] = oamap.generator.Masked.maskedvalue
-                return mask
+                buf = chunk.buffers()[index]
+                if buf is None:
+                    return numpy.arange(length, dtype=oamap.generator.Masked.maskdtype)
+                else:
+                    unmasked = truncate(numpy.unpackbits(numpy.frombuffer(buf, dtype=numpy.uint8)).view(numpy.bool_), length)
+                    mask = numpy.empty(len(unmasked), dtype=oamap.generator.Masked.maskdtype)
+                    mask[unmasked] = numpy.arange(unmasked.sum(), dtype=mask.dtype)
+                    mask[~unmasked] = oamap.generator.Masked.maskedvalue
+                    return mask
 
             def recurse(tpe, index, length):
                 if isinstance(tpe, pyarrow.lib.ListType):
@@ -111,7 +112,7 @@ def proxy(table):
                 else:
                     raise NotImplementedError
                 
-            return recurse(chunk.type, 0, None)
+            return recurse(chunk.type, 0, len(chunk))
 
         def getall(self, names):
             out = {}
