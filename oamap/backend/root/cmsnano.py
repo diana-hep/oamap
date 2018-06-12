@@ -36,7 +36,7 @@ import oamap.dataset
 import oamap.proxy
 from oamap.util import OrderedDict
 
-def dataset(path, namespace=None, **kwargs):
+def dataset(path, treepath="Events", namespace=None, **kwargs):
     import uproot
 
     if namespace is None:
@@ -47,7 +47,7 @@ def dataset(path, namespace=None, **kwargs):
     kwargs["total"] = False
     kwargs["blocking"] = True
 
-    paths2entries = uproot.tree.numentries(path, "Events", **kwargs)
+    paths2entries = uproot.tree.numentries(path, treepath, **kwargs)
     if len(paths2entries) == 0:
         raise ValueError("path {0} matched no TTrees".format(repr(path)))
 
@@ -61,9 +61,9 @@ def dataset(path, namespace=None, **kwargs):
     doc = sch.doc
     sch.doc = None
 
-    return oamap.dataset.Dataset("Events",
+    return oamap.dataset.Dataset(treepath,
                                  sch,
-                                 {namespace: oamap.backend.root.ROOTBackend(paths, "Events", namespace)},
+                                 {namespace: oamap.backend.root.ROOTBackend(paths, treepath, namespace)},
                                  oamap.dataset.SingleThreadExecutor(),
                                  offsets,
                                  extension=None,
@@ -71,7 +71,7 @@ def dataset(path, namespace=None, **kwargs):
                                  doc=doc,
                                  metadata={"schemafrom": paths[0]})
 
-def proxy(path, namespace=None, extension=oamap.extension.common):
+def proxy(path, treepath="Events", namespace=None, extension=oamap.extension.common):
     import uproot
 
     if namespace is None:
@@ -80,7 +80,7 @@ def proxy(path, namespace=None, extension=oamap.extension.common):
     def localsource(path):
         return uproot.source.file.FileSource(path, chunkbytes=8*1024, limitbytes=None)
 
-    return _proxy(uproot.open(path, localsource=localsource)["Events"], namespace=namespace, extension=extension)
+    return _proxy(uproot.open(path, localsource=localsource)[treepath], namespace=namespace, extension=extension)
 
 def _proxy(tree, namespace=None, extension=oamap.extension.common):
     if namespace is None:
@@ -91,7 +91,7 @@ def _proxy(tree, namespace=None, extension=oamap.extension.common):
 
     return oamap.proxy.ListProxy(generator, oamap.backend.root.ROOTArrays(tree, oamap.backend.root.ROOTBackend([tree._context.sourcepath], tree._context.treename, namespace)), generator._newcache(), 0, 1, tree.numentries)
 
-def schema(path, namespace=None):
+def schema(path, treepath="Events", namespace=None):
     import uproot
 
     if namespace is None:
@@ -100,7 +100,7 @@ def schema(path, namespace=None):
     def localsource(path):
         return uproot.source.file.FileSource(path, chunkbytes=8*1024, limitbytes=None)
 
-    return _schema(uproot.open(path, localsource=localsource)["Events"], namespace=namespace)
+    return _schema(uproot.open(path, localsource=localsource)[treepath], namespace=namespace)
 
 def _schema(tree, namespace=None):
     if namespace is None:

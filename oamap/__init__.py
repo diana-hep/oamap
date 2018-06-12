@@ -30,3 +30,7 @@
 
 from oamap.schema import *
 import oamap.compiler
+
+# convenient access to the version number
+from oamap.version import __version__
+
